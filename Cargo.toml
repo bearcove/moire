@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/peeps",
+  "crates/peeps-locks",
+  "crates/peeps-tasks",
+  "crates/peeps-threads",
+  "crates/peeps-roam",
+  "crates/peeps-dump",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bearcove/peeps"
+
+[workspace.dependencies]
+# Internal
+peeps = { path = "crates/peeps" }
+peeps-locks = { path = "crates/peeps-locks" }
+peeps-tasks = { path = "crates/peeps-tasks" }
+peeps-threads = { path = "crates/peeps-threads" }
+peeps-roam = { path = "crates/peeps-roam" }
+peeps-dump = { path = "crates/peeps-dump" }
+
+# External
+backtrace = "0.3"
+facet = { git = "https://github.com/facet-rs/facet", rev = "8a80c52" }
+facet-json = { git = "https://github.com/facet-rs/facet", rev = "8a80c52" }
+libc = "0.2"
+parking_lot = "0.12"
+tokio = { version = "1.49", features = ["full"] }

@@ -1,0 +1,16 @@
+[package]
+name = "peeps-dump"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# This will be the CLI tool / dashboard server
+[[bin]]
+name = "peeps"
+path = "src/main.rs"
+
+[dependencies]
+peeps.workspace = true
+facet.workspace = true
+facet-json.workspace = true
+tokio.workspace = true

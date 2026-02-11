@@ -1,0 +1,10 @@
+[package]
+name = "peeps-tasks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+backtrace.workspace = true
+facet.workspace = true
+tokio.workspace = true
