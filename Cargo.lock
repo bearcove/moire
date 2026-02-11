@@ -365,8 +365,6 @@ dependencies = [
 name = "peeps-dump"
 version = "0.1.0"
 dependencies = [
- "facet",
- "facet-json",
  "peeps",
  "tokio",
 ]

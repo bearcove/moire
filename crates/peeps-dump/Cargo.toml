@@ -11,6 +11,4 @@ path = "src/main.rs"
 
 [dependencies]
 peeps.workspace = true
-facet.workspace = true
-facet-json.workspace = true
 tokio.workspace = true
