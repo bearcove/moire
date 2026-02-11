@@ -6,20 +6,7 @@
 //!
 //! When disabled, all functions are zero-cost no-ops.
 
-use facet::Facet;
-
-// ── Snapshot type (always available for dump deserialization) ─────
-
-/// A single thread's stack trace, with sampling data for stuck detection.
-#[derive(Debug, Clone, Facet)]
-pub struct ThreadStackSnapshot {
-    pub name: String,
-    pub backtrace: Option<String>,
-    pub samples: u32,
-    pub responded: u32,
-    pub same_location_count: u32,
-    pub dominant_frame: Option<String>,
-}
+pub use peeps_types::ThreadStackSnapshot;
 
 /// RAII guard that deregisters the thread on drop.
 pub struct ThreadGuard(());

@@ -6,50 +6,7 @@
 
 use std::future::Future;
 
-use facet::Facet;
-
-// ── Public types (always available for dump deserialization) ──────
-
-/// Unique task ID.
-pub type TaskId = u64;
-
-/// Snapshot of a tracked task for diagnostics.
-#[derive(Debug, Clone, Facet)]
-pub struct TaskSnapshot {
-    pub id: TaskId,
-    pub name: String,
-    pub state: TaskState,
-    pub spawned_at_secs: f64,
-    pub age_secs: f64,
-    pub spawn_backtrace: String,
-    pub poll_events: Vec<PollEvent>,
-}
-
-/// Task state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
-#[repr(u8)]
-pub enum TaskState {
-    Pending,
-    Polling,
-    Completed,
-}
-
-/// A single poll event.
-#[derive(Debug, Clone, Facet)]
-pub struct PollEvent {
-    pub started_at_secs: f64,
-    pub duration_secs: Option<f64>,
-    pub result: PollResult,
-    pub backtrace: Option<String>,
-}
-
-/// Poll result.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
-#[repr(u8)]
-pub enum PollResult {
-    Pending,
-    Ready,
-}
+pub use peeps_types::{PollEvent, PollResult, TaskId, TaskSnapshot, TaskState};
 
 // ── Zero-cost stubs (no diagnostics) ─────────────────────────────
 

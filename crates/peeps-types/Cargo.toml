@@ -1,8 +1,9 @@
 [package]
-name = "peeps-roam"
+name = "peeps-types"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-peeps-types.workspace = true
+facet.workspace = true
+inventory.workspace = true

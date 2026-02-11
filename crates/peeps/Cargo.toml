@@ -6,22 +6,15 @@ license.workspace = true
 
 [features]
 locks = ["dep:peeps-locks"]
-roam-session = ["dep:peeps-roam", "peeps-roam/roam-session"]
-roam-shm = ["dep:peeps-roam", "peeps-roam/roam-shm"]
-diagnostics = [
-  "peeps-tasks/diagnostics",
-  "peeps-threads/diagnostics",
-  "peeps-locks?/diagnostics",
-  "peeps-roam?/diagnostics",
-]
+diagnostics = ["peeps-tasks/diagnostics", "peeps-threads/diagnostics", "peeps-locks?/diagnostics"]
 
 [dependencies]
 facet.workspace = true
 facet-json.workspace = true
 peeps-locks = { workspace = true, optional = true }
-peeps-roam = { workspace = true, optional = true }
 peeps-tasks.workspace = true
 peeps-threads.workspace = true
+peeps-types.workspace = true
 tokio.workspace = true
 
 [target.'cfg(unix)'.dependencies]

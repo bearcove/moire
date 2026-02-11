@@ -10,4 +10,5 @@ diagnostics = []
 [dependencies]
 facet.workspace = true
 parking_lot.workspace = true
+peeps-types.workspace = true
 tokio.workspace = true

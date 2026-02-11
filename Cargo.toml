@@ -6,6 +6,7 @@ members = [
   "crates/peeps-tasks",
   "crates/peeps-threads",
   "crates/peeps-roam",
+  "crates/peeps-types",
   "crates/peeps-dump",
 ]
 
@@ -22,10 +23,12 @@ peeps-locks = { path = "crates/peeps-locks" }
 peeps-tasks = { path = "crates/peeps-tasks" }
 peeps-threads = { path = "crates/peeps-threads" }
 peeps-roam = { path = "crates/peeps-roam" }
+peeps-types = { path = "crates/peeps-types" }
 peeps-dump = { path = "crates/peeps-dump" }
 
 # External
 backtrace = "0.3"
+inventory = "0.3"
 facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
 libc = "0.2"

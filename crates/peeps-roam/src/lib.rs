@@ -1,21 +1,28 @@
 //! Roam diagnostics integration for peeps.
 //!
-//! Re-exports diagnostic snapshot types from roam-session and roam-shm.
+//! Re-exports snapshot types from peeps-types. Roam-session and roam-shm
+//! register themselves as diagnostics sources via `inventory::submit!`.
 
-#[cfg(feature = "roam-session")]
-pub use roam_session::diagnostic_snapshot::*;
-
-#[cfg(feature = "roam-shm")]
-pub use roam_shm::diagnostic_snapshot::*;
-
-/// Collect roam session diagnostics if the roam-session feature is enabled.
-#[cfg(feature = "roam-session")]
-pub fn snapshot_session() -> roam_session::diagnostic_snapshot::DiagnosticSnapshot {
-    roam_session::diagnostic_snapshot::snapshot_all_diagnostics()
-}
-
-/// Collect roam SHM diagnostics if the roam-shm feature is enabled.
-#[cfg(feature = "roam-shm")]
-pub fn snapshot_shm() -> roam_shm::diagnostic_snapshot::ShmSnapshot {
-    roam_shm::diagnostic_snapshot::snapshot_all_shm()
-}
+pub use peeps_types::{
+    collect_all_diagnostics,
+    // Session types
+    ChannelCreditSnapshot,
+    ChannelDir,
+    // SHM types
+    ChannelQueueSnapshot,
+    ChannelSnapshot,
+    CompletionSnapshot,
+    ConnectionSnapshot,
+    // Diagnostics registry
+    Diagnostics,
+    DiagnosticsSource,
+    Direction,
+    RequestSnapshot,
+    SessionSnapshot,
+    ShmPeerSnapshot,
+    ShmPeerState,
+    ShmSegmentSnapshot,
+    ShmSnapshot,
+    TransportStats,
+    VarSlotClassSnapshot,
+};

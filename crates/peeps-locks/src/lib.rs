@@ -825,45 +825,6 @@ mod inner {
 
 pub use inner::*;
 
-// ── Structured snapshot types (for JSON dumps) ───────────────
-
-/// Snapshot of all tracked locks.
-#[derive(Debug, Clone, facet::Facet)]
-pub struct LockSnapshot {
-    pub locks: Vec<LockInfoSnapshot>,
-}
-
-/// Snapshot of a single tracked lock.
-#[derive(Debug, Clone, facet::Facet)]
-pub struct LockInfoSnapshot {
-    pub name: String,
-    pub acquires: u64,
-    pub releases: u64,
-    pub holders: Vec<LockHolderSnapshot>,
-    pub waiters: Vec<LockWaiterSnapshot>,
-}
-
-/// Kind of lock acquisition.
-#[derive(Debug, Clone, facet::Facet)]
-#[repr(u8)]
-pub enum LockAcquireKind {
-    Read,
-    Write,
-    Mutex,
-}
-
-/// A current lock holder.
-#[derive(Debug, Clone, facet::Facet)]
-pub struct LockHolderSnapshot {
-    pub kind: LockAcquireKind,
-    pub held_secs: f64,
-    pub backtrace: Option<String>,
-}
-
-/// A lock waiter.
-#[derive(Debug, Clone, facet::Facet)]
-pub struct LockWaiterSnapshot {
-    pub kind: LockAcquireKind,
-    pub waiting_secs: f64,
-    pub backtrace: Option<String>,
-}
+pub use peeps_types::{
+    LockAcquireKind, LockHolderSnapshot, LockInfoSnapshot, LockSnapshot, LockWaiterSnapshot,
+};
