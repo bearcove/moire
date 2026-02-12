@@ -7,6 +7,7 @@ license.workspace = true
 [features]
 locks = ["dep:peeps-locks"]
 diagnostics = ["peeps-tasks/diagnostics", "peeps-threads/diagnostics", "peeps-locks?/diagnostics", "peeps-sync/diagnostics"]
+dashboard = []
 
 [dependencies]
 facet.workspace = true

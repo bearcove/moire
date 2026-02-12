@@ -10,5 +10,10 @@ name = "peeps"
 path = "src/main.rs"
 
 [dependencies]
+axum.workspace = true
+facet-json.workspace = true
+mime_guess.workspace = true
 peeps.workspace = true
+peeps-types.workspace = true
+rust-embed.workspace = true
 tokio.workspace = true
