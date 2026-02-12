@@ -691,13 +691,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeps-roam"
-version = "0.1.0"
-dependencies = [
- "peeps-types",
-]
-
-[[package]]
 name = "peeps-sync"
 version = "0.1.0"
 dependencies = [

@@ -47,13 +47,15 @@ impl DashboardState {
 
 /// Accept TCP connections and spawn a reader task for each.
 pub async fn run_tcp_acceptor(listener: TcpListener, state: Arc<DashboardState>) {
+    let max_frame_bytes = max_frame_bytes_from_env();
+    eprintln!("[peeps] max frame size set to {max_frame_bytes} bytes");
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
                 eprintln!("[peeps] TCP connection from {addr}");
                 let state = Arc::clone(&state);
                 tokio::spawn(async move {
-                    if let Err(e) = handle_tcp_connection(stream, &state).await {
+                    if let Err(e) = handle_tcp_connection(stream, &state, max_frame_bytes).await {
                         eprintln!("[peeps] connection from {addr} closed: {e}");
                     } else {
                         eprintln!("[peeps] connection from {addr} closed");
@@ -73,6 +75,7 @@ pub async fn run_tcp_acceptor(listener: TcpListener, state: Arc<DashboardState>)
 async fn handle_tcp_connection(
     mut stream: TcpStream,
     state: &DashboardState,
+    max_frame_bytes: usize,
 ) -> std::io::Result<()> {
     loop {
         // Read 4-byte length prefix (big-endian u32).
@@ -82,11 +85,11 @@ async fn handle_tcp_connection(
             continue;
         }
 
-        // Sanity limit: 64 MiB
-        if len > 64 * 1024 * 1024 {
+        // Sanity limit to avoid unbounded memory growth on malformed clients.
+        if (len as usize) > max_frame_bytes {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("frame too large: {len} bytes"),
+                format!("frame too large: {len} bytes (max {max_frame_bytes})"),
             ));
         }
 
@@ -116,5 +119,22 @@ async fn handle_tcp_connection(
                 eprintln!("[peeps] failed to parse dump frame: {e}");
             }
         }
+    }
+}
+
+fn max_frame_bytes_from_env() -> usize {
+    const DEFAULT_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
+    match std::env::var("PEEPS_MAX_FRAME_BYTES") {
+        Ok(raw) => match raw.parse::<usize>() {
+            Ok(v) if v > 0 => v,
+            _ => {
+                eprintln!(
+                    "[peeps] invalid PEEPS_MAX_FRAME_BYTES={raw:?}, using default {}",
+                    DEFAULT_MAX_FRAME_BYTES
+                );
+                DEFAULT_MAX_FRAME_BYTES
+            }
+        },
+        Err(_) => DEFAULT_MAX_FRAME_BYTES,
     }
 }

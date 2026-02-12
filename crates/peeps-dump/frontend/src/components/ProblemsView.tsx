@@ -1,9 +1,5 @@
 import type { ProcessDump } from "../types";
-import {
-  detectProblems,
-  type Problem,
-  type ProblemCategory,
-} from "../problems";
+import { detectProblems, type Problem, type ProblemCategory } from "../problems";
 import { Expandable } from "./Expandable";
 import { classNames } from "../util";
 
@@ -12,14 +8,7 @@ interface Props {
   filter: string;
 }
 
-const CATEGORY_ORDER: ProblemCategory[] = [
-  "Tasks",
-  "Threads",
-  "Locks",
-  "Channels",
-  "RPC",
-  "SHM",
-];
+const CATEGORY_ORDER: ProblemCategory[] = ["Tasks", "Threads", "Locks", "Channels", "RPC", "SHM"];
 
 export function ProblemsView({ dumps, filter }: Props) {
   const all = detectProblems(dumps);
@@ -31,7 +20,7 @@ export function ProblemsView({ dumps, filter }: Props) {
           p.process.toLowerCase().includes(lq) ||
           p.resource.toLowerCase().includes(lq) ||
           p.description.toLowerCase().includes(lq) ||
-          p.category.toLowerCase().includes(lq)
+          p.category.toLowerCase().includes(lq),
       )
     : all;
 
@@ -40,7 +29,7 @@ export function ProblemsView({ dumps, filter }: Props) {
       <div class="fade-in">
         <div class="empty-state">
           <div class="icon" style="color: var(--green)">
-            &check;
+            ✔︎
           </div>
           <p>No problems detected</p>
           <p class="sub">All systems nominal</p>
@@ -66,9 +55,7 @@ export function ProblemsView({ dumps, filter }: Props) {
     <div class="fade-in">
       <div class="problems-summary">
         {dangerCount > 0 && (
-          <span class="problems-count problems-count-danger">
-            {dangerCount} danger
-          </span>
+          <span class="problems-count problems-count-danger">{dangerCount} danger</span>
         )}
         {warnCount > 0 && (
           <span class="problems-count problems-count-warn">
@@ -99,16 +86,14 @@ export function ProblemsView({ dumps, filter }: Props) {
                     key={i}
                     class={classNames(
                       p.severity === "danger" && "severity-danger",
-                      p.severity === "warn" && "severity-warn"
+                      p.severity === "warn" && "severity-warn",
                     )}
                   >
                     <td>
                       <span
                         class={classNames(
                           "state-badge",
-                          p.severity === "danger"
-                            ? "state-dropped"
-                            : "state-pending"
+                          p.severity === "danger" ? "state-dropped" : "state-pending",
                         )}
                       >
                         {p.severity}
