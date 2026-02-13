@@ -22,6 +22,17 @@ interface TaskInteraction {
   href: string;
   label: string;
   kind: "lock" | "mpsc" | "oneshot" | "watch";
+  ageSecs?: number;
+  note?: string;
+}
+
+interface TaskRpcInteraction {
+  key: string;
+  href: string;
+  method: string;
+  elapsedSecs: number;
+  process: string;
+  connection: string;
 }
 
 function stateClass(state: string): string {
@@ -61,6 +72,7 @@ function matchesFilter(t: FlatTask, q: string): boolean {
 export function TasksView({ dumps, filter, selectedPath }: Props) {
   const [view, setView] = useState<"table" | "tree">("table");
   const interactionsByTask = new Map<string, TaskInteraction[]>();
+  const rpcByTask = new Map<string, TaskRpcInteraction[]>();
 
   const addInteraction = (process: string, taskId: number | null, interaction: TaskInteraction) => {
     if (taskId == null) return;
@@ -69,6 +81,15 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
     if (!list.some((i) => i.key === interaction.key)) {
       list.push(interaction);
       interactionsByTask.set(key, list);
+    }
+  };
+  const addRpc = (process: string, taskId: number | null, rpc: TaskRpcInteraction) => {
+    if (taskId == null) return;
+    const key = `${process}#${taskId}`;
+    const list = rpcByTask.get(key) ?? [];
+    if (!list.some((i) => i.key === rpc.key)) {
+      list.push(rpc);
+      rpcByTask.set(key, list);
     }
   };
 
@@ -82,6 +103,8 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
             href: lockHref,
             label: `lock ${l.name} (holder)`,
             kind: "lock",
+            ageSecs: h.held_secs,
+            note: `held ${fmtDuration(h.held_secs)}`,
           });
         }
         for (const w of l.waiters) {
@@ -90,6 +113,8 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
             href: lockHref,
             label: `lock ${l.name} (waiter)`,
             kind: "lock",
+            ageSecs: w.waiting_secs,
+            note: `waiting ${fmtDuration(w.waiting_secs)}`,
           });
         }
       }
@@ -102,6 +127,8 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
           href: resourceHref({ kind: "mpsc", process: d.process_name, name: ch.name }),
           label: `mpsc ${ch.name}`,
           kind: "mpsc",
+          ageSecs: ch.age_secs,
+          note: `${ch.send_waiters} waiter(s), ${ch.sender_count} sender(s)`,
         });
       }
       for (const ch of d.sync.oneshot_channels) {
@@ -110,6 +137,8 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
           href: resourceHref({ kind: "oneshot", process: d.process_name, name: ch.name }),
           label: `oneshot ${ch.name}`,
           kind: "oneshot",
+          ageSecs: ch.age_secs,
+          note: ch.state,
         });
       }
       for (const ch of d.sync.watch_channels) {
@@ -118,7 +147,42 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
           href: resourceHref({ kind: "watch", process: d.process_name, name: ch.name }),
           label: `watch ${ch.name}`,
           kind: "watch",
+          ageSecs: ch.age_secs,
+          note: `${ch.receiver_count} receiver(s), ${ch.changes} changes`,
         });
+      }
+    }
+
+    if (d.roam) {
+      const byName = new Map<string, number[]>();
+      for (const t of d.tasks) {
+        const list = byName.get(t.name) ?? [];
+        list.push(t.id);
+        byName.set(t.name, list);
+      }
+      for (const conn of d.roam.connections) {
+        for (const req of conn.in_flight) {
+          if (!req.backtrace) continue;
+          const method = req.method_name ?? `method_${req.method_id}`;
+          for (const [taskName, ids] of byName.entries()) {
+            if (!req.backtrace.includes(taskName)) continue;
+            for (const id of ids) {
+              addRpc(d.process_name, id, {
+                key: `rpc:${conn.name}:${req.request_id}:${id}`,
+                href: resourceHref({
+                  kind: "request",
+                  process: d.process_name,
+                  connection: conn.name,
+                  requestId: req.request_id,
+                }),
+                method,
+                elapsedSecs: req.elapsed_secs,
+                process: d.process_name,
+                connection: conn.name,
+              });
+            }
+          }
+        }
       }
     }
   }
@@ -137,6 +201,12 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
   }
 
   const filtered = tasks.filter((t) => matchesFilter(t, filter));
+  const selectedTask = selectedTaskFromPath(tasks, selectedPath);
+  const selectedTaskRpc = selectedTask
+    ? (rpcByTask.get(`${selectedTask.process}#${selectedTask.id}`) ?? []).sort(
+        (a, b) => b.elapsedSecs - a.elapsedSecs,
+      )
+    : [];
 
   if (tasks.length === 0) {
     return (
@@ -150,6 +220,9 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
 
   return (
     <div class="fade-in">
+      {selectedTask && (
+        <TaskDetailCard task={selectedTask} selectedPath={selectedPath} rpc={selectedTaskRpc} />
+      )}
       <div style="margin-bottom: 12px; display: flex; gap: 8px">
         <button
           class={classNames("expand-trigger", view === "table" && "active")}
@@ -171,6 +244,179 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
       ) : (
         <TaskTree tasks={filtered} selectedPath={selectedPath} />
       )}
+    </div>
+  );
+}
+
+function selectedTaskFromPath(tasks: FlatTask[], selectedPath: string): FlatTask | null {
+  const m = selectedPath.match(/^\/tasks\/([^/]+)\/(\d+)$/);
+  if (!m) return null;
+  const process = decodeURIComponent(m[1]);
+  const id = Number(m[2]);
+  return tasks.find((t) => t.process === process && t.id === id) ?? null;
+}
+
+function TaskDetailCard({
+  task: t,
+  selectedPath,
+  rpc,
+}: {
+  task: FlatTask;
+  selectedPath: string;
+  rpc: TaskRpcInteraction[];
+}) {
+  const taskHref = resourceHref({ kind: "task", process: t.process, taskId: t.id });
+  const sortedInteractions = [...t.interactions].sort(
+    (a, b) => (b.ageSecs ?? 0) - (a.ageSecs ?? 0),
+  );
+  const pollTimeline = t.poll_events
+    .map((p, idx) => ({
+      idx,
+      startedAt: p.started_at_secs,
+      duration: p.duration_secs,
+      result: p.result,
+      backtrace: p.backtrace,
+    }))
+    .sort((a, b) => b.startedAt - a.startedAt);
+
+  return (
+    <div class="card" style="margin-bottom: 14px">
+      <div class="card-head">
+        <span class="mono text-purple">Task Detail</span>
+        <ResourceLink href={taskHref} active={isActivePath(selectedPath, taskHref)} kind="task">
+          #{t.id} {t.name}
+        </ResourceLink>
+        <span class="muted">{t.process}</span>
+        <span class="muted" style="margin-left: auto">
+          {t.state} · age {fmtAge(t.age_secs)} · polls {t.poll_events.length}
+        </span>
+      </div>
+
+      <div style="padding: 10px 12px 12px">
+        <div class="proc-kv" style="margin-bottom: 10px">
+          <div class="proc-kv-item">
+            <span class="k">Parent</span>
+            <span class="v">
+              {t.parent_task_id != null ? (
+                <ResourceLink
+                  href={resourceHref({ kind: "task", process: t.process, taskId: t.parent_task_id })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "task", process: t.process, taskId: t.parent_task_id }))}
+                  kind="task"
+                >
+                  {t.parent_task_name ?? ""} (#{t.parent_task_id})
+                </ResourceLink>
+              ) : "—"}
+            </span>
+          </div>
+          <div class="proc-kv-item">
+            <span class="k">Interactions</span>
+            <span class="v">{sortedInteractions.length}</span>
+          </div>
+          <div class="proc-kv-item">
+            <span class="k">RPC Matches</span>
+            <span class="v">{rpc.length}</span>
+          </div>
+        </div>
+
+        {sortedInteractions.length > 0 && (
+          <div class="proc-section" style="margin-top: 0">
+            <div class="muted" style="margin-bottom: 6px">Resource interactions</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Resource</th>
+                  <th>Type</th>
+                  <th>Timing</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedInteractions.map((i) => (
+                  <tr key={i.key}>
+                    <td class="mono">
+                      <ResourceLink href={i.href} active={isActivePath(selectedPath, i.href)} kind={i.kind}>
+                        {i.label}
+                      </ResourceLink>
+                    </td>
+                    <td class="mono">{i.kind}</td>
+                    <td class="num">{i.ageSecs != null ? fmtDuration(i.ageSecs) : "—"}</td>
+                    <td>{i.note ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {rpc.length > 0 && (
+          <div class="proc-section">
+            <div class="muted" style="margin-bottom: 6px">Likely RPC interactions (backtrace match)</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Connection</th>
+                  <th>Elapsed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rpc.map((r) => (
+                  <tr key={r.key}>
+                    <td class="mono">
+                      <ResourceLink href={r.href} active={isActivePath(selectedPath, r.href)} kind="request">
+                        {r.method}
+                      </ResourceLink>
+                    </td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "connection", process: r.process, connection: r.connection })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "connection", process: r.process, connection: r.connection }))}
+                        kind="connection"
+                      >
+                        {r.connection}
+                      </ResourceLink>
+                    </td>
+                    <td class="num">{fmtDuration(r.elapsedSecs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {pollTimeline.length > 0 && (
+          <div class="proc-section">
+            <div class="muted" style="margin-bottom: 6px">Poll timeline</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Poll</th>
+                  <th>Result</th>
+                  <th>Duration</th>
+                  <th>Backtrace</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pollTimeline.map((p) => (
+                  <tr key={p.idx}>
+                    <td class="mono">#{p.idx}</td>
+                    <td class="mono">{p.result}</td>
+                    <td class="num">{p.duration != null ? fmtDuration(p.duration) : "pending"}</td>
+                    <td>
+                      <Expandable content={p.backtrace} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div class="proc-section">
+          <div class="muted" style="margin-bottom: 6px">Spawn backtrace</div>
+          <Expandable content={t.spawn_backtrace || null} />
+        </div>
+      </div>
     </div>
   );
 }
