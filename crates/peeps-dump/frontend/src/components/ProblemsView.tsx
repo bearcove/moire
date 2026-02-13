@@ -8,6 +8,7 @@ import {
   type RelationshipIssue,
 } from "../problems";
 import { Expandable } from "./Expandable";
+import { CausalGraph } from "./CausalGraph";
 import { classNames } from "../util";
 
 interface Props {
@@ -94,6 +95,8 @@ export function ProblemsView({ dumps, filter }: Props) {
           </span>
         )}
       </div>
+
+      {issues.length > 0 && <CausalGraph issues={issues} />}
 
       {rootCauses.length > 0 && (
         <div class="card">

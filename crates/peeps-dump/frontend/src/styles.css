@@ -630,3 +630,89 @@ tbody tr.severity-warn:hover td {
 .tree-item:hover {
   background: var(--surface-hover);
 }
+
+/* ═══════════════════════════════════════════
+   CAUSAL GRAPH
+   ═══════════════════════════════════════════ */
+
+.causal-graph-wrap {
+  width: 100%;
+  overflow-x: auto;
+  padding: 12px 8px 16px;
+}
+
+.causal-graph {
+  width: 100%;
+  min-width: 860px;
+  height: auto;
+  display: block;
+}
+
+.causal-graph-label {
+  fill: var(--fg-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.causal-node {
+  stroke: var(--border-bright);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.causal-node.blocked {
+  fill: var(--blue-bg);
+}
+
+.causal-node.owner {
+  fill: var(--purple-bg);
+}
+
+.causal-node.selected {
+  stroke: var(--blue);
+  stroke-width: 2;
+}
+
+.causal-node-text {
+  fill: var(--fg);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.causal-edge {
+  fill: none;
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+.causal-edge.selected {
+  stroke-width: 3;
+}
+
+.causal-edge-danger {
+  stroke: var(--red);
+}
+
+.causal-edge-warn {
+  stroke: var(--amber);
+}
+
+.causal-edge-label {
+  fill: var(--fg-muted);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  user-select: none;
+}
+
+.causal-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  cursor: pointer;
+}
+
+.causal-details {
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  font-size: 12px;
+}
