@@ -111,6 +111,24 @@ function waitsOnKind(i: RelationshipIssue): "lock" | "mpsc" | "request" {
   }
 }
 
+function ownerHref(owner: string): { href: string; kind: "process" | "request" | "mpsc" | "lock" } {
+  if (owner.startsWith("rpc:")) return { href: tabPath("requests"), kind: "request" };
+  if (owner.startsWith("channel:")) return { href: tabPath("sync"), kind: "mpsc" };
+  if (owner.startsWith("lock:")) return { href: tabPath("locks"), kind: "lock" };
+  return { href: resourceHref({ kind: "process", process: owner }), kind: "process" };
+}
+
+function blockedHref(i: RelationshipIssue): { href: string; kind: "task" | "request" | "mpsc" } {
+  switch (i.category) {
+    case "Locks":
+      return { href: tabPath("tasks"), kind: "task" };
+    case "Channels":
+      return { href: tabPath("sync"), kind: "mpsc" };
+    case "RPC":
+      return { href: tabPath("requests"), kind: "request" };
+  }
+}
+
 export function ProblemsView({ dumps, filter, selectedPath }: Props) {
   const allProblems = detectProblems(dumps);
   const allIssues = detectRelationshipIssues(dumps);
@@ -196,7 +214,15 @@ export function ProblemsView({ dumps, filter, selectedPath }: Props) {
                       {r.severity}
                     </span>
                   </td>
-                  <td class="mono">{r.owner}</td>
+                  <td class="mono">
+                    <ResourceLink
+                      href={ownerHref(r.owner).href}
+                      active={isActivePath(selectedPath, ownerHref(r.owner).href)}
+                      kind={ownerHref(r.owner).kind}
+                    >
+                      {r.owner}
+                    </ResourceLink>
+                  </td>
                   <td class="num">{r.blockedCount}</td>
                   <td class="num">{r.edgeCount}</td>
                   <td class="num">{r.worstTimingLabel}</td>
@@ -252,7 +278,15 @@ export function ProblemsView({ dumps, filter, selectedPath }: Props) {
                       {i.process}
                     </ResourceLink>
                   </td>
-                  <td class="mono">{i.blocked}</td>
+                  <td class="mono">
+                    <ResourceLink
+                      href={blockedHref(i).href}
+                      active={isActivePath(selectedPath, blockedHref(i).href)}
+                      kind={blockedHref(i).kind}
+                    >
+                      {i.blocked}
+                    </ResourceLink>
+                  </td>
                   <td class="mono">
                     <ResourceLink
                       href={issueWaitsOnHref(i)}
@@ -262,7 +296,17 @@ export function ProblemsView({ dumps, filter, selectedPath }: Props) {
                       {i.waitsOn}
                     </ResourceLink>
                   </td>
-                  <td class="mono">{i.owner ?? "—"}</td>
+                  <td class="mono">
+                    {i.owner ? (
+                      <ResourceLink
+                        href={ownerHref(i.owner).href}
+                        active={isActivePath(selectedPath, ownerHref(i.owner).href)}
+                        kind={ownerHref(i.owner).kind}
+                      >
+                        {i.owner}
+                      </ResourceLink>
+                    ) : "—"}
+                  </td>
                   <td>
                     {i.description}
                     {i.count > 1 ? <span class="muted"> ({i.count}x)</span> : null}
