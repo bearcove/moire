@@ -536,24 +536,54 @@ function TaskTable({ tasks, selectedPath }: { tasks: FlatTask[]; selectedPath: s
 }
 
 function TaskTree({ tasks, selectedPath }: { tasks: FlatTask[]; selectedPath: string }) {
-  const byId = new Map<number, FlatTask>();
-  for (const t of tasks) byId.set(t.id, t);
+  const keyFor = (process: string, taskId: number) => `${process}#${taskId}`;
+  const byId = new Map<string, FlatTask>();
+  for (const t of tasks) byId.set(keyFor(t.process, t.id), t);
 
-  const roots = tasks.filter((t) => t.parent_task_id == null || !byId.has(t.parent_task_id));
-  const children = new Map<number, FlatTask[]>();
+  const roots = tasks.filter(
+    (t) => t.parent_task_id == null || !byId.has(keyFor(t.process, t.parent_task_id)),
+  );
+  const children = new Map<string, FlatTask[]>();
   for (const t of tasks) {
-    if (t.parent_task_id != null && byId.has(t.parent_task_id)) {
-      const list = children.get(t.parent_task_id) ?? [];
+    if (t.parent_task_id != null && byId.has(keyFor(t.process, t.parent_task_id))) {
+      const list = children.get(keyFor(t.process, t.parent_task_id)) ?? [];
       list.push(t);
-      children.set(t.parent_task_id, list);
+      children.set(keyFor(t.process, t.parent_task_id), list);
     }
   }
 
+  const activeRoots = roots.filter((t) => t.state !== "Completed");
+  const completedRoots = roots.filter((t) => t.state === "Completed");
+
   return (
     <div>
-      {roots.map((t) => (
-        <TreeNode key={t.id} task={t} children={children} depth={0} selectedPath={selectedPath} />
+      {activeRoots.map((t) => (
+        <TreeNode
+          key={`${t.process}-${t.id}`}
+          task={t}
+          children={children}
+          depth={0}
+          selectedPath={selectedPath}
+        />
       ))}
+      {completedRoots.length > 0 && (
+        <details class="tree-node-root" style="margin-top: 8px">
+          <summary class="muted" style="cursor: pointer">
+            Completed ({completedRoots.length})
+          </summary>
+          <div style="margin-top: 8px">
+            {completedRoots.map((t) => (
+              <TreeNode
+                key={`${t.process}-${t.id}`}
+                task={t}
+                children={children}
+                depth={0}
+                selectedPath={selectedPath}
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -565,11 +595,13 @@ function TreeNode({
   selectedPath,
 }: {
   task: FlatTask;
-  children: Map<number, FlatTask[]>;
+  children: Map<string, FlatTask[]>;
   depth: number;
   selectedPath: string;
 }) {
-  const kids = children.get(t.id) ?? [];
+  const kids = children.get(`${t.process}#${t.id}`) ?? [];
+  const activeKids = kids.filter((k) => k.state !== "Completed");
+  const completedKids = kids.filter((k) => k.state === "Completed");
   return (
     <div class={depth === 0 ? "tree-node-root" : "tree-node"}>
       <div class="tree-item">
@@ -589,15 +621,33 @@ function TreeNode({
           {t.process} &middot; {fmtAge(t.age_secs)}
         </span>
       </div>
-      {kids.map((k) => (
+      {activeKids.map((k) => (
         <TreeNode
-          key={k.id}
+          key={`${k.process}-${k.id}`}
           task={k}
           children={children}
           depth={depth + 1}
           selectedPath={selectedPath}
         />
       ))}
+      {completedKids.length > 0 && (
+        <details style={`margin-left: ${Math.max(12, (depth + 1) * 16)}px; margin-top: 4px`}>
+          <summary class="muted" style="cursor: pointer">
+            Completed ({completedKids.length})
+          </summary>
+          <div style="margin-top: 6px">
+            {completedKids.map((k) => (
+              <TreeNode
+                key={`${k.process}-${k.id}`}
+                task={k}
+                children={children}
+                depth={depth + 1}
+                selectedPath={selectedPath}
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

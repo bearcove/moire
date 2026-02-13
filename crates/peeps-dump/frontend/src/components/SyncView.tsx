@@ -90,6 +90,32 @@ function onceSeverity(ch: OnceCellSnapshot): Severity {
   return "idle";
 }
 
+function mpscReason(ch: MpscChannelSnapshot): string {
+  const closedEnds = [];
+  if (ch.sender_closed) closedEnds.push("sender closed");
+  if (ch.receiver_closed) closedEnds.push("receiver closed");
+  if (closedEnds.length > 0) return closedEnds.join(", ");
+  if (ch.send_waiters > 0) return `${ch.send_waiters} sender waiter(s)`;
+  return "healthy";
+}
+
+function oneshotReason(ch: OneshotChannelSnapshot): string {
+  if (ch.state === "SenderDropped") return "sender dropped before send";
+  if (ch.state === "ReceiverDropped") return "receiver dropped";
+  if (ch.state === "Pending" && ch.age_secs > 10) return `pending for ${fmtAge(ch.age_secs)}`;
+  return "healthy";
+}
+
+function watchReason(ch: WatchChannelSnapshot): string {
+  if (ch.receiver_count === 0 && ch.age_secs > 30) return `no receivers for ${fmtAge(ch.age_secs)}`;
+  return "healthy";
+}
+
+function onceReason(ch: OnceCellSnapshot): string {
+  if (ch.state === "Initializing" && ch.age_secs > 5) return `initializing for ${fmtAge(ch.age_secs)}`;
+  return "healthy";
+}
+
 export function SyncView({ dumps, filter, selectedPath }: Props) {
   const q = filter.toLowerCase();
 
@@ -172,7 +198,9 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                   <th>Recv</th>
                   <th>Senders</th>
                   <th>Waiters</th>
+                  <th>Ends</th>
                   <th>Age</th>
+                  <th>Reason</th>
                   <th>Creator</th>
                 </tr>
               </thead>
@@ -195,7 +223,13 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                     <td class="num">{m.ch.received}</td>
                     <td class="num">{m.ch.sender_count}</td>
                     <td class={classNames("num", m.ch.send_waiters > 0 && "text-amber")}>{m.ch.send_waiters}</td>
+                    <td class="mono">
+                      {m.ch.sender_closed || m.ch.receiver_closed
+                        ? `${m.ch.sender_closed ? "Sx" : "\u2014"} / ${m.ch.receiver_closed ? "Rx" : "\u2014"}`
+                        : "\u2014"}
+                    </td>
                     <td class="num">{fmtAge(m.ch.age_secs)}</td>
+                    <td>{mpscReason(m.ch)}</td>
                     <td>{taskRef(m.process, m.ch.creator_task_id, m.ch.creator_task_name, selectedPath)}</td>
                   </tr>
                 ))}
@@ -215,7 +249,9 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                     <th>Type</th>
                     <th>Senders</th>
                     <th>Waiters</th>
+                    <th>Ends</th>
                     <th>Age</th>
+                    <th>Reason</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -235,7 +271,13 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                       <td class="mono">{m.ch.bounded ? `bounded(${m.ch.capacity})` : "unbounded"}</td>
                       <td class="num">{m.ch.sender_count}</td>
                       <td class="num">{m.ch.send_waiters}</td>
+                      <td class="mono">
+                        {m.ch.sender_closed || m.ch.receiver_closed
+                          ? `${m.ch.sender_closed ? "Sx" : "\u2014"} / ${m.ch.receiver_closed ? "Rx" : "\u2014"}`
+                          : "\u2014"}
+                      </td>
                       <td class="num">{fmtAge(m.ch.age_secs)}</td>
+                      <td>{mpscReason(m.ch)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -257,6 +299,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                   <th>Name</th>
                   <th>State</th>
                   <th>Age</th>
+                  <th>Reason</th>
                   <th>Creator</th>
                 </tr>
               </thead>
@@ -276,6 +319,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                     </td>
                     <td><span class={classNames("state-badge", stateClass(o.ch.state))}>{o.ch.state}</span></td>
                     <td class="num">{fmtAge(o.ch.age_secs)}</td>
+                    <td>{oneshotReason(o.ch)}</td>
                     <td>{taskRef(o.process, o.ch.creator_task_id, o.ch.creator_task_name, selectedPath)}</td>
                   </tr>
                 ))}
@@ -303,6 +347,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                   <th>Changes</th>
                   <th>Receivers</th>
                   <th>Age</th>
+                  <th>Reason</th>
                   <th>Creator</th>
                 </tr>
               </thead>
@@ -323,6 +368,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                     <td class="num">{w.ch.changes}</td>
                     <td class="num">{w.ch.receiver_count}</td>
                     <td class="num">{fmtAge(w.ch.age_secs)}</td>
+                    <td>{watchReason(w.ch)}</td>
                     <td>{taskRef(w.process, w.ch.creator_task_id, w.ch.creator_task_name, selectedPath)}</td>
                   </tr>
                 ))}
@@ -350,6 +396,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                   <th>State</th>
                   <th>Age</th>
                   <th>Init Duration</th>
+                  <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
@@ -369,6 +416,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                     <td><span class={classNames("state-badge", stateClass(o.ch.state))}>{o.ch.state}</span></td>
                     <td class="num">{fmtAge(o.ch.age_secs)}</td>
                     <td class="num">{o.ch.init_duration_secs != null ? (o.ch.init_duration_secs * 1000).toFixed(0) + "ms" : "\u2014"}</td>
+                    <td>{onceReason(o.ch)}</td>
                   </tr>
                 ))}
               </tbody>
