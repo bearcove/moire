@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "elkjs": "^0.11.0",
     "preact": "^10.25.0"
   },
   "devDependencies": {

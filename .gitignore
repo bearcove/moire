@@ -1,5 +1,7 @@
 .tracey/
 target
 
+node_modules
+
 # vite prod build
 dist

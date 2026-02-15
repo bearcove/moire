@@ -3,47 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>peeps-web</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
-        --bg: #0a0f1c;
-        --card: #111a2b;
-        --line: #243147;
-        --fg: #d5e2ff;
-        --muted: #8ea3c9;
-        --accent: #86a8ff;
-      }
-      body {
-        margin: 0;
-        background: radial-gradient(circle at 20% 0%, #162746 0%, var(--bg) 40%);
-        color: var(--fg);
-      }
-      #app {
-        padding: 16px;
-      }
-      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      .card {
-        border: 1px solid var(--line);
-        background: color-mix(in srgb, var(--card) 92%, transparent);
-        border-radius: 10px;
-        padding: 12px;
-      }
-      input, select, button {
-        background: #08101d;
-        border: 1px solid var(--line);
-        color: var(--fg);
-        border-radius: 8px;
-        padding: 6px 10px;
-      }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-      th { color: var(--muted); font-weight: 600; }
-      code { color: var(--accent); }
-      .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      @media (max-width: 980px) { .split { grid-template-columns: 1fr; } }
-    </style>
+    <title>peeps</title>
   </head>
   <body>
     <div id="app"></div>
