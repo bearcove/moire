@@ -596,20 +596,25 @@ pub struct RequestParentSnapshot {
 
 /// Canonical node row emitted by instrumentation wrappers.
 ///
-/// This is the common contract for all resources (`task`, `thread`, `lock`,
-/// `mpsc`, `socket`, `request`, etc.). Type-specific fields belong in
-/// `attrs_json`.
+/// Common contract for all resources (`task`, `future`, `lock`,
+/// `mpsc_tx`, `semaphore`, `oncecell`, `request`, `response`, etc.).
+/// Type-specific fields belong in `attrs_json`.
+/// Shared cross-resource context belongs in `attrs_json.meta`.
 #[derive(Debug, Clone, Facet)]
 pub struct GraphNodeSnapshot {
+    /// Globally unique node ID within a snapshot.
+    /// Format: `{kind}:{proc_key}:{resource_id_parts...}`
     pub id: String,
+    /// Node kind (e.g. `task`, `future`, `lock`, `mpsc_tx`, `request`).
     pub kind: String,
+    /// Human-readable process name.
     pub process: String,
+    /// Opaque process key: `{process_slug}-{pid}`, charset `[a-z0-9._-]+`, no `:`.
+    pub proc_key: String,
+    /// Optional human-readable label.
     pub label: Option<String>,
-    pub task_id: Option<TaskId>,
-    pub thread_name: Option<String>,
-    pub source_file: Option<String>,
-    pub source_line: Option<u32>,
-    pub source_col: Option<u32>,
+    /// JSON-encoded type-specific attributes. Contains a `meta` sub-object
+    /// for shared cross-resource metadata.
     pub attrs_json: String,
 }
 
@@ -622,22 +627,20 @@ pub enum GraphEdgeOrigin {
 
 /// Canonical edge row emitted by instrumentation wrappers.
 ///
-/// All edges are explicit measurements/events. No inferred edges.
+/// All edges use kind `"needs"`. No inferred/derived/heuristic edges.
 #[derive(Debug, Clone, Facet)]
 pub struct GraphEdgeSnapshot {
-    pub id: String,
+    /// Source node ID.
     pub src_id: String,
+    /// Destination node ID.
     pub dst_id: String,
+    /// Edge kind — always `"needs"` in v1.
     pub kind: String,
-    pub process: String,
-    pub event_ns: Option<u64>,
-    pub duration_ns: Option<u64>,
-    pub count: u64,
-    pub label: Option<String>,
-    pub source_file: Option<String>,
-    pub source_line: Option<u32>,
-    pub source_col: Option<u32>,
+    /// Optional observation timestamp (nanos since process start or epoch).
+    pub observed_at_ns: Option<u64>,
+    /// JSON-encoded edge attributes (reserved for future use).
     pub attrs_json: String,
+    /// Provenance marker.
     pub origin: GraphEdgeOrigin,
 }
 
@@ -680,6 +683,299 @@ impl GraphSnapshotBuilder {
     pub fn finish(self) -> GraphSnapshot {
         self.graph
     }
+}
+
+// ── Shared metadata system ──────────────────────────────────────
+
+/// Maximum number of metadata pairs per node.
+pub const META_MAX_PAIRS: usize = 16;
+/// Maximum key length in bytes.
+pub const META_MAX_KEY_LEN: usize = 48;
+/// Maximum value length in bytes.
+pub const META_MAX_VALUE_LEN: usize = 256;
+
+/// Metadata value for the graph metadata system.
+///
+/// All variants serialize as strings in `attrs_json.meta`.
+pub enum MetaValue<'a> {
+    Static(&'static str),
+    Str(&'a str),
+    U64(u64),
+    I64(i64),
+    Bool(bool),
+}
+
+impl MetaValue<'_> {
+    /// Write this value as a string into the provided buffer.
+    /// Returns the number of bytes written, or None if the buffer is too small.
+    fn write_to(&self, buf: &mut [u8]) -> Option<usize> {
+        use std::io::Write;
+        match self {
+            MetaValue::Static(s) | MetaValue::Str(s) => {
+                let bytes = s.as_bytes();
+                if bytes.len() > buf.len() {
+                    return None;
+                }
+                buf[..bytes.len()].copy_from_slice(bytes);
+                Some(bytes.len())
+            }
+            MetaValue::U64(v) => {
+                let mut cursor = std::io::Cursor::new(&mut buf[..]);
+                write!(cursor, "{v}").ok()?;
+                Some(cursor.position() as usize)
+            }
+            MetaValue::I64(v) => {
+                let mut cursor = std::io::Cursor::new(&mut buf[..]);
+                write!(cursor, "{v}").ok()?;
+                Some(cursor.position() as usize)
+            }
+            MetaValue::Bool(v) => {
+                let s = if *v { "true" } else { "false" };
+                let bytes = s.as_bytes();
+                if bytes.len() > buf.len() {
+                    return None;
+                }
+                buf[..bytes.len()].copy_from_slice(bytes);
+                Some(bytes.len())
+            }
+        }
+    }
+}
+
+/// Validate a metadata key: `[a-z0-9_.-]+`, max 48 bytes.
+fn is_valid_meta_key(key: &str) -> bool {
+    let bytes = key.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= META_MAX_KEY_LEN
+        && bytes
+            .iter()
+            .all(|&b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.' || b == b'-')
+}
+
+/// A validated metadata entry stored on the stack.
+struct MetaEntry<'a> {
+    key: &'a str,
+    /// Value rendered as a string, stored in a stack buffer.
+    value_buf: [u8; META_MAX_VALUE_LEN],
+    value_len: usize,
+}
+
+/// Stack-based metadata builder for canonical graph nodes.
+///
+/// Validates keys/values per the spec and drops invalid pairs silently.
+/// No heap allocation until `to_json_object()` is called.
+pub struct MetaBuilder<'a, const N: usize = META_MAX_PAIRS> {
+    entries: [std::mem::MaybeUninit<MetaEntry<'a>>; N],
+    len: usize,
+}
+
+impl<'a, const N: usize> MetaBuilder<'a, N> {
+    /// Create an empty metadata builder.
+    pub fn new() -> Self {
+        Self {
+            // SAFETY: MaybeUninit doesn't require initialization
+            entries: unsafe { std::mem::MaybeUninit::uninit().assume_init() },
+            len: 0,
+        }
+    }
+
+    /// Push a key-value pair. Invalid keys/values are silently dropped.
+    pub fn push(&mut self, key: &'a str, value: MetaValue<'_>) -> &mut Self {
+        if self.len >= N {
+            return self;
+        }
+        if !is_valid_meta_key(key) {
+            return self;
+        }
+        let mut value_buf = [0u8; META_MAX_VALUE_LEN];
+        let Some(value_len) = value.write_to(&mut value_buf) else {
+            return self;
+        };
+        if value_len > META_MAX_VALUE_LEN {
+            return self;
+        }
+        self.entries[self.len] = std::mem::MaybeUninit::new(MetaEntry {
+            key,
+            value_buf,
+            value_len,
+        });
+        self.len += 1;
+        self
+    }
+
+    /// Serialize the metadata as a JSON object string: `{"key":"value",...}`.
+    ///
+    /// Returns an empty string if no entries are present.
+    pub fn to_json_object(&self) -> String {
+        if self.len == 0 {
+            return String::new();
+        }
+        let mut out = String::with_capacity(self.len * 32);
+        out.push('{');
+        for i in 0..self.len {
+            // SAFETY: entries[0..self.len] are initialized
+            let entry = unsafe { self.entries[i].assume_init_ref() };
+            if i > 0 {
+                out.push(',');
+            }
+            out.push('"');
+            json_escape_into(&mut out, entry.key);
+            out.push_str("\":\"");
+            let value_str =
+                std::str::from_utf8(&entry.value_buf[..entry.value_len]).unwrap_or("");
+            json_escape_into(&mut out, value_str);
+            out.push('"');
+        }
+        out.push('}');
+        out
+    }
+}
+
+/// Escape a string for JSON (handles `"`, `\`, and control chars).
+fn json_escape_into(out: &mut String, s: &str) {
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if c.is_control() => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+}
+
+/// Build a [`MetaBuilder`] on the stack from key-value literal pairs.
+///
+/// When the `diagnostics` feature is disabled in wrapper crates, the
+/// calling macro (`peepable_with_meta!`) should compile this away entirely.
+///
+/// ```ignore
+/// use peeps_types::{peep_meta, MetaValue};
+/// let meta = peep_meta! {
+///     "request.id" => MetaValue::U64(42),
+///     "request.method" => MetaValue::Static("GetUser"),
+/// };
+/// ```
+#[macro_export]
+macro_rules! peep_meta {
+    ($($k:literal => $v:expr),* $(,)?) => {{
+        const _COUNT: usize = $crate::peep_meta!(@count $($k),*);
+        let mut builder = $crate::MetaBuilder::<_COUNT>::new();
+        $(builder.push($k, $v);)*
+        builder
+    }};
+    (@count $($k:literal),*) => {
+        0usize $(+ { let _ = $k; 1usize })*
+    };
+}
+
+// ── Canonical ID construction ───────────────────────────────────
+
+/// Sanitize a string segment for use in canonical IDs.
+///
+/// Replaces any character not in `[a-z0-9._-]` with `-`.
+/// Colons are forbidden in proc_key segments.
+pub fn sanitize_id_segment(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-' {
+                c
+            } else if c.is_ascii_uppercase() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// Construct a canonical `proc_key` from process name and PID.
+///
+/// Format: `{sanitized_process_name}-{pid}`
+pub fn make_proc_key(process_name: &str, pid: u32) -> String {
+    let slug = sanitize_id_segment(process_name);
+    format!("{slug}-{pid}")
+}
+
+/// Canonical ID constructors for each node kind.
+pub mod canonical_id {
+    use super::sanitize_id_segment;
+
+    pub fn task(proc_key: &str, task_id: u64) -> String {
+        format!("task:{proc_key}:{task_id}")
+    }
+
+    pub fn future(proc_key: &str, future_id: u64) -> String {
+        format!("future:{proc_key}:{future_id}")
+    }
+
+    pub fn request(proc_key: &str, connection: &str, request_id: u64) -> String {
+        format!("request:{proc_key}:{connection}:{request_id}")
+    }
+
+    pub fn response(proc_key: &str, connection: &str, request_id: u64) -> String {
+        format!("response:{proc_key}:{connection}:{request_id}")
+    }
+
+    pub fn lock(proc_key: &str, name: &str) -> String {
+        let name = sanitize_id_segment(name);
+        format!("lock:{proc_key}:{name}")
+    }
+
+    pub fn semaphore(proc_key: &str, name: &str) -> String {
+        let name = sanitize_id_segment(name);
+        format!("semaphore:{proc_key}:{name}")
+    }
+
+    pub fn mpsc(proc_key: &str, name: &str, endpoint: &str) -> String {
+        let name = sanitize_id_segment(name);
+        format!("mpsc:{proc_key}:{name}:{endpoint}")
+    }
+
+    pub fn oneshot(proc_key: &str, name: &str, endpoint: &str) -> String {
+        let name = sanitize_id_segment(name);
+        format!("oneshot:{proc_key}:{name}:{endpoint}")
+    }
+
+    pub fn watch(proc_key: &str, name: &str, endpoint: &str) -> String {
+        let name = sanitize_id_segment(name);
+        format!("watch:{proc_key}:{name}:{endpoint}")
+    }
+
+    pub fn roam_channel(proc_key: &str, channel_id: u64, endpoint: &str) -> String {
+        format!("roam-channel:{proc_key}:{channel_id}:{endpoint}")
+    }
+
+    pub fn oncecell(proc_key: &str, name: &str) -> String {
+        let name = sanitize_id_segment(name);
+        format!("oncecell:{proc_key}:{name}")
+    }
+
+    /// Construct a sanitized connection token: `conn_{id}`.
+    pub fn connection(id: u64) -> String {
+        format!("conn_{id}")
+    }
+
+    /// Construct a correlation key for request/response pairing.
+    pub fn correlation_key(connection: &str, request_id: u64) -> String {
+        format!("{connection}:{request_id}")
+    }
+}
+
+// ── Canonical metadata keys ─────────────────────────────────────
+
+/// Well-known metadata keys for `attrs_json.meta`.
+pub mod meta_key {
+    pub const REQUEST_ID: &str = "request.id";
+    pub const REQUEST_METHOD: &str = "request.method";
+    pub const REQUEST_CORRELATION_KEY: &str = "request.correlation_key";
+    pub const RPC_CONNECTION: &str = "rpc.connection";
+    pub const RPC_PEER: &str = "rpc.peer";
+    pub const TASK_ID: &str = "task.id";
+    pub const FUTURE_ID: &str = "future.id";
+    pub const CHANNEL_ID: &str = "channel.id";
+    pub const RESOURCE_PATH: &str = "resource.path";
 }
 
 // ── Deadlock candidate types ─────────────────────────────────────
@@ -790,4 +1086,116 @@ pub struct ProcessDump {
     pub request_parents: Vec<RequestParentSnapshot>,
     pub graph: Option<GraphSnapshot>,
     pub custom: HashMap<String, String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meta_builder_basic() {
+        let mut mb = MetaBuilder::<16>::new();
+        mb.push("task.id", MetaValue::U64(42));
+        mb.push("request.method", MetaValue::Static("get_page"));
+        mb.push("rpc.peer", MetaValue::Str("backend-1"));
+        let json = mb.to_json_object();
+        assert!(json.contains("\"task.id\":\"42\""));
+        assert!(json.contains("\"request.method\":\"get_page\""));
+        assert!(json.contains("\"rpc.peer\":\"backend-1\""));
+    }
+
+    #[test]
+    fn meta_builder_empty() {
+        let mb = MetaBuilder::<16>::new();
+        assert_eq!(mb.to_json_object(), "");
+    }
+
+    #[test]
+    fn meta_builder_drops_invalid_key() {
+        let mut mb = MetaBuilder::<16>::new();
+        mb.push("UPPER_CASE", MetaValue::Static("nope"));
+        mb.push("has space", MetaValue::Static("nope"));
+        mb.push("has:colon", MetaValue::Static("nope"));
+        mb.push("", MetaValue::Static("nope"));
+        assert_eq!(mb.to_json_object(), "");
+    }
+
+    #[test]
+    fn meta_builder_drops_overflow() {
+        let mut mb = MetaBuilder::<2>::new();
+        mb.push("a", MetaValue::Static("1"));
+        mb.push("b", MetaValue::Static("2"));
+        mb.push("c", MetaValue::Static("3")); // dropped
+        let json = mb.to_json_object();
+        assert!(json.contains("\"a\":\"1\""));
+        assert!(json.contains("\"b\":\"2\""));
+        assert!(!json.contains("\"c\""));
+    }
+
+    #[test]
+    fn meta_builder_bool_and_i64() {
+        let mut mb = MetaBuilder::<16>::new();
+        mb.push("flag", MetaValue::Bool(true));
+        mb.push("offset", MetaValue::I64(-7));
+        let json = mb.to_json_object();
+        assert!(json.contains("\"flag\":\"true\""));
+        assert!(json.contains("\"offset\":\"-7\""));
+    }
+
+    #[test]
+    fn meta_builder_escapes_json() {
+        let mut mb = MetaBuilder::<16>::new();
+        mb.push("path", MetaValue::Str("a\"b\\c"));
+        let json = mb.to_json_object();
+        assert!(json.contains(r#""path":"a\"b\\c""#));
+    }
+
+    #[test]
+    fn is_valid_meta_key_cases() {
+        assert!(is_valid_meta_key("task.id"));
+        assert!(is_valid_meta_key("request.correlation_key"));
+        assert!(is_valid_meta_key("a-b"));
+        assert!(is_valid_meta_key("abc123"));
+        assert!(!is_valid_meta_key(""));
+        assert!(!is_valid_meta_key("ABC"));
+        assert!(!is_valid_meta_key("has space"));
+        assert!(!is_valid_meta_key("has:colon"));
+        assert!(!is_valid_meta_key(&"a".repeat(49)));
+        assert!(is_valid_meta_key(&"a".repeat(48)));
+    }
+
+    #[test]
+    fn sanitize_id_segment_cases() {
+        assert_eq!(sanitize_id_segment("Hello World!"), "hello-world-");
+        assert_eq!(sanitize_id_segment("my-app_v2.0"), "my-app_v2.0");
+        assert_eq!(sanitize_id_segment("foo:bar"), "foo-bar");
+    }
+
+    #[test]
+    fn make_proc_key_formats() {
+        assert_eq!(make_proc_key("MyApp", 1234), "myapp-1234");
+        assert_eq!(make_proc_key("web-server", 42), "web-server-42");
+    }
+
+    #[test]
+    fn canonical_ids() {
+        let pk = "myapp-1234";
+        assert_eq!(canonical_id::task(pk, 5), "task:myapp-1234:5");
+        assert_eq!(canonical_id::future(pk, 10), "future:myapp-1234:10");
+        assert_eq!(
+            canonical_id::request(pk, "conn_3", 7),
+            "request:myapp-1234:conn_3:7"
+        );
+        assert_eq!(
+            canonical_id::response(pk, "conn_3", 7),
+            "response:myapp-1234:conn_3:7"
+        );
+        assert_eq!(canonical_id::lock(pk, "my_lock"), "lock:myapp-1234:my_lock");
+        assert_eq!(
+            canonical_id::mpsc(pk, "queue", "tx"),
+            "mpsc:myapp-1234:queue:tx"
+        );
+        assert_eq!(canonical_id::connection(99), "conn_99");
+        assert_eq!(canonical_id::correlation_key("conn_3", 7), "conn_3:7");
+    }
 }
