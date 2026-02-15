@@ -7,8 +7,7 @@ license.workspace = true
 [features]
 locks = ["dep:peeps-locks"]
 diagnostics = [
-  "peeps-tasks/diagnostics",
-  "peeps-threads/diagnostics",
+  "peeps-futures/diagnostics",
   "peeps-locks?/diagnostics",
   "peeps-sync/diagnostics",
 ]
@@ -19,8 +18,7 @@ facet.workspace = true
 facet-json.workspace = true
 peeps-locks = { workspace = true, optional = true }
 peeps-sync.workspace = true
-peeps-tasks.workspace = true
-peeps-threads.workspace = true
+peeps-futures.workspace = true
 peeps-types.workspace = true
 tokio.workspace = true
 tracing.workspace = true

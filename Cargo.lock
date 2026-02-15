@@ -702,13 +702,21 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "facet-json",
+ "peeps-futures",
  "peeps-locks",
  "peeps-sync",
- "peeps-tasks",
- "peeps-threads",
  "peeps-types",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "peeps-futures"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "peeps-types",
+ "tokio",
 ]
 
 [[package]]
@@ -717,7 +725,7 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "parking_lot",
- "peeps-tasks",
+ "peeps-futures",
  "peeps-types",
  "tokio",
 ]
@@ -726,27 +734,9 @@ dependencies = [
 name = "peeps-sync"
 version = "0.1.0"
 dependencies = [
- "peeps-tasks",
+ "peeps-futures",
  "peeps-types",
  "tokio",
-]
-
-[[package]]
-name = "peeps-tasks"
-version = "0.1.0"
-dependencies = [
- "facet",
- "peeps-types",
- "tokio",
-]
-
-[[package]]
-name = "peeps-threads"
-version = "0.1.0"
-dependencies = [
- "facet",
- "libc",
- "peeps-types",
 ]
 
 [[package]]

@@ -3,7 +3,7 @@ resolver = "2"
 members = [
   "crates/peeps",
   "crates/peeps-locks",
-  "crates/peeps-tasks",
+  "crates/peeps-futures",
   "crates/peeps-types",
   "crates/peeps-sync",
   "crates/peeps-web",
@@ -19,7 +19,7 @@ repository = "https://github.com/bearcove/peeps"
 # Internal
 peeps = { path = "crates/peeps" }
 peeps-locks = { path = "crates/peeps-locks" }
-peeps-tasks = { path = "crates/peeps-tasks" }
+peeps-futures = { path = "crates/peeps-futures" }
 peeps-types = { path = "crates/peeps-types" }
 peeps-sync = { path = "crates/peeps-sync" }
 peeps-web = { path = "crates/peeps-web" }

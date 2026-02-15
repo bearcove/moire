@@ -58,7 +58,6 @@ PEEPS_DASHBOARD=127.0.0.1:9119 <your-binary>
 ## Architecture
 
 - `peeps`: Main API, live snapshot collection, optional dashboard push client
-- `peeps-tasks`: Tokio task instrumentation
-- `peeps-threads`: SIGPROF-based thread sampling
+- `peeps-futures`: Future instrumentation
 - `peeps-locks`: Lock contention tracking
 - `peeps-web`: SQLite-backed ingest + query server and investigation UI
