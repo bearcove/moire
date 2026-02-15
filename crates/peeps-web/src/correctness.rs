@@ -45,6 +45,95 @@ pub fn validate_snapshot(conn: &Connection, snapshot_id: i64) -> ValidationResul
     }
 }
 
+/// Snapshot must exist in the snapshots table.
+fn check_snapshot_exists(conn: &Connection, snapshot_id: i64) -> CheckResult {
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM snapshots WHERE snapshot_id = ?1",
+            params![snapshot_id],
+            |_| Ok(()),
+        )
+        .is_ok();
+
+    CheckResult {
+        name: "snapshot_exists",
+        passed: exists,
+        details: if exists {
+            "snapshot exists in snapshots table".into()
+        } else {
+            format!("snapshot_id {snapshot_id} not found in snapshots table")
+        },
+    }
+}
+
+/// Write integrity: every responded process should have at least one node,
+/// and every node should belong to a recorded process.
+fn check_write_integrity(conn: &Connection, snapshot_id: i64) -> CheckResult {
+    // Responded processes with zero nodes (possible partial write / missing data)
+    let mut stmt = conn
+        .prepare(
+            "SELECT sp.proc_key
+             FROM snapshot_processes sp
+             LEFT JOIN nodes n ON n.snapshot_id = sp.snapshot_id AND n.proc_key = sp.proc_key
+             WHERE sp.snapshot_id = ?1 AND sp.status = 'responded'
+             GROUP BY sp.proc_key
+             HAVING COUNT(n.id) = 0
+             LIMIT 10",
+        )
+        .unwrap();
+
+    let empty_procs: Vec<String> = stmt
+        .query_map(params![snapshot_id], |row| row.get(0))
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect();
+
+    // Nodes whose proc_key has no snapshot_processes entry
+    let mut stmt2 = conn
+        .prepare(
+            "SELECT DISTINCT n.proc_key
+             FROM nodes n
+             LEFT JOIN snapshot_processes sp
+               ON sp.snapshot_id = n.snapshot_id AND sp.proc_key = n.proc_key
+             WHERE n.snapshot_id = ?1 AND sp.proc_key IS NULL
+             LIMIT 10",
+        )
+        .unwrap();
+
+    let orphan_procs: Vec<String> = stmt2
+        .query_map(params![snapshot_id], |row| row.get(0))
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect();
+
+    if empty_procs.is_empty() && orphan_procs.is_empty() {
+        CheckResult {
+            name: "write_integrity",
+            passed: true,
+            details: "all responded processes have nodes, no orphan nodes".into(),
+        }
+    } else {
+        let mut details = Vec::new();
+        if !empty_procs.is_empty() {
+            details.push(format!(
+                "responded processes with no nodes: {}",
+                empty_procs.join(", ")
+            ));
+        }
+        if !orphan_procs.is_empty() {
+            details.push(format!(
+                "nodes with unrecorded proc_key: {}",
+                orphan_procs.join(", ")
+            ));
+        }
+        CheckResult {
+            name: "write_integrity",
+            passed: false,
+            details: details.join("; "),
+        }
+    }
+}
+
 /// Every edge src_id and dst_id must exist as a node in the same snapshot.
 fn check_edge_endpoint_integrity(conn: &Connection, snapshot_id: i64) -> CheckResult {
     let mut stmt = conn
@@ -244,6 +333,43 @@ fn check_snapshot_processes_recorded(conn: &Connection, snapshot_id: i64) -> Che
     }
 }
 
+/// Node kind coverage: report which node kinds appear and their counts.
+/// At minimum, a non-trivial snapshot should have nodes.
+fn check_node_kind_coverage(conn: &Connection, snapshot_id: i64) -> CheckResult {
+    let mut stmt = conn
+        .prepare(
+            "SELECT kind, COUNT(*)
+             FROM nodes
+             WHERE snapshot_id = ?1
+             GROUP BY kind
+             ORDER BY COUNT(*) DESC",
+        )
+        .unwrap();
+
+    let kinds: Vec<(String, i64)> = stmt
+        .query_map(params![snapshot_id], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect();
+
+    if kinds.is_empty() {
+        CheckResult {
+            name: "node_kind_coverage",
+            passed: false,
+            details: "no nodes found in snapshot".into(),
+        }
+    } else {
+        let summary: Vec<String> = kinds.iter().map(|(k, c)| format!("{k}: {c}")).collect();
+        CheckResult {
+            name: "node_kind_coverage",
+            passed: true,
+            details: format!("node kinds: {}", summary.join(", ")),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,5 +528,58 @@ mod tests {
         let result = validate_snapshot(&conn, 1);
         let ue_check = result.checks.iter().find(|c| c.name == "unresolved_edge_classification").unwrap();
         assert!(!ue_check.passed);
+    }
+
+    #[test]
+    fn detects_nonexistent_snapshot() {
+        let conn = setup_db();
+        let result = validate_snapshot(&conn, 999);
+        let check = result.checks.iter().find(|c| c.name == "snapshot_exists").unwrap();
+        assert!(!check.passed);
+    }
+
+    #[test]
+    fn detects_responded_process_with_no_nodes() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO snapshots (snapshot_id, requested_at_ns, completed_at_ns, timeout_ms) VALUES (1, 100, 200, 1500)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO snapshot_processes (snapshot_id, process, pid, proc_key, status) VALUES (1, 'app', 1234, 'app-1234', 'responded')",
+            [],
+        ).unwrap();
+        // No nodes inserted for this responded process
+
+        let result = validate_snapshot(&conn, 1);
+        let check = result.checks.iter().find(|c| c.name == "write_integrity").unwrap();
+        assert!(!check.passed, "details: {}", check.details);
+    }
+
+    #[test]
+    fn reports_node_kind_coverage() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO snapshots (snapshot_id, requested_at_ns, completed_at_ns, timeout_ms) VALUES (1, 100, 200, 1500)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO snapshot_processes (snapshot_id, process, pid, proc_key, status) VALUES (1, 'app', 1234, 'app-1234', 'responded')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json) VALUES (1, 'task:app-1234:1', 'task', 'app', 'app-1234', '{}')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json) VALUES (1, 'future:app-1234:10', 'future', 'app', 'app-1234', '{}')",
+            [],
+        ).unwrap();
+
+        let result = validate_snapshot(&conn, 1);
+        let check = result.checks.iter().find(|c| c.name == "node_kind_coverage").unwrap();
+        assert!(check.passed);
+        assert!(check.details.contains("task"));
+        assert!(check.details.contains("future"));
     }
 }
