@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef } from "react";
-import { ListBullets } from "@phosphor-icons/react";
+import { ListBullets, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import type { StuckRequest } from "../types";
 
 interface RequestsTableProps {
   requests: StuckRequest[];
   selectedId: string | null;
   onSelect: (req: StuckRequest) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function formatElapsed(ns: number): string {
@@ -21,7 +23,7 @@ function elapsedClass(ns: number): string {
   return "";
 }
 
-export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableProps) {
+export function RequestsTable({ requests, selectedId, onSelect, collapsed, onToggleCollapse }: RequestsTableProps) {
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
 
   const selectedIndex = requests.findIndex((r) => r.id === selectedId);
@@ -69,10 +71,24 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
     if (selectedIndex >= 0) scrollToRow(selectedIndex);
   }, [selectedId]);
 
+  if (collapsed) {
+    return (
+      <div className="panel panel--collapsed">
+        <button className="panel-collapse-btn" onClick={onToggleCollapse} title="Expand panel">
+          <CaretRight size={14} weight="bold" />
+        </button>
+        <span className="panel-collapsed-label">Stuck requests</span>
+      </div>
+    );
+  }
+
   return (
     <div className="panel" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="panel-header">
         <ListBullets size={14} weight="bold" /> Stuck requests ({requests.length})
+        <button className="panel-collapse-btn" onClick={onToggleCollapse} title="Collapse panel">
+          <CaretLeft size={14} weight="bold" />
+        </button>
       </div>
       {requests.length === 0 ? (
         <div

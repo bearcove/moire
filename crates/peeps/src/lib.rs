@@ -5,7 +5,9 @@
 //! - `peeps::collect_graph()` - Collect canonical graph snapshot data
 
 mod collect;
-mod registry;
+pub(crate) mod futures;
+pub(crate) mod registry;
+pub(crate) mod stack;
 
 #[cfg(feature = "dashboard")]
 mod dashboard_client;

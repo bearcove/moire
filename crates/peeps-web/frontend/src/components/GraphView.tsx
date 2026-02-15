@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -9,25 +9,15 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
-  Handle,
-  Position,
   MarkerType,
   type Node,
   type Edge,
-  type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk.bundled.js";
-import {
-  Graph as GraphIcon,
-  ArrowFatLineRight,
-  ArrowsLeftRight,
-  GearSix,
-  HourglassHigh,
-  LockKey,
-  X,
-} from "@phosphor-icons/react";
+import { Graph as GraphIcon, X } from "@phosphor-icons/react";
 import type { SnapshotGraph } from "../types";
+import { PeepsNode, processColor, estimateNodeHeight, type NodeData } from "./NodeCards";
 
 const elk = new ELK();
 
@@ -38,120 +28,6 @@ const elkOptions = {
   "elk.layered.spacing.nodeNodeBetweenLayers": "48",
   "elk.padding": "[top=24,left=24,bottom=24,right=24]",
 };
-
-const kindIcons: Record<string, (color: string) => React.ReactNode> = {
-  request: (c) => <ArrowFatLineRight size={14} weight="bold" color={c} />,
-  response: (c) => <ArrowsLeftRight size={14} weight="bold" color={c} />,
-  task: (c) => <GearSix size={14} weight="bold" color={c} />,
-  future: (c) => <HourglassHigh size={14} weight="bold" color={c} />,
-  lock: (c) => <LockKey size={14} weight="bold" color={c} />,
-};
-
-// Stable color from process name
-const processColorCache = new Map<string, string>();
-function processColor(process: string): string {
-  let color = processColorCache.get(process);
-  if (color) return color;
-  let hash = 0;
-  for (let i = 0; i < process.length; i++) {
-    hash = process.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const h = ((hash % 360) + 360) % 360;
-  color = `hsl(${h}, 65%, 55%)`;
-  processColorCache.set(process, color);
-  return color;
-}
-
-interface NodeData {
-  label: string;
-  kind: string;
-  process: string;
-  attrs: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-// Pick the most useful attrs to display on the node (keep it short)
-function pickDisplayAttrs(kind: string, attrs: Record<string, unknown>): [string, string][] {
-  const result: [string, string][] = [];
-  const pick = (key: string) => {
-    if (attrs[key] != null) {
-      const val = String(attrs[key]);
-      if (val.length > 0) result.push([key, val]);
-    }
-  };
-
-  switch (kind) {
-    case "request":
-      pick("method");
-      pick("elapsed_ns");
-      pick("status");
-      break;
-    case "response":
-      pick("status");
-      pick("correlation_key");
-      break;
-    case "task":
-      pick("name");
-      pick("state");
-      break;
-    case "future":
-      pick("poll_count");
-      pick("waker");
-      break;
-    case "lock":
-      pick("holder");
-      pick("waiters");
-      break;
-    default:
-      // Show first 3 attrs for unknown kinds
-      for (const [k, v] of Object.entries(attrs).slice(0, 3)) {
-        if (v != null) result.push([k, String(v)]);
-      }
-  }
-  return result;
-}
-
-function formatAttrValue(key: string, val: string): string {
-  if (key === "elapsed_ns") {
-    const ns = Number(val);
-    if (!isNaN(ns)) {
-      const secs = ns / 1_000_000_000;
-      if (secs >= 60) return `${(secs / 60).toFixed(1)}m`;
-      return `${secs.toFixed(1)}s`;
-    }
-  }
-  return val;
-}
-
-const PeepsNode = memo(({ data }: NodeProps<Node<NodeData>>) => {
-  const { label, kind, process, attrs } = data;
-  const color = processColor(process);
-  const iconFn = kindIcons[kind] ?? ((c: string) => <GearSix size={14} weight="bold" color={c} />);
-  const displayAttrs = pickDisplayAttrs(kind, attrs);
-
-  return (
-    <div className="graph-node-custom" style={{ borderLeftColor: color }}>
-      <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
-      <div className="node-header">
-        <span className="node-icon">{iconFn(color)}</span>
-        <span className="node-label">{label ?? kind}</span>
-      </div>
-      <div className="node-attrs">
-        <div className="node-attr">
-          <span className="node-attr-key">proc:</span>
-          <span className="node-attr-val">{process}</span>
-        </div>
-        {displayAttrs.map(([k, v]) => (
-          <div key={k} className="node-attr">
-            <span className="node-attr-key">{k}:</span>
-            <span className="node-attr-val">{formatAttrValue(k, v)}</span>
-          </div>
-        ))}
-      </div>
-      <Handle type="source" position={Position.Bottom} style={{ visibility: "hidden" }} />
-    </div>
-  );
-});
 
 const nodeTypes = { peeps: PeepsNode };
 
@@ -192,8 +68,8 @@ async function layoutElements(
     layoutOptions: elkOptions,
     children: nodes.map((n) => ({
       id: n.id,
-      width: 180,
-      height: 70,
+      width: 200,
+      height: estimateNodeHeight(n.data.kind),
     })),
     edges: edges.map((e) => ({
       id: e.id,
@@ -217,7 +93,7 @@ async function layoutElements(
 interface GraphViewProps {
   graph: SnapshotGraph | null;
   fullGraph: SnapshotGraph | null;
-  selectedNodeId: string | null;
+  filteredNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
   onClearSelection: () => void;
 }
@@ -279,10 +155,10 @@ function GraphFlow({
   );
 }
 
-export function GraphView({ graph, fullGraph, selectedNodeId, onSelectNode, onClearSelection }: GraphViewProps) {
+export function GraphView({ graph, fullGraph, filteredNodeId, onSelectNode, onClearSelection }: GraphViewProps) {
   const nodeCount = graph?.nodes.length ?? 0;
   const edgeCount = graph?.edges.length ?? 0;
-  const isFiltered = selectedNodeId != null && fullGraph != null && graph !== fullGraph;
+  const isFiltered = filteredNodeId != null && fullGraph != null && graph !== fullGraph;
 
   return (
     <div className="panel panel--graph">

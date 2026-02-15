@@ -117,6 +117,10 @@ pub enum NodeKind {
     Request,
     /// Canonical ID format: `response:{span_id}`
     Response,
+    /// Canonical ID format: `semaphore:{ulid}`
+    Semaphore,
+    /// Canonical ID format: `oncecell:{ulid}`
+    OnceCell,
 }
 
 /// Canonical edge row emitted by instrumentation wrappers.

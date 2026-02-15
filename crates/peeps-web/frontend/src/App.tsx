@@ -7,6 +7,20 @@ import { GraphView } from "./components/GraphView";
 import { Inspector } from "./components/Inspector";
 import type { JumpNowResponse, StuckRequest, SnapshotGraph, SnapshotNode } from "./types";
 
+function useSessionState(key: string, initial: boolean): [boolean, () => void] {
+  const [value, setValue] = useState(() => {
+    const stored = sessionStorage.getItem(key);
+    return stored !== null ? stored === "true" : initial;
+  });
+  const toggle = useCallback(() => {
+    setValue((v) => {
+      sessionStorage.setItem(key, String(!v));
+      return !v;
+    });
+  }, [key]);
+  return [value, toggle];
+}
+
 const MIN_ELAPSED_NS = 5_000_000_000; // 5 seconds
 
 /** BFS from a seed node, collecting all reachable nodes (both directions). */
@@ -50,7 +64,11 @@ export function App() {
 
   const [selectedRequest, setSelectedRequest] = useState<StuckRequest | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<SnapshotNode | null>(null);
+
+  const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", false);
+  const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", false);
 
   const handleJumpNow = useCallback(async () => {
     setLoading(true);
@@ -67,6 +85,7 @@ export function App() {
       setSelectedRequest(null);
       setSelectedNode(null);
       setSelectedNodeId(null);
+      setFilteredNodeId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -82,6 +101,7 @@ export function App() {
     setSelectedRequest(req);
     setSelectedNode(null);
     setSelectedNodeId(req.id);
+    setFilteredNodeId(req.id);
   }, []);
 
   const handleSelectGraphNode = useCallback(
@@ -98,17 +118,17 @@ export function App() {
     setSelectedRequest(null);
     setSelectedNode(null);
     setSelectedNodeId(null);
+    setFilteredNodeId(null);
   }, []);
 
-  // Compute the displayed graph: full graph when nothing selected,
-  // connected subgraph when a node is focused.
+  // Compute the displayed graph: full graph normally,
+  // connected subgraph only when filtering via stuck request click.
   const displayGraph = useMemo(() => {
     if (!graph) return null;
-    if (!selectedNodeId) return graph;
-    // Check the seed node exists in the graph
-    if (!graph.nodes.some((n) => n.id === selectedNodeId)) return graph;
-    return connectedSubgraph(graph, selectedNodeId);
-  }, [graph, selectedNodeId]);
+    if (!filteredNodeId) return graph;
+    if (!graph.nodes.some((n) => n.id === filteredNodeId)) return graph;
+    return connectedSubgraph(graph, filteredNodeId);
+  }, [graph, filteredNodeId]);
 
   return (
     <div className="app">
@@ -123,20 +143,33 @@ export function App() {
           <span className="error-text">{error}</span>
         </div>
       )}
-      <div className="main-content">
+      <div
+        className={[
+          "main-content",
+          leftCollapsed && "main-content--left-collapsed",
+          rightCollapsed && "main-content--right-collapsed",
+        ].filter(Boolean).join(" ")}
+      >
         <RequestsTable
           requests={requests}
           selectedId={selectedRequest?.id ?? null}
           onSelect={handleSelectRequest}
+          collapsed={leftCollapsed}
+          onToggleCollapse={toggleLeft}
         />
         <GraphView
           graph={displayGraph}
           fullGraph={graph}
-          selectedNodeId={selectedNodeId}
+          filteredNodeId={filteredNodeId}
           onSelectNode={handleSelectGraphNode}
           onClearSelection={handleClearSelection}
         />
-        <Inspector selectedRequest={selectedRequest} selectedNode={selectedNode} />
+        <Inspector
+          selectedRequest={selectedRequest}
+          selectedNode={selectedNode}
+          collapsed={rightCollapsed}
+          onToggleCollapse={toggleRight}
+        />
       </div>
     </div>
   );
