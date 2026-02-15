@@ -10,7 +10,7 @@ mod disabled;
 #[cfg(feature = "diagnostics")]
 mod enabled;
 
-// Re-export public API items (with_top) for external crates
+// Re-export public API items for external crates.
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::with_top;
 #[cfg(feature = "diagnostics")]
@@ -27,3 +27,9 @@ pub(crate) use enabled::{pop, push};
 pub use disabled::with_stack;
 #[cfg(feature = "diagnostics")]
 pub use enabled::with_stack;
+
+// Re-export request-scope helpers.
+#[cfg(not(feature = "diagnostics"))]
+pub use disabled::{is_active, scope};
+#[cfg(feature = "diagnostics")]
+pub use enabled::{is_active, scope};

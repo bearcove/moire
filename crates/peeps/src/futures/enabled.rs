@@ -86,6 +86,9 @@ pub struct PeepableFuture<F> {
     resource: String,
     inner: F,
     pending_since: Option<Instant>,
+    // If we're being polled from within another peepable frame, we record
+    // a canonical "await" edge: parent --needs--> this future (only while pending).
+    await_edge_src: Option<String>,
 }
 
 impl<F> Future for PeepableFuture<F>
@@ -102,6 +105,10 @@ where
         #[allow(unsafe_code)]
         let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
 
+        // Capture parent before pushing ourselves.
+        let mut parent: Option<String> = None;
+        crate::stack::with_top(|p| parent = Some(p.to_string()));
+
         // Push onto the async node stack before polling.
         crate::stack::push(&this.node_id);
 
@@ -112,6 +119,16 @@ where
 
         match result {
             Poll::Pending => {
+                // Only emit the parent->child "await" edge while we're actually pending.
+                if let Some(parent_id) = parent {
+                    if this.await_edge_src.as_deref() != Some(parent_id.as_str()) {
+                        if let Some(prev) = this.await_edge_src.take() {
+                            crate::registry::remove_edge(&prev, &this.node_id);
+                        }
+                        crate::registry::edge(&parent_id, &this.node_id);
+                        this.await_edge_src = Some(parent_id);
+                    }
+                }
                 if this.pending_since.is_none() {
                     this.pending_since = Some(Instant::now());
                 }
@@ -119,6 +136,9 @@ where
                 Poll::Pending
             }
             Poll::Ready(value) => {
+                if let Some(prev) = this.await_edge_src.take() {
+                    crate::registry::remove_edge(&prev, &this.node_id);
+                }
                 let pending_duration = this
                     .pending_since
                     .take()
@@ -136,6 +156,10 @@ impl<F> Drop for PeepableFuture<F> {
         unregister_future(&self.node_id);
         // Clean up any canonical edges this future emitted.
         crate::registry::remove_edges_from(&self.node_id);
+        // Clean up any await edge to this future.
+        if let Some(prev) = self.await_edge_src.take() {
+            crate::registry::remove_edge(&prev, &self.node_id);
+        }
         // Clean up spawn edges referencing this future as child.
         FUTURE_SPAWN_EDGE_REGISTRY
             .lock()
@@ -178,6 +202,7 @@ where
         resource,
         inner: future.into_future(),
         pending_since: None,
+        await_edge_src: None,
     }
 }
 

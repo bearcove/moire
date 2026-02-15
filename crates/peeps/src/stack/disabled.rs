@@ -10,6 +10,16 @@ pub(crate) fn pop() {}
 pub fn with_top(_f: impl FnOnce(&str)) {}
 
 #[inline(always)]
+pub fn is_active() -> bool {
+    false
+}
+
+#[inline(always)]
 pub async fn with_stack<F: Future>(future: F) -> F::Output {
     future.await
+}
+
+#[inline(always)]
+pub fn scope<F: Future>(_node_id: &str, future: F) -> F {
+    future
 }
