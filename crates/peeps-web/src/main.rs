@@ -1,3 +1,5 @@
+mod projection;
+
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
