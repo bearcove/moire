@@ -197,6 +197,46 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   const entries = Object.entries(attrs).filter(([, v]) => v != null);
   if (entries.length === 0) return null;
 
+  function asFiniteNumber(v: unknown): number | null {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && /^[0-9]+$/.test(v) && v.length <= 15) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
+  function formatValue(key: string, val: unknown): React.ReactNode {
+    if (typeof val === "boolean") {
+      return (
+        <span className={`inspect-pill inspect-pill--${val ? "ok" : "neutral"}`}>
+          {String(val)}
+        </span>
+      );
+    }
+
+    const k = key.toLowerCase();
+    const maybeNs = asFiniteNumber(val);
+    if (maybeNs != null && (k.endsWith("_ns") || k.includes("duration") || k.includes("age"))) {
+      return (
+        <>
+          {formatDuration(maybeNs)}
+          <span className="inspect-raw-val-sub"> ({Math.trunc(maybeNs).toLocaleString()}ns)</span>
+        </>
+      );
+    }
+
+    if (typeof val === "number" && Number.isFinite(val)) {
+      return val.toLocaleString();
+    }
+
+    if (typeof val === "object") {
+      return JSON.stringify(val);
+    }
+
+    return String(val);
+  }
+
   function iconForKey(key: string, val: unknown): React.ReactNode | null {
     // Exact matches first.
     switch (key) {
@@ -255,7 +295,7 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
               <span className="inspect-raw-key-icon">{iconForKey(key, val)}</span>
               <span className="inspect-raw-key-text">{key}</span>
             </dt>
-            <dd>{typeof val === "object" ? JSON.stringify(val) : String(val)}</dd>
+            <dd>{formatValue(key, val)}</dd>
           </div>
         ))}
       </dl>

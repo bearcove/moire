@@ -861,6 +861,12 @@ body {
     padding-left: 22px; /* 14px icon + 8px gap */
 }
 
+.inspect-raw-val-sub {
+    opacity: 0.65;
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
 /* ── Status ───────────────────────────────────────────────── */
 
 .status-bar {
