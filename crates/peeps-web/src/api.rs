@@ -9,12 +9,12 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use rusqlite::types::Value;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::AppState;
 use crate::correctness;
+use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────
 
@@ -74,12 +74,7 @@ pub(crate) struct ApiError {
 }
 
 fn api_error(status: StatusCode, msg: impl Into<String>) -> (StatusCode, Json<ApiError>) {
-    (
-        status,
-        Json(ApiError {
-            error: msg.into(),
-        }),
-    )
+    (status, Json(ApiError { error: msg.into() }))
 }
 
 // ── POST /api/jump-now ───────────────────────────────────────────
@@ -141,7 +136,12 @@ pub async fn api_sql(
     let db_path = state.db_path.clone();
     let result = tokio::task::spawn_blocking(move || sql_blocking(&db_path, req))
         .await
-        .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join error: {e}")))?;
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("join error: {e}"),
+            )
+        })?;
     result
 }
 
@@ -176,9 +176,9 @@ fn sql_blocking(
     reject_main_schema_access(sql)?;
 
     // 5. Prepare the statement
-    let mut stmt = conn.prepare(sql).map_err(|e| {
-        api_error(StatusCode::BAD_REQUEST, format!("prepare error: {e}"))
-    })?;
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| api_error(StatusCode::BAD_REQUEST, format!("prepare error: {e}")))?;
 
     // 6. Bind parameters
     let param_values = convert_params(&req.params)?;
@@ -340,9 +340,7 @@ fn reject_main_schema_access(sql: &str) -> Result<(), (StatusCode, Json<ApiError
     // Case-insensitive check for `main.` prefix on scoped table names.
     let lower = sql.to_ascii_lowercase();
     for (table, _) in SCOPED_TABLES {
-        if lower.contains(&format!("main.{table}"))
-            || lower.contains(&format!("main.[{table}]"))
-        {
+        if lower.contains(&format!("main.{table}")) || lower.contains(&format!("main.[{table}]")) {
             return Err(api_error(
                 StatusCode::BAD_REQUEST,
                 format!("direct access to main.{table} is not allowed; use {table} instead"),
@@ -393,7 +391,10 @@ fn install_authorizer(conn: &Connection) {
 // ── Progress handler (execution time limit) ──────────────────────
 
 fn install_progress_handler(conn: &Connection, deadline: Instant) {
-    conn.progress_handler(PROGRESS_HANDLER_OPS, Some(move || Instant::now() > deadline));
+    conn.progress_handler(
+        PROGRESS_HANDLER_OPS,
+        Some(move || Instant::now() > deadline),
+    );
 }
 
 fn is_interrupt_error(e: &rusqlite::Error) -> bool {
@@ -411,9 +412,7 @@ fn is_interrupt_error(e: &rusqlite::Error) -> bool {
 
 // ── Parameter conversion ─────────────────────────────────────────
 
-fn convert_params(
-    params: &[JsonValue],
-) -> Result<Vec<Value>, (StatusCode, Json<ApiError>)> {
+fn convert_params(params: &[JsonValue]) -> Result<Vec<Value>, (StatusCode, Json<ApiError>)> {
     params
         .iter()
         .enumerate()
@@ -459,20 +458,4 @@ fn sqlite_value_to_json(row: &rusqlite::Row<'_>, idx: usize) -> JsonValue {
         Ok(ValueRef::Blob(_)) => JsonValue::Null,
         Err(_) => JsonValue::Null,
     }
-}
-
-// ── GET /api/validate/:snapshot_id ──────────────────────────────
-
-pub async fn api_validate(
-    State(state): State<AppState>,
-    Path(snapshot_id): Path<i64>,
-) -> Result<Json<correctness::ValidationResult>, (StatusCode, Json<ApiError>)> {
-    let db_path = state.db_path.clone();
-    tokio::task::spawn_blocking(move || {
-        let conn = Connection::open(&*db_path)
-            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("db open: {e}")))?;
-        Ok(Json(correctness::validate_snapshot(&conn, snapshot_id)))
-    })
-    .await
-    .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}")))?
 }
