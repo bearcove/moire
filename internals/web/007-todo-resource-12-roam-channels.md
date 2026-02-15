@@ -11,17 +11,20 @@ Expose roam channel usage as first-class resources tied to tasks and requests.
 ## Current context
 
 - Roam diagnostics include channel details (`channel_id`, `direction`, `queue_depth`, task/request ids when present).
+- Channel objects do not carry independent metadata, but channel creation is request-scoped.
 - Canonical node/edge mapping is not yet guaranteed for all channel events.
 
 ## Node + edge model
 
-Node ID:
-- `roam-channel:{process}:{channel_id}`
+Node IDs:
+- `roam-channel:{process}:{channel_id}:tx`
+- `roam-channel:{process}:{channel_id}:rx`
 
-Node kind:
-- `roam_channel`
+Node kinds:
+- `roam_channel_tx`
+- `roam_channel_rx`
 
-Required attrs_json:
+Required attrs_json (both endpoints):
 - `channel_id`
 - `name`
 - `direction`
@@ -30,17 +33,19 @@ Required attrs_json:
 - `request_id`
 - `task_id`
 
-Required edges:
-- `request_uses_channel` (`request -> roam_channel`)
-- `task_sends_to_channel` (`task -> roam_channel`)
-- `task_receives_from_channel` (`task -> roam_channel`)
+Required `needs` edges:
+- `task -> roam-channel:{...}:tx` when task is blocked on send-side progress
+- `task -> roam-channel:{...}:rx` when task is blocked on recv-side progress
+- `roam-channel:{...}:tx -> roam-channel:{...}:rx` endpoint dependency
+- `request -> roam-channel:{...}:tx|rx` when request context is explicitly linked
 
 ## Implementation steps
 
-1. Emit channel node for each channel detail entry.
-2. Emit request linkage edge when `request_id` exists.
-3. Emit task send/recv edges when task IDs are explicitly known.
-4. Do not synthesize task/request links from names.
+1. Emit tx/rx endpoint nodes for each roam channel.
+2. Emit `tx -> rx` `needs` edge for each channel.
+3. On receiver-side channel provisioning, derive request provenance from request metadata/context and emit `request -> endpoint` `needs` edge.
+4. Emit task->endpoint `needs` edges only when task linkage is explicit.
+5. Do not synthesize links from names.
 
 ## Consumer changes
 
@@ -52,13 +57,15 @@ Required edges:
 ```sql
 SELECT COUNT(*)
 FROM nodes
-WHERE snapshot_id = ?1 AND kind = 'roam_channel';
+WHERE snapshot_id = ?1 AND kind IN ('roam_channel_tx','roam_channel_rx');
 ```
 
 ```sql
-SELECT kind, COUNT(*)
+SELECT src_id, dst_id
 FROM edges
 WHERE snapshot_id = ?1
-  AND kind IN ('request_uses_channel','task_sends_to_channel','task_receives_from_channel')
-GROUP BY kind;
+  AND kind = 'needs'
+  AND src_id LIKE 'roam-channel:%:tx'
+  AND dst_id LIKE 'roam-channel:%:rx'
+LIMIT 100;
 ```

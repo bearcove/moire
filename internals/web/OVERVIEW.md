@@ -21,19 +21,21 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 
 ## Workstreams (parallelizable)
 
+0. `000-todo-crate-split-for-parallelization.md`
 1. `001-todo-storage-and-ingest.md`
 2. `002-todo-node-edge-projection.md`
 3. `003-todo-api-contract.md`
 4. `004-todo-frontend-investigate-mvp.md`
-5. `005-todo-correctness-perf-rollout.md`
+5. `005-todo-correctness-local.md`
 6. `006-todo-wrapper-emission-api.md`
 7. `007-todo-resource-type-workstreams.md`
 
 ## Suggested execution order
 
+- 000 runs first (enables safe parallel edits by resource).
 - 001 + 002 + 003 can run in parallel.
 - 004 starts once 003 endpoint stubs exist.
-- 005 runs continuously and gates merge.
+- 005 runs continuously as a local correctness checklist.
 
 ## Definition of done (program)
 

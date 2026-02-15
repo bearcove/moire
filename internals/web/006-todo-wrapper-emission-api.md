@@ -131,7 +131,7 @@ Emit edges:
 During migration we may keep legacy typed sections, but `graph` is source-of-truth for `peeps-web`.
 
 ## Hard validation rules
-
+ 
 At ingest (`peeps-web`) reject or quarantine edges when:
 - `origin != Explicit`
 - `src_id` missing node in same snapshot

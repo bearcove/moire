@@ -10,6 +10,9 @@ Scope: wrapper crates (`peeps-tasks`, `peeps-locks`, `peeps-sync`, `peeps-thread
 
 This directory splits work by resource type so multiple agents can work in parallel without stepping on each other.
 
+Prerequisite:
+- complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md` first.
+
 ## Hard invariants (apply to every track)
 
 1. Only explicit measured edges. No inferred/derived/heuristic edges.
@@ -40,8 +43,6 @@ This directory splits work by resource type so multiple agents can work in paral
 10. `007-todo-resource-10-oncecell.md`
 11. `007-todo-resource-11-rpc-requests.md`
 12. `007-todo-resource-12-roam-channels.md`
-13. `007-todo-resource-13-sockets.md`
-14. `007-todo-resource-14-shm-optional.md`
 
 ## Coordination note
 

@@ -18,9 +18,11 @@ Make request causality across tasks/processes explicit and queryable.
 
 Node ID:
 - `request:{process}:{pid}:{connection}:{request_id}`
+- `response:{process}:{pid}:{connection}:{request_id}`
 
-Node kind:
+Node kinds:
 - `request`
+- `response`
 
 Required attrs_json:
 - `request_id`
@@ -31,19 +33,35 @@ Required attrs_json:
 - `connection`
 - `peer`
 - `metadata_json`
-- `args_json` (if available)
+- `args_preview` (Roam-formatted argument rendering)
 
-Required edges:
-- `request_in_process` (`request -> process`)
-- `request_handled_by_task` (`request -> task`)
-- `request_parent` (`child_request -> parent_request`) only when explicit propagation metadata exists
+`args_preview` requirement:
+- must use the same formatting style as Roam diagnostics
+- keep scalar readability (numbers/strings/bools)
+- for large binary payloads, middle-elide content while preserving prefix/suffix context
+- never drop argument visibility entirely just because payload is large
+
+Required attrs_json (response):
+- `request_id`
+- `method`
+- `status` (ok|error|cancelled|timeout|in_flight)
+- `elapsed_ns`
+- `connection`
+- `peer`
+- `server_task_id`
+
+Required `needs` edges:
+- `request -> response` (request depends on response completion)
+- `request -> request` only for explicit downstream RPC dependencies
+- `request -> task` only when request progress explicitly depends on handler task
 
 ## Implementation steps
 
-1. Ensure request nodes include task linkage fields when known.
-2. Emit `request_handled_by_task` only when task ID is explicitly provided.
-3. Emit `request_parent` only from explicit propagated context.
-4. Keep chain/span identifiers as attrs only; no inferred parent linking.
+1. Caller side emits request node.
+2. Receiver side emits response node.
+3. Receiver side emits `request -> response` `needs` edge.
+4. Emit cross-request `needs` only from explicit propagated context metadata.
+5. Keep chain/span identifiers as attrs only; no inferred parent linking.
 
 ## Consumer changes
 
@@ -54,9 +72,11 @@ Required:
 ## Validation SQL
 
 ```sql
-SELECT kind, COUNT(*)
+SELECT src_id, dst_id
 FROM edges
 WHERE snapshot_id = ?1
-  AND kind IN ('request_in_process','request_handled_by_task','request_parent')
-GROUP BY kind;
+  AND kind = 'needs'
+  AND src_id LIKE 'request:%'
+  AND dst_id LIKE 'response:%'
+LIMIT 200;
 ```
