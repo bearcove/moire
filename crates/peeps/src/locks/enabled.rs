@@ -60,7 +60,14 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
         write_json_kv_u64(&mut attrs, "releases", releases, false);
         write_json_kv_u64(&mut attrs, "holder_count", holder_count, false);
         write_json_kv_u64(&mut attrs, "waiter_count", waiter_count, false);
-        attrs.push_str(",\"meta\":{}");
+        attrs.push_str(",\"meta\":{");
+        write_json_kv_str(
+            &mut attrs,
+            peeps_types::meta_key::CTX_LOCATION,
+            &info.location,
+            true,
+        );
+        attrs.push('}');
         attrs.push('}');
 
         graph.nodes.push(Node {
@@ -119,6 +126,7 @@ struct WaiterOrHolder {
 struct LockInfo {
     name: &'static str,
     endpoint_id: String,
+    location: String,
     next_id: AtomicU64,
     waiters: StdMutex<Vec<WaiterOrHolder>>,
     holders: StdMutex<Vec<WaiterOrHolder>>,
@@ -127,10 +135,14 @@ struct LockInfo {
 }
 
 impl LockInfo {
+    #[track_caller]
     fn new(name: &'static str) -> Arc<Self> {
+        let caller = std::panic::Location::caller();
+        let location = format!("{}:{}", caller.file(), caller.line());
         let info = Arc::new(Self {
             name,
             endpoint_id: peeps_types::new_node_id("lock"),
+            location,
             next_id: AtomicU64::new(0),
             waiters: StdMutex::new(Vec::new()),
             holders: StdMutex::new(Vec::new()),

@@ -170,6 +170,7 @@ impl<F> Drop for PeepableFuture<F> {
 
 // ── Construction ─────────────────────────────────────────
 
+#[track_caller]
 pub fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -177,6 +178,26 @@ where
     peepable_with_meta(future, resource, peeps_types::MetaBuilder::<0>::new())
 }
 
+fn inject_location_meta_json(meta_json: String, location: &str) -> String {
+    let mut out = String::with_capacity(meta_json.len() + location.len() + 24);
+    out.push('{');
+    out.push('"');
+    peeps_types::json_escape_into(&mut out, peeps_types::meta_key::CTX_LOCATION);
+    out.push_str("\":\"");
+    peeps_types::json_escape_into(&mut out, location);
+    out.push('"');
+    if !meta_json.is_empty() {
+        // meta_json is a JSON object string like {"k":"v"}; splice its contents after our entry.
+        if meta_json.starts_with('{') && meta_json.ends_with('}') && meta_json.len() > 2 {
+            out.push(',');
+            out.push_str(&meta_json[1..meta_json.len() - 1]);
+        }
+    }
+    out.push('}');
+    out
+}
+
+#[track_caller]
 pub fn peepable_with_meta<F, const N: usize>(
     future: F,
     resource: impl Into<String>,
@@ -187,7 +208,9 @@ where
 {
     let node_id = peeps_types::new_node_id("future");
     let resource = resource.into();
-    let meta_json = meta.to_json_object();
+    let caller = std::panic::Location::caller();
+    let location = format!("{}:{}", caller.file(), caller.line());
+    let meta_json = inject_location_meta_json(meta.to_json_object(), &location);
 
     register_future(node_id.clone(), resource.clone(), meta_json);
 

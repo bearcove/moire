@@ -15,6 +15,7 @@ const ONCE_INITIALIZED: u8 = 2;
 pub(super) struct OnceCellInfo {
     pub(super) name: String,
     pub(super) node_id: String,
+    pub(super) location: String,
     pub(super) state: AtomicU8,
     pub(super) created_at: Instant,
     pub(super) init_duration: Mutex<Option<std::time::Duration>>,
@@ -39,10 +40,14 @@ pub struct OnceCell<T> {
 }
 
 impl<T> OnceCell<T> {
+    #[track_caller]
     pub fn new(name: impl Into<String>) -> Self {
+        let caller = std::panic::Location::caller();
+        let location = format!("{}:{}", caller.file(), caller.line());
         let info = Arc::new(OnceCellInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("oncecell"),
+            location,
             state: AtomicU8::new(ONCE_EMPTY),
             created_at: Instant::now(),
             init_duration: Mutex::new(None),
@@ -241,7 +246,14 @@ pub(super) fn emit_oncecell_nodes(graph: &mut peeps_types::GraphSnapshot) {
         if let Some(dur) = init_duration_ns {
             json_kv_u64(&mut attrs, "init_duration_ns", dur, false);
         }
-        attrs.push_str(",\"meta\":{}");
+        attrs.push_str(",\"meta\":{");
+        json_kv_str(
+            &mut attrs,
+            peeps_types::meta_key::CTX_LOCATION,
+            &info.location,
+            true,
+        );
+        attrs.push('}');
         attrs.push('}');
 
         graph.nodes.push(Node {

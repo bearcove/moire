@@ -519,6 +519,8 @@ pub mod meta_key {
     pub const FUTURE_ID: &str = "future.id";
     pub const CHANNEL_ID: &str = "channel.id";
     pub const RESOURCE_PATH: &str = "resource.path";
+    /// Canonical source location, formatted as `path:line` or `path:line:column`.
+    pub const CTX_LOCATION: &str = "ctx.location";
     pub const CTX_MODULE_PATH: &str = "ctx.module_path";
     pub const CTX_FILE: &str = "ctx.file";
     pub const CTX_LINE: &str = "ctx.line";

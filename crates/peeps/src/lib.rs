@@ -147,25 +147,13 @@ macro_rules! peepable_with_meta {
 macro_rules! peep {
     ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::<{
-            6 $(+ $crate::peep!(@count $k))*
+            0 $(+ $crate::peep!(@count $k))*
         }>::new();
-        mb.push($crate::meta_key::CTX_MODULE_PATH, $crate::MetaValue::Static(module_path!()));
-        mb.push($crate::meta_key::CTX_FILE, $crate::MetaValue::Static(file!()));
-        mb.push($crate::meta_key::CTX_LINE, $crate::MetaValue::U64(line!() as u64));
-        mb.push($crate::meta_key::CTX_CRATE_NAME, $crate::MetaValue::Static(env!("CARGO_PKG_NAME")));
-        mb.push($crate::meta_key::CTX_CRATE_VERSION, $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")));
-        mb.push($crate::meta_key::CTX_CALLSITE, $crate::MetaValue::Static(concat!($label, "@", file!(), ":", line!(), "::", module_path!())));
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
         $crate::peepable_with_meta($future, $label, mb)
     }};
     ($future:expr, $label:literal) => {{
-        let mut mb = $crate::MetaBuilder::<6>::new();
-        mb.push($crate::meta_key::CTX_MODULE_PATH, $crate::MetaValue::Static(module_path!()));
-        mb.push($crate::meta_key::CTX_FILE, $crate::MetaValue::Static(file!()));
-        mb.push($crate::meta_key::CTX_LINE, $crate::MetaValue::U64(line!() as u64));
-        mb.push($crate::meta_key::CTX_CRATE_NAME, $crate::MetaValue::Static(env!("CARGO_PKG_NAME")));
-        mb.push($crate::meta_key::CTX_CRATE_VERSION, $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")));
-        mb.push($crate::meta_key::CTX_CALLSITE, $crate::MetaValue::Static(concat!($label, "@", file!(), ":", line!(), "::", module_path!())));
+        let mb = $crate::MetaBuilder::<0>::new();
         $crate::peepable_with_meta($future, $label, mb)
     }};
     (@count $x:literal) => { 1usize };

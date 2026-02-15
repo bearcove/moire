@@ -11,6 +11,7 @@ use super::channels::{json_kv_str, json_kv_u64};
 pub(super) struct SemaphoreInfo {
     pub(super) name: String,
     pub(super) node_id: String,
+    pub(super) location: String,
     pub(super) permits_total: u64,
     pub(super) waiters: AtomicU64,
     pub(super) acquires: AtomicU64,
@@ -67,12 +68,16 @@ impl Clone for DiagnosticSemaphore {
 }
 
 impl DiagnosticSemaphore {
+    #[track_caller]
     pub fn new(name: impl Into<String>, permits: usize) -> Self {
         let inner = Arc::new(tokio::sync::Semaphore::new(permits));
         let inner_for_snapshot = Arc::clone(&inner);
+        let caller = std::panic::Location::caller();
+        let location = format!("{}:{}", caller.file(), caller.line());
         let info = Arc::new(SemaphoreInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("semaphore"),
+            location,
             permits_total: permits as u64,
             waiters: AtomicU64::new(0),
             acquires: AtomicU64::new(0),
@@ -336,7 +341,14 @@ pub(super) fn emit_semaphore_nodes(graph: &mut peeps_types::GraphSnapshot) {
             high_waiters_watermark,
             false,
         );
-        attrs.push_str(",\"meta\":{}");
+        attrs.push_str(",\"meta\":{");
+        json_kv_str(
+            &mut attrs,
+            peeps_types::meta_key::CTX_LOCATION,
+            &info.location,
+            true,
+        );
+        attrs.push('}');
         attrs.push('}');
 
         graph.nodes.push(Node {

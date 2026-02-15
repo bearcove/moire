@@ -75,6 +75,7 @@ pub(super) struct MpscInfo {
     pub(super) name: String,
     pub(super) tx_node_id: String,
     pub(super) rx_node_id: String,
+    pub(super) location: String,
     pub(super) bounded: bool,
     pub(super) capacity: Option<u64>,
     pub(super) sent: AtomicU64,
@@ -116,6 +117,7 @@ pub(super) struct OneshotInfo {
     pub(super) name: String,
     pub(super) tx_node_id: String,
     pub(super) rx_node_id: String,
+    pub(super) location: String,
     pub(super) state: AtomicU8,
     pub(super) created_at: Instant,
 }
@@ -130,6 +132,7 @@ pub(super) struct WatchInfo {
     pub(super) name: String,
     pub(super) tx_node_id: String,
     pub(super) rx_node_id: String,
+    pub(super) location: String,
     pub(super) changes: AtomicU64,
     pub(super) created_at: Instant,
     pub(super) receiver_count: Box<dyn Fn() -> usize + Send + Sync>,
@@ -266,15 +269,19 @@ impl<T> Receiver<T> {
     }
 }
 
+#[track_caller]
 pub fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = tokio::sync::mpsc::channel(buffer);
     let name = name.into();
+    let caller = std::panic::Location::caller();
+    let location = format!("{}:{}", caller.file(), caller.line());
     let tx_node_id = peeps_types::new_node_id("mpsc_tx");
     let rx_node_id = peeps_types::new_node_id("mpsc_rx");
     let info = Arc::new(MpscInfo {
         name,
         tx_node_id,
         rx_node_id,
+        location,
         bounded: true,
         capacity: Some(buffer as u64),
         sent: AtomicU64::new(0),
@@ -377,17 +384,21 @@ impl<T> UnboundedReceiver<T> {
     }
 }
 
+#[track_caller]
 pub fn unbounded_channel<T>(
     name: impl Into<String>,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let name = name.into();
+    let caller = std::panic::Location::caller();
+    let location = format!("{}:{}", caller.file(), caller.line());
     let tx_node_id = peeps_types::new_node_id("mpsc_tx");
     let rx_node_id = peeps_types::new_node_id("mpsc_rx");
     let info = Arc::new(MpscInfo {
         name,
         tx_node_id,
         rx_node_id,
+        location,
         bounded: false,
         capacity: None,
         sent: AtomicU64::new(0),
@@ -489,17 +500,21 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
+#[track_caller]
 pub fn oneshot_channel<T>(
     name: impl Into<String>,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let name = name.into();
+    let caller = std::panic::Location::caller();
+    let location = format!("{}:{}", caller.file(), caller.line());
     let tx_node_id = peeps_types::new_node_id("oneshot_tx");
     let rx_node_id = peeps_types::new_node_id("oneshot_rx");
     let info = Arc::new(OneshotInfo {
         name,
         tx_node_id,
         rx_node_id,
+        location,
         state: AtomicU8::new(ONESHOT_PENDING),
         created_at: Instant::now(),
     });
@@ -599,6 +614,7 @@ impl<T> WatchReceiver<T> {
     }
 }
 
+#[track_caller]
 pub fn watch_channel<T: Send + Sync + 'static>(
     name: impl Into<String>,
     init: T,
@@ -606,12 +622,15 @@ pub fn watch_channel<T: Send + Sync + 'static>(
     let (tx, rx) = tokio::sync::watch::channel(init);
     let tx_clone = tx.clone();
     let name = name.into();
+    let caller = std::panic::Location::caller();
+    let location = format!("{}:{}", caller.file(), caller.line());
     let tx_node_id = peeps_types::new_node_id("watch_tx");
     let rx_node_id = peeps_types::new_node_id("watch_rx");
     let info = Arc::new(WatchInfo {
         name,
         tx_node_id,
         rx_node_id,
+        location,
         changes: AtomicU64::new(0),
         created_at: Instant::now(),
         receiver_count: Box::new(move || tx_clone.receiver_count()),
@@ -675,7 +694,14 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                         }
                     }
                 }
-                attrs.push_str(",\"meta\":{}");
+                attrs.push_str(",\"meta\":{");
+                json_kv_str(
+                    &mut attrs,
+                    peeps_types::meta_key::CTX_LOCATION,
+                    &info.location,
+                    true,
+                );
+                attrs.push('}');
                 attrs.push('}');
 
                 graph.nodes.push(Node {
@@ -696,7 +722,14 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 json_kv_u64(&mut attrs, "recv_waiters", recv_waiters, false);
                 json_kv_u64(&mut attrs, "recv_total", received, false);
                 json_kv_u64(&mut attrs, "queue_len", queue_len, false);
-                attrs.push_str(",\"meta\":{}");
+                attrs.push_str(",\"meta\":{");
+                json_kv_str(
+                    &mut attrs,
+                    peeps_types::meta_key::CTX_LOCATION,
+                    &info.location,
+                    true,
+                );
+                attrs.push('}');
                 attrs.push('}');
 
                 graph.nodes.push(Node {
@@ -743,7 +776,14 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 json_kv_bool(&mut attrs, "closed", sender_closed, false);
                 json_kv_str(&mut attrs, "state", state_str, false);
                 json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{}");
+                attrs.push_str(",\"meta\":{");
+                json_kv_str(
+                    &mut attrs,
+                    peeps_types::meta_key::CTX_LOCATION,
+                    &info.location,
+                    true,
+                );
+                attrs.push('}');
                 attrs.push('}');
 
                 graph.nodes.push(Node {
@@ -763,7 +803,14 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 json_kv_bool(&mut attrs, "closed", receiver_closed, false);
                 json_kv_str(&mut attrs, "state", state_str, false);
                 json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{}");
+                attrs.push_str(",\"meta\":{");
+                json_kv_str(
+                    &mut attrs,
+                    peeps_types::meta_key::CTX_LOCATION,
+                    &info.location,
+                    true,
+                );
+                attrs.push('}');
                 attrs.push('}');
 
                 graph.nodes.push(Node {
@@ -801,7 +848,14 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 json_kv_u64(&mut attrs, "changes", changes, false);
                 json_kv_u64(&mut attrs, "receiver_count", receiver_count, false);
                 json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{}");
+                attrs.push_str(",\"meta\":{");
+                json_kv_str(
+                    &mut attrs,
+                    peeps_types::meta_key::CTX_LOCATION,
+                    &info.location,
+                    true,
+                );
+                attrs.push('}');
                 attrs.push('}');
 
                 graph.nodes.push(Node {
@@ -821,7 +875,14 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 json_kv_u64(&mut attrs, "changes", changes, false);
                 json_kv_u64(&mut attrs, "receiver_count", receiver_count, false);
                 json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{}");
+                attrs.push_str(",\"meta\":{");
+                json_kv_str(
+                    &mut attrs,
+                    peeps_types::meta_key::CTX_LOCATION,
+                    &info.location,
+                    true,
+                );
+                attrs.push('}');
                 attrs.push('}');
 
                 graph.nodes.push(Node {
