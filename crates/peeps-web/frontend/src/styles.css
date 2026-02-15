@@ -27,8 +27,8 @@ body {
 /* ── Layout ───────────────────────────────────────────────── */
 
 .app {
-    display: grid;
-    grid-template-rows: auto auto 1fr;
+    display: flex;
+    flex-direction: column;
     height: 100vh;
     overflow: hidden;
 }
@@ -72,8 +72,9 @@ body {
 .main-content {
     display: grid;
     grid-template-columns: minmax(280px, 1fr) 2fr minmax(240px, 300px);
-    overflow: hidden;
+    flex: 1;
     min-height: 0;
+    overflow: hidden;
 }
 
 /* ── Panels ───────────────────────────────────────────────── */
