@@ -169,6 +169,8 @@ export function App() {
         <Inspector
           selectedRequest={selectedRequest}
           selectedNode={selectedNode}
+          filteredNodeId={filteredNodeId}
+          onFocusNode={setFilteredNodeId}
           collapsed={rightCollapsed}
           onToggleCollapse={toggleRight}
         />

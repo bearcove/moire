@@ -32,13 +32,54 @@ const nodeTypes = { peeps: PeepsNode };
 // Use ELK's worker-based API (off main thread). Avoid nesting ELK inside our own Worker.
 const elk = new ELK({ workerUrl: elkWorkerUrl });
 
+function firstString(
+  attrs: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (v != null && v !== "") return String(v);
+  }
+  return undefined;
+}
+
 function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; edges: Edge[] } {
+  const methodByCorrelationKey = new Map<string, string>();
+  for (const n of graph.nodes) {
+    if (n.kind !== "request") continue;
+    const method = firstString(n.attrs, ["method", "request.method"]);
+    const corr = firstString(n.attrs, ["correlation_key", "request.correlation_key"]);
+    if (method && corr) methodByCorrelationKey.set(corr, method);
+  }
+
   const nodes: Node<NodeData>[] = graph.nodes.map((n) => ({
     id: n.id,
     type: "peeps",
     data: {
-      label:
-        (n.attrs.label as string) ?? (n.attrs.method as string) ?? (n.attrs.name as string) ?? n.id,
+      label: (() => {
+        if (n.kind === "request") {
+          return (
+            firstString(n.attrs, ["method", "request.method"]) ??
+            firstString(n.attrs, ["label", "name"]) ??
+            n.id
+          );
+        }
+
+        if (n.kind === "response") {
+          const corr = firstString(n.attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]);
+          return (
+            firstString(n.attrs, ["method", "response.method", "request.method"]) ??
+            (corr ? methodByCorrelationKey.get(corr) : undefined) ??
+            firstString(n.attrs, ["label", "name"]) ??
+            n.id
+          );
+        }
+
+        return (
+          firstString(n.attrs, ["label", "method", "name"]) ??
+          n.id
+        );
+      })(),
       kind: n.kind,
       process: n.process,
       attrs: n.attrs,

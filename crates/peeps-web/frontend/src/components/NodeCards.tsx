@@ -40,6 +40,24 @@ function numAttr(attrs: Record<string, unknown>, key: string): number | undefine
   return isNaN(n) ? undefined : n;
 }
 
+function firstAttr(attrs: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (v != null && v !== "") return String(v);
+  }
+  return undefined;
+}
+
+function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (v == null || v === "") continue;
+    const n = Number(v);
+    if (!isNaN(n)) return n;
+  }
+  return undefined;
+}
+
 /** Format nanoseconds to a short human-readable duration */
 function fmtDuration(ns: number): string {
   const secs = ns / 1_000_000_000;
@@ -455,9 +473,9 @@ function OnceCellCard({ data }: NodeProps<Node<NodeData>>) {
 
 function RequestCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
-  const method = attr(attrs, "method") ?? label;
-  const elapsedNs = numAttr(attrs, "elapsed_ns");
-  const status = attr(attrs, "status") ?? "in_flight";
+  const method = firstAttr(attrs, ["method", "request.method"]) ?? label;
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
+  const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
 
   const statusVariant: "ok" | "warn" | "crit" | "neutral" =
     status === "completed" ? "ok" : status === "timed_out" ? "crit" : "neutral";
@@ -484,9 +502,9 @@ function RequestCard({ data }: NodeProps<Node<NodeData>>) {
 
 function ResponseCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
-  const status = attr(attrs, "status") ?? "in_flight";
-  const correlationKey = attr(attrs, "correlation_key");
-  const elapsedNs = numAttr(attrs, "elapsed_ns");
+  const status = firstAttr(attrs, ["status", "response.status"]) ?? "in_flight";
+  const correlationKey = firstAttr(attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]);
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
 
   const statusVariant: "ok" | "warn" | "crit" | "neutral" =
     status === "completed" ? "ok" : "neutral";

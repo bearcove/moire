@@ -721,6 +721,49 @@ body {
     font-weight: 600;
 }
 
+/* ── Inspector meta ───────────────────────────────────────── */
+
+.inspect-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid light-dark(#ebebf0, #2a2a2e);
+    border-radius: 6px;
+    background: light-dark(#f8f8fb, #1a1a1e);
+}
+
+.inspect-meta-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.inspect-meta-key {
+    min-width: 66px;
+    font-size: 11px;
+    font-weight: 600;
+    color: light-dark(#6e6e73, #98989d);
+    flex-shrink: 0;
+}
+
+.inspect-meta-val {
+    word-break: break-all;
+}
+
+.inspect-meta-extras summary {
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.inspect-meta-extras pre {
+    margin-top: 6px;
+    margin-bottom: 0;
+}
+
 /* ── Inspector pills ─────────────────────────────────────── */
 
 .inspect-pill {

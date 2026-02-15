@@ -23,12 +23,15 @@ import {
   PaperPlaneTilt,
   ArrowBendDownLeft,
   Warning,
+  Crosshair,
 } from "@phosphor-icons/react";
 import type { StuckRequest, SnapshotNode } from "../types";
 
 interface InspectorProps {
   selectedRequest: StuckRequest | null;
   selectedNode: SnapshotNode | null;
+  filteredNodeId: string | null;
+  onFocusNode: (nodeId: string | null) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -65,11 +68,29 @@ function attr(attrs: Record<string, unknown>, key: string): string | undefined {
   return String(v);
 }
 
+function firstAttr(attrs: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (v != null && v !== "") return String(v);
+  }
+  return undefined;
+}
+
 function numAttr(attrs: Record<string, unknown>, key: string): number | undefined {
   const v = attrs[key];
   if (v == null) return undefined;
   const n = Number(v);
   return isNaN(n) ? undefined : n;
+}
+
+function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (v == null || v === "") continue;
+    const n = Number(v);
+    if (!isNaN(n)) return n;
+  }
+  return undefined;
 }
 
 const kindIcons: Record<string, React.ReactNode> = {
@@ -94,7 +115,14 @@ const kindIcons: Record<string, React.ReactNode> = {
   response: <ArrowBendDownLeft size={16} weight="bold" />,
 };
 
-export function Inspector({ selectedRequest, selectedNode, collapsed, onToggleCollapse }: InspectorProps) {
+export function Inspector({
+  selectedRequest,
+  selectedNode,
+  filteredNodeId,
+  onFocusNode,
+  collapsed,
+  onToggleCollapse,
+}: InspectorProps) {
   if (collapsed) {
     return (
       <div className="panel panel--collapsed">
@@ -118,7 +146,7 @@ export function Inspector({ selectedRequest, selectedNode, collapsed, onToggleCo
         {selectedRequest ? (
           <RequestDetail req={selectedRequest} />
         ) : selectedNode ? (
-          <NodeDetail node={selectedNode} />
+          <NodeDetail node={selectedNode} filteredNodeId={filteredNodeId} onFocusNode={onFocusNode} />
         ) : (
           <div className="inspector-empty">
             Select a request or graph node to inspect.
@@ -151,9 +179,26 @@ function RequestDetail({ req }: { req: StuckRequest }) {
   );
 }
 
-function NodeDetail({ node }: { node: SnapshotNode }) {
+function NodeDetail({
+  node,
+  filteredNodeId,
+  onFocusNode,
+}: {
+  node: SnapshotNode;
+  filteredNodeId: string | null;
+  onFocusNode: (nodeId: string | null) => void;
+}) {
   const icon = kindIcons[node.kind];
   const DetailComponent = kindDetailMap[node.kind];
+  const isFocused = filteredNodeId === node.id;
+  const method =
+    node.kind === "request" || node.kind === "response"
+      ? firstAttr(node.attrs, ["method", "request.method", "response.method"])
+      : undefined;
+  const correlationKey =
+    node.kind === "request" || node.kind === "response"
+      ? firstAttr(node.attrs, ["correlation_key", "request.correlation_key", "response.correlation_key"])
+      : undefined;
 
   return (
     <div className="inspect-node">
@@ -162,16 +207,60 @@ function NodeDetail({ node }: { node: SnapshotNode }) {
         <div>
           <div className="inspect-node-kind">{node.kind}</div>
           <div className="inspect-node-label">
-            {(node.attrs.label as string) ?? (node.attrs.name as string) ?? (node.attrs.method as string) ?? node.id}
+            {(() => {
+              if (node.kind === "request") {
+                return (
+                  firstAttr(node.attrs, ["method", "request.method"]) ??
+                  firstAttr(node.attrs, ["label", "name"]) ??
+                  node.id
+                );
+              }
+              if (node.kind === "response") {
+                return (
+                  firstAttr(node.attrs, ["method", "response.method", "request.method"]) ??
+                  firstAttr(node.attrs, ["label", "name"]) ??
+                  firstAttr(node.attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]) ??
+                  node.id
+                );
+              }
+              return (
+                firstAttr(node.attrs, ["label", "name", "method"]) ??
+                node.id
+              );
+            })()}
           </div>
         </div>
+        <button
+          className="filter-clear-btn"
+          onClick={() => onFocusNode(node.id)}
+          title="Filter graph to the subgraph connected to this node"
+          disabled={isFocused}
+          style={isFocused ? { opacity: 0.6, cursor: "default" } : undefined}
+        >
+          <Crosshair size={12} weight="bold" />
+          {isFocused ? "focused" : "focus"}
+        </button>
       </div>
 
       <div className="inspect-section">
-        <div className="inspect-row">
-          <span className="inspect-key">ID</span>
-          <span className="inspect-val">{node.id}</span>
-        </div>
+        {(node.kind !== "request" && node.kind !== "response") && (
+          <div className="inspect-row">
+            <span className="inspect-key">ID</span>
+            <span className="inspect-val">{node.id}</span>
+          </div>
+        )}
+        {method && (
+          <div className="inspect-row">
+            <span className="inspect-key">Method</span>
+            <span className="inspect-val inspect-val--mono">{method}</span>
+          </div>
+        )}
+        {correlationKey && (
+          <div className="inspect-row">
+            <span className="inspect-key">Correlation</span>
+            <span className="inspect-val inspect-val--mono">{correlationKey}</span>
+          </div>
+        )}
         <div className="inspect-row">
           <span className="inspect-key">Process</span>
           <span className="inspect-val">{node.process}</span>
@@ -197,6 +286,58 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   const entries = Object.entries(attrs).filter(([, v]) => v != null);
   if (entries.length === 0) return null;
 
+  function parseJsonObject(s: string): Record<string, unknown> | null {
+    const t = s.trim();
+    if (!t.startsWith("{") || !t.endsWith("}")) return null;
+    try {
+      const v = JSON.parse(t) as unknown;
+      if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function asObject(val: unknown): Record<string, unknown> | null {
+    if (val && typeof val === "object" && !Array.isArray(val)) return val as Record<string, unknown>;
+    if (typeof val === "string") return parseJsonObject(val);
+    return null;
+  }
+
+  function metaLocation(meta: Record<string, unknown>): string | null {
+    const callsite = meta["ctx.callsite"] != null ? String(meta["ctx.callsite"]) : undefined;
+    const file = meta["ctx.file"] != null ? String(meta["ctx.file"]) : undefined;
+    const line = meta["ctx.line"] != null ? String(meta["ctx.line"]) : undefined;
+
+    let loc: string | null = null;
+    if (callsite) {
+      const at = callsite.indexOf("@");
+      if (at >= 0) loc = callsite.slice(at + 1);
+    }
+    if (!loc && file) loc = `${file}${line ? `:${line}` : ""}`;
+    if (!loc) return null;
+
+    // Peeps callsites often append the module after `::` (e.g. `path.rs:123::crate_mod`).
+    // The module is usually noise: keep only the file:line portion.
+    const moduleSep = loc.lastIndexOf("::");
+    if (moduleSep !== -1) loc = loc.slice(0, moduleSep);
+
+    return loc;
+  }
+
+  function MetaView({ meta }: { meta: Record<string, unknown> }) {
+    const loc = metaLocation(meta);
+    if (!loc) return <span className="inspect-val inspect-val--mono">—</span>;
+    return (
+      <div className="inspect-meta">
+        <div className="inspect-meta-row">
+          <span className="inspect-meta-key">Location</span>
+          <span className="inspect-meta-val inspect-val--mono">{loc}</span>
+        </div>
+      </div>
+    );
+  }
+
   function asFiniteNumber(v: unknown): number | null {
     if (typeof v === "number" && Number.isFinite(v)) return v;
     if (typeof v === "string" && /^[0-9]+$/.test(v) && v.length <= 15) {
@@ -216,6 +357,11 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
     }
 
     const k = key.toLowerCase();
+    if (k === "meta" || k.endsWith(".meta")) {
+      const obj = asObject(val);
+      if (obj) return <MetaView meta={obj} />;
+    }
+
     const maybeNs = asFiniteNumber(val);
     if (maybeNs != null && (k.endsWith("_ns") || k.includes("duration") || k.includes("age"))) {
       return (
@@ -650,12 +796,12 @@ function OnceCellDetail({ attrs }: DetailProps) {
 }
 
 function RpcRequestDetail({ attrs }: DetailProps) {
-  const method = attr(attrs, "method");
-  const elapsedNs = numAttr(attrs, "elapsed_ns");
-  const status = attr(attrs, "status") ?? "in_flight";
-  const process = attr(attrs, "process");
-  const connection = attr(attrs, "connection");
-  const correlationKey = attr(attrs, "correlation_key");
+  const method = firstAttr(attrs, ["method", "request.method"]);
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
+  const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
+  const process = firstAttr(attrs, ["process", "request.process"]);
+  const connection = firstAttr(attrs, ["connection", "rpc.connection"]);
+  const correlationKey = firstAttr(attrs, ["correlation_key", "request.correlation_key"]);
 
   return (
     <>
@@ -702,9 +848,9 @@ function RpcRequestDetail({ attrs }: DetailProps) {
 }
 
 function RpcResponseDetail({ attrs }: DetailProps) {
-  const status = attr(attrs, "status") ?? "in_flight";
-  const elapsedNs = numAttr(attrs, "elapsed_ns");
-  const correlationKey = attr(attrs, "correlation_key");
+  const status = firstAttr(attrs, ["status", "response.status"]) ?? "in_flight";
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
+  const correlationKey = firstAttr(attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]);
 
   return (
     <>
