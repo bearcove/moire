@@ -30,18 +30,16 @@ Required attrs_json:
 - `parent_task_id`
 - `spawn_backtrace` (optional if unavailable)
 
-Required edges:
-- `task_in_process` (`task -> process`)
-- `task_spawns_task` (`parent_task -> child_task`)
-- `task_wakes_task` (`source_task -> target_task`)
+Required `needs` edges:
+- `task -> task` for explicit spawn dependency
+- `task -> task` for explicit wake dependency
 
 ## Implementation steps
 
 1. Add canonical task node emission in `peeps-tasks` graph builder path.
-2. Emit `task_in_process` for each task node.
-3. Emit `task_spawns_task` only when parent task ID is explicitly known.
-4. Emit `task_wakes_task` from recorded wake events only.
-5. Do not create synthetic parent/wake edges for missing data.
+2. Emit parent->child `needs` only when parent task ID is explicitly known.
+3. Emit source->target `needs` for wake events only from explicit wake records.
+4. Do not create synthetic parent/wake edges for missing data.
 
 ## Consumer changes
 
@@ -52,12 +50,10 @@ Required where missing instrumentation:
 ## Validation SQL
 
 ```sql
-SELECT kind, COUNT(*)
+SELECT COUNT(*)
 FROM edges
 WHERE snapshot_id = ?1
-  AND kind IN ('task_in_process', 'task_spawns_task', 'task_wakes_task')
-GROUP BY kind;
+  AND kind = 'needs'
+  AND src_id LIKE 'task:%'
+  AND dst_id LIKE 'task:%';
 ```
-
-Sanity check:
-- `task_in_process` count ~= `task` node count.

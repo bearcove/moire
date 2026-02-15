@@ -1,17 +1,16 @@
-# Pre-007 Task: Split Resource Emitters Into Separate Files
+# Pre-007 Task: Split Wrappers For Parallel Work
 
 Status: todo
 Owner: wg-refactor
-Priority: P0 (must complete before parallel resource tracks)
+Priority: P0
 
-## Why this is required
+## Goal
 
-Parallelizing resource work without file/module separation causes merge conflicts and hidden coupling.
-We need one file/module per resource emitter before delegating track work.
+Restructure wrapper crates so resource tracks can be implemented in parallel with minimal merge conflicts.
 
 ## Scope
 
-Split wrapper crates into resource-oriented modules and keep a thin facade `lib.rs`:
+Refactor-only (no behavior change) into resource-focused modules with thin `lib.rs` facades:
 
 - `/Users/amos/bearcove/peeps/crates/peeps-tasks/src/`
   - `tasks.rs`
@@ -19,31 +18,30 @@ Split wrapper crates into resource-oriented modules and keep a thin facade `lib.
   - `wakes.rs`
   - `snapshot.rs`
 - `/Users/amos/bearcove/peeps/crates/peeps-locks/src/`
-  - `mutex.rs`
-  - `rwlock.rs`
+  - `sync_locks.rs`
   - `registry.rs`
   - `snapshot.rs`
 - `/Users/amos/bearcove/peeps/crates/peeps-sync/src/`
-  - `mpsc.rs`
-  - `oneshot.rs`
-  - `watch.rs`
+  - `channels.rs` (mpsc/oneshot/watch endpoint model)
   - `semaphore.rs`
   - `oncecell.rs`
   - `registry.rs`
   - `snapshot.rs`
-- `/Users/amos/bearcove/peeps/crates/peeps-threads/src/`
-  - `sampling.rs`
-  - `snapshot.rs`
+- `/Users/amos/bearcove/peeps/crates/peeps/src/`
+  - `collect.rs` (graph assembly)
+  - `dashboard_client.rs`
 
 ## Constraints
 
-1. No behavior changes in this task (refactor-only).
-2. Public API of each crate remains source-compatible.
-3. Add module-level tests where needed to preserve behavior.
-4. Compile green after each crate split.
+1. No feature/API behavior changes in this task.
+2. Public crate APIs remain source-compatible.
+3. Keep tests green and add module-level tests where extraction needs coverage.
+
+Policy note:
+- Async mutex/rwlock wrappers are out of scope (banned).
+- `OnceCell` remains in scope under `peeps-sync`.
 
 ## Acceptance criteria
 
-1. Each resource track in `007-*` can be edited mostly in isolated files.
-2. Minimal cross-file touch needed for a given resource change.
-3. `cargo check` passes workspace.
+1. Each active 007 track can be edited mostly in isolated files.
+2. Workspace `cargo check` remains green.

@@ -17,7 +17,7 @@ Capture the current graph design decisions before updating the rest of the specs
 
 ## Nodes
 
-Each resource/process/runtime entity is a node with:
+Each resource/runtime entity is a node with:
 
 - `id` (stable, globally unique within process namespace)
 - `kind`
@@ -26,11 +26,8 @@ Each resource/process/runtime entity is a node with:
 - `attrs_json` for type-specific fields
 
 Examples of node kinds:
-
-- `process`
 - `task`
 - `future`
-- `thread`
 - `request`
 - `response`
 - `lock`
@@ -126,6 +123,12 @@ Use synchronized server-orchestrated snapshots:
 5. Server stores replies under the same `snapshot_id`, with per-process status for missing/timeouts.
 
 This replaces fake global sequencing from independent push timing.
+
+Process is context, not a node:
+
+- process identity is carried as a node attribute (and in snapshot process-status tables)
+- process can be used for filtering/grouping
+- no dedicated `process` node is required in the graph
 
 ## RPC request/response model
 

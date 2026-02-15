@@ -2,48 +2,68 @@
 
 Status: todo
 Owner: wg-wrapper-api
-Scope: `peeps-types` + wrapper crates (`peeps-tasks`, `peeps-locks`, `peeps-sync`, `peeps-threads`, roam diagnostics)
+Scope: `peeps-types` + wrapper crates (`peeps-tasks`, `peeps-locks`, `peeps-sync`) + roam diagnostics bridge
 
 ## Goal
 
-All instrumentation wrappers emit canonical graph rows through one API.
-No inferred/derived/heuristic edges. Ever.
+All wrappers emit canonical graph rows through one API shape:
+- nodes
+- `needs` edges
 
-## Canonical API (now)
+No inferred/derived/heuristic edges.
+
+## Canonical API (source of truth)
 
 Defined in `peeps-types`:
-
 - `GraphNodeSnapshot`
 - `GraphEdgeSnapshot`
 - `GraphSnapshot`
 - `GraphSnapshotBuilder`
-- `GraphEdgeOrigin::Explicit` (single allowed origin)
+
+`ProcessDump.graph` is the migration bridge; `graph` becomes source-of-truth for `peeps-web`.
 
 ## Required contract
 
-1. Every resource becomes a node with stable `id` and `kind`.
-2. Every relationship is an explicit measured edge.
-3. `attrs_json` holds type-specific fields only.
-4. Common query fields stay as top-level columns (id/src/dst/kind/process/duration/event/source location).
-5. If an edge cannot be measured directly, it must not be emitted.
+1. Every instrumented runtime/resource entity is emitted as a node.
+2. Every dependency is emitted as a `needs` edge.
+3. If dependency cannot be measured explicitly, do not emit an edge.
+4. Process is context (`node.process`), not a node.
+5. Threads are out of current graph scope.
 
-## Stable ID conventions (v1)
+## Canonical IDs (v1)
 
-- process: `process:{process}:{pid}`
 - task: `task:{process}:{pid}:{task_id}`
-- thread: `thread:{process}:{thread_name}`
 - future: `future:{process}:{pid}:{future_id}`
 - request: `request:{process}:{pid}:{connection}:{request_id}`
+- response: `response:{process}:{pid}:{connection}:{request_id}`
 - lock: `lock:{process}:{name}`
 - semaphore: `semaphore:{process}:{name}`
-- mpsc: `mpsc:{process}:{name}`
-- oneshot: `oneshot:{process}:{name}`
-- watch: `watch:{process}:{name}`
+- mpsc endpoints: `mpsc:{process}:{name}:tx|rx`
+- oneshot endpoints: `oneshot:{process}:{name}:tx|rx`
+- watch endpoints: `watch:{process}:{name}:tx|rx`
+- roam channel endpoints: `roam-channel:{process}:{channel_id}:tx|rx`
 - oncecell: `oncecell:{process}:{name}`
-- roam channel: `roam-channel:{process}:{channel_id}`
-- socket: `socket:{process}:{fd}`
 
-## Wrapper integration points
+## Edge model
+
+Only edge kind:
+- `needs`
+
+Required fields:
+- `src_id`
+- `dst_id`
+- `kind = needs`
+
+Optional future field:
+- `observed_at_ns`
+
+Not part of base edge model:
+- `blocking`
+- `duration_ns`
+- `count`
+- `why`
+
+## Wrapper responsibilities
 
 ### peeps-tasks
 
@@ -51,97 +71,67 @@ Emit nodes:
 - task
 - future
 
-Emit edges:
-- task_in_process
-- task_spawns_task
-- task_awaits_future
-- task_wakes_task
-- task_wakes_future
-- future_resumes_task
+Emit `needs` edges:
+- task -> future
+- future -> task/resource only when explicitly measured
+
+Consumer impact:
+- migrate critical callsites to `spawn_tracked*`
+- add metadata-capable `peepable_with_meta(...)` for high-value futures
 
 ### peeps-locks
 
 Emit nodes:
 - lock
 
-Emit edges:
-- task_waits_on_lock
-- lock_held_by_task
+Emit `needs` edges:
+- task -> lock (waiter)
+- lock -> task (holder)
 
-### peeps-sync
+Namespace rule:
+- only `peeps_task_id` is valid for task identity.
+- local holder/waiter token IDs never leave wrapper internals.
 
-Emit nodes:
-- mpsc / oneshot / watch / semaphore / oncecell
-
-Emit edges:
-- task_waits_on_channel
-- task_sends_to_channel
-- task_receives_from_channel
-- task_waits_on_semaphore
-
-#### Mandatory MPSC buffer state (no blind channels)
-
-`mpsc` node `attrs_json` must include:
-- `bounded` (bool)
-- `capacity` (u64|null)
-- `queue_len` (u64) at snapshot time
-- `high_watermark` (u64) since channel creation
-- `utilization` (0.0..1.0, bounded only)
-- `sender_count` (u64)
-- `send_waiters` (u64)
-- `receiver_closed` (bool)
-- `sender_closed` (bool)
-- `sent_total` (u64)
-- `recv_total` (u64)
-- `created_at_ns` (u64)
-
-Additionally, `peeps-sync` must emit explicit channel edges with measured timing/count:
-- `task_sends_to_channel` (task -> mpsc)
-- `task_receives_from_channel` (task -> mpsc)
-- `task_waits_on_channel` (task -> mpsc, with `duration_ns` when blocked)
-
-If bounded channel internals cannot provide exact `queue_len`, wrapper must maintain an explicit atomic occupancy counter at wrapper boundaries (increment on successful send, decrement on successful recv). No estimation from `sent-recv` at query time.
-
-### peeps-threads
+### peeps-sync (tokio channels + semaphore + oncecell)
 
 Emit nodes:
-- thread
+- channel endpoints (tx/rx)
+- semaphore
+- oncecell
 
-Emit edges:
-- thread_runs_task (only when directly measured)
-- thread_blocks_on_resource (only when directly measured)
+Emit `needs` edges:
+- task -> endpoint (send/recv-side dependencies)
+- endpoint tx -> endpoint rx
+- task -> semaphore
+- task -> oncecell (wait/init dependencies where explicit)
 
-### roam diagnostics
+MPSC required node attrs include:
+- `queue_len`, `capacity`, `high_watermark`, `sender_count`, `send_waiters`, closed flags, totals
+
+### roam diagnostics bridge
 
 Emit nodes:
-- request
-- roam-channel
-- socket (when fd is known)
+- request + response
+- roam-channel endpoints
 
-Emit edges:
-- request_handled_by_task
-- request_parent
-- request_waits_on_request (cross-process chain when metadata explicitly carries parent)
-- request_uses_channel
-- request_uses_socket
+Emit `needs` edges:
+- request -> response (receiver emits this edge)
+- request -> downstream request (explicit propagated context only)
+- task/request -> roam-channel endpoint when explicitly linked
+- roam-channel tx -> roam-channel rx
 
-## ProcessDump migration
-
-`ProcessDump.graph: Option<GraphSnapshot>` is the migration bridge.
-During migration we may keep legacy typed sections, but `graph` is source-of-truth for `peeps-web`.
+Request attrs requirement:
+- include Roam-style `args_preview` (readable scalars + middle-elided large binaries)
 
 ## Hard validation rules
- 
-At ingest (`peeps-web`) reject or quarantine edges when:
-- `origin != Explicit`
-- `src_id` missing node in same snapshot
-- `dst_id` missing node in same snapshot
-- unknown/empty `kind`
 
-At CI level fail if any code path constructs non-explicit causal edges.
+At ingest, reject/quarantine rows when:
+- edge kind != `needs`
+- `src_id` or `dst_id` missing in same snapshot
+- empty/unknown node kind
 
 ## Acceptance criteria
 
-1. Each wrapper crate emits canonical nodes/edges via `GraphSnapshotBuilder`.
-2. `peeps-web` can build request-centered subgraphs from canonical rows only.
-3. No code path in repo emits inferred/derived/heuristic edges.
+1. Wrapper crates emit canonical nodes + `needs` edges only.
+2. No inferred/derived edges are persisted.
+3. `peeps-web` request-centered graph traversal works from canonical rows only.

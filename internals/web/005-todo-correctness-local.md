@@ -2,43 +2,42 @@
 
 Status: todo
 Owner: wg-quality
-Scope: local correctness checks only (single developer workflow)
+Scope: local correctness checks only
 
 ## Goal
 
-Ensure graph data is correct and explicit on a local machine.
-No perf benchmarking. No rollout plan.
+Verify canonical graph correctness on a single local machine.
+No perf benchmarking. No rollout planning.
 
-## Local correctness checks
+## Checks
 
 1. Snapshot synchronization
 - `Jump to now` creates one `snapshot_id`.
-- Connected processes respond into that same `snapshot_id`.
-- Missing responders are marked with explicit status.
+- connected processes replying to that pull are recorded under same `snapshot_id`.
+- missing responders are explicit in `snapshot_processes`.
 
-2. Atomic writes
-- Process reply write is transactional.
-- Failed ingest does not leave partial rows for that process reply.
+2. Write integrity
+- per-process reply writes are transactional.
+- failed ingest does not leave partial rows for that reply.
 
-3. Canonical identity
-- Node IDs follow conventions exactly.
-- Edge source/destination IDs point to existing nodes in same snapshot.
+3. Node/edge integrity
+- every edge source and destination exists as a node in same snapshot.
+- node IDs follow conventions.
 
-4. Explicit-only edges
-- All stored causal edges are explicit instrumentation events.
-- No inferred/derived/heuristic edges in storage.
+4. Edge model integrity
+- all persisted edges have `kind = 'needs'`.
+- no inferred/derived/heuristic edges in storage.
 
-5. Resource-track completeness
-- For each completed `007-*` track:
-  - required node kind appears
-  - required attrs exist
-  - required edge kinds appear
+5. Track completeness (for finished 007 tracks)
+- required node kinds appear.
+- required node attrs exist.
+- required dependency patterns appear.
 
-## Quick local validation queries
+## Quick validation SQL
 
 ```sql
--- Missing node references in edges
-SELECT e.kind, e.src_id, e.dst_id
+-- Missing endpoints
+SELECT e.src_id, e.dst_id
 FROM edges e
 LEFT JOIN nodes ns ON ns.snapshot_id = e.snapshot_id AND ns.id = e.src_id
 LEFT JOIN nodes nd ON nd.snapshot_id = e.snapshot_id AND nd.id = e.dst_id
@@ -47,7 +46,16 @@ LIMIT 50;
 ```
 
 ```sql
--- Node counts by kind
+-- Non-needs edges must be zero
+SELECT kind, COUNT(*)
+FROM edges
+WHERE snapshot_id = ?1
+GROUP BY kind
+HAVING kind <> 'needs';
+```
+
+```sql
+-- Node kind coverage
 SELECT kind, COUNT(*)
 FROM nodes
 WHERE snapshot_id = ?1
@@ -55,17 +63,8 @@ GROUP BY kind
 ORDER BY COUNT(*) DESC;
 ```
 
-```sql
--- Edge counts by kind
-SELECT kind, COUNT(*)
-FROM edges
-WHERE snapshot_id = ?1
-GROUP BY kind
-ORDER BY COUNT(*) DESC;
-```
-
 ## Acceptance criteria
 
-1. Local stuck-request workflow is reliable from one `Jump to now` snapshot.
+1. Local stuck-request workflow is reliable after `Jump to now`.
 2. Edge/node integrity checks pass on live local runs.
-3. No heuristic edges exist in stored snapshots.
+3. Edge table contains only `needs` edges.

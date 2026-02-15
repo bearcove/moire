@@ -6,7 +6,7 @@ Priority: P0
 
 ## Mission
 
-Represent instrumented futures as first-class nodes and explicit wait/wake/resume edges.
+Represent instrumented futures as first-class nodes with explicit `needs` dependencies.
 
 ## Current context
 
@@ -31,10 +31,10 @@ Required attrs_json:
 - `total_pending_ns`
 - `metadata_json` (arbitrary key/value metadata)
 
-Required edges:
-- `task_awaits_future` (`task -> future`)
-- `task_wakes_future` (`task -> future`)
-- `future_resumes_task` (`future -> task`)
+Required `needs` edges:
+- `task -> future` (task progress depends on future progress)
+- `future -> task` only when explicitly measured as a wake/resume dependency
+- `future -> resource` only when explicitly measured
 
 ## Implementation steps
 
@@ -42,8 +42,8 @@ Required edges:
 - `peepable_with_meta(future, label, metadata)`
 - keep `peepable(label)` as convenience wrapper.
 2. Persist metadata on future node attrs.
-3. Emit only explicitly recorded wait/wake/resume edges.
-4. Keep edge durations/counts in explicit fields (`duration_ns`, `count`, attrs overflow only for extra details).
+3. Emit only explicitly recorded `needs` dependencies.
+4. Do not require duration/count semantics on edges.
 
 ## Consumer changes
 
@@ -64,9 +64,12 @@ WHERE snapshot_id = ?1 AND kind = 'future';
 ```
 
 ```sql
-SELECT kind, COUNT(*)
+SELECT COUNT(*)
 FROM edges
 WHERE snapshot_id = ?1
-  AND kind IN ('task_awaits_future','task_wakes_future','future_resumes_task')
-GROUP BY kind;
+  AND kind = 'needs'
+  AND (
+    (src_id LIKE 'task:%' AND dst_id LIKE 'future:%')
+    OR (src_id LIKE 'future:%' AND dst_id LIKE 'task:%')
+  );
 ```

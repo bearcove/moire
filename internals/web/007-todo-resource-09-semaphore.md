@@ -6,7 +6,7 @@ Priority: P1
 
 ## Mission
 
-Make semaphore contention and wait duration explicit.
+Make semaphore contention explicit in node state + `needs` dependencies.
 
 ## Current context
 
@@ -31,14 +31,13 @@ Required attrs_json:
 - `high_waiters_watermark`
 - `creator_task_id`
 
-Required edges:
-- `task_waits_on_semaphore` with measured `duration_ns`
-- optional `task_acquires_semaphore` on acquire success
+Required `needs` edges:
+- `task -> semaphore` when task progress depends on permit availability
 
 ## Implementation steps
 
 1. Instrument all acquire paths (borrowed + owned + try variants).
-2. Emit wait edge only for actual waiting paths.
+2. Emit `task -> semaphore` `needs` edges from explicitly measured dependency paths.
 3. Keep try-acquire failures as explicit attrs/counters, not fake wait edges.
 4. Track watermark metrics in wrapper state.
 
@@ -50,8 +49,10 @@ Required edges:
 ## Validation SQL
 
 ```sql
-SELECT kind, COUNT(*)
+SELECT COUNT(*)
 FROM edges
-WHERE snapshot_id = ?1 AND kind LIKE '%semaphore%'
-GROUP BY kind;
+WHERE snapshot_id = ?1
+  AND kind = 'needs'
+  AND src_id LIKE 'task:%'
+  AND dst_id LIKE 'semaphore:%';
 ```

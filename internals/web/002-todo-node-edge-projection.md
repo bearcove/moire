@@ -2,106 +2,75 @@
 
 Status: todo
 Owner: wg-projection
-Scope: `crates/peeps-web` normalization layer
+Scope: wrapper emission -> canonical graph rows
 
 ## Goal
 
-Project `ProcessDump` into canonical nodes/edges with stable IDs.
+Project instrumentation output into one graph model:
+- canonical nodes
+- canonical `needs` edges
 
-Canonical wrapper emission API is defined in `peeps-types`:
-- `GraphNodeSnapshot`
-- `GraphEdgeSnapshot`
-- `GraphSnapshotBuilder`
-- `GraphEdgeOrigin::Explicit` (only allowed provenance)
+This spec must match `/Users/amos/bearcove/peeps/internals/web/GRAPH.md`.
+
+## Node model
+
+Every runtime/resource entity is a node with:
+- `id`
+- `kind`
+- `process` (context/grouping attribute)
+- `attrs_json`
+
+Not a node:
+- process itself
+- thread itself (out of current scope)
+
+## Edge model
+
+Only edge kind:
+- `needs`
+
+Meaning:
+- source depends on destination for progress.
+
+Required edge fields:
+- `src_id`
+- `dst_id`
+- `kind = needs`
+
+Optional edge fields (future):
+- `observed_at_ns`
+
+Not in base model:
+- `blocking`
+- `duration_ns`
+- `count`
+- `why` enums
+- per-edge severity
 
 ## ID conventions (v1)
 
-- Process: `process:{process}:{pid}`
-- Task: `task:{process}:{pid}:{task_id}`
-- Future: `future:{process}:{pid}:{future_id}`
-- Request: `request:{process}:{pid}:{connection}:{request_id}`
-- Lock: `lock:{process}:{name}`
-- Channel: `mpsc:{process}:{name}`, `oneshot:{process}:{name}`, `watch:{process}:{name}`
-- Semaphore: `semaphore:{process}:{name}`
-- OnceCell: `oncecell:{process}:{name}`
-- Roam channel: `roam-channel:{process}:{channel_id}`
-- Socket (if present): `socket:{process}:{fd}`
+- task: `task:{process}:{pid}:{task_id}`
+- future: `future:{process}:{pid}:{future_id}`
+- request: `request:{process}:{pid}:{connection}:{request_id}`
+- response: `response:{process}:{pid}:{connection}:{request_id}`
+- lock: `lock:{process}:{name}`
+- semaphore: `semaphore:{process}:{name}`
+- mpsc endpoints: `mpsc:{process}:{name}:tx|rx`
+- oneshot endpoints: `oneshot:{process}:{name}:tx|rx`
+- watch endpoints: `watch:{process}:{name}:tx|rx`
+- roam channel endpoints: `roam-channel:{process}:{channel_id}:tx|rx`
+- oncecell: `oncecell:{process}:{name}`
 
-## Required node kinds (v1)
+## Mandatory dependency patterns
 
-- `process`
-- `task`
-- `future`
-- `request`
-- `resource` sub-kinds encoded in `kind`:
-  - `lock`, `mpsc`, `oneshot`, `watch`, `semaphore`, `oncecell`, `roam_channel`, `socket`, `unknown`
-
-## Required edge kinds (v1)
-
-- topology
-  - `task_in_process` (task -> process)
-  - `request_in_process` (request -> process)
-- causal
-  - `request_handled_by_task` (request -> task)
-  - `task_awaits_future` (task -> future)
-  - `future_waits_on_resource` (future -> resource)
-  - `task_sends_to_channel` (task -> channel)
-  - `task_receives_from_channel` (task -> channel)
-  - `task_waits_on_channel` (task -> channel)
-  - `task_spawns_task` (parent task -> child task)
-  - `task_wakes_task` (source task -> target task)
-  - `task_wakes_future` (source task -> future)
-  - `future_resumes_task` (future -> task)
-  - `request_parent` (child request -> parent request)
-
-## attrs_json contract
-
-Use first-class columns for common edge fields (not buried in JSON):
-
-- `edge_id` (stable id)
-- `src_id`
-- `dst_id`
-- `kind`
-- `process`
-- `seq`
-- `event_ns`
-- `duration_ns` (nullable)
-- `count` (default 1)
-- `label` (nullable)
-- `source_file` (nullable)
-- `source_line` (nullable)
-- `source_col` (nullable)
-
-`edges.attrs_json` is only for optional type-specific overflow fields.
-
-`edges` rows are explicit events only. No synthetic/derived/heuristic edges.
-
-Example explicit edge payload fields:
-
-```json
-{
-  "wait_secs": 0.0,
-  "count": 1
-}
-```
-
-Every `nodes.attrs_json` should include canonical keys per type (`task_id`, `name`, `state`, etc.).
-
-For `mpsc` nodes, required keys are:
-- `bounded`
-- `capacity`
-- `queue_len`
-- `high_watermark`
-- `utilization` (bounded only)
-- `sender_count`
-- `send_waiters`
-- `sender_closed`
-- `receiver_closed`
-- `sent_total`
-- `recv_total`
+- task -> future
+- future -> lock/channel/semaphore/oncecell (when explicitly measured)
+- channel tx -> channel rx
+- request -> response
+- request -> downstream request (explicit propagation only)
 
 ## Acceptance criteria
 
-1. Same semantic relationship always maps to same node IDs and edge kinds.
-2. Selected stuck request can be expanded to a connected subgraph using only canonical edge kinds.
-3. All causal edges in storage come from explicit instrumentation data only.
+1. No edge kinds other than `needs` are persisted.
+2. No inferred/derived edges are persisted.
+3. Channel and RPC dual-node patterns are represented (tx/rx, request/response).

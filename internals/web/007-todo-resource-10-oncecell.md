@@ -27,16 +27,14 @@ Required attrs_json:
 - `age_ns`
 - `init_duration_ns`
 
-Required edges:
-- `task_initializes_oncecell`
-- `task_waits_on_oncecell`
+Required `needs` edges:
+- `task -> oncecell` when task depends on initialization completion
 
 ## Implementation steps
 
 1. Emit oncecell node each snapshot.
-2. Emit init edge when task enters initializer closure.
-3. Emit wait edge when task waits for another initializer to finish.
-4. Use explicit task IDs only; no guessed actor linking.
+2. Emit `task -> oncecell` `needs` edge on explicit init/wait dependency paths.
+3. Use explicit task IDs only; no guessed actor linking.
 
 ## Consumer changes
 
@@ -46,8 +44,10 @@ Required edges:
 ## Validation SQL
 
 ```sql
-SELECT kind, COUNT(*)
+SELECT COUNT(*)
 FROM edges
-WHERE snapshot_id = ?1 AND kind IN ('task_initializes_oncecell','task_waits_on_oncecell')
-GROUP BY kind;
+WHERE snapshot_id = ?1
+  AND kind = 'needs'
+  AND src_id LIKE 'task:%'
+  AND dst_id LIKE 'oncecell:%';
 ```
