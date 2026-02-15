@@ -41,3 +41,4 @@ tokio = { version = "1.49", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
 mime_guess = "2"
+ulid = "1"

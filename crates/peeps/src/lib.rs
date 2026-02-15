@@ -2,7 +2,7 @@
 //!
 //! This crate provides the main API for instrumenting your application:
 //! - `peeps::init()` - Initialize all instrumentation
-//! - `peeps::collect_dump()` - Manually collect a diagnostic dump
+//! - `peeps::collect_graph()` - Collect canonical graph snapshot data
 
 mod collect;
 
@@ -12,12 +12,11 @@ mod dashboard_client;
 pub use peeps_sync as sync;
 pub use peeps_tasks as tasks;
 pub use peeps_threads as threads;
-pub use peeps_types::{self as types, Diagnostics, ProcessDump};
+pub use peeps_types::{self as types, Diagnostics};
 
 #[cfg(feature = "locks")]
 pub use peeps_locks as locks;
 
-pub use collect::collect_dump;
 pub use collect::collect_graph;
 
 /// Initialize peeps instrumentation.

@@ -340,79 +340,21 @@ pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
 // ── emit_graph ──────────────────────────────────────────
 
 #[cfg(feature = "diagnostics")]
-pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
-    use peeps_types::{GraphEdgeOrigin, GraphEdgeSnapshot, GraphNodeSnapshot, GraphSnapshotBuilder};
+pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
+    use peeps_types::{GraphNodeSnapshot, GraphSnapshotBuilder};
 
-    let now = std::time::Instant::now();
     let mut builder = GraphSnapshotBuilder::new();
-
-    // Build last_wake_from_task_id lookup: target_task_id → most recent source_task_id
-    let last_wake_from: std::collections::HashMap<TaskId, TaskId> = {
-        let registry = crate::wakes::WAKE_REGISTRY.lock().unwrap();
-        let mut map = std::collections::HashMap::new();
-        if let Some(edges) = registry.as_ref() {
-            for (&(source_task_id, target_task_id), _edge) in edges.iter() {
-                if let Some(src) = source_task_id {
-                    map.insert(target_task_id, src);
-                }
-            }
-        }
-        map
-    };
-
-    // Task nodes
-    {
-        let registry = crate::tasks::TASK_REGISTRY.lock().unwrap();
-        if let Some(tasks) = registry.as_ref() {
-            let cutoff = now - std::time::Duration::from_secs(30);
-            for task in tasks.iter() {
-                let state = task.state.lock().unwrap();
-                if state.state == TaskState::Completed && task.spawned_at <= cutoff {
-                    continue;
-                }
-                let state_str = match state.state {
-                    TaskState::Pending => "pending",
-                    TaskState::Polling => "polling",
-                    TaskState::Completed => "completed",
-                };
-                let spawned_at_ns =
-                    now.duration_since(task.spawned_at).as_nanos() as u64;
-
-                let mut attrs = String::with_capacity(256);
-                attrs.push('{');
-                write_json_kv_u64(&mut attrs, "task_id", task.id, true);
-                write_json_kv_str(&mut attrs, "name", &task.name, false);
-                write_json_kv_str(&mut attrs, "state", state_str, false);
-                write_json_kv_u64(&mut attrs, "spawned_at_ns", spawned_at_ns, false);
-                if let Some(pid) = task.parent_id {
-                    write_json_kv_u64(&mut attrs, "parent_task_id", pid, false);
-                }
-                if !task.spawn_backtrace.is_empty() {
-                    write_json_kv_str(&mut attrs, "spawn_backtrace", &task.spawn_backtrace, false);
-                }
-                if let Some(wake_src) = last_wake_from.get(&task.id) {
-                    write_json_kv_u64(&mut attrs, "last_wake_from_task_id", *wake_src, false);
-                }
-                attrs.push_str(",\"meta\":{}");
-                attrs.push('}');
-
-                builder.push_node(GraphNodeSnapshot {
-                    id: peeps_types::canonical_id::task(proc_key, task.id),
-                    kind: "task".to_string(),
-                    process: proc_key.to_string(),
-                    proc_key: proc_key.to_string(),
-                    label: Some(task.name.clone()),
-                    attrs_json: attrs,
-                });
-            }
-        }
-    }
+    let mut future_node_ids: std::collections::HashMap<FutureId, String> =
+        std::collections::HashMap::new();
 
     // Future nodes
     {
         let registry = crate::futures::FUTURE_WAIT_REGISTRY.lock().unwrap();
         if let Some(waits) = registry.as_ref() {
             for (&future_id, wait) in waits.iter() {
+                let node_id = peeps_types::new_node_id("future");
+                future_node_ids.insert(future_id, node_id.clone());
+
                 let mut attrs = String::with_capacity(256);
                 attrs.push('{');
                 write_json_kv_u64(&mut attrs, "future_id", future_id, true);
@@ -438,50 +380,13 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
                 attrs.push('}');
 
                 builder.push_node(GraphNodeSnapshot {
-                    id: peeps_types::canonical_id::future(proc_key, future_id),
+                    id: node_id,
                     kind: "future".to_string(),
-                    process: proc_key.to_string(),
+                    process: process_name.to_string(),
                     proc_key: proc_key.to_string(),
                     label: Some(wait.resource.clone()),
                     attrs_json: attrs,
                 });
-            }
-        }
-    }
-
-    // task → future edges (from poll edges — explicit measurement)
-    {
-        let registry = crate::futures::FUTURE_POLL_EDGE_REGISTRY.lock().unwrap();
-        if let Some(edges) = registry.as_ref() {
-            for (&(task_id, future_id), _edge) in edges.iter() {
-                builder.push_edge(GraphEdgeSnapshot {
-                    src_id: peeps_types::canonical_id::task(proc_key, task_id),
-                    dst_id: peeps_types::canonical_id::future(proc_key, future_id),
-                    kind: "needs".to_string(),
-                    observed_at_ns: None,
-                    attrs_json: "{}".to_string(),
-                    origin: GraphEdgeOrigin::Explicit,
-                });
-            }
-        }
-    }
-
-    // task → task edges (from wake edges — explicit wake dependency)
-    {
-        let registry = crate::wakes::WAKE_REGISTRY.lock().unwrap();
-        if let Some(edges) = registry.as_ref() {
-            for (&(source_task_id, target_task_id), _edge) in edges.iter() {
-                // Only emit when source is known (explicit dependency)
-                if let Some(src_id) = source_task_id {
-                    builder.push_edge(GraphEdgeSnapshot {
-                        src_id: peeps_types::canonical_id::task(proc_key, src_id),
-                        dst_id: peeps_types::canonical_id::task(proc_key, target_task_id),
-                        kind: "needs".to_string(),
-                        observed_at_ns: None,
-                        attrs_json: "{}".to_string(),
-                        origin: GraphEdgeOrigin::Explicit,
-                    });
-                }
             }
         }
     }
@@ -491,7 +396,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
 
 #[cfg(not(feature = "diagnostics"))]
 #[inline(always)]
-pub fn emit_graph(_proc_key: &str) -> GraphSnapshot {
+pub fn emit_graph(_process_name: &str, _proc_key: &str) -> GraphSnapshot {
     GraphSnapshot::empty()
 }
 

@@ -81,12 +81,10 @@ pub fn dump_lock_diagnostics() -> String {
 // ── Canonical graph emission ────────────────────────────
 
 #[cfg(feature = "diagnostics")]
-pub fn emit_lock_graph(proc_key: &str) -> peeps_types::GraphSnapshot {
+pub fn emit_lock_graph(process_name: &str, proc_key: &str) -> peeps_types::GraphSnapshot {
     use std::sync::atomic::Ordering;
 
-    use peeps_types::{
-        GraphEdgeOrigin, GraphEdgeSnapshot, GraphNodeSnapshot, GraphSnapshotBuilder,
-    };
+    use peeps_types::{GraphNodeSnapshot, GraphSnapshotBuilder};
 
     use crate::registry::{AcquireKind, LOCK_REGISTRY};
 
@@ -94,7 +92,6 @@ pub fn emit_lock_graph(proc_key: &str) -> peeps_types::GraphSnapshot {
         return peeps_types::GraphSnapshot::empty();
     };
 
-    let process = peeps_types::process_name().unwrap_or("unknown").to_string();
     let mut builder = GraphSnapshotBuilder::new();
 
     for weak in registry.iter() {
@@ -131,7 +128,7 @@ pub fn emit_lock_graph(proc_key: &str) -> peeps_types::GraphSnapshot {
             }
         };
 
-        let node_id = peeps_types::canonical_id::lock(proc_key, info.name);
+        let node_id = peeps_types::new_node_id("lock");
 
         // Build attrs_json
         let mut attrs = String::with_capacity(256);
@@ -146,43 +143,13 @@ pub fn emit_lock_graph(proc_key: &str) -> peeps_types::GraphSnapshot {
         attrs.push('}');
 
         builder.push_node(GraphNodeSnapshot {
-            id: node_id.clone(),
+            id: node_id,
             kind: "lock".to_string(),
-            process: process.clone(),
+            process: process_name.to_string(),
             proc_key: proc_key.to_string(),
             label: Some(info.name.to_string()),
             attrs_json: attrs,
         });
-
-        // Edges: task → lock for each waiter with a known task_id
-        for w in waiters.iter() {
-            if let Some(task_id) = w.peeps_task_id {
-                let src_id = peeps_types::canonical_id::task(proc_key, task_id);
-                builder.push_edge(GraphEdgeSnapshot {
-                    src_id,
-                    dst_id: node_id.clone(),
-                    kind: "needs".to_string(),
-                    observed_at_ns: None,
-                    attrs_json: "{}".to_string(),
-                    origin: GraphEdgeOrigin::Explicit,
-                });
-            }
-        }
-
-        // Edges: lock → task for each holder with a known task_id
-        for h in holders.iter() {
-            if let Some(task_id) = h.peeps_task_id {
-                let dst_id = peeps_types::canonical_id::task(proc_key, task_id);
-                builder.push_edge(GraphEdgeSnapshot {
-                    src_id: node_id.clone(),
-                    dst_id,
-                    kind: "needs".to_string(),
-                    observed_at_ns: None,
-                    attrs_json: "{}".to_string(),
-                    origin: GraphEdgeOrigin::Explicit,
-                });
-            }
-        }
     }
 
     builder.finish()
@@ -190,7 +157,7 @@ pub fn emit_lock_graph(proc_key: &str) -> peeps_types::GraphSnapshot {
 
 #[cfg(not(feature = "diagnostics"))]
 #[inline(always)]
-pub fn emit_lock_graph(_proc_key: &str) -> peeps_types::GraphSnapshot {
+pub fn emit_lock_graph(_process_name: &str, _proc_key: &str) -> peeps_types::GraphSnapshot {
     peeps_types::GraphSnapshot::empty()
 }
 

@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 facet.workspace = true
 inventory.workspace = true
+ulid.workspace = true

@@ -12,10 +12,9 @@ mod tasks;
 mod wakes;
 
 pub use peeps_types::{
-    meta_key, FutureId, FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot,
-    FutureSpawnEdgeSnapshot, FutureWaitSnapshot, FutureWakeEdgeSnapshot, GraphSnapshot,
-    IntoMetaValue, MetaBuilder, MetaValue, PollEvent, PollResult, TaskId, TaskSnapshot, TaskState,
-    WakeEdgeSnapshot,
+    meta_key, FutureId, FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot,
+    FutureWaitSnapshot, FutureWakeEdgeSnapshot, GraphSnapshot, IntoMetaValue, MetaBuilder,
+    MetaValue, PollEvent, PollResult, TaskId, TaskSnapshot, TaskState, WakeEdgeSnapshot,
 };
 
 // ── Public API (delegates to modules) ────────────────────
@@ -88,7 +87,8 @@ pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
 
 /// Emit canonical graph nodes and edges for tasks and futures.
 pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
-    snapshot::emit_graph(proc_key)
+    let process_name = peeps_types::process_name().unwrap_or(proc_key);
+    snapshot::emit_graph(process_name, proc_key)
 }
 
 /// Wrapper future produced by [`peepable`] or [`PeepableFutureExt::peepable`].
@@ -401,7 +401,7 @@ mod tests {
 
     #[cfg(feature = "diagnostics")]
     #[test]
-    fn emit_graph_task_node_has_required_attrs() {
+    fn emit_graph_excludes_task_nodes() {
         init_task_tracking();
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -414,21 +414,10 @@ mod tests {
         });
 
         let graph = emit_graph("test-proc-1");
-        let task_node = graph
-            .nodes
-            .iter()
-            .find(|n| n.kind == "task")
-            .expect("should have a task node");
-
-        assert!(task_node.id.starts_with("task:test-proc-1:"));
-        assert_eq!(task_node.kind, "task");
-
-        let attrs = &task_node.attrs_json;
-        assert!(attrs.contains("\"task_id\":"));
-        assert!(attrs.contains("\"name\":"));
-        assert!(attrs.contains("\"state\":"));
-        assert!(attrs.contains("\"spawned_at_ns\":"));
-        assert!(attrs.contains("\"meta\":{}"));
+        assert!(
+            graph.nodes.iter().all(|n| n.kind != "task"),
+            "canonical graph should not include task nodes"
+        );
     }
 
     #[cfg(feature = "diagnostics")]
@@ -502,7 +491,9 @@ mod tests {
             let future_node = graph
                 .nodes
                 .iter()
-                .find(|n| n.kind == "future" && n.attrs_json.contains("\"label\":\"bare.resource\""))
+                .find(|n| {
+                    n.kind == "future" && n.attrs_json.contains("\"label\":\"bare.resource\"")
+                })
                 .expect("should have a future node for bare.resource");
 
             assert!(future_node.attrs_json.contains("\"meta\":{}"));
@@ -514,7 +505,7 @@ mod tests {
 
     #[cfg(feature = "diagnostics")]
     #[test]
-    fn emit_graph_has_task_to_future_edges() {
+    fn emit_graph_has_no_task_edges() {
         init_task_tracking();
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -532,16 +523,12 @@ mod tests {
             tokio::task::yield_now().await;
 
             let graph = emit_graph("test-proc-4");
-            let edge = graph
-                .edges
-                .iter()
-                .find(|e| e.src_id.starts_with("task:") && e.dst_id.starts_with("future:"))
-                .expect("should have a task→future edge");
-
-            assert_eq!(edge.kind, "needs");
-            assert_eq!(
-                edge.origin,
-                peeps_types::GraphEdgeOrigin::Explicit
+            assert!(
+                graph
+                    .edges
+                    .iter()
+                    .all(|e| !e.src_id.starts_with("task:") && !e.dst_id.starts_with("task:")),
+                "canonical graph should not include task-based edges"
             );
 
             notify.notify_one();
@@ -560,18 +547,17 @@ mod tests {
             .unwrap();
         rt.block_on(async {
             let fut = peepable(async { "done" }, "ephemeral.resource");
-            let _ = spawn_tracked("ephemeral-task", async move {
-                fut.await
-            })
-            .await;
+            let _ = spawn_tracked("ephemeral-task", fut).await;
 
             let graph = emit_graph("test-proc-drop");
-            let future_node = graph
-                .nodes
-                .iter()
-                .find(|n| n.kind == "future" && n.attrs_json.contains("\"label\":\"ephemeral.resource\""));
+            let future_node = graph.nodes.iter().find(|n| {
+                n.kind == "future" && n.attrs_json.contains("\"label\":\"ephemeral.resource\"")
+            });
 
-            assert!(future_node.is_none(), "dropped future should not appear in graph");
+            assert!(
+                future_node.is_none(),
+                "dropped future should not appear in graph"
+            );
         });
     }
 }

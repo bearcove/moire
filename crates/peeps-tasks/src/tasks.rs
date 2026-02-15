@@ -13,8 +13,7 @@ tokio::task_local! {
 }
 
 #[cfg(feature = "diagnostics")]
-pub(crate) static NEXT_TASK_ID: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(1);
+pub(crate) static NEXT_TASK_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[cfg(feature = "diagnostics")]
 pub(crate) static TASK_REGISTRY: std::sync::Mutex<Option<Vec<std::sync::Arc<TaskInfo>>>> =
@@ -28,7 +27,6 @@ pub(crate) struct TaskInfo {
     pub(crate) name: String,
     pub(crate) parent_id: Option<TaskId>,
     pub(crate) spawned_at: std::time::Instant,
-    pub(crate) spawn_backtrace: String,
     pub(crate) state: std::sync::Mutex<TaskInfoState>,
 }
 
@@ -43,7 +41,6 @@ pub(crate) struct PollEventInternal {
     pub(crate) started_at: std::time::Instant,
     pub(crate) duration: Option<std::time::Duration>,
     pub(crate) result: PollResult,
-    pub(crate) backtrace: Option<String>,
 }
 
 #[cfg(feature = "diagnostics")]
@@ -69,18 +66,13 @@ impl TaskInfo {
             state: state.state,
             spawned_at_secs: self.spawned_at.elapsed().as_secs_f64() - age.as_secs_f64(),
             age_secs: age.as_secs_f64(),
-            spawn_backtrace: self.spawn_backtrace.clone(),
             poll_events: state
                 .poll_events
                 .iter()
                 .map(|e| PollEvent {
-                    started_at_secs: e
-                        .started_at
-                        .duration_since(self.spawned_at)
-                        .as_secs_f64(),
+                    started_at_secs: e.started_at.duration_since(self.spawned_at).as_secs_f64(),
                     duration_secs: e.duration.map(|d| d.as_secs_f64()),
                     result: e.result,
-                    backtrace: e.backtrace.clone(),
                 })
                 .collect(),
             parent_task_id: self.parent_id,
@@ -88,7 +80,7 @@ impl TaskInfo {
         }
     }
 
-    pub(crate) fn record_poll_start(&self, backtrace: Option<String>) {
+    pub(crate) fn record_poll_start(&self) {
         let mut state = self.state.lock().unwrap();
         state.state = TaskState::Polling;
 
@@ -100,7 +92,6 @@ impl TaskInfo {
             started_at: std::time::Instant::now(),
             duration: None,
             result: PollResult::Pending,
-            backtrace,
         });
     }
 
@@ -142,8 +133,7 @@ impl<F: Future> Future for TrackedFuture<F> {
         #[allow(unsafe_code)]
         let inner = unsafe { std::pin::Pin::new_unchecked(&mut this.inner) };
 
-        let backtrace = Some(format!("{:?}", backtrace::Backtrace::new()));
-        this.task_info.record_poll_start(backtrace);
+        this.task_info.record_poll_start();
 
         let task_id = this.task_info.id;
         let instrumented_waker =
@@ -152,8 +142,7 @@ impl<F: Future> Future for TrackedFuture<F> {
                 target_task_id: task_id,
             }));
         let mut instrumented_cx = std::task::Context::from_waker(&instrumented_waker);
-        let result =
-            CURRENT_TASK_ID.sync_scope(task_id, || inner.poll(&mut instrumented_cx));
+        let result = CURRENT_TASK_ID.sync_scope(task_id, || inner.poll(&mut instrumented_cx));
 
         let poll_result = match result {
             std::task::Poll::Ready(_) => PollResult::Ready,
@@ -215,10 +204,7 @@ fn decorate_task_name(name: String, caller: &'static std::panic::Location<'stati
 
 #[cfg(feature = "diagnostics")]
 #[track_caller]
-pub fn spawn_tracked<F>(
-    name: impl Into<String>,
-    future: F,
-) -> tokio::task::JoinHandle<F::Output>
+pub fn spawn_tracked<F>(name: impl Into<String>, future: F) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
@@ -230,14 +216,11 @@ where
     let name = decorate_task_name(name.into(), std::panic::Location::caller());
     let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
     let parent_id = current_task_id();
-    let spawn_backtrace = format!("{:?}", backtrace::Backtrace::new());
-
     let task_info = Arc::new(TaskInfo {
         id: task_id,
         name,
         parent_id,
         spawned_at: Instant::now(),
-        spawn_backtrace,
         state: std::sync::Mutex::new(TaskInfoState {
             state: TaskState::Pending,
             poll_events: Vec::new(),
@@ -264,10 +247,7 @@ where
 #[cfg(not(feature = "diagnostics"))]
 #[inline(always)]
 #[track_caller]
-pub fn spawn_tracked<F>(
-    _name: impl Into<String>,
-    future: F,
-) -> tokio::task::JoinHandle<F::Output>
+pub fn spawn_tracked<F>(_name: impl Into<String>, future: F) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,

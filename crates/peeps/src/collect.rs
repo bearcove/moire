@@ -317,17 +317,7 @@ fn emit_roam_graph(
                         origin: GraphEdgeOrigin::Explicit,
                     });
 
-                    // response → task edge when handler task is known
-                    if let Some(task_id) = req.server_task_id.or(req.task_id) {
-                        graph.edges.push(GraphEdgeSnapshot {
-                            src_id: response_id,
-                            dst_id: canonical_id::task(proc_key, task_id),
-                            kind: "needs".to_string(),
-                            observed_at_ns: None,
-                            attrs_json: "{}".to_string(),
-                            origin: GraphEdgeOrigin::Explicit,
-                        });
-                    }
+                    // Task linkage stays in attrs metadata, not canonical graph edges.
                 }
             }
         }
@@ -362,17 +352,7 @@ fn emit_roam_graph(
             attrs_json: attrs,
         });
 
-        // task → endpoint edge
-        if let Some(task_id) = ch.task_id {
-            graph.edges.push(GraphEdgeSnapshot {
-                src_id: canonical_id::task(proc_key, task_id),
-                dst_id: node_id.clone(),
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-        }
+        // Task linkage stays in attrs metadata, not canonical graph edges.
 
         // request → endpoint edge
         if let Some(request_id) = ch.request_id {
@@ -881,15 +861,12 @@ mod tests {
         assert!(graph.nodes[0].attrs_json.contains("\"correlation_key\":\"conn_2:7\""));
         assert!(graph.nodes[0].attrs_json.contains("\"server_task_id\":20"));
 
-        // Should have 2 edges: request→response, response→task
-        assert_eq!(graph.edges.len(), 2);
+        // Should have 1 edge: request→response
+        assert_eq!(graph.edges.len(), 1);
         // request→response uses caller metadata to build cross-process ID
         assert_eq!(graph.edges[0].src_id, "request:frontend:conn_1:42");
         assert_eq!(graph.edges[0].dst_id, "response:backend-200:conn_2:7");
         assert_eq!(graph.edges[0].kind, "needs");
-        // response→task
-        assert_eq!(graph.edges[1].src_id, "response:backend-200:conn_2:7");
-        assert_eq!(graph.edges[1].dst_id, "task:backend-200:20");
     }
 
     #[test]
@@ -952,11 +929,9 @@ mod tests {
         assert!(tx_node.attrs_json.contains("\"queue_depth\":5"));
         assert!(rx_node.attrs_json.contains("\"queue_depth\":null"));
 
-        // Edges: task→tx, request→tx, task→rx, request→rx, tx→rx
-        assert_eq!(graph.edges.len(), 5);
+        // Edges: request→tx, request→rx, tx→rx
+        assert_eq!(graph.edges.len(), 3);
         let has_edge = |src: &str, dst: &str| graph.edges.iter().any(|e| e.src_id == src && e.dst_id == dst);
-        assert!(has_edge("task:app-300:10", "roam-channel:app-300:99:tx"));
-        assert!(has_edge("task:app-300:11", "roam-channel:app-300:99:rx"));
         assert!(has_edge("request:app-300:conn_1:42", "roam-channel:app-300:99:tx"));
         assert!(has_edge("request:app-300:conn_1:42", "roam-channel:app-300:99:rx"));
         assert!(has_edge("roam-channel:app-300:99:tx", "roam-channel:app-300:99:rx"));

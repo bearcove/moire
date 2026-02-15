@@ -53,7 +53,7 @@ pub fn snapshot_all() -> SyncSnapshot {
 // ── Canonical graph emission ────────────────────────────
 
 #[cfg(feature = "diagnostics")]
-pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
+pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
     use std::sync::atomic::Ordering;
 
     use peeps_types::{
@@ -78,8 +78,8 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
         let sender_closed = info.sender_closed.load(Ordering::Relaxed) != 0;
         let receiver_closed = info.receiver_closed.load(Ordering::Relaxed) != 0;
 
-        let tx_id = peeps_types::canonical_id::mpsc(proc_key, name, "tx");
-        let rx_id = peeps_types::canonical_id::mpsc(proc_key, name, "rx");
+        let tx_id = peeps_types::new_node_id("mpsc_tx");
+        let rx_id = peeps_types::new_node_id("mpsc_rx");
 
         // TX node
         {
@@ -114,7 +114,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             builder.push_node(GraphNodeSnapshot {
                 id: tx_id.clone(),
                 kind: "mpsc_tx".to_string(),
-                process: proc_key.to_string(),
+                process: process_name.to_string(),
                 proc_key: proc_key.to_string(),
                 label: Some(format!("{name}:tx")),
                 attrs_json: attrs,
@@ -140,7 +140,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             builder.push_node(GraphNodeSnapshot {
                 id: rx_id.clone(),
                 kind: "mpsc_rx".to_string(),
-                process: proc_key.to_string(),
+                process: process_name.to_string(),
                 proc_key: proc_key.to_string(),
                 label: Some(format!("{name}:rx")),
                 attrs_json: attrs,
@@ -157,26 +157,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             origin: GraphEdgeOrigin::Explicit,
         });
 
-        // task → tx edge (creator)
-        if let Some(tid) = info.creator_task_id {
-            let task_id = peeps_types::canonical_id::task(proc_key, tid);
-            builder.push_edge(GraphEdgeSnapshot {
-                src_id: task_id.clone(),
-                dst_id: tx_id,
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-            builder.push_edge(GraphEdgeSnapshot {
-                src_id: task_id,
-                dst_id: rx_id,
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-        }
+        // Task relationships remain in attrs, not canonical graph edges.
     }
 
     // ── oneshot channels ─────────────────────────────────
@@ -194,8 +175,8 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
         let sender_closed = state_val == 3 || state_val == 2;
         let receiver_closed = state_val == 4 || state_val == 2;
 
-        let tx_id = peeps_types::canonical_id::oneshot(proc_key, name, "tx");
-        let rx_id = peeps_types::canonical_id::oneshot(proc_key, name, "rx");
+        let tx_id = peeps_types::new_node_id("oneshot_tx");
+        let rx_id = peeps_types::new_node_id("oneshot_rx");
 
         // TX node
         {
@@ -215,7 +196,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             builder.push_node(GraphNodeSnapshot {
                 id: tx_id.clone(),
                 kind: "oneshot_tx".to_string(),
-                process: proc_key.to_string(),
+                process: process_name.to_string(),
                 proc_key: proc_key.to_string(),
                 label: Some(format!("{name}:tx")),
                 attrs_json: attrs,
@@ -240,7 +221,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             builder.push_node(GraphNodeSnapshot {
                 id: rx_id.clone(),
                 kind: "oneshot_rx".to_string(),
-                process: proc_key.to_string(),
+                process: process_name.to_string(),
                 proc_key: proc_key.to_string(),
                 label: Some(format!("{name}:rx")),
                 attrs_json: attrs,
@@ -257,26 +238,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             origin: GraphEdgeOrigin::Explicit,
         });
 
-        // task → endpoint edges (creator)
-        if let Some(tid) = info.creator_task_id {
-            let task_id = peeps_types::canonical_id::task(proc_key, tid);
-            builder.push_edge(GraphEdgeSnapshot {
-                src_id: task_id.clone(),
-                dst_id: tx_id,
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-            builder.push_edge(GraphEdgeSnapshot {
-                src_id: task_id,
-                dst_id: rx_id,
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-        }
+        // Task relationships remain in attrs, not canonical graph edges.
     }
 
     // ── watch channels ───────────────────────────────────
@@ -286,8 +248,8 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
         let changes = info.changes.load(Ordering::Relaxed);
         let receiver_count = (info.receiver_count)() as u64;
 
-        let tx_id = peeps_types::canonical_id::watch(proc_key, name, "tx");
-        let rx_id = peeps_types::canonical_id::watch(proc_key, name, "rx");
+        let tx_id = peeps_types::new_node_id("watch_tx");
+        let rx_id = peeps_types::new_node_id("watch_rx");
 
         // TX node
         {
@@ -307,7 +269,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             builder.push_node(GraphNodeSnapshot {
                 id: tx_id.clone(),
                 kind: "watch_tx".to_string(),
-                process: proc_key.to_string(),
+                process: process_name.to_string(),
                 proc_key: proc_key.to_string(),
                 label: Some(format!("{name}:tx")),
                 attrs_json: attrs,
@@ -332,7 +294,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             builder.push_node(GraphNodeSnapshot {
                 id: rx_id.clone(),
                 kind: "watch_rx".to_string(),
-                process: proc_key.to_string(),
+                process: process_name.to_string(),
                 proc_key: proc_key.to_string(),
                 label: Some(format!("{name}:rx")),
                 attrs_json: attrs,
@@ -349,32 +311,13 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             origin: GraphEdgeOrigin::Explicit,
         });
 
-        // task → endpoint edges (creator)
-        if let Some(tid) = info.creator_task_id {
-            let task_id = peeps_types::canonical_id::task(proc_key, tid);
-            builder.push_edge(GraphEdgeSnapshot {
-                src_id: task_id.clone(),
-                dst_id: tx_id,
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-            builder.push_edge(GraphEdgeSnapshot {
-                src_id: task_id,
-                dst_id: rx_id,
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-        }
+        // Task relationships remain in attrs, not canonical graph edges.
     }
 
     // ── semaphores ───────────────────────────────────────
     for info in reg.semaphore.iter().filter_map(|w| w.upgrade()) {
         let name = &info.name;
-        let node_id = peeps_types::canonical_id::semaphore(proc_key, name);
+        let node_id = peeps_types::new_node_id("semaphore");
         let permits_available = (info.available_permits)() as u64;
         let waiters = info.waiters.load(Ordering::Relaxed);
         let acquires = info.acquires.load(Ordering::Relaxed);
@@ -418,43 +361,13 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
             attrs_json: attrs,
         });
 
-        // task → semaphore edges from active waiters
-        {
-            let active = info.active_waiters.lock().unwrap();
-            let mut seen = std::collections::HashSet::new();
-            for waiter in active.iter() {
-                if waiter.task_id != 0 && seen.insert(waiter.task_id) {
-                    let task_id = peeps_types::canonical_id::task(proc_key, waiter.task_id);
-                    builder.push_edge(GraphEdgeSnapshot {
-                        src_id: task_id,
-                        dst_id: node_id.clone(),
-                        kind: "needs".to_string(),
-                        observed_at_ns: None,
-                        attrs_json: "{}".to_string(),
-                        origin: GraphEdgeOrigin::Explicit,
-                    });
-                }
-            }
-        }
-
-        // task → semaphore edge from creator
-        if let Some(tid) = info.creator_task_id {
-            let task_id = peeps_types::canonical_id::task(proc_key, tid);
-            builder.push_edge(GraphEdgeSnapshot {
-                src_id: task_id,
-                dst_id: node_id,
-                kind: "needs".to_string(),
-                observed_at_ns: None,
-                attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
-            });
-        }
+        // Task relationships remain in attrs/snapshots, not canonical graph edges.
     }
 
     // ── oncecells ────────────────────────────────────────
     for info in reg.once_cell.iter().filter_map(|w| w.upgrade()) {
         let name = &info.name;
-        let node_id = peeps_types::canonical_id::oncecell(proc_key, name);
+        let node_id = peeps_types::new_node_id("oncecell");
         let age_ns = now.duration_since(info.created_at).as_nanos() as u64;
         let state_val = info.state.load(Ordering::Relaxed);
         let state_str = match state_val {
@@ -494,7 +407,7 @@ pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
 
 #[cfg(not(feature = "diagnostics"))]
 #[inline(always)]
-pub fn emit_graph(_proc_key: &str) -> GraphSnapshot {
+pub fn emit_graph(_process_name: &str, _proc_key: &str) -> GraphSnapshot {
     GraphSnapshot::empty()
 }
 

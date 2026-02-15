@@ -34,6 +34,10 @@ pub const PEEPS_CALLER_PROCESS_KEY: &str = "peeps.caller_process";
 pub const PEEPS_CALLER_CONNECTION_KEY: &str = "peeps.caller_connection";
 /// Metadata key for the caller's request ID.
 pub const PEEPS_CALLER_REQUEST_ID_KEY: &str = "peeps.caller_request_id";
+/// Metadata key for the span ID (ULID) assigned to an outgoing request.
+pub const PEEPS_SPAN_ID_KEY: &str = "peeps.span_id";
+/// Metadata key for the chain ID used to derive cross-process channel IDs.
+pub const PEEPS_CHAIN_ID_KEY: &str = "peeps.chain_id";
 
 // ── Task snapshot types ──────────────────────────────────────────
 
@@ -50,7 +54,6 @@ pub struct TaskSnapshot {
     pub state: TaskState,
     pub spawned_at_secs: f64,
     pub age_secs: f64,
-    pub spawn_backtrace: String,
     pub poll_events: Vec<PollEvent>,
     /// Which task spawned this one.
     pub parent_task_id: Option<TaskId>,
@@ -124,7 +127,6 @@ pub struct PollEvent {
     pub started_at_secs: f64,
     pub duration_secs: Option<f64>,
     pub result: PollResult,
-    pub backtrace: Option<String>,
 }
 
 /// Poll result.
@@ -640,7 +642,12 @@ pub struct RequestParentSnapshot {
 #[derive(Debug, Clone, Facet)]
 pub struct GraphNodeSnapshot {
     /// Globally unique node ID within a snapshot.
-    /// Format: `{kind}:{proc_key}:{resource_id_parts...}`
+    ///
+    /// Format: `{kind}:{ulid}` for local-only nodes (task, future, lock, sync).
+    /// For cross-process-referenceable nodes:
+    /// - request: `request:{span_id}` (span_id is a ULID from caller metadata)
+    /// - response: `response:{ulid}`
+    /// - roam channels: `roam_channel_{tx|rx}:{chain_id}:{channel_id}:{tx|rx}`
     pub id: String,
     /// Node kind (e.g. `task`, `future`, `lock`, `mpsc_tx`, `request`).
     pub kind: String,
@@ -980,60 +987,15 @@ pub fn make_proc_key(process_name: &str, pid: u32) -> String {
     format!("{slug}-{pid}")
 }
 
-/// Canonical ID constructors for each node kind.
+/// Generate a fresh ULID-based node ID with a kind prefix.
+///
+/// Format: `{kind}:{ulid}`
+pub fn new_node_id(kind: &str) -> String {
+    format!("{kind}:{}", ulid::Ulid::new())
+}
+
+/// Helpers for ID construction. Node IDs are ULID-based, not structured.
 pub mod canonical_id {
-    use super::sanitize_id_segment;
-
-    pub fn task(proc_key: &str, task_id: u64) -> String {
-        format!("task:{proc_key}:{task_id}")
-    }
-
-    pub fn future(proc_key: &str, future_id: u64) -> String {
-        format!("future:{proc_key}:{future_id}")
-    }
-
-    pub fn request(proc_key: &str, connection: &str, request_id: u64) -> String {
-        format!("request:{proc_key}:{connection}:{request_id}")
-    }
-
-    pub fn response(proc_key: &str, connection: &str, request_id: u64) -> String {
-        format!("response:{proc_key}:{connection}:{request_id}")
-    }
-
-    pub fn lock(proc_key: &str, name: &str) -> String {
-        let name = sanitize_id_segment(name);
-        format!("lock:{proc_key}:{name}")
-    }
-
-    pub fn semaphore(proc_key: &str, name: &str) -> String {
-        let name = sanitize_id_segment(name);
-        format!("semaphore:{proc_key}:{name}")
-    }
-
-    pub fn mpsc(proc_key: &str, name: &str, endpoint: &str) -> String {
-        let name = sanitize_id_segment(name);
-        format!("mpsc:{proc_key}:{name}:{endpoint}")
-    }
-
-    pub fn oneshot(proc_key: &str, name: &str, endpoint: &str) -> String {
-        let name = sanitize_id_segment(name);
-        format!("oneshot:{proc_key}:{name}:{endpoint}")
-    }
-
-    pub fn watch(proc_key: &str, name: &str, endpoint: &str) -> String {
-        let name = sanitize_id_segment(name);
-        format!("watch:{proc_key}:{name}:{endpoint}")
-    }
-
-    pub fn roam_channel(proc_key: &str, channel_id: u64, endpoint: &str) -> String {
-        format!("roam-channel:{proc_key}:{channel_id}:{endpoint}")
-    }
-
-    pub fn oncecell(proc_key: &str, name: &str) -> String {
-        let name = sanitize_id_segment(name);
-        format!("oncecell:{proc_key}:{name}")
-    }
-
     /// Construct a sanitized connection token: `conn_{id}`.
     pub fn connection(id: u64) -> String {
         format!("conn_{id}")
@@ -1042,6 +1004,21 @@ pub mod canonical_id {
     /// Construct a correlation key for request/response pairing.
     pub fn correlation_key(connection: &str, request_id: u64) -> String {
         format!("{connection}:{request_id}")
+    }
+
+    /// Construct a roam channel node ID from chain_id, channel_id, and endpoint.
+    ///
+    /// Both sides of a cross-process channel derive the same ID from shared metadata.
+    pub fn roam_channel(chain_id: &str, channel_id: u64, endpoint: &str) -> String {
+        format!("roam_channel_{endpoint}:{chain_id}:{channel_id}:{endpoint}")
+    }
+
+    /// Construct a request node ID from the span_id (ULID from caller metadata).
+    ///
+    /// The caller generates the span_id and both sides use it to link
+    /// the outgoing request to the incoming response.
+    pub fn request_from_span_id(span_id: &str) -> String {
+        format!("request:{span_id}")
     }
 }
 
@@ -1358,24 +1335,27 @@ mod tests {
     }
 
     #[test]
-    fn canonical_ids() {
-        let pk = "myapp-1234";
-        assert_eq!(canonical_id::task(pk, 5), "task:myapp-1234:5");
-        assert_eq!(canonical_id::future(pk, 10), "future:myapp-1234:10");
-        assert_eq!(
-            canonical_id::request(pk, "conn_3", 7),
-            "request:myapp-1234:conn_3:7"
-        );
-        assert_eq!(
-            canonical_id::response(pk, "conn_3", 7),
-            "response:myapp-1234:conn_3:7"
-        );
-        assert_eq!(canonical_id::lock(pk, "my_lock"), "lock:myapp-1234:my_lock");
-        assert_eq!(
-            canonical_id::mpsc(pk, "queue", "tx"),
-            "mpsc:myapp-1234:queue:tx"
-        );
+    fn new_node_id_format() {
+        let id = new_node_id("task");
+        assert!(id.starts_with("task:"));
+        // ULID is 26 chars
+        assert_eq!(id.len(), "task:".len() + 26);
+        // Two calls produce different IDs
+        let id2 = new_node_id("task");
+        assert_ne!(id, id2);
+    }
+
+    #[test]
+    fn canonical_id_helpers() {
         assert_eq!(canonical_id::connection(99), "conn_99");
         assert_eq!(canonical_id::correlation_key("conn_3", 7), "conn_3:7");
+        assert_eq!(
+            canonical_id::roam_channel("abc123", 5, "tx"),
+            "roam_channel_tx:abc123:5:tx"
+        );
+        assert_eq!(
+            canonical_id::request_from_span_id("01ABCDEF"),
+            "request:01ABCDEF"
+        );
     }
 }
