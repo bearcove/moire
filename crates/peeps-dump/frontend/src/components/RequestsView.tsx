@@ -1,9 +1,11 @@
-import { useState } from "preact/hooks";
+import ELK from "elkjs/lib/elk.bundled.js";
+import type { ElkEdgeSection, ElkExtendedEdge, ElkNode } from "elkjs/lib/elk-api";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import type { ProcessDump, RequestSnapshot } from "../types";
 import { fmtDuration, classNames } from "../util";
 import { Expandable } from "./Expandable";
 import { ResourceLink } from "./ResourceLink";
-import { isActivePath, resourceHref } from "../routes";
+import { isActivePath, navigateTo, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
@@ -31,6 +33,50 @@ interface RequestTaskInteraction {
   kind: "lock" | "mpsc" | "oneshot" | "watch" | "once_cell" | "semaphore" | "roam_channel" | "future_wait";
   ageSecs?: number;
   note?: string;
+}
+
+type RequestGraphNodeKind = "request" | "task" | "future" | "resource";
+
+interface RequestGraphNode {
+  id: string;
+  label: string;
+  kind: RequestGraphNodeKind;
+  href: string | null;
+}
+
+interface RequestGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  severity: "warn" | "danger";
+}
+
+interface RequestGraphLayoutNode {
+  graph: RequestGraphNode;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface RequestGraphLayoutEdge {
+  graph: RequestGraphEdge;
+  path: string;
+  labelX: number;
+  labelY: number;
+}
+
+interface RequestGraphLayout {
+  width: number;
+  height: number;
+  nodes: RequestGraphLayoutNode[];
+  edges: RequestGraphLayoutEdge[];
+}
+
+function truncate(s: string, n: number): string {
+  if (s.length <= n) return s;
+  return `${s.slice(0, n - 1)}…`;
 }
 
 function taskKey(process: string, taskId: number): string {
@@ -202,8 +248,351 @@ function RequestTreeNode({
   );
 }
 
+function sectionPath(section: ElkEdgeSection): string | null {
+  if (!section.startPoint || !section.endPoint) return null;
+  const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+  return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+}
+
+function edgeLabelPos(section: ElkEdgeSection): { x: number; y: number } {
+  if (!section.startPoint || !section.endPoint) return { x: 0, y: 0 };
+  const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+  if (points.length === 1) return { x: points[0].x, y: points[0].y };
+  const mid = Math.floor((points.length - 1) / 2);
+  const a = points[mid];
+  const b = points[Math.min(points.length - 1, mid + 1)];
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 5 };
+}
+
+function RequestInlineGraph({
+  r,
+  dump,
+  interactionsByTask,
+}: {
+  r: FlatRequest;
+  dump: ProcessDump | undefined;
+  interactionsByTask: Map<string, RequestTaskInteraction[]>;
+}) {
+  const [open, setOpen] = useState(false);
+  const graph = useMemo(() => {
+    if (!dump || r.task_id == null) return { nodes: [] as RequestGraphNode[], edges: [] as RequestGraphEdge[] };
+    const nodes = new Map<string, RequestGraphNode>();
+    const edges = new Map<string, RequestGraphEdge>();
+    const tasksById = new Map(dump.tasks.map((t) => [t.id, t]));
+
+    const addNode = (node: RequestGraphNode) => {
+      if (!nodes.has(node.id)) nodes.set(node.id, node);
+    };
+    const addEdge = (edge: RequestGraphEdge) => {
+      if (!edges.has(edge.id)) edges.set(edge.id, edge);
+    };
+
+    const reqHref = resourceHref({
+      kind: "request",
+      process: r.process,
+      connection: r.connection,
+      requestId: r.request_id,
+    });
+    const reqNodeId = `req:${requestNodeKey(r)}`;
+    addNode({
+      id: reqNodeId,
+      label: truncate(`${r.method_name ?? `method_${r.method_id}`} (${fmtDuration(r.elapsed_secs)})`, 44),
+      kind: "request",
+      href: reqHref,
+    });
+
+    const rootTaskId = r.task_id;
+    const rootTask = tasksById.get(rootTaskId);
+    const rootTaskNodeId = `task:${rootTaskId}`;
+    addNode({
+      id: rootTaskNodeId,
+      label: truncate(`${rootTask?.name ?? r.task_name ?? "task"} (#${rootTaskId})`, 44),
+      kind: "task",
+      href: resourceHref({ kind: "task", process: r.process, taskId: rootTaskId }),
+    });
+    addEdge({
+      id: `edge:req-task:${requestNodeKey(r)}:${rootTaskId}`,
+      source: reqNodeId,
+      target: rootTaskNodeId,
+      label: "handled by",
+      severity: "warn",
+    });
+
+    // Parent task lineage (limited depth to keep card graph readable).
+    let lineageCursor = rootTask;
+    let lineageDepth = 0;
+    while (lineageCursor?.parent_task_id != null && lineageDepth < 4) {
+      const parentId = lineageCursor.parent_task_id;
+      const parent = tasksById.get(parentId);
+      const parentNodeId = `task:${parentId}`;
+      addNode({
+        id: parentNodeId,
+        label: truncate(`${parent?.name ?? lineageCursor.parent_task_name ?? "task"} (#${parentId})`, 44),
+        kind: "task",
+        href: resourceHref({ kind: "task", process: r.process, taskId: parentId }),
+      });
+      addEdge({
+        id: `edge:spawn:${parentId}:${lineageCursor.id}`,
+        source: parentNodeId,
+        target: `task:${lineageCursor.id}`,
+        label: "spawns",
+        severity: "warn",
+      });
+      lineageCursor = parent;
+      lineageDepth += 1;
+    }
+
+    const waits = dump.future_waits
+      .filter((w) => w.task_id === rootTaskId)
+      .sort((a, b) => b.total_pending_secs - a.total_pending_secs)
+      .slice(0, 10);
+    const waitFutureIds = new Set<number>();
+
+    for (const w of waits) {
+      const futureNodeId = `future:${w.future_id}`;
+      waitFutureIds.add(w.future_id);
+      addNode({
+        id: futureNodeId,
+        label: truncate(`future ${w.resource} [#${w.future_id}]`, 56),
+        kind: "future",
+        href: resourceHref({ kind: "future_wait", process: r.process, taskId: w.task_id, resource: w.resource }),
+      });
+      addEdge({
+        id: `edge:awaits:${rootTaskId}:${w.future_id}`,
+        source: rootTaskNodeId,
+        target: futureNodeId,
+        label: `awaits ${fmtDuration(w.total_pending_secs)}`,
+        severity: w.total_pending_secs > 10 ? "danger" : "warn",
+      });
+
+      if (w.created_by_task_id != null) {
+        const creatorNodeId = `task:${w.created_by_task_id}`;
+        addNode({
+          id: creatorNodeId,
+          label: truncate(`${w.created_by_task_name ?? "task"} (#${w.created_by_task_id})`, 44),
+          kind: "task",
+          href: resourceHref({ kind: "task", process: r.process, taskId: w.created_by_task_id }),
+        });
+        addEdge({
+          id: `edge:creates:${w.created_by_task_id}:${w.future_id}`,
+          source: creatorNodeId,
+          target: futureNodeId,
+          label: "creates",
+          severity: "warn",
+        });
+      }
+    }
+
+    for (const e of dump.future_wake_edges) {
+      if (!waitFutureIds.has(e.future_id)) continue;
+      const futureNodeId = `future:${e.future_id}`;
+      if (e.source_task_id != null) {
+        const sourceNodeId = `task:${e.source_task_id}`;
+        addNode({
+          id: sourceNodeId,
+          label: truncate(`${e.source_task_name ?? "task"} (#${e.source_task_id})`, 44),
+          kind: "task",
+          href: resourceHref({ kind: "task", process: r.process, taskId: e.source_task_id }),
+        });
+        addEdge({
+          id: `edge:wakes:${e.source_task_id}:${e.future_id}`,
+          source: sourceNodeId,
+          target: futureNodeId,
+          label: `wakes x${e.wake_count}`,
+          severity: "warn",
+        });
+      }
+      if (e.target_task_id != null) {
+        const targetNodeId = `task:${e.target_task_id}`;
+        addNode({
+          id: targetNodeId,
+          label: truncate(`${e.target_task_name ?? "task"} (#${e.target_task_id})`, 44),
+          kind: "task",
+          href: resourceHref({ kind: "task", process: r.process, taskId: e.target_task_id }),
+        });
+        addEdge({
+          id: `edge:resumes:${e.future_id}:${e.target_task_id}`,
+          source: futureNodeId,
+          target: targetNodeId,
+          label: `resumes x${e.wake_count}`,
+          severity: "warn",
+        });
+      }
+    }
+
+    const interactions = interactionsByTask.get(taskKey(r.process, rootTaskId)) ?? [];
+    for (const i of interactions.slice(0, 8)) {
+      const resNodeId = `resource:${i.key}`;
+      addNode({
+        id: resNodeId,
+        label: truncate(i.label, 56),
+        kind: "resource",
+        href: i.href,
+      });
+      addEdge({
+        id: `edge:touches:${rootTaskId}:${i.key}`,
+        source: rootTaskNodeId,
+        target: resNodeId,
+        label: "touches",
+        severity: "warn",
+      });
+    }
+
+    return {
+      nodes: [...nodes.values()],
+      edges: [...edges.values()],
+    };
+  }, [dump, interactionsByTask, r]);
+
+  const [layout, setLayout] = useState<RequestGraphLayout | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      if (!open) return;
+      if (graph.nodes.length === 0) {
+        setLayout(null);
+        return;
+      }
+      const elk = new ELK();
+      const elkNodes: ElkNode[] = graph.nodes.map((n) => ({
+        id: n.id,
+        width: Math.max(180, Math.min(340, 130 + n.label.length * 4)),
+        height: 34,
+      }));
+      const elkEdges: ElkExtendedEdge[] = graph.edges.map((e) => ({
+        id: e.id,
+        sources: [e.source],
+        targets: [e.target],
+      }));
+      const graphDef: ElkNode = {
+        id: "request-graph",
+        layoutOptions: {
+          "elk.algorithm": "layered",
+          "elk.direction": "RIGHT",
+          "elk.edgeRouting": "SPLINES",
+          "elk.padding": "[top=16,left=20,bottom=16,right=20]",
+          "elk.spacing.nodeNode": "32",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "80",
+        },
+        children: elkNodes,
+        edges: elkEdges,
+      };
+      const out = await elk.layout(graphDef);
+      if (cancelled) return;
+
+      const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
+      const edgeById = new Map(graph.edges.map((e) => [e.id, e]));
+      const laidNodes: RequestGraphLayoutNode[] = (out.children ?? []).map((n) => ({
+        graph: nodeById.get(n.id!)!,
+        x: n.x ?? 0,
+        y: n.y ?? 0,
+        width: n.width ?? 180,
+        height: n.height ?? 34,
+      }));
+      const laidEdges: RequestGraphLayoutEdge[] = [];
+      for (const e of out.edges ?? []) {
+        const sec = (e.sections ?? [])[0];
+        const graphEdge = edgeById.get(e.id!);
+        if (!sec || !graphEdge) continue;
+        const path = sectionPath(sec);
+        if (!path) continue;
+        const labelPos = edgeLabelPos(sec);
+        laidEdges.push({
+          graph: graphEdge,
+          path,
+          labelX: labelPos.x,
+          labelY: labelPos.y,
+        });
+      }
+      setLayout({
+        width: out.width ?? 860,
+        height: out.height ?? 200,
+        nodes: laidNodes,
+        edges: laidEdges,
+      });
+    }
+    run().catch((e) => {
+      if (!cancelled) {
+        console.error("request ELK layout failed", e);
+        setLayout(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [graph, open]);
+
+  if (graph.nodes.length === 0) {
+    return <span class="muted">no graphable causality yet (missing task/future edges)</span>;
+  }
+
+  return (
+    <details class="sync-details" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary>Graph (ELK)</summary>
+      {open && (
+        <div class="causal-graph-wrap" style="padding: 8px 0 4px">
+          {!layout && <div class="muted">Computing ELK layout…</div>}
+          {layout && (
+            <svg
+              class="causal-graph"
+              viewBox={`0 0 ${Math.max(900, layout.width)} ${Math.max(220, layout.height)}`}
+              role="img"
+            >
+              <defs>
+                <marker id="req-elk-arrow-danger" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                  <path d="M0,0 L10,3 L0,6 z" fill="var(--red)" />
+                </marker>
+                <marker id="req-elk-arrow-warn" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                  <path d="M0,0 L10,3 L0,6 z" fill="var(--amber)" />
+                </marker>
+              </defs>
+              {layout.edges.map((e) => (
+                <g key={e.graph.id}>
+                  <path
+                    d={e.path}
+                    class={classNames(
+                      "causal-edge",
+                      e.graph.severity === "danger" ? "causal-edge-danger" : "causal-edge-warn",
+                    )}
+                    marker-end={e.graph.severity === "danger" ? "url(#req-elk-arrow-danger)" : "url(#req-elk-arrow-warn)"}
+                  />
+                  <text class="causal-edge-label" x={e.labelX} y={e.labelY} text-anchor="middle">
+                    {e.graph.label}
+                  </text>
+                </g>
+              ))}
+              {layout.nodes.map((n) => (
+                <g
+                  key={n.graph.id}
+                  onClick={() => {
+                    if (n.graph.href) navigateTo(n.graph.href);
+                  }}
+                >
+                  <rect
+                    class={classNames("causal-node", n.graph.kind === "future" || n.graph.kind === "resource" ? "owner" : "blocked")}
+                    x={n.x}
+                    y={n.y}
+                    width={n.width}
+                    height={n.height}
+                    rx={8}
+                    ry={8}
+                  />
+                  <text class="causal-node-text" x={n.x + n.width / 2} y={n.y + 21} text-anchor="middle">
+                    {n.graph.label}
+                  </text>
+                </g>
+              ))}
+            </svg>
+          )}
+        </div>
+      )}
+    </details>
+  );
+}
+
 export function RequestsView({ dumps, filter, selectedPath }: Props) {
   const [view, setView] = useState<"table" | "tree">("table");
+  const dumpByProcess = new Map(dumps.map((d) => [d.process_name, d]));
   const interactionsByTask = new Map<string, RequestTaskInteraction[]>();
   const addInteraction = (process: string, taskId: number | null, interaction: RequestTaskInteraction) => {
     if (taskId == null) return;
@@ -453,6 +842,14 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                     r={r}
                     interactionsByTask={interactionsByTask}
                     selectedPath={selectedPath}
+                  />
+                </div>
+                <div style="margin-bottom: 8px">
+                  <div class="k muted" style="font-size: 11px; margin-bottom: 4px">Causal graph</div>
+                  <RequestInlineGraph
+                    r={r}
+                    dump={dumpByProcess.get(r.process)}
+                    interactionsByTask={interactionsByTask}
                   />
                 </div>
                 <div>
