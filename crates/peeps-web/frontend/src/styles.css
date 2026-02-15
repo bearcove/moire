@@ -103,6 +103,27 @@ body {
     gap: 6px;
 }
 
+.filter-clear-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 8px;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 4px;
+    background: light-dark(#e8e8ed, #2a2a2e);
+    color: light-dark(#6e6e73, #98989d);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.filter-clear-btn:hover {
+    background: light-dark(#d2d2d7, #3a3a3e);
+    color: light-dark(#1d1d1f, #f5f5f7);
+}
+
 /* ── Table ────────────────────────────────────────────────── */
 
 .requests-table {

@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
-use peeps_types::{SnapshotReply, SnapshotRequest};
+use peeps_types::{GraphReply, SnapshotRequest};
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -339,13 +339,13 @@ async fn read_replies(
             frame_len = len,
             "received full frame, deserializing"
         );
-        let reply: SnapshotReply = match facet_json::from_slice(&frame) {
+        let reply: GraphReply = match facet_json::from_slice(&frame) {
             Ok(r) => {
-                debug!(conn_id, "deserialized snapshot reply OK");
+                debug!(conn_id, "deserialized graph reply OK");
                 r
             }
             Err(e) => {
-                warn!(conn_id, %e, "failed to deserialize snapshot reply");
+                warn!(conn_id, %e, "failed to deserialize graph reply");
                 record_ingest_event(
                     &state.db_path,
                     None,
@@ -359,7 +359,7 @@ async fn read_replies(
             }
         };
 
-        if reply.r#type != "snapshot_reply" {
+        if reply.r#type != "graph_reply" {
             warn!(conn_id, msg_type = %reply.r#type, "unexpected message type");
             record_ingest_event(
                 &state.db_path,
@@ -387,7 +387,7 @@ async fn read_replies(
     }
 }
 
-async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) {
+async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
     let now_ns = now_nanos();
 
     let snapshot_id = {
@@ -436,7 +436,7 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
         }
     };
 
-    let graph = reply.dump.graph.as_ref();
+    let graph = reply.graph.as_ref();
 
     if let Err(e) = persist_reply(
         &state.db_path,

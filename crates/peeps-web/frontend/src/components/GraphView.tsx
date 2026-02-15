@@ -25,6 +25,7 @@ import {
   GearSix,
   HourglassHigh,
   LockKey,
+  X,
 } from "@phosphor-icons/react";
 import type { SnapshotGraph } from "../types";
 
@@ -215,8 +216,10 @@ async function layoutElements(
 
 interface GraphViewProps {
   graph: SnapshotGraph | null;
+  fullGraph: SnapshotGraph | null;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
+  onClearSelection: () => void;
 }
 
 function GraphFlow({
@@ -276,15 +279,26 @@ function GraphFlow({
   );
 }
 
-export function GraphView({ graph, selectedNodeId, onSelectNode }: GraphViewProps) {
+export function GraphView({ graph, fullGraph, selectedNodeId, onSelectNode, onClearSelection }: GraphViewProps) {
   const nodeCount = graph?.nodes.length ?? 0;
   const edgeCount = graph?.edges.length ?? 0;
+  const isFiltered = selectedNodeId != null && fullGraph != null && graph !== fullGraph;
 
   return (
     <div className="panel panel--graph">
       <div className="panel-header">
         <GraphIcon size={14} weight="bold" />
         {graph ? `Graph (${nodeCount} nodes, ${edgeCount} edges)` : "Graph"}
+        {isFiltered && (
+          <button
+            className="filter-clear-btn"
+            onClick={onClearSelection}
+            title="Show full graph"
+          >
+            <X size={12} weight="bold" />
+            filtered
+          </button>
+        )}
       </div>
       <div className="react-flow-wrapper">
         {graph && graph.nodes.length > 0 ? (

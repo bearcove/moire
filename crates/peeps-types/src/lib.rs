@@ -505,6 +505,20 @@ pub fn collect_all_diagnostics() -> Vec<Diagnostics> {
         .collect()
 }
 
+/// Collect just the roam session snapshot from registered sources.
+///
+/// This still calls all `DiagnosticsSource` collectors (SHM collection is cheap),
+/// but only extracts the session. The real savings come from not serializing
+/// tasks/threads/locks/sync/etc. over the wire.
+pub fn collect_roam_session() -> Option<SessionSnapshot> {
+    for source in inventory::iter::<DiagnosticsSource> {
+        if let Diagnostics::RoamSession(s) = (source.collect)() {
+            return Some(s);
+        }
+    }
+    None
+}
+
 // ── Future causality edge types ──────────────────────────────────
 
 /// Future-to-future spawn/composition lineage.
@@ -1145,6 +1159,16 @@ pub struct SnapshotReply {
     pub process: String,
     pub pid: u32,
     pub dump: ProcessDump,
+}
+
+/// Client-to-server: lightweight reply carrying only the canonical graph.
+#[derive(Debug, Clone, Facet)]
+pub struct GraphReply {
+    pub r#type: String,
+    pub snapshot_id: i64,
+    pub process: String,
+    pub pid: u32,
+    pub graph: Option<GraphSnapshot>,
 }
 
 // ── Dashboard payload ────────────────────────────────────────────

@@ -4,12 +4,10 @@
 //! and waits for snapshot requests. On receiving a request, collects a local
 //! dump and sends it back as a snapshot reply.
 
-use std::collections::HashMap;
-
-use peeps_types::{SnapshotReply, SnapshotRequest};
+use peeps_types::{GraphReply, SnapshotRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Start the background pull loop. Spawns a tracked task that reconnects on failure.
 pub fn start_pull_loop(process_name: String, addr: String) {
@@ -66,15 +64,15 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
             continue;
         }
 
-        debug!(snapshot_id = req.snapshot_id, "collecting dump");
-        let dump = crate::collect_dump(process_name, HashMap::new());
+        debug!(snapshot_id = req.snapshot_id, "collecting graph");
+        let graph = crate::collect_graph(process_name);
 
-        let reply = SnapshotReply {
-            r#type: "snapshot_reply".to_string(),
+        let reply = GraphReply {
+            r#type: "graph_reply".to_string(),
             snapshot_id: req.snapshot_id,
             process: process_name.to_string(),
             pid: std::process::id(),
-            dump,
+            graph,
         };
 
         let reply_bytes = facet_json::to_vec(&reply).map_err(|e| {

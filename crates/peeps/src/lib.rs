@@ -18,6 +18,7 @@ pub use peeps_types::{self as types, Diagnostics, ProcessDump};
 pub use peeps_locks as locks;
 
 pub use collect::collect_dump;
+pub use collect::collect_graph;
 
 /// Initialize peeps instrumentation.
 ///

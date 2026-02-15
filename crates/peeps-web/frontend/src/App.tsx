@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { WarningCircle } from "@phosphor-icons/react";
 import { jumpNow, fetchStuckRequests, fetchGraph } from "./api";
 import { Header } from "./components/Header";
@@ -8,6 +8,38 @@ import { Inspector } from "./components/Inspector";
 import type { JumpNowResponse, StuckRequest, SnapshotGraph, SnapshotNode } from "./types";
 
 const MIN_ELAPSED_NS = 5_000_000_000; // 5 seconds
+
+/** BFS from a seed node, collecting all reachable nodes (both directions). */
+function connectedSubgraph(graph: SnapshotGraph, seedId: string): SnapshotGraph {
+  const adj = new Map<string, Set<string>>();
+  for (const e of graph.edges) {
+    let s = adj.get(e.src_id);
+    if (!s) { s = new Set(); adj.set(e.src_id, s); }
+    s.add(e.dst_id);
+    let d = adj.get(e.dst_id);
+    if (!d) { d = new Set(); adj.set(e.dst_id, d); }
+    d.add(e.src_id);
+  }
+
+  const visited = new Set<string>();
+  const queue = [seedId];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const neighbors = adj.get(id);
+    if (neighbors) {
+      for (const n of neighbors) {
+        if (!visited.has(n)) queue.push(n);
+      }
+    }
+  }
+
+  return {
+    nodes: graph.nodes.filter((n) => visited.has(n.id)),
+    edges: graph.edges.filter((e) => visited.has(e.src_id) && visited.has(e.dst_id)),
+  };
+}
 
 export function App() {
   const [snapshot, setSnapshot] = useState<JumpNowResponse | null>(null);
@@ -49,7 +81,7 @@ export function App() {
   const handleSelectRequest = useCallback((req: StuckRequest) => {
     setSelectedRequest(req);
     setSelectedNode(null);
-    setSelectedNodeId(null);
+    setSelectedNodeId(req.id);
   }, []);
 
   const handleSelectGraphNode = useCallback(
@@ -61,6 +93,22 @@ export function App() {
     },
     [graph],
   );
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedRequest(null);
+    setSelectedNode(null);
+    setSelectedNodeId(null);
+  }, []);
+
+  // Compute the displayed graph: full graph when nothing selected,
+  // connected subgraph when a node is focused.
+  const displayGraph = useMemo(() => {
+    if (!graph) return null;
+    if (!selectedNodeId) return graph;
+    // Check the seed node exists in the graph
+    if (!graph.nodes.some((n) => n.id === selectedNodeId)) return graph;
+    return connectedSubgraph(graph, selectedNodeId);
+  }, [graph, selectedNodeId]);
 
   return (
     <div className="app">
@@ -82,9 +130,11 @@ export function App() {
           onSelect={handleSelectRequest}
         />
         <GraphView
-          graph={graph}
+          graph={displayGraph}
+          fullGraph={graph}
           selectedNodeId={selectedNodeId}
           onSelectNode={handleSelectGraphNode}
+          onClearSelection={handleClearSelection}
         />
         <Inspector selectedRequest={selectedRequest} selectedNode={selectedNode} />
       </div>
