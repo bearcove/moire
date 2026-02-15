@@ -21,6 +21,7 @@ mod snapshot;
 mod sync_locks;
 
 pub use snapshot::snapshot_lock_diagnostics;
+pub use snapshot::emit_lock_graph;
 #[cfg(not(feature = "diagnostics"))]
 pub use snapshot::dump_lock_diagnostics;
 pub use sync_locks::*;
