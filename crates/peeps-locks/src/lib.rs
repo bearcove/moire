@@ -16,15 +16,14 @@
 //! the waiter entry is automatically cleaned up.
 
 #[cfg(feature = "diagnostics")]
-mod registry;
-mod snapshot;
-mod sync_locks;
-
-pub use snapshot::snapshot_lock_diagnostics;
-pub use snapshot::emit_lock_graph;
+mod enabled;
 #[cfg(not(feature = "diagnostics"))]
-pub use snapshot::dump_lock_diagnostics;
-pub use sync_locks::*;
+mod disabled;
+
+#[cfg(feature = "diagnostics")]
+pub use enabled::*;
+#[cfg(not(feature = "diagnostics"))]
+pub use disabled::*;
 
 pub use peeps_types::{
     LockAcquireKind, LockHolderSnapshot, LockInfoSnapshot, LockSnapshot, LockWaiterSnapshot,

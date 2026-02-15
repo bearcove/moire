@@ -1,9 +1,10 @@
-#[cfg(feature = "diagnostics")]
+use std::sync::atomic::Ordering;
+
+use peeps_types::{GraphSnapshotBuilder, Node};
+
+use crate::enabled::registry::{AcquireKind, LOCK_REGISTRY};
+
 pub fn snapshot_lock_diagnostics() -> crate::LockSnapshot {
-    use std::sync::atomic::Ordering;
-
-    use crate::registry::{AcquireKind, LOCK_REGISTRY};
-
     let Ok(registry) = LOCK_REGISTRY.lock() else {
         return crate::LockSnapshot { locks: Vec::new() };
     };
@@ -66,28 +67,9 @@ pub fn snapshot_lock_diagnostics() -> crate::LockSnapshot {
     crate::LockSnapshot { locks }
 }
 
-#[cfg(not(feature = "diagnostics"))]
-#[inline]
-pub fn snapshot_lock_diagnostics() -> crate::LockSnapshot {
-    crate::LockSnapshot { locks: Vec::new() }
-}
-
-#[cfg(not(feature = "diagnostics"))]
-#[inline]
-pub fn dump_lock_diagnostics() -> String {
-    String::new()
-}
-
 // ── Canonical graph emission ────────────────────────────
 
-#[cfg(feature = "diagnostics")]
 pub fn emit_lock_graph(process_name: &str, proc_key: &str) -> peeps_types::GraphSnapshot {
-    use std::sync::atomic::Ordering;
-
-    use peeps_types::{GraphSnapshotBuilder, Node};
-
-    use crate::registry::{AcquireKind, LOCK_REGISTRY};
-
     let Ok(registry) = LOCK_REGISTRY.lock() else {
         return peeps_types::GraphSnapshot::empty();
     };
@@ -155,13 +137,6 @@ pub fn emit_lock_graph(process_name: &str, proc_key: &str) -> peeps_types::Graph
     builder.finish()
 }
 
-#[cfg(not(feature = "diagnostics"))]
-#[inline(always)]
-pub fn emit_lock_graph(_process_name: &str, _proc_key: &str) -> peeps_types::GraphSnapshot {
-    peeps_types::GraphSnapshot::empty()
-}
-
-#[cfg(feature = "diagnostics")]
 fn write_json_kv_str(out: &mut String, key: &str, value: &str, first: bool) {
     if !first {
         out.push(',');
@@ -173,7 +148,6 @@ fn write_json_kv_str(out: &mut String, key: &str, value: &str, first: bool) {
     out.push('"');
 }
 
-#[cfg(feature = "diagnostics")]
 fn write_json_kv_u64(out: &mut String, key: &str, value: u64, first: bool) {
     use std::io::Write;
     if !first {
