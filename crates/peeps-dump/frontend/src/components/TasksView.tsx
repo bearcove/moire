@@ -15,13 +15,14 @@ interface FlatTask extends TaskSnapshot {
   process: string;
   pid: number;
   interactions: TaskInteraction[];
+  rpc: TaskRpcInteraction[];
 }
 
 interface TaskInteraction {
   key: string;
   href: string;
   label: string;
-  kind: "lock" | "mpsc" | "oneshot" | "watch";
+  kind: "lock" | "mpsc" | "oneshot" | "watch" | "task";
   ageSecs?: number;
   note?: string;
 }
@@ -95,6 +96,36 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
   };
 
   for (const d of dumps) {
+    for (const edge of d.wake_edges) {
+      if (edge.source_task_id != null) {
+        addInteraction(d.process_name, edge.source_task_id, {
+          key: `wake:src:${edge.source_task_id}:${edge.target_task_id}`,
+          href: resourceHref({
+            kind: "task",
+            process: d.process_name,
+            taskId: edge.target_task_id,
+          }),
+          label: `wakes ${edge.target_task_name ?? "task"} (#${edge.target_task_id})`,
+          kind: "task",
+          ageSecs: edge.last_wake_age_secs,
+          note: `${edge.wake_count} wake(s)`,
+        });
+
+        addInteraction(d.process_name, edge.target_task_id, {
+          key: `wake:dst:${edge.source_task_id}:${edge.target_task_id}`,
+          href: resourceHref({
+            kind: "task",
+            process: d.process_name,
+            taskId: edge.source_task_id,
+          }),
+          label: `woken by ${edge.source_task_name ?? "task"} (#${edge.source_task_id})`,
+          kind: "task",
+          ageSecs: edge.last_wake_age_secs,
+          note: `${edge.wake_count} wake(s)`,
+        });
+      }
+    }
+
     if (d.locks) {
       for (const l of d.locks.locks) {
         const lockHref = resourceHref({ kind: "lock", process: d.process_name, lock: l.name });
@@ -215,6 +246,7 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
         process: d.process_name,
         pid: d.pid,
         interactions: interactionsByTask.get(key) ?? [],
+        rpc: (rpcByTask.get(key) ?? []).sort((a, b) => b.elapsedSecs - a.elapsedSecs),
       });
     }
   }
@@ -626,6 +658,20 @@ function TreeNode({
   selectedPath: string;
 }) {
   const kids = children.get(`${t.process}#${t.pid}#${t.id}`) ?? [];
+  const treeResources = [
+    ...t.interactions.map((i) => ({
+      key: i.key,
+      href: i.href,
+      label: i.label,
+      kind: i.kind,
+    })),
+    ...t.rpc.map((r) => ({
+      key: `rpc:${r.key}`,
+      href: r.href,
+      label: `rpc ${r.method}`,
+      kind: "request" as const,
+    })),
+  ];
   return (
     <div class={depth === 0 ? "tree-node-root" : "tree-node"}>
       <div class="tree-item">
@@ -644,6 +690,20 @@ function TreeNode({
         <span class="muted" style="margin-left: 8px">
           {t.process} &middot; {fmtAge(t.age_secs)}
         </span>
+        {treeResources.length > 0 && (
+          <span class="resource-link-list" style="margin-left: 8px">
+            {treeResources.map((resource) => (
+              <ResourceLink
+                key={resource.key}
+                href={resource.href}
+                active={isActivePath(selectedPath, resource.href)}
+                kind={resource.kind}
+              >
+                {resource.label}
+              </ResourceLink>
+            ))}
+          </span>
+        )}
       </div>
       <TaskNodeList tasks={kids} children={children} depth={depth + 1} selectedPath={selectedPath} />
     </div>

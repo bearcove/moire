@@ -1,2 +1,5 @@
 .tracey/
 target
+
+# vite prod build
+dist

@@ -5,6 +5,7 @@ export interface ProcessDump {
   pid: number;
   timestamp: string;
   tasks: TaskSnapshot[];
+  wake_edges: WakeEdgeSnapshot[];
   threads: ThreadStackSnapshot[];
   locks: LockSnapshot | null;
   sync: SyncSnapshot | null;
@@ -37,6 +38,15 @@ export interface PollEvent {
 }
 
 export type PollResult = "Pending" | "Ready";
+
+export interface WakeEdgeSnapshot {
+  source_task_id: number | null;
+  source_task_name: string | null;
+  target_task_id: number;
+  target_task_name: string | null;
+  wake_count: number;
+  last_wake_age_secs: number;
+}
 
 // Threads
 

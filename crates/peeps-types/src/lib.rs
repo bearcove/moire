@@ -29,6 +29,21 @@ pub struct TaskSnapshot {
     pub parent_task_name: Option<String>,
 }
 
+/// Snapshot of a wake/dependency edge between tasks.
+#[derive(Debug, Clone, Facet)]
+pub struct WakeEdgeSnapshot {
+    /// Task that triggered the wake, when known.
+    pub source_task_id: Option<TaskId>,
+    pub source_task_name: Option<String>,
+    /// Task that was woken.
+    pub target_task_id: TaskId,
+    pub target_task_name: Option<String>,
+    /// Number of observed wake calls for this edge.
+    pub wake_count: u64,
+    /// Age of the most recent wake event.
+    pub last_wake_age_secs: f64,
+}
+
 /// Task state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
 #[repr(u8)]
@@ -395,6 +410,7 @@ pub struct ProcessDump {
     pub pid: u32,
     pub timestamp: String,
     pub tasks: Vec<TaskSnapshot>,
+    pub wake_edges: Vec<WakeEdgeSnapshot>,
     pub threads: Vec<ThreadStackSnapshot>,
     pub locks: Option<LockSnapshot>,
     pub sync: Option<SyncSnapshot>,

@@ -6,7 +6,7 @@
 
 use std::future::Future;
 
-pub use peeps_types::{PollEvent, PollResult, TaskId, TaskSnapshot, TaskState};
+pub use peeps_types::{PollEvent, PollResult, TaskId, TaskSnapshot, TaskState, WakeEdgeSnapshot};
 
 // ── Zero-cost stubs (no diagnostics) ─────────────────────────────
 
@@ -46,6 +46,11 @@ mod imp {
     }
 
     #[inline(always)]
+    pub fn snapshot_wake_edges() -> Vec<WakeEdgeSnapshot> {
+        Vec::new()
+    }
+
+    #[inline(always)]
     pub fn cleanup_completed_tasks() {}
 }
 
@@ -57,6 +62,7 @@ mod imp {
     use std::pin::Pin;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
+    use std::task::Wake;
     use std::task::{Context, Poll};
     use std::time::Instant;
 
@@ -78,6 +84,9 @@ mod imp {
 
     static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
     static TASK_REGISTRY: Mutex<Option<Vec<Arc<TaskInfo>>>> = Mutex::new(None);
+    static WAKE_REGISTRY: Mutex<
+        Option<std::collections::HashMap<(Option<TaskId>, TaskId), WakeEdgeInfo>>,
+    > = Mutex::new(None);
 
     struct TaskInfo {
         id: TaskId,
@@ -100,13 +109,55 @@ mod imp {
         backtrace: Option<String>,
     }
 
+    struct WakeEdgeInfo {
+        wake_count: u64,
+        last_wake_at: Instant,
+    }
+
+    fn record_wake(source_task_id: Option<TaskId>, target_task_id: TaskId) {
+        let mut registry = WAKE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_mut() else {
+            return;
+        };
+        let entry = edges
+            .entry((source_task_id, target_task_id))
+            .or_insert(WakeEdgeInfo {
+                wake_count: 0,
+                last_wake_at: Instant::now(),
+            });
+        entry.wake_count += 1;
+        entry.last_wake_at = Instant::now();
+    }
+
+    struct InstrumentedWake {
+        inner: std::task::Waker,
+        target_task_id: TaskId,
+    }
+
+    impl Wake for InstrumentedWake {
+        fn wake(self: Arc<Self>) {
+            let source_task_id = current_task_id();
+            record_wake(source_task_id, self.target_task_id);
+            self.inner.wake_by_ref();
+        }
+
+        fn wake_by_ref(self: &Arc<Self>) {
+            let source_task_id = current_task_id();
+            record_wake(source_task_id, self.target_task_id);
+            self.inner.wake_by_ref();
+        }
+    }
+
     impl TaskInfo {
         fn snapshot(&self, now: Instant, registry: &[Arc<TaskInfo>]) -> TaskSnapshot {
             let state = self.state.lock().unwrap();
             let age = now.duration_since(self.spawned_at);
 
             let parent_task_name = self.parent_id.and_then(|pid| {
-                registry.iter().find(|t| t.id == pid).map(|t| t.name.clone())
+                registry
+                    .iter()
+                    .find(|t| t.id == pid)
+                    .map(|t| t.name.clone())
             });
 
             TaskSnapshot {
@@ -180,7 +231,12 @@ mod imp {
             this.task_info.record_poll_start(backtrace);
 
             let task_id = this.task_info.id;
-            let result = CURRENT_TASK_ID.sync_scope(task_id, || inner.poll(cx));
+            let instrumented_waker = std::task::Waker::from(Arc::new(InstrumentedWake {
+                inner: cx.waker().clone(),
+                target_task_id: task_id,
+            }));
+            let mut instrumented_cx = Context::from_waker(&instrumented_waker);
+            let result = CURRENT_TASK_ID.sync_scope(task_id, || inner.poll(&mut instrumented_cx));
 
             let poll_result = match result {
                 Poll::Ready(_) => PollResult::Ready,
@@ -195,6 +251,7 @@ mod imp {
 
     pub fn init_task_tracking() {
         *TASK_REGISTRY.lock().unwrap() = Some(Vec::new());
+        *WAKE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
     }
 
     #[inline]
@@ -270,6 +327,42 @@ mod imp {
             .collect()
     }
 
+    pub fn snapshot_wake_edges() -> Vec<WakeEdgeSnapshot> {
+        let now = Instant::now();
+
+        let task_lookup: std::collections::HashMap<TaskId, String> = {
+            let registry = TASK_REGISTRY.lock().unwrap();
+            let Some(tasks) = registry.as_ref() else {
+                return Vec::new();
+            };
+            tasks
+                .iter()
+                .map(|task| (task.id, task.name.clone()))
+                .collect()
+        };
+
+        let registry = WAKE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_ref() else {
+            return Vec::new();
+        };
+
+        let mut out: Vec<WakeEdgeSnapshot> = edges
+            .iter()
+            .map(
+                |((source_task_id, target_task_id), edge)| WakeEdgeSnapshot {
+                    source_task_id: *source_task_id,
+                    source_task_name: source_task_id.and_then(|id| task_lookup.get(&id).cloned()),
+                    target_task_id: *target_task_id,
+                    target_task_name: task_lookup.get(target_task_id).cloned(),
+                    wake_count: edge.wake_count,
+                    last_wake_age_secs: now.duration_since(edge.last_wake_at).as_secs_f64(),
+                },
+            )
+            .collect();
+        out.sort_by(|a, b| b.wake_count.cmp(&a.wake_count));
+        out
+    }
+
     pub fn cleanup_completed_tasks() {
         let now = Instant::now();
         let cutoff = now - std::time::Duration::from_secs(30);
@@ -278,6 +371,20 @@ mod imp {
             registry.retain(|task| {
                 let state = task.state.lock().unwrap();
                 state.state != TaskState::Completed || task.spawned_at > cutoff
+            });
+        }
+
+        let live_ids: std::collections::HashSet<TaskId> = {
+            let registry = TASK_REGISTRY.lock().unwrap();
+            let Some(tasks) = registry.as_ref() else {
+                return;
+            };
+            tasks.iter().map(|task| task.id).collect()
+        };
+        if let Some(edges) = WAKE_REGISTRY.lock().unwrap().as_mut() {
+            edges.retain(|(_, target), edge| {
+                let recent = edge.last_wake_at > cutoff;
+                live_ids.contains(target) || recent
             });
         }
     }
@@ -317,6 +424,11 @@ where
 /// Collect snapshots of all tracked tasks. Empty without `diagnostics`.
 pub fn snapshot_all_tasks() -> Vec<TaskSnapshot> {
     imp::snapshot_all_tasks()
+}
+
+/// Collect snapshots of wake/dependency edges between tasks.
+pub fn snapshot_wake_edges() -> Vec<WakeEdgeSnapshot> {
+    imp::snapshot_wake_edges()
 }
 
 /// Remove completed tasks from the registry. No-op without `diagnostics`.
