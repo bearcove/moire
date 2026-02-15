@@ -10,6 +10,18 @@ Consolidate `peeps-futures`, `peeps-locks`, and `peeps-sync` into the top-level 
 
 while preserving feature-gated diagnostics and the canonical graph emission behavior.
 
+Use the enabled/disabled module pattern everywhere diagnostics are optional:
+
+#[cfg(feature = "diagnostics")]
+mod enabled;
+#[cfg(not(feature = "diagnostics"))]
+mod disabled;
+
+#[cfg(feature = "diagnostics")]
+pub use enabled::*;
+#[cfg(not(feature = "diagnostics"))]
+pub use disabled::*;
+
 **Additional requirement:** create a **single shared diagnostics registry** covering every tracked resource type (futures, locks, channels, oncecell, semaphores, RPC request/response, RPC tx/rx, etc.).
 
 ## Non-Goals
@@ -38,12 +50,10 @@ Top-level exports from `peeps`:
   - `Sender`, `Receiver`, `UnboundedSender`, `UnboundedReceiver`
   - `OneshotSender`, `OneshotReceiver`
   - `WatchSender`, `WatchReceiver`
-  - `DiagnosticSemaphore`
+  - `Semaphore`
   - `OnceCell`
 - Futures
-  - `spawn_tracked` (no-op wrapper now that tasks are removed)
-  - `peep`, `peepable`, `peepable_with_meta`
-  - `PeepableFuture`, `PeepableFutureExt`
+  - `peep` (macro only)
 - Graph collection
   - `collect_graph` uses the single registry to emit all resources
 
@@ -74,13 +84,8 @@ Create a new module `peeps::registry`:
 
 ### Registry Interface (sketch)
 
-- `registry::init()` — no-op when diagnostics disabled
-- `registry::set_process_info(process_name, proc_key)`
-- `registry::snapshot_*()` (per resource type)
+- `registry::init(process_name, proc_key)` — initializes registry and process metadata
 - `registry::emit_graph()` — emits canonical nodes/edges for all resources
-- `registry::register_*()` (per resource type)
-  - Example: `register_mpsc(info: &Arc<MpscInfo>)`
-  - Example: `register_lock(info: &Arc<LockInfo>)`
 
 All resource modules must register themselves into this registry, never maintain private registries.
 
@@ -148,6 +153,5 @@ All resource modules must register themselves into this registry, never maintain
 
 ## Open Decisions (confirm with owner)
 
-- Where to store RPC request/response state: registry or keep in roam session collection?
-- Exact canonical node kinds for RPC tx/rx and request/response (use `NodeKind` contract).
-- Whether to keep `peeps::futures::spawn_tracked` as a thin wrapper around `tokio::spawn` (recommended).
+- Roam can keep its own registry for RPC request/response and channel endpoints.
+- Canonical node kinds: `Request`/`Response` for RPC request/response, and `RemoteTx`/`RemoteRx` for RPC channel endpoints.
