@@ -346,6 +346,8 @@ pub struct RequestSnapshot {
     pub metadata: Option<HashMap<String, String>>,
     pub args: Option<HashMap<String, String>>,
     pub backtrace: Option<String>,
+    pub server_task_id: Option<u64>,
+    pub server_task_name: Option<String>,
 }
 
 /// Snapshot of a recently completed RPC request.
@@ -476,6 +478,78 @@ pub fn collect_all_diagnostics() -> Vec<Diagnostics> {
         .collect()
 }
 
+// ── Future causality edge types ──────────────────────────────────
+
+/// Future-to-future spawn/composition lineage.
+#[derive(Debug, Clone, Facet)]
+pub struct FutureSpawnEdgeSnapshot {
+    pub parent_future_id: FutureId,
+    pub parent_resource: String,
+    pub child_future_id: FutureId,
+    pub child_resource: String,
+    pub created_by_task_id: Option<TaskId>,
+    pub created_by_task_name: Option<String>,
+    pub created_age_secs: f64,
+}
+
+/// Task polling a future (ownership over time).
+#[derive(Debug, Clone, Facet)]
+pub struct FuturePollEdgeSnapshot {
+    pub task_id: TaskId,
+    pub task_name: Option<String>,
+    pub future_id: FutureId,
+    pub future_resource: String,
+    pub poll_count: u64,
+    pub total_poll_secs: f64,
+    pub last_poll_age_secs: f64,
+}
+
+/// Future explicitly resuming/waking a task.
+#[derive(Debug, Clone, Facet)]
+pub struct FutureResumeEdgeSnapshot {
+    pub future_id: FutureId,
+    pub future_resource: String,
+    pub target_task_id: TaskId,
+    pub target_task_name: Option<String>,
+    pub resume_count: u64,
+    pub last_resume_age_secs: f64,
+}
+
+/// Structured resource identity for future waits.
+#[derive(Debug, Clone, Facet)]
+#[repr(u8)]
+pub enum ResourceRefSnapshot {
+    Lock { process: String, name: String },
+    Mpsc { process: String, name: String },
+    Oneshot { process: String, name: String },
+    Watch { process: String, name: String },
+    Semaphore { process: String, name: String },
+    RoamChannel { process: String, channel_id: u64 },
+    Socket { process: String, fd: u64, label: Option<String> },
+    Unknown { label: String },
+}
+
+/// Future waiting on a structured resource.
+#[derive(Debug, Clone, Facet)]
+pub struct FutureResourceEdgeSnapshot {
+    pub future_id: FutureId,
+    pub resource: ResourceRefSnapshot,
+    pub wait_count: u64,
+    pub total_wait_secs: f64,
+    pub last_wait_age_secs: f64,
+}
+
+/// Explicit cross-process request parent edge.
+#[derive(Debug, Clone, Facet)]
+pub struct RequestParentSnapshot {
+    pub child_process: String,
+    pub child_connection: String,
+    pub child_request_id: u64,
+    pub parent_process: String,
+    pub parent_connection: String,
+    pub parent_request_id: u64,
+}
+
 // ── Deadlock candidate types ─────────────────────────────────────
 
 /// Severity level for a deadlock candidate.
@@ -563,5 +637,10 @@ pub struct ProcessDump {
     pub sync: Option<SyncSnapshot>,
     pub roam: Option<SessionSnapshot>,
     pub shm: Option<ShmSnapshot>,
+    pub future_spawn_edges: Vec<FutureSpawnEdgeSnapshot>,
+    pub future_poll_edges: Vec<FuturePollEdgeSnapshot>,
+    pub future_resume_edges: Vec<FutureResumeEdgeSnapshot>,
+    pub future_resource_edges: Vec<FutureResourceEdgeSnapshot>,
+    pub request_parents: Vec<RequestParentSnapshot>,
     pub custom: HashMap<String, String>,
 }

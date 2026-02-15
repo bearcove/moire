@@ -11,11 +11,12 @@ use facet::Facet;
 pub mod detect;
 
 use peeps_types::{
-    ChannelDir, ConnectionSnapshot, Direction, FutureWaitSnapshot, FutureWakeEdgeSnapshot,
+    ChannelDir, ConnectionSnapshot, Direction, FuturePollEdgeSnapshot, FutureResourceEdgeSnapshot,
+    FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot, FutureWaitSnapshot, FutureWakeEdgeSnapshot,
     LockAcquireKind, LockInfoSnapshot, LockSnapshot, MpscChannelSnapshot, OnceCellSnapshot,
-    OnceCellState, OneshotChannelSnapshot, OneshotState, ProcessDump, RoamChannelSnapshot,
-    SemaphoreSnapshot, SessionSnapshot, SyncSnapshot, TaskSnapshot, TaskState, WakeEdgeSnapshot,
-    WatchChannelSnapshot,
+    OnceCellState, OneshotChannelSnapshot, OneshotState, ProcessDump, ResourceRefSnapshot,
+    RoamChannelSnapshot, SemaphoreSnapshot, SessionSnapshot, SyncSnapshot,
+    TaskSnapshot, TaskState, WakeEdgeSnapshot, WatchChannelSnapshot,
 };
 
 // ── Stable node identity ────────────────────────────────────────
@@ -138,6 +139,24 @@ pub enum EdgeKind {
     /// Cross-process RPC stitch: outgoing request in one process links to
     /// the corresponding incoming request in another process.
     RpcCrossProcessStitch,
+    /// A future spawned/composed another future.
+    FutureSpawnedFuture,
+    /// A task polls a future (ownership over time).
+    TaskPollsFuture,
+    /// A future waits on a structured resource.
+    FutureWaitsOnResource,
+    /// Same-process explicit request parent relationship.
+    RpcRequestParent,
+}
+
+/// Whether an edge was emitted by instrumentation or inferred.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
+#[repr(u8)]
+pub enum EdgeConfidence {
+    /// Emitted directly by instrumentation.
+    Explicit,
+    /// Computed or inferred from other data.
+    Derived,
 }
 
 /// Metadata attached to every edge.
@@ -149,6 +168,30 @@ pub struct EdgeMeta {
     pub count: u64,
     /// Optional severity hint for ranking (higher = more suspicious).
     pub severity_hint: u8,
+    /// Whether this edge is explicit (instrumented) or derived (inferred).
+    pub confidence: EdgeConfidence,
+}
+
+impl EdgeMeta {
+    /// Create derived edge metadata (computed/inferred from existing data).
+    fn derived(source: SnapshotSource, count: u64, severity_hint: u8) -> Self {
+        Self {
+            source_snapshot: source,
+            count,
+            severity_hint,
+            confidence: EdgeConfidence::Derived,
+        }
+    }
+
+    /// Create explicit edge metadata (emitted by instrumentation).
+    fn explicit(source: SnapshotSource, count: u64, severity_hint: u8) -> Self {
+        Self {
+            source_snapshot: source,
+            count,
+            severity_hint,
+            confidence: EdgeConfidence::Explicit,
+        }
+    }
 }
 
 /// Which snapshot source an edge was derived from.
@@ -162,6 +205,11 @@ pub enum SnapshotSource {
     Locks,
     Sync,
     Roam,
+    FutureSpawnEdges,
+    FuturePollEdges,
+    FutureResumeEdges,
+    FutureResourceEdges,
+    RequestParents,
 }
 
 // ── Graph edge ──────────────────────────────────────────────────
@@ -195,6 +243,7 @@ impl WaitGraph {
             graph.ingest_dump(dump);
         }
         graph.stitch_cross_process_rpc();
+        graph.ingest_request_parents(dumps);
         graph
     }
 
@@ -223,6 +272,10 @@ impl WaitGraph {
         if let Some(ref roam) = dump.roam {
             self.ingest_roam(pid, roam);
         }
+        self.ingest_future_spawn_edges(pid, &dump.future_spawn_edges);
+        self.ingest_future_poll_edges(pid, &dump.future_poll_edges);
+        self.ingest_future_resume_edges(pid, &dump.future_resume_edges);
+        self.ingest_future_resource_edges(pid, &dump.future_resource_edges, &dump.process_name);
     }
 
     fn ingest_tasks(&mut self, pid: u32, tasks: &[TaskSnapshot]) {
@@ -250,11 +303,7 @@ impl WaitGraph {
                     from: parent_node,
                     to: node_id,
                     kind: EdgeKind::TaskSpawnedTask,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::Tasks,
-                        count: 1,
-                        severity_hint: 0,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::Tasks, 1, 0),
                 });
             }
         }
@@ -278,11 +327,7 @@ impl WaitGraph {
                     from: source.clone(),
                     to: target.clone(),
                     kind: EdgeKind::TaskWakesFuture,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::WakeEdges,
-                        count: edge.wake_count,
-                        severity_hint: 0,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::WakeEdges, edge.wake_count, 0),
                 });
             }
         }
@@ -312,11 +357,7 @@ impl WaitGraph {
                     from: source,
                     to: future_node.clone(),
                     kind: EdgeKind::TaskWakesFuture,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::FutureWakeEdges,
-                        count: edge.wake_count,
-                        severity_hint: 0,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::FutureWakeEdges, edge.wake_count, 0),
                 });
             }
 
@@ -330,11 +371,7 @@ impl WaitGraph {
                     from: future_node,
                     to: target,
                     kind: EdgeKind::FutureResumesTask,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::FutureWakeEdges,
-                        count: edge.wake_count,
-                        severity_hint: 0,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::FutureWakeEdges, edge.wake_count, 0),
                 });
             }
         }
@@ -367,11 +404,7 @@ impl WaitGraph {
                 from: task_node,
                 to: future_node.clone(),
                 kind: EdgeKind::TaskWaitsOnResource,
-                meta: EdgeMeta {
-                    source_snapshot: SnapshotSource::FutureWaits,
-                    count: wait.pending_count + wait.ready_count,
-                    severity_hint: severity,
-                },
+                meta: EdgeMeta::derived(SnapshotSource::FutureWaits, wait.pending_count + wait.ready_count, severity),
             });
 
             // future -> created by task (ownership)
@@ -384,11 +417,7 @@ impl WaitGraph {
                     from: future_node,
                     to: creator,
                     kind: EdgeKind::ResourceOwnedByTask,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::FutureWaits,
-                        count: 1,
-                        severity_hint: 0,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::FutureWaits, 1, 0),
                 });
             }
         }
@@ -432,11 +461,7 @@ impl WaitGraph {
                     from: lock_node.clone(),
                     to: task_node,
                     kind: EdgeKind::ResourceOwnedByTask,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::Locks,
-                        count: 1,
-                        severity_hint: severity,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::Locks, 1, severity),
                 });
             }
         }
@@ -450,11 +475,7 @@ impl WaitGraph {
                     from: task_node,
                     to: lock_node.clone(),
                     kind: EdgeKind::TaskWaitsOnResource,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::Locks,
-                        count: 1,
-                        severity_hint: severity,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::Locks, 1, severity),
                 });
             }
         }
@@ -504,11 +525,7 @@ impl WaitGraph {
                 from: node_id.clone(),
                 to: creator,
                 kind: EdgeKind::ResourceOwnedByTask,
-                meta: EdgeMeta {
-                    source_snapshot: SnapshotSource::Sync,
-                    count: 1,
-                    severity_hint: 0,
-                },
+                meta: EdgeMeta::derived(SnapshotSource::Sync, 1, 0),
             });
         }
 
@@ -523,11 +540,7 @@ impl WaitGraph {
                     from: creator,
                     to: node_id,
                     kind: EdgeKind::TaskWaitsOnResource,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::Sync,
-                        count: ch.send_waiters,
-                        severity_hint: 2,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::Sync, ch.send_waiters, 2),
                 });
             }
         }
@@ -554,11 +567,7 @@ impl WaitGraph {
                 from: node_id,
                 to: creator,
                 kind: EdgeKind::ResourceOwnedByTask,
-                meta: EdgeMeta {
-                    source_snapshot: SnapshotSource::Sync,
-                    count: 1,
-                    severity_hint: 0,
-                },
+                meta: EdgeMeta::derived(SnapshotSource::Sync, 1, 0),
             });
         }
     }
@@ -584,11 +593,7 @@ impl WaitGraph {
                 from: node_id,
                 to: creator,
                 kind: EdgeKind::ResourceOwnedByTask,
-                meta: EdgeMeta {
-                    source_snapshot: SnapshotSource::Sync,
-                    count: 1,
-                    severity_hint: 0,
-                },
+                meta: EdgeMeta::derived(SnapshotSource::Sync, 1, 0),
             });
         }
     }
@@ -619,11 +624,7 @@ impl WaitGraph {
                 from: node_id.clone(),
                 to: creator,
                 kind: EdgeKind::ResourceOwnedByTask,
-                meta: EdgeMeta {
-                    source_snapshot: SnapshotSource::Sync,
-                    count: 1,
-                    severity_hint: 0,
-                },
+                meta: EdgeMeta::derived(SnapshotSource::Sync, 1, 0),
             });
         }
 
@@ -646,11 +647,7 @@ impl WaitGraph {
                 from: task_node,
                 to: node_id.clone(),
                 kind: EdgeKind::TaskWaitsOnResource,
-                meta: EdgeMeta {
-                    source_snapshot: SnapshotSource::Sync,
-                    count: 1,
-                    severity_hint: severity,
-                },
+                meta: EdgeMeta::derived(SnapshotSource::Sync, 1, severity),
             });
         }
     }
@@ -716,11 +713,7 @@ impl WaitGraph {
                             from: task_node,
                             to: req_node.clone(),
                             kind: EdgeKind::RpcClientToRequest,
-                            meta: EdgeMeta {
-                                source_snapshot: SnapshotSource::Roam,
-                                count: 1,
-                                severity_hint: severity,
-                            },
+                            meta: EdgeMeta::derived(SnapshotSource::Roam, 1, severity),
                         });
                     }
                     Direction::Incoming => {
@@ -729,11 +722,7 @@ impl WaitGraph {
                             from: req_node.clone(),
                             to: task_node,
                             kind: EdgeKind::RpcRequestToServerTask,
-                            meta: EdgeMeta {
-                                source_snapshot: SnapshotSource::Roam,
-                                count: 1,
-                                severity_hint: severity,
-                            },
+                            meta: EdgeMeta::derived(SnapshotSource::Roam, 1, severity),
                         });
                     }
                 }
@@ -773,11 +762,7 @@ impl WaitGraph {
                     from: task_node,
                     to: node_id,
                     kind: EdgeKind::TaskWaitsOnResource,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::Roam,
-                        count: 1,
-                        severity_hint: severity,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::Roam, 1, severity),
                 });
             }
         }
@@ -860,16 +845,250 @@ impl WaitGraph {
                     from: outgoing.node_id.clone(),
                     to: incoming.node_id.clone(),
                     kind: EdgeKind::RpcCrossProcessStitch,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::Roam,
-                        count: 1,
-                        severity_hint: severity,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::Roam, 1, severity),
                 });
             }
         }
 
         self.edges.extend(new_edges);
+    }
+
+    fn ingest_future_spawn_edges(&mut self, pid: u32, edges: &[FutureSpawnEdgeSnapshot]) {
+        for edge in edges {
+            if edge.parent_future_id == edge.child_future_id {
+                continue;
+            }
+
+            let parent = NodeId::Future {
+                pid,
+                future_id: edge.parent_future_id,
+            };
+            let child = NodeId::Future {
+                pid,
+                future_id: edge.child_future_id,
+            };
+
+            self.nodes
+                .entry(parent.clone())
+                .or_insert(NodeKind::Future {
+                    resource: edge.parent_resource.clone(),
+                });
+            self.nodes
+                .entry(child.clone())
+                .or_insert(NodeKind::Future {
+                    resource: edge.child_resource.clone(),
+                });
+
+            self.edges.push(WaitEdge {
+                from: parent,
+                to: child,
+                kind: EdgeKind::FutureSpawnedFuture,
+                meta: EdgeMeta::explicit(SnapshotSource::FutureSpawnEdges, 1, 0),
+            });
+        }
+    }
+
+    fn ingest_future_poll_edges(&mut self, pid: u32, edges: &[FuturePollEdgeSnapshot]) {
+        for edge in edges {
+            let task_node = NodeId::Task {
+                pid,
+                task_id: edge.task_id,
+            };
+            let future_node = NodeId::Future {
+                pid,
+                future_id: edge.future_id,
+            };
+
+            self.nodes
+                .entry(future_node.clone())
+                .or_insert(NodeKind::Future {
+                    resource: edge.future_resource.clone(),
+                });
+
+            let severity = if edge.total_poll_secs > 10.0 {
+                3
+            } else if edge.total_poll_secs > 5.0 {
+                2
+            } else if edge.total_poll_secs > 1.0 {
+                1
+            } else {
+                0
+            };
+
+            self.edges.push(WaitEdge {
+                from: task_node,
+                to: future_node,
+                kind: EdgeKind::TaskPollsFuture,
+                meta: EdgeMeta::explicit(
+                    SnapshotSource::FuturePollEdges,
+                    edge.poll_count,
+                    severity,
+                ),
+            });
+        }
+    }
+
+    fn ingest_future_resume_edges(&mut self, pid: u32, edges: &[FutureResumeEdgeSnapshot]) {
+        for edge in edges {
+            let future_node = NodeId::Future {
+                pid,
+                future_id: edge.future_id,
+            };
+            let task_node = NodeId::Task {
+                pid,
+                task_id: edge.target_task_id,
+            };
+
+            self.nodes
+                .entry(future_node.clone())
+                .or_insert(NodeKind::Future {
+                    resource: edge.future_resource.clone(),
+                });
+
+            self.edges.push(WaitEdge {
+                from: future_node,
+                to: task_node,
+                kind: EdgeKind::FutureResumesTask,
+                meta: EdgeMeta::explicit(
+                    SnapshotSource::FutureResumeEdges,
+                    edge.resume_count,
+                    0,
+                ),
+            });
+        }
+    }
+
+    fn ingest_future_resource_edges(
+        &mut self,
+        pid: u32,
+        edges: &[FutureResourceEdgeSnapshot],
+        process_name: &str,
+    ) {
+        for edge in edges {
+            let future_node = NodeId::Future {
+                pid,
+                future_id: edge.future_id,
+            };
+
+            let resource_node = resource_ref_to_node_id(pid, &edge.resource, process_name);
+
+            self.edges.push(WaitEdge {
+                from: future_node,
+                to: resource_node,
+                kind: EdgeKind::FutureWaitsOnResource,
+                meta: EdgeMeta::explicit(
+                    SnapshotSource::FutureResourceEdges,
+                    edge.wait_count,
+                    wait_secs_severity(edge.total_wait_secs),
+                ),
+            });
+        }
+    }
+
+    fn ingest_request_parents(&mut self, dumps: &[ProcessDump]) {
+        let mut req_lookup: std::collections::HashMap<(String, String, u64), (u32, NodeId)> =
+            std::collections::HashMap::new();
+
+        for dump in dumps {
+            if let Some(ref roam) = dump.roam {
+                for conn in &roam.connections {
+                    for req in &conn.in_flight {
+                        let key = (dump.process_name.clone(), conn.name.clone(), req.request_id);
+                        let node = NodeId::RpcRequest {
+                            pid: dump.pid,
+                            connection: conn.name.clone(),
+                            request_id: req.request_id,
+                        };
+                        req_lookup.insert(key, (dump.pid, node));
+                    }
+                }
+            }
+        }
+
+        for dump in dumps {
+            for rp in &dump.request_parents {
+                let child_key = (
+                    rp.child_process.clone(),
+                    rp.child_connection.clone(),
+                    rp.child_request_id,
+                );
+                let parent_key = (
+                    rp.parent_process.clone(),
+                    rp.parent_connection.clone(),
+                    rp.parent_request_id,
+                );
+
+                if let (Some((child_pid, child_node)), Some((parent_pid, parent_node))) =
+                    (req_lookup.get(&child_key), req_lookup.get(&parent_key))
+                {
+                    let kind = if child_pid != parent_pid {
+                        EdgeKind::RpcCrossProcessStitch
+                    } else {
+                        EdgeKind::RpcRequestParent
+                    };
+
+                    self.edges.push(WaitEdge {
+                        from: child_node.clone(),
+                        to: parent_node.clone(),
+                        kind,
+                        meta: EdgeMeta::explicit(SnapshotSource::RequestParents, 1, 0),
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn resource_ref_to_node_id(
+    pid: u32,
+    resource: &ResourceRefSnapshot,
+    process_name: &str,
+) -> NodeId {
+    match resource {
+        ResourceRefSnapshot::Lock { name, .. } => NodeId::Lock {
+            pid,
+            name: name.clone(),
+        },
+        ResourceRefSnapshot::Mpsc { name, .. } => NodeId::MpscChannel {
+            pid,
+            name: name.clone(),
+        },
+        ResourceRefSnapshot::Oneshot { name, .. } => NodeId::OneshotChannel {
+            pid,
+            name: name.clone(),
+        },
+        ResourceRefSnapshot::Watch { name, .. } => NodeId::WatchChannel {
+            pid,
+            name: name.clone(),
+        },
+        ResourceRefSnapshot::Semaphore { name, .. } => NodeId::Semaphore {
+            pid,
+            name: name.clone(),
+        },
+        ResourceRefSnapshot::RoamChannel { channel_id, .. } => NodeId::RoamChannel {
+            pid,
+            channel_id: *channel_id,
+        },
+        ResourceRefSnapshot::Socket { fd, label, .. } => NodeId::Lock {
+            pid,
+            name: label.clone().unwrap_or_else(|| format!("socket:{fd}")),
+        },
+        ResourceRefSnapshot::Unknown { label } => NodeId::Lock {
+            pid,
+            name: format!("{process_name}:{label}"),
+        },
+    }
+}
+
+fn wait_secs_severity(total_wait_secs: f64) -> u8 {
+    if total_wait_secs > 10.0 {
+        3
+    } else if total_wait_secs > 5.0 {
+        2
+    } else if total_wait_secs > 1.0 {
+        1
+    } else {
+        0
     }
 }
 
@@ -892,6 +1111,11 @@ mod tests {
             sync: None,
             roam: None,
             shm: None,
+            future_spawn_edges: vec![],
+            future_poll_edges: vec![],
+            future_resume_edges: vec![],
+            future_resource_edges: vec![],
+            request_parents: vec![],
             custom: HashMap::new(),
         }
     }
@@ -1137,6 +1361,8 @@ mod tests {
                     metadata: None,
                     args: None,
                     backtrace: None,
+                    server_task_id: None,
+                    server_task_name: None,
                 }],
                 recent_completions: vec![],
                 channels: vec![],
@@ -1274,6 +1500,8 @@ mod tests {
             metadata: None,
             args: None,
             backtrace: None,
+            server_task_id: None,
+            server_task_name: None,
         }
     }
 
@@ -2454,5 +2682,416 @@ mod tests {
             .filter(|e| e.kind == EdgeKind::TaskWaitsOnResource)
             .collect();
         assert!(waits.is_empty(), "closed channel should not produce wait edge");
+    }
+
+    // ── Future spawn edge tests ──────────────────────────────────
+
+    #[test]
+    fn future_spawn_edge_creates_future_to_future() {
+        use peeps_types::FutureSpawnEdgeSnapshot;
+        let mut dump = empty_dump(1, "app");
+        dump.future_spawn_edges = vec![FutureSpawnEdgeSnapshot {
+            parent_future_id: 10,
+            parent_resource: "join_all".to_string(),
+            child_future_id: 20,
+            child_resource: "rpc.call".to_string(),
+            created_by_task_id: Some(1),
+            created_by_task_name: Some("driver".to_string()),
+            created_age_secs: 1.0,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+
+        // process + 2 futures = 3 nodes
+        assert_eq!(graph.nodes.len(), 3);
+        let spawn_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::FutureSpawnedFuture)
+            .collect();
+        assert_eq!(spawn_edges.len(), 1);
+        assert_eq!(
+            spawn_edges[0].from,
+            NodeId::Future {
+                pid: 1,
+                future_id: 10
+            }
+        );
+        assert_eq!(
+            spawn_edges[0].to,
+            NodeId::Future {
+                pid: 1,
+                future_id: 20
+            }
+        );
+        assert_eq!(spawn_edges[0].meta.confidence, EdgeConfidence::Explicit);
+    }
+
+    #[test]
+    fn future_spawn_self_cycle_skipped() {
+        use peeps_types::FutureSpawnEdgeSnapshot;
+        let mut dump = empty_dump(1, "app");
+        dump.future_spawn_edges = vec![FutureSpawnEdgeSnapshot {
+            parent_future_id: 10,
+            parent_resource: "self".to_string(),
+            child_future_id: 10,
+            child_resource: "self".to_string(),
+            created_by_task_id: None,
+            created_by_task_name: None,
+            created_age_secs: 0.0,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+        assert!(graph.edges.is_empty());
+    }
+
+    // ── Future poll edge tests ───────────────────────────────────
+
+    #[test]
+    fn future_poll_edge_creates_task_to_future_with_severity() {
+        use peeps_types::FuturePollEdgeSnapshot;
+        let mut dump = empty_dump(1, "app");
+        dump.tasks = vec![make_task(1, "driver", TaskState::Polling, 5.0)];
+        dump.future_poll_edges = vec![FuturePollEdgeSnapshot {
+            task_id: 1,
+            task_name: Some("driver".to_string()),
+            future_id: 42,
+            future_resource: "http.request".to_string(),
+            poll_count: 100,
+            total_poll_secs: 6.0,
+            last_poll_age_secs: 0.1,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+
+        // process + task + future = 3 nodes
+        assert_eq!(graph.nodes.len(), 3);
+        let poll_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::TaskPollsFuture)
+            .collect();
+        assert_eq!(poll_edges.len(), 1);
+        assert_eq!(
+            poll_edges[0].from,
+            NodeId::Task {
+                pid: 1,
+                task_id: 1
+            }
+        );
+        assert_eq!(
+            poll_edges[0].to,
+            NodeId::Future {
+                pid: 1,
+                future_id: 42
+            }
+        );
+        // total_poll_secs=6.0 > 5.0 => severity 2
+        assert_eq!(poll_edges[0].meta.severity_hint, 2);
+        assert_eq!(poll_edges[0].meta.count, 100);
+        assert_eq!(poll_edges[0].meta.confidence, EdgeConfidence::Explicit);
+    }
+
+    // ── Future resume edge tests ─────────────────────────────────
+
+    #[test]
+    fn future_resume_edge_creates_future_to_task_explicit() {
+        use peeps_types::FutureResumeEdgeSnapshot;
+        let mut dump = empty_dump(1, "app");
+        dump.tasks = vec![make_task(2, "consumer", TaskState::Pending, 3.0)];
+        dump.future_resume_edges = vec![FutureResumeEdgeSnapshot {
+            future_id: 50,
+            future_resource: "notify".to_string(),
+            target_task_id: 2,
+            target_task_name: Some("consumer".to_string()),
+            resume_count: 5,
+            last_resume_age_secs: 0.2,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+
+        let resume_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::FutureResumesTask)
+            .collect();
+        assert_eq!(resume_edges.len(), 1);
+        assert_eq!(
+            resume_edges[0].from,
+            NodeId::Future {
+                pid: 1,
+                future_id: 50
+            }
+        );
+        assert_eq!(
+            resume_edges[0].to,
+            NodeId::Task {
+                pid: 1,
+                task_id: 2
+            }
+        );
+        assert_eq!(resume_edges[0].meta.confidence, EdgeConfidence::Explicit);
+        assert_eq!(resume_edges[0].meta.count, 5);
+    }
+
+    // ── Future resource edge tests ───────────────────────────────
+
+    #[test]
+    fn future_resource_edge_maps_lock_to_correct_node() {
+        use peeps_types::{FutureResourceEdgeSnapshot, ResourceRefSnapshot};
+        let mut dump = empty_dump(1, "app");
+        dump.future_resource_edges = vec![FutureResourceEdgeSnapshot {
+            future_id: 60,
+            resource: ResourceRefSnapshot::Lock {
+                process: "app".to_string(),
+                name: "db_pool".to_string(),
+            },
+            wait_count: 10,
+            total_wait_secs: 2.0,
+            last_wait_age_secs: 0.1,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+
+        let res_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::FutureWaitsOnResource)
+            .collect();
+        assert_eq!(res_edges.len(), 1);
+        assert_eq!(
+            res_edges[0].to,
+            NodeId::Lock {
+                pid: 1,
+                name: "db_pool".to_string()
+            }
+        );
+        assert_eq!(res_edges[0].meta.severity_hint, 1); // >1s
+    }
+
+    #[test]
+    fn future_resource_edge_maps_mpsc_to_correct_node() {
+        use peeps_types::{FutureResourceEdgeSnapshot, ResourceRefSnapshot};
+        let mut dump = empty_dump(1, "app");
+        dump.future_resource_edges = vec![FutureResourceEdgeSnapshot {
+            future_id: 61,
+            resource: ResourceRefSnapshot::Mpsc {
+                process: "app".to_string(),
+                name: "work-queue".to_string(),
+            },
+            wait_count: 5,
+            total_wait_secs: 0.5,
+            last_wait_age_secs: 0.1,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+        let res_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::FutureWaitsOnResource)
+            .collect();
+        assert_eq!(res_edges.len(), 1);
+        assert_eq!(
+            res_edges[0].to,
+            NodeId::MpscChannel {
+                pid: 1,
+                name: "work-queue".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn future_resource_edge_maps_roam_channel() {
+        use peeps_types::{FutureResourceEdgeSnapshot, ResourceRefSnapshot};
+        let mut dump = empty_dump(1, "app");
+        dump.future_resource_edges = vec![FutureResourceEdgeSnapshot {
+            future_id: 62,
+            resource: ResourceRefSnapshot::RoamChannel {
+                process: "app".to_string(),
+                channel_id: 42,
+            },
+            wait_count: 3,
+            total_wait_secs: 12.0,
+            last_wait_age_secs: 0.5,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+        let res_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::FutureWaitsOnResource)
+            .collect();
+        assert_eq!(res_edges.len(), 1);
+        assert_eq!(
+            res_edges[0].to,
+            NodeId::RoamChannel {
+                pid: 1,
+                channel_id: 42
+            }
+        );
+        assert_eq!(res_edges[0].meta.severity_hint, 3); // >10s
+    }
+
+    #[test]
+    fn future_resource_edge_maps_semaphore() {
+        use peeps_types::{FutureResourceEdgeSnapshot, ResourceRefSnapshot};
+        let mut dump = empty_dump(1, "app");
+        dump.future_resource_edges = vec![FutureResourceEdgeSnapshot {
+            future_id: 63,
+            resource: ResourceRefSnapshot::Semaphore {
+                process: "app".to_string(),
+                name: "pool".to_string(),
+            },
+            wait_count: 1,
+            total_wait_secs: 0.1,
+            last_wait_age_secs: 0.1,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+        let res_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::FutureWaitsOnResource)
+            .collect();
+        assert_eq!(res_edges.len(), 1);
+        assert_eq!(
+            res_edges[0].to,
+            NodeId::Semaphore {
+                pid: 1,
+                name: "pool".to_string()
+            }
+        );
+        assert_eq!(res_edges[0].meta.severity_hint, 0); // <1s
+    }
+
+    // ── Request parent edge tests ────────────────────────────────
+
+    #[test]
+    fn request_parent_creates_cross_process_stitch() {
+        use peeps_types::RequestParentSnapshot;
+        let mut dump_a = empty_dump(100, "frontend");
+        dump_a.roam = Some(SessionSnapshot {
+            connections: vec![make_connection(
+                "conn-a",
+                vec![make_rpc_request("get", 1, Direction::Outgoing, 2.0, Some(1), Some("t"))],
+            )],
+            method_names: HashMap::new(),
+            channel_details: vec![],
+        });
+        dump_a.tasks = vec![make_task(1, "t", TaskState::Pending, 2.0)];
+        dump_a.request_parents = vec![RequestParentSnapshot {
+            child_process: "backend".to_string(),
+            child_connection: "conn-b".to_string(),
+            child_request_id: 2,
+            parent_process: "frontend".to_string(),
+            parent_connection: "conn-a".to_string(),
+            parent_request_id: 1,
+        }];
+
+        let mut dump_b = empty_dump(200, "backend");
+        dump_b.roam = Some(SessionSnapshot {
+            connections: vec![make_connection(
+                "conn-b",
+                vec![make_rpc_request("get", 2, Direction::Incoming, 1.5, Some(2), Some("h"))],
+            )],
+            method_names: HashMap::new(),
+            channel_details: vec![],
+        });
+        dump_b.tasks = vec![make_task(2, "h", TaskState::Polling, 1.5)];
+
+        let graph = WaitGraph::build(&[dump_a, dump_b]);
+
+        let parent_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| {
+                e.kind == EdgeKind::RpcCrossProcessStitch
+                    && e.meta.confidence == EdgeConfidence::Explicit
+            })
+            .collect();
+        assert_eq!(parent_edges.len(), 1);
+    }
+
+    #[test]
+    fn request_parent_same_process_uses_rpc_request_parent() {
+        use peeps_types::RequestParentSnapshot;
+        let mut dump = empty_dump(1, "app");
+        dump.roam = Some(SessionSnapshot {
+            connections: vec![make_connection(
+                "conn",
+                vec![
+                    make_rpc_request("a", 1, Direction::Incoming, 2.0, Some(1), Some("t1")),
+                    make_rpc_request("b", 2, Direction::Incoming, 1.0, Some(2), Some("t2")),
+                ],
+            )],
+            method_names: HashMap::new(),
+            channel_details: vec![],
+        });
+        dump.tasks = vec![
+            make_task(1, "t1", TaskState::Polling, 2.0),
+            make_task(2, "t2", TaskState::Polling, 1.0),
+        ];
+        dump.request_parents = vec![RequestParentSnapshot {
+            child_process: "app".to_string(),
+            child_connection: "conn".to_string(),
+            child_request_id: 2,
+            parent_process: "app".to_string(),
+            parent_connection: "conn".to_string(),
+            parent_request_id: 1,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+
+        let parent_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::RpcRequestParent)
+            .collect();
+        assert_eq!(parent_edges.len(), 1);
+        assert_eq!(parent_edges[0].meta.confidence, EdgeConfidence::Explicit);
+    }
+
+    // ── No self-cycle tests for new edge types ───────────────────
+
+    #[test]
+    fn future_poll_no_self_cycle_from_same_ids() {
+        use peeps_types::FuturePollEdgeSnapshot;
+        let mut dump = empty_dump(1, "app");
+        dump.tasks = vec![make_task(1, "t", TaskState::Polling, 1.0)];
+        dump.future_poll_edges = vec![FuturePollEdgeSnapshot {
+            task_id: 1,
+            task_name: Some("t".to_string()),
+            future_id: 99,
+            future_resource: "timer".to_string(),
+            poll_count: 10,
+            total_poll_secs: 0.5,
+            last_poll_age_secs: 0.1,
+        }];
+
+        let graph = WaitGraph::build(&[dump]);
+        // task -> future is not a self-cycle (different node types)
+        for edge in &graph.edges {
+            assert_ne!(edge.from, edge.to, "no self-cycles");
+        }
+    }
+
+    #[test]
+    fn existing_edges_are_derived() {
+        let mut dump = empty_dump(1, "app");
+        dump.tasks = vec![
+            make_task(1, "a", TaskState::Polling, 1.0),
+            make_task(2, "b", TaskState::Pending, 1.0),
+        ];
+        dump.tasks[1].parent_task_id = Some(1);
+        dump.tasks[1].parent_task_name = Some("a".to_string());
+
+        let graph = WaitGraph::build(&[dump]);
+        let spawn_edges: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::TaskSpawnedTask)
+            .collect();
+        assert_eq!(spawn_edges.len(), 1);
+        assert_eq!(spawn_edges[0].meta.confidence, EdgeConfidence::Derived);
     }
 }

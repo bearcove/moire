@@ -133,7 +133,9 @@ fn is_blocking_edge(edge: &WaitEdge) -> bool {
         EdgeKind::TaskWaitsOnResource
         | EdgeKind::RpcClientToRequest
         | EdgeKind::RpcRequestToServerTask
-        | EdgeKind::RpcCrossProcessStitch => true,
+        | EdgeKind::RpcCrossProcessStitch
+        | EdgeKind::RpcRequestParent
+        | EdgeKind::FutureWaitsOnResource => true,
         EdgeKind::ResourceOwnedByTask => !matches!(edge.from, NodeId::Future { .. }),
         _ => false,
     }
@@ -512,11 +514,7 @@ mod tests {
             from,
             to,
             kind,
-            meta: EdgeMeta {
-                source_snapshot: SnapshotSource::Locks,
-                count: 1,
-                severity_hint: 1,
-            },
+            meta: EdgeMeta::derived(SnapshotSource::Locks, 1, 1),
         }
     }
 
@@ -787,21 +785,13 @@ mod tests {
                     from: task_node(1, 1),
                     to: task_node(1, 2),
                     kind: EdgeKind::TaskSpawnedTask,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::Tasks,
-                        count: 1,
-                        severity_hint: 0,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::Tasks, 1, 0),
                 },
                 WaitEdge {
                     from: task_node(1, 2),
                     to: task_node(1, 1),
                     kind: EdgeKind::TaskWakesFuture,
-                    meta: EdgeMeta {
-                        source_snapshot: SnapshotSource::WakeEdges,
-                        count: 1,
-                        severity_hint: 0,
-                    },
+                    meta: EdgeMeta::derived(SnapshotSource::WakeEdges, 1, 0),
                 },
             ],
         );

@@ -48,6 +48,11 @@ export interface ProcessDump {
   wake_edges: WakeEdgeSnapshot[];
   future_wake_edges: FutureWakeEdgeSnapshot[];
   future_waits: FutureWaitSnapshot[];
+  future_spawn_edges: FutureSpawnEdgeSnapshot[];
+  future_poll_edges: FuturePollEdgeSnapshot[];
+  future_resume_edges: FutureResumeEdgeSnapshot[];
+  future_resource_edges: FutureResourceEdgeSnapshot[];
+  request_parents: RequestParentSnapshot[];
   threads: ThreadStackSnapshot[];
   locks: LockSnapshot | null;
   sync: SyncSnapshot | null;
@@ -281,6 +286,8 @@ export interface RequestSnapshot {
   metadata: Record<string, string> | null;
   args: Record<string, string> | null;
   backtrace: string | null;
+  server_task_id: number | null;
+  server_task_name: string | null;
 }
 
 export interface CompletionSnapshot {
@@ -311,6 +318,64 @@ export interface ChannelCreditSnapshot {
   channel_id: number;
   incoming_credit: number;
   outgoing_credit: number;
+}
+
+// ── Causality edges ─────────────────────────────────────────────
+
+export interface FutureSpawnEdgeSnapshot {
+  parent_future_id: number;
+  parent_resource: string;
+  child_future_id: number;
+  child_resource: string;
+  created_by_task_id: number | null;
+  created_by_task_name: string | null;
+  created_age_secs: number;
+}
+
+export interface FuturePollEdgeSnapshot {
+  task_id: number;
+  task_name: string | null;
+  future_id: number;
+  future_resource: string;
+  poll_count: number;
+  total_poll_secs: number;
+  last_poll_age_secs: number;
+}
+
+export interface FutureResumeEdgeSnapshot {
+  future_id: number;
+  future_resource: string;
+  target_task_id: number;
+  target_task_name: string | null;
+  resume_count: number;
+  last_resume_age_secs: number;
+}
+
+export type ResourceRefSnapshot =
+  | { Lock: { process: string; name: string } }
+  | { Mpsc: { process: string; name: string } }
+  | { Oneshot: { process: string; name: string } }
+  | { Watch: { process: string; name: string } }
+  | { Semaphore: { process: string; name: string } }
+  | { RoamChannel: { process: string; channel_id: number } }
+  | { Socket: { process: string; fd: number; label: string | null } }
+  | { Unknown: { label: string } };
+
+export interface FutureResourceEdgeSnapshot {
+  future_id: number;
+  resource: ResourceRefSnapshot;
+  wait_count: number;
+  total_wait_secs: number;
+  last_wait_age_secs: number;
+}
+
+export interface RequestParentSnapshot {
+  child_process: string;
+  child_connection: string;
+  child_request_id: number;
+  parent_process: string;
+  parent_connection: string;
+  parent_request_id: number;
 }
 
 // SHM

@@ -7,8 +7,9 @@
 use std::future::Future;
 
 pub use peeps_types::{
-    FutureId, FutureWaitSnapshot, FutureWakeEdgeSnapshot, PollEvent, PollResult, TaskId,
-    TaskSnapshot, TaskState, WakeEdgeSnapshot,
+    FutureId, FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot,
+    FutureWaitSnapshot, FutureWakeEdgeSnapshot, PollEvent, PollResult, TaskId, TaskSnapshot,
+    TaskState, WakeEdgeSnapshot,
 };
 
 // ── Zero-cost stubs (no diagnostics) ─────────────────────────────
@@ -60,6 +61,21 @@ mod imp {
 
     #[inline(always)]
     pub fn snapshot_future_waits() -> Vec<FutureWaitSnapshot> {
+        Vec::new()
+    }
+
+    #[inline(always)]
+    pub fn snapshot_future_spawn_edges() -> Vec<FutureSpawnEdgeSnapshot> {
+        Vec::new()
+    }
+
+    #[inline(always)]
+    pub fn snapshot_future_poll_edges() -> Vec<FuturePollEdgeSnapshot> {
+        Vec::new()
+    }
+
+    #[inline(always)]
+    pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
         Vec::new()
     }
 
@@ -136,6 +152,17 @@ mod imp {
     static NEXT_FUTURE_ID: AtomicU64 = AtomicU64::new(1);
     static FUTURE_WAIT_REGISTRY: Mutex<Option<std::collections::HashMap<FutureId, FutureWaitInfo>>> =
         Mutex::new(None);
+    static FUTURE_SPAWN_EDGE_REGISTRY: Mutex<Option<Vec<FutureSpawnEdgeInfo>>> = Mutex::new(None);
+    static FUTURE_POLL_EDGE_REGISTRY: Mutex<
+        Option<std::collections::HashMap<(TaskId, FutureId), FuturePollEdgeInfo>>,
+    > = Mutex::new(None);
+    static FUTURE_RESUME_EDGE_REGISTRY: Mutex<
+        Option<std::collections::HashMap<(FutureId, TaskId), FutureResumeEdgeInfo>>,
+    > = Mutex::new(None);
+
+    std::thread_local! {
+        static CURRENT_POLLING_FUTURE: std::cell::Cell<Option<(FutureId, &'static str)>> = const { std::cell::Cell::new(None) };
+    }
 
     struct TaskInfo {
         id: TaskId,
@@ -177,6 +204,92 @@ mod imp {
         ready_count: u64,
         total_pending: std::time::Duration,
         last_seen: Instant,
+    }
+
+    struct FutureSpawnEdgeInfo {
+        parent_future_id: FutureId,
+        parent_resource: String,
+        child_future_id: FutureId,
+        child_resource: String,
+        created_by_task_id: Option<TaskId>,
+        created_at: Instant,
+    }
+
+    struct FuturePollEdgeInfo {
+        resource: String,
+        poll_count: u64,
+        total_poll: std::time::Duration,
+        last_poll_at: Instant,
+    }
+
+    struct FutureResumeEdgeInfo {
+        future_resource: String,
+        resume_count: u64,
+        last_resume_at: Instant,
+    }
+
+    fn record_future_spawn_edge(
+        parent_future_id: FutureId,
+        parent_resource: &str,
+        child_future_id: FutureId,
+        child_resource: &str,
+        created_by_task_id: Option<TaskId>,
+    ) {
+        let mut registry = FUTURE_SPAWN_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_mut() else {
+            return;
+        };
+        edges.push(FutureSpawnEdgeInfo {
+            parent_future_id,
+            parent_resource: parent_resource.to_string(),
+            child_future_id,
+            child_resource: child_resource.to_string(),
+            created_by_task_id,
+            created_at: Instant::now(),
+        });
+    }
+
+    fn record_future_poll_edge(
+        task_id: TaskId,
+        future_id: FutureId,
+        resource: &str,
+        poll_duration: std::time::Duration,
+    ) {
+        let mut registry = FUTURE_POLL_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_mut() else {
+            return;
+        };
+        let entry = edges
+            .entry((task_id, future_id))
+            .or_insert(FuturePollEdgeInfo {
+                resource: resource.to_string(),
+                poll_count: 0,
+                total_poll: std::time::Duration::ZERO,
+                last_poll_at: Instant::now(),
+            });
+        entry.poll_count += 1;
+        entry.total_poll += poll_duration;
+        entry.last_poll_at = Instant::now();
+    }
+
+    fn record_future_resume_edge(
+        future_id: FutureId,
+        future_resource: &str,
+        target_task_id: TaskId,
+    ) {
+        let mut registry = FUTURE_RESUME_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_mut() else {
+            return;
+        };
+        let entry = edges
+            .entry((future_id, target_task_id))
+            .or_insert(FutureResumeEdgeInfo {
+                future_resource: future_resource.to_string(),
+                resume_count: 0,
+                last_resume_at: Instant::now(),
+            });
+        entry.resume_count += 1;
+        entry.last_resume_at = Instant::now();
     }
 
     fn record_wake(source_task_id: Option<TaskId>, target_task_id: TaskId) {
@@ -279,24 +392,28 @@ mod imp {
     struct PeepableWake {
         inner: std::task::Waker,
         future_id: FutureId,
+        future_resource: String,
+        target_task_id: Option<TaskId>,
     }
 
     impl Wake for PeepableWake {
         fn wake(self: Arc<Self>) {
-            let source_task_id = current_task_id();
-            record_future_wake_edge(source_task_id, self.future_id);
-            self.inner.wake_by_ref();
+            self.wake_by_ref();
         }
 
         fn wake_by_ref(self: &Arc<Self>) {
             let source_task_id = current_task_id();
             record_future_wake_edge(source_task_id, self.future_id);
+            if let Some(target) = self.target_task_id {
+                record_future_resume_edge(self.future_id, &self.future_resource, target);
+            }
             self.inner.wake_by_ref();
         }
     }
 
     pub struct PeepableFuture<F> {
         future_id: FutureId,
+        resource: String,
         inner: F,
         pending_since: Option<Instant>,
     }
@@ -315,12 +432,38 @@ mod imp {
             #[allow(unsafe_code)]
             let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
             let task_id = current_task_id();
+            let poll_start = Instant::now();
+
+            // Set thread-local so child peepable() calls can record spawn edges.
+            let prev = CURRENT_POLLING_FUTURE.with(|c| {
+                let prev = c.get();
+                // Leak the resource string for the thread-local lifetime — bounded by
+                // the number of distinct PeepableFuture types which is small.
+                let leaked: &'static str = Box::leak(this.resource.clone().into_boxed_str());
+                c.set(Some((this.future_id, leaked)));
+                prev
+            });
+
             let peepable_waker = std::task::Waker::from(Arc::new(PeepableWake {
                 inner: cx.waker().clone(),
                 future_id: this.future_id,
+                future_resource: this.resource.clone(),
+                target_task_id: task_id,
             }));
             let mut peepable_cx = Context::from_waker(&peepable_waker);
-            match inner.poll(&mut peepable_cx) {
+            let result = inner.poll(&mut peepable_cx);
+
+            // Restore previous thread-local.
+            CURRENT_POLLING_FUTURE.with(|c| c.set(prev));
+
+            let poll_duration = poll_start.elapsed();
+
+            // Record poll edge.
+            if let Some(tid) = task_id {
+                record_future_poll_edge(tid, this.future_id, &this.resource, poll_duration);
+            }
+
+            match result {
                 Poll::Pending => {
                     if this.pending_since.is_none() {
                         this.pending_since = Some(Instant::now());
@@ -347,9 +490,19 @@ mod imp {
     {
         let future_id = NEXT_FUTURE_ID.fetch_add(1, Ordering::Relaxed);
         let resource = resource.into();
-        register_future(future_id, resource.clone(), current_task_id());
+        let task_id = current_task_id();
+        register_future(future_id, resource.clone(), task_id);
+
+        // If created during another PeepableFuture's poll, record spawn edge.
+        CURRENT_POLLING_FUTURE.with(|c| {
+            if let Some((parent_id, parent_resource)) = c.get() {
+                record_future_spawn_edge(parent_id, parent_resource, future_id, &resource, task_id);
+            }
+        });
+
         PeepableFuture {
             future_id,
+            resource,
             inner: future,
             pending_since: None,
         }
@@ -461,6 +614,9 @@ mod imp {
         *WAKE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
         *FUTURE_WAKE_EDGE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
         *FUTURE_WAIT_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
+        *FUTURE_SPAWN_EDGE_REGISTRY.lock().unwrap() = Some(Vec::new());
+        *FUTURE_POLL_EDGE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
+        *FUTURE_RESUME_EDGE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
     }
 
     #[inline]
@@ -678,6 +834,94 @@ mod imp {
         out
     }
 
+    pub fn snapshot_future_spawn_edges() -> Vec<FutureSpawnEdgeSnapshot> {
+        let now = Instant::now();
+        let task_lookup: std::collections::HashMap<TaskId, String> = {
+            let registry = TASK_REGISTRY.lock().unwrap();
+            let Some(tasks) = registry.as_ref() else {
+                return Vec::new();
+            };
+            tasks.iter().map(|task| (task.id, task.name.clone())).collect()
+        };
+
+        let registry = FUTURE_SPAWN_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_ref() else {
+            return Vec::new();
+        };
+
+        edges
+            .iter()
+            .map(|edge| FutureSpawnEdgeSnapshot {
+                parent_future_id: edge.parent_future_id,
+                parent_resource: edge.parent_resource.clone(),
+                child_future_id: edge.child_future_id,
+                child_resource: edge.child_resource.clone(),
+                created_by_task_id: edge.created_by_task_id,
+                created_by_task_name: edge
+                    .created_by_task_id
+                    .and_then(|id| task_lookup.get(&id).cloned()),
+                created_age_secs: now.duration_since(edge.created_at).as_secs_f64(),
+            })
+            .collect()
+    }
+
+    pub fn snapshot_future_poll_edges() -> Vec<FuturePollEdgeSnapshot> {
+        let now = Instant::now();
+        let task_lookup: std::collections::HashMap<TaskId, String> = {
+            let registry = TASK_REGISTRY.lock().unwrap();
+            let Some(tasks) = registry.as_ref() else {
+                return Vec::new();
+            };
+            tasks.iter().map(|task| (task.id, task.name.clone())).collect()
+        };
+
+        let registry = FUTURE_POLL_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_ref() else {
+            return Vec::new();
+        };
+
+        edges
+            .iter()
+            .map(|((task_id, future_id), edge)| FuturePollEdgeSnapshot {
+                task_id: *task_id,
+                task_name: task_lookup.get(task_id).cloned(),
+                future_id: *future_id,
+                future_resource: edge.resource.clone(),
+                poll_count: edge.poll_count,
+                total_poll_secs: edge.total_poll.as_secs_f64(),
+                last_poll_age_secs: now.duration_since(edge.last_poll_at).as_secs_f64(),
+            })
+            .collect()
+    }
+
+    pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
+        let now = Instant::now();
+        let task_lookup: std::collections::HashMap<TaskId, String> = {
+            let registry = TASK_REGISTRY.lock().unwrap();
+            let Some(tasks) = registry.as_ref() else {
+                return Vec::new();
+            };
+            tasks.iter().map(|task| (task.id, task.name.clone())).collect()
+        };
+
+        let registry = FUTURE_RESUME_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_ref() else {
+            return Vec::new();
+        };
+
+        edges
+            .iter()
+            .map(|((future_id, target_task_id), edge)| FutureResumeEdgeSnapshot {
+                future_id: *future_id,
+                future_resource: edge.future_resource.clone(),
+                target_task_id: *target_task_id,
+                target_task_name: task_lookup.get(target_task_id).cloned(),
+                resume_count: edge.resume_count,
+                last_resume_age_secs: now.duration_since(edge.last_resume_at).as_secs_f64(),
+            })
+            .collect()
+    }
+
     pub fn cleanup_completed_tasks() {
         let now = Instant::now();
         let cutoff = now - std::time::Duration::from_secs(30);
@@ -725,6 +969,26 @@ mod imp {
                     .last_polled_by_task_id
                     .is_some_and(|task_id| live_ids.contains(&task_id));
                 creator_live || last_polled_live || recent
+            });
+        }
+        // Cleanup new registries
+        if let Some(edges) = FUTURE_SPAWN_EDGE_REGISTRY.lock().unwrap().as_mut() {
+            edges.retain(|edge| {
+                let recent = edge.created_at > cutoff;
+                recent || live_future_ids.contains(&edge.child_future_id)
+            });
+        }
+        if let Some(edges) = FUTURE_POLL_EDGE_REGISTRY.lock().unwrap().as_mut() {
+            edges.retain(|(task_id, future_id), edge| {
+                let recent = edge.last_poll_at > cutoff;
+                recent || (live_ids.contains(task_id) && live_future_ids.contains(future_id))
+            });
+        }
+        if let Some(edges) = FUTURE_RESUME_EDGE_REGISTRY.lock().unwrap().as_mut() {
+            edges.retain(|(future_id, target_task_id), edge| {
+                let recent = edge.last_resume_at > cutoff;
+                recent
+                    || (live_future_ids.contains(future_id) && live_ids.contains(target_task_id))
             });
         }
     }
@@ -779,6 +1043,21 @@ pub fn snapshot_future_wake_edges() -> Vec<FutureWakeEdgeSnapshot> {
 /// Collect snapshots of annotated future wait states.
 pub fn snapshot_future_waits() -> Vec<FutureWaitSnapshot> {
     imp::snapshot_future_waits()
+}
+
+/// Collect snapshots of future-to-future spawn/composition edges.
+pub fn snapshot_future_spawn_edges() -> Vec<FutureSpawnEdgeSnapshot> {
+    imp::snapshot_future_spawn_edges()
+}
+
+/// Collect snapshots of task-polls-future edges.
+pub fn snapshot_future_poll_edges() -> Vec<FuturePollEdgeSnapshot> {
+    imp::snapshot_future_poll_edges()
+}
+
+/// Collect snapshots of future-resumes-task edges.
+pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
+    imp::snapshot_future_resume_edges()
 }
 
 /// Wrapper future produced by [`peepable`] or [`PeepableFutureExt::peepable`].

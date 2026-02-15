@@ -579,6 +579,11 @@ pub(crate) fn test_dump(name: &str, pid: u32) -> ProcessDump {
             segments: vec![],
             channels: vec![],
         }),
+        future_spawn_edges: vec![],
+        future_poll_edges: vec![],
+        future_resume_edges: vec![],
+        future_resource_edges: vec![],
+        request_parents: vec![],
         custom: HashMap::new(),
     }
 }

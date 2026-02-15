@@ -55,6 +55,9 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
     let wake_edges = peeps_tasks::snapshot_wake_edges();
     let future_wake_edges = peeps_tasks::snapshot_future_wake_edges();
     let future_waits = peeps_tasks::snapshot_future_waits();
+    let future_spawn_edges = peeps_tasks::snapshot_future_spawn_edges();
+    let future_poll_edges = peeps_tasks::snapshot_future_poll_edges();
+    let future_resume_edges = peeps_tasks::snapshot_future_resume_edges();
     let threads = peeps_threads::collect_all_thread_stacks();
 
     #[cfg(feature = "locks")]
@@ -99,6 +102,11 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         sync,
         roam,
         shm,
+        future_spawn_edges,
+        future_poll_edges,
+        future_resume_edges,
+        future_resource_edges: vec![],
+        request_parents: vec![],
         custom,
     }
 }
