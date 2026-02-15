@@ -394,4 +394,4 @@ impl<T> OnceCell<T> {
 // ── Graph emission (no-op) ──────────────────────────────
 
 #[inline(always)]
-pub(crate) fn emit_sync_graph(_graph: &mut peeps_types::GraphSnapshot) {}
+pub(crate) fn emit_into_graph(_graph: &mut peeps_types::GraphSnapshot) {}

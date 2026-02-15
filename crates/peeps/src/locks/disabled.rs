@@ -1,3 +1,8 @@
+use peeps_types::GraphSnapshot;
+
+#[inline(always)]
+pub(crate) fn emit_into_graph(_graph: &mut GraphSnapshot) {}
+
 pub struct DiagnosticRwLock<T>(parking_lot::RwLock<T>);
 
 impl<T> DiagnosticRwLock<T> {

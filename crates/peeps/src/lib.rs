@@ -6,18 +6,15 @@
 
 mod collect;
 pub(crate) mod futures;
+pub(crate) mod locks;
 pub(crate) mod registry;
 pub(crate) mod stack;
+pub(crate) mod sync;
 
 #[cfg(feature = "dashboard")]
 mod dashboard_client;
-
-pub use peeps_futures as futures;
-pub use peeps_sync as sync;
 pub use peeps_types::{self as types, Diagnostics};
 
-#[cfg(feature = "locks")]
-pub use peeps_locks as locks;
 
 pub use collect::collect_graph;
 

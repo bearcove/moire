@@ -110,6 +110,8 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
 
     // Collect nodes and edges from each resource module.
     crate::futures::emit_into_graph(&mut graph);
+    crate::locks::emit_into_graph(&mut graph);
+    crate::sync::emit_into_graph(&mut graph);
 
     graph
 }

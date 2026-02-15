@@ -72,67 +72,6 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
     }
 }
 
-fn _emit_lock_nodes(nodes: &mut Vec<Node>) {
-    let Ok(lock_infos) = LOCK_INFOS.lock() else {
-        return;
-    };
-
-    for weak in lock_infos.iter() {
-        let Some(info) = weak.upgrade() else {
-            continue;
-        };
-
-        let (Ok(waiters), Ok(holders)) = (info.waiters.lock(), info.holders.lock()) else {
-            continue;
-        };
-
-        let acquires = info.total_acquires.load(Ordering::SeqCst);
-        let releases = info.total_releases.load(Ordering::SeqCst);
-        let holder_count = holders.len() as u64;
-        let waiter_count = waiters.len() as u64;
-
-        let lock_kind = {
-            let first_kind = holders.first().or(waiters.first()).map(|e| e.kind);
-            match first_kind {
-                Some(AcquireKind::Mutex) => "mutex",
-                Some(AcquireKind::Write) => "rwlock_write",
-                Some(AcquireKind::Read) => {
-                    if holders
-                        .iter()
-                        .any(|h| matches!(h.kind, AcquireKind::Write))
-                        || waiters
-                            .iter()
-                            .any(|w| matches!(w.kind, AcquireKind::Write))
-                    {
-                        "rwlock_write"
-                    } else {
-                        "rwlock_read"
-                    }
-                }
-                None => "mutex",
-            }
-        };
-
-        let mut attrs = String::with_capacity(256);
-        attrs.push('{');
-        write_json_kv_str(&mut attrs, "name", info.name, true);
-        write_json_kv_str(&mut attrs, "lock_kind", lock_kind, false);
-        write_json_kv_u64(&mut attrs, "acquires", acquires, false);
-        write_json_kv_u64(&mut attrs, "releases", releases, false);
-        write_json_kv_u64(&mut attrs, "holder_count", holder_count, false);
-        write_json_kv_u64(&mut attrs, "waiter_count", waiter_count, false);
-        attrs.push_str(",\"meta\":{}");
-        attrs.push('}');
-
-        nodes.push(Node {
-            id: info.endpoint_id.clone(),
-            kind: peeps_types::NodeKind::Lock,
-            label: Some(info.name.to_string()),
-            attrs_json: attrs,
-        });
-    }
-}
-
 fn write_json_kv_str(out: &mut String, key: &str, value: &str, first: bool) {
     if !first {
         out.push(',');
@@ -189,7 +128,6 @@ struct LockInfo {
 
 impl LockInfo {
     fn new(name: &'static str) -> Arc<Self> {
-        ensure_registered();
         let info = Arc::new(Self {
             name,
             endpoint_id: peeps_types::new_node_id("lock"),

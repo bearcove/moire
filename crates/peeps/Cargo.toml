@@ -5,10 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-locks = ["dep:peeps-locks"]
 diagnostics = [
   "peeps-futures/diagnostics",
-  "peeps-locks?/diagnostics",
   "peeps-sync/diagnostics",
 ]
 dashboard = []
@@ -16,7 +14,7 @@ dashboard = []
 [dependencies]
 facet.workspace = true
 facet-json.workspace = true
-peeps-locks = { workspace = true, optional = true }
+parking_lot.workspace = true
 peeps-sync.workspace = true
 peeps-futures.workspace = true
 peeps-types.workspace = true
