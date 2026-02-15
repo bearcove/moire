@@ -45,6 +45,9 @@ Canonical wrapper emission API is defined in `peeps-types`:
   - `request_handled_by_task` (request -> task)
   - `task_awaits_future` (task -> future)
   - `future_waits_on_resource` (future -> resource)
+  - `task_sends_to_channel` (task -> channel)
+  - `task_receives_from_channel` (task -> channel)
+  - `task_waits_on_channel` (task -> channel)
   - `task_spawns_task` (parent task -> child task)
   - `task_wakes_task` (source task -> target task)
   - `task_wakes_future` (source task -> future)
@@ -83,6 +86,19 @@ Example explicit edge payload fields:
 ```
 
 Every `nodes.attrs_json` should include canonical keys per type (`task_id`, `name`, `state`, etc.).
+
+For `mpsc` nodes, required keys are:
+- `bounded`
+- `capacity`
+- `queue_len`
+- `high_watermark`
+- `utilization` (bounded only)
+- `sender_count`
+- `send_waiters`
+- `sender_closed`
+- `receiver_closed`
+- `sent_total`
+- `recv_total`
 
 ## Acceptance criteria
 

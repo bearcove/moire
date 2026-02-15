@@ -17,7 +17,7 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 2. Frontend rebuilt from scratch (Vite + Preact), no legacy tab coupling.
 3. Manual snapshot navigation (point-in-time exploration).
 4. Single raw SQL HTTP endpoint for reads (`POST /api/sql`), so frontend and LLM workflows can iterate without backend query rewrites.
-5. Light mode and dark mode are both first-class.
+5. UI theme follows OS via CSS `light-dark()` (no manual toggle).
 
 ## Workstreams (parallelizable)
 
@@ -27,6 +27,7 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 4. `004-todo-frontend-investigate-mvp.md`
 5. `005-todo-correctness-perf-rollout.md`
 6. `006-todo-wrapper-emission-api.md`
+7. `007-todo-resource-type-workstreams.md`
 
 ## Suggested execution order
 
@@ -38,7 +39,7 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 
 1. `peeps-web` receives JSON ingest frames from instrumented programs and persists snapshots.
 2. SQLite stores canonical graph snapshots by `seq`.
-3. UI starts from Requests: shows stuck RPCs (`>5s`) and renders related graph for selected request.
+3. UI starts from Requests and shows stuck RPCs (`>5s`) as a table.
 4. UI does not auto-update selected snapshot.
 5. "Jump to now" switches to latest seq snapshot explicitly.
 
@@ -56,7 +57,7 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 
 ## Initial product slice
 
-1. Requests page only.
-2. Default query: stuck requests (`elapsed >= 5s`).
-3. Click request to open connected subgraph explorer.
-4. Backtrace is optional detail, not a required primary workflow.
+1. Web UI stays stub-only while data model work lands.
+2. Default query focus is stuck requests (`elapsed >= 5s`).
+3. No ELK graph UI yet.
+4. No kitchen-sink resource views ever.

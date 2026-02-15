@@ -6,7 +6,7 @@ Scope: `crates/peeps-web` HTTP API
 
 ## Goal
 
-Support point-in-time graph exploration with manual refresh using one SQL endpoint.
+Support point-in-time graph exploration with synchronized pull snapshots and one SQL endpoint.
 
 ## Endpoint (v1)
 
@@ -14,7 +14,7 @@ Support point-in-time graph exploration with manual refresh using one SQL endpoi
   - request body:
 ```json
 {
-  "seq": 1234,
+  "snapshot_id": 1234,
   "sql": "SELECT id, kind, process, attrs_json FROM nodes WHERE kind = ?1 LIMIT ?2",
   "params": ["request", 200]
 }
@@ -22,13 +22,31 @@ Support point-in-time graph exploration with manual refresh using one SQL endpoi
   - response body:
 ```json
 {
-  "seq": 1234,
+  "snapshot_id": 1234,
   "columns": ["id", "kind", "process", "attrs_json"],
   "rows": [
     ["request:vx-vfsd:...", "request", "vx-vfsd", "{\"elapsed_secs\": 8.1}"]
   ],
   "row_count": 1,
   "truncated": false
+}
+```
+
+- `POST /api/jump-now`
+  - triggers synchronized pull from all connected processes
+  - request body (optional):
+```json
+{
+  "timeout_ms": 1500
+}
+```
+  - response body:
+```json
+{
+  "snapshot_id": 1234,
+  "requested_processes": 5,
+  "responded_processes": 4,
+  "timed_out_processes": 1
 }
 ```
 
@@ -43,10 +61,9 @@ Support point-in-time graph exploration with manual refresh using one SQL endpoi
 
 ## Snapshot model
 
-- `seq` in request fixes point-in-time view.
-- no auto-updates; frontend issues explicit refresh query when requested.
-- optional helper query for "jump to now":
-  - `SELECT MAX(seq) AS seq FROM nodes`
+- `snapshot_id` in request fixes point-in-time view.
+- no auto-updates; frontend issues explicit `POST /api/jump-now`.
+- no snapshot picker in UI; flow is always "jump to now, then inspect".
 
 ## Result format guarantees
 
@@ -68,6 +85,7 @@ Support point-in-time graph exploration with manual refresh using one SQL endpoi
 
 ## Acceptance criteria
 
-1. Frontend can run all views from `POST /api/sql` only.
-2. No auto-update behavior; manual refresh only.
-3. Large datasets remain usable via bounded SQL queries and truncation.
+1. Frontend uses `POST /api/jump-now` to create synchronized snapshots.
+2. Frontend reads data using `POST /api/sql` with `snapshot_id`.
+3. No auto-update behavior; manual refresh only.
+4. Large datasets remain usable via bounded SQL queries and truncation.

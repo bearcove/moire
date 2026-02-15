@@ -79,6 +79,29 @@ Emit edges:
 - task_receives_from_channel
 - task_waits_on_semaphore
 
+#### Mandatory MPSC buffer state (no blind channels)
+
+`mpsc` node `attrs_json` must include:
+- `bounded` (bool)
+- `capacity` (u64|null)
+- `queue_len` (u64) at snapshot time
+- `high_watermark` (u64) since channel creation
+- `utilization` (0.0..1.0, bounded only)
+- `sender_count` (u64)
+- `send_waiters` (u64)
+- `receiver_closed` (bool)
+- `sender_closed` (bool)
+- `sent_total` (u64)
+- `recv_total` (u64)
+- `created_at_ns` (u64)
+
+Additionally, `peeps-sync` must emit explicit channel edges with measured timing/count:
+- `task_sends_to_channel` (task -> mpsc)
+- `task_receives_from_channel` (task -> mpsc)
+- `task_waits_on_channel` (task -> mpsc, with `duration_ns` when blocked)
+
+If bounded channel internals cannot provide exact `queue_len`, wrapper must maintain an explicit atomic occupancy counter at wrapper boundaries (increment on successful send, decrement on successful recv). No estimation from `sent-recv` at query time.
+
 ### peeps-threads
 
 Emit nodes:
