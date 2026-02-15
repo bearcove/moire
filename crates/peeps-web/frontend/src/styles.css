@@ -219,6 +219,7 @@ body {
     padding: 6px 10px;
     border-radius: 6px;
     border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-left: 3px solid #888;
     background: light-dark(#ffffff, #222226);
     font-size: 11px;
     min-width: 160px;
@@ -268,22 +269,6 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.graph-node-custom.kind-request {
-    border-left: 3px solid light-dark(#0071e3, #5ac8fa);
-}
-.graph-node-custom.kind-response {
-    border-left: 3px solid light-dark(#34c759, #30d158);
-}
-.graph-node-custom.kind-task {
-    border-left: 3px solid light-dark(#ff9500, #ff9f0a);
-}
-.graph-node-custom.kind-future {
-    border-left: 3px solid light-dark(#af52de, #bf5af2);
-}
-.graph-node-custom.kind-lock {
-    border-left: 3px solid light-dark(#ff3b30, #ff453a);
 }
 
 /* ── Hover card ───────────────────────────────────────────── */

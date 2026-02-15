@@ -342,6 +342,18 @@ where
     }
 }
 
+// ── Drop (diagnostics) ──────────────────────────────────
+
+#[cfg(feature = "diagnostics")]
+impl<F> Drop for PeepableFuture<F> {
+    fn drop(&mut self) {
+        let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
+        if let Some(waits) = registry.as_mut() {
+            waits.remove(&self.future_id);
+        }
+    }
+}
+
 // ── Init ────────────────────────────────────────────────
 
 #[cfg(feature = "diagnostics")]

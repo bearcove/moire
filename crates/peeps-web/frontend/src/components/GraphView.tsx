@@ -38,21 +38,28 @@ const elkOptions = {
   "elk.padding": "[top=24,left=24,bottom=24,right=24]",
 };
 
-const kindIcons: Record<string, React.ReactNode> = {
-  request: <ArrowFatLineRight size={14} weight="bold" color="#0071e3" />,
-  response: <ArrowsLeftRight size={14} weight="bold" color="#34c759" />,
-  task: <GearSix size={14} weight="bold" color="#ff9500" />,
-  future: <HourglassHigh size={14} weight="bold" color="#af52de" />,
-  lock: <LockKey size={14} weight="bold" color="#ff3b30" />,
+const kindIcons: Record<string, (color: string) => React.ReactNode> = {
+  request: (c) => <ArrowFatLineRight size={14} weight="bold" color={c} />,
+  response: (c) => <ArrowsLeftRight size={14} weight="bold" color={c} />,
+  task: (c) => <GearSix size={14} weight="bold" color={c} />,
+  future: (c) => <HourglassHigh size={14} weight="bold" color={c} />,
+  lock: (c) => <LockKey size={14} weight="bold" color={c} />,
 };
 
-const kindColors: Record<string, string> = {
-  request: "#0071e3",
-  response: "#34c759",
-  task: "#ff9500",
-  future: "#af52de",
-  lock: "#ff3b30",
-};
+// Stable color from process name
+const processColorCache = new Map<string, string>();
+function processColor(process: string): string {
+  let color = processColorCache.get(process);
+  if (color) return color;
+  let hash = 0;
+  for (let i = 0; i < process.length; i++) {
+    hash = process.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = ((hash % 360) + 360) % 360;
+  color = `hsl(${h}, 65%, 55%)`;
+  processColorCache.set(process, color);
+  return color;
+}
 
 interface NodeData {
   label: string;
@@ -117,14 +124,15 @@ function formatAttrValue(key: string, val: string): string {
 
 const PeepsNode = memo(({ data }: NodeProps<Node<NodeData>>) => {
   const { label, kind, process, attrs } = data;
-  const icon = kindIcons[kind] ?? <GearSix size={14} weight="bold" />;
+  const color = processColor(process);
+  const iconFn = kindIcons[kind] ?? ((c: string) => <GearSix size={14} weight="bold" color={c} />);
   const displayAttrs = pickDisplayAttrs(kind, attrs);
 
   return (
-    <div className={`graph-node-custom kind-${kind}`}>
+    <div className="graph-node-custom" style={{ borderLeftColor: color }}>
       <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
       <div className="node-header">
-        <span className="node-icon">{icon}</span>
+        <span className="node-icon">{iconFn(color)}</span>
         <span className="node-label">{label ?? kind}</span>
       </div>
       <div className="node-attrs">
@@ -261,7 +269,7 @@ function GraphFlow({
       <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
       <Controls showInteractive={false} />
       <MiniMap
-        nodeColor={(n) => kindColors[(n.data as NodeData)?.kind] ?? "#888"}
+        nodeColor={(n) => processColor((n.data as NodeData)?.process ?? "")}
         maskColor="light-dark(rgba(245,245,247,0.7), rgba(12,12,14,0.7))"
       />
     </ReactFlow>
