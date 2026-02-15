@@ -1,3 +1,4 @@
+mod api;
 mod projection;
 
 use std::collections::BTreeSet;
@@ -7,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use peeps_types::{Direction, ProcessDump};
 use rusqlite::{Connection, params};
@@ -17,9 +18,9 @@ use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 
 #[derive(Clone)]
-struct AppState {
-    db_path: Arc<PathBuf>,
-    seq: Arc<AtomicU64>,
+pub(crate) struct AppState {
+    pub(crate) db_path: Arc<PathBuf>,
+    pub(crate) seq: Arc<AtomicU64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,6 +82,9 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/api/jump-now", post(api::api_jump_now))
+        .route("/api/sql", post(api::api_sql))
+        // Legacy endpoints (to be removed once frontend migrates)
         .route("/api/snapshots", get(api_snapshots))
         .route("/api/snapshot/latest", get(api_snapshot_latest))
         .route("/api/snapshot/:seq/graph", get(api_snapshot_graph))
