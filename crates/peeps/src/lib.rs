@@ -124,20 +124,7 @@ fn collect_future_resource_edges(
     waits
         .iter()
         .map(|w| {
-            let resource = if let Some(label) = w.resource.strip_prefix("socket:") {
-                let fd = label.parse::<u64>().unwrap_or(0);
-                peeps_types::ResourceRefSnapshot::Socket {
-                    process: process_name.to_string(),
-                    fd,
-                    label: Some(w.resource.clone()),
-                    direction: None,
-                    peer: None,
-                }
-            } else {
-                peeps_types::ResourceRefSnapshot::Unknown {
-                    label: w.resource.clone(),
-                }
-            };
+            let resource = classify_resource_ref(process_name, &w.resource);
             peeps_types::FutureResourceEdgeSnapshot {
                 future_id: w.future_id,
                 resource,
@@ -147,6 +134,121 @@ fn collect_future_resource_edges(
             }
         })
         .collect()
+}
+
+fn classify_resource_ref(process_name: &str, raw: &str) -> peeps_types::ResourceRefSnapshot {
+    use peeps_types::{ResourceRefSnapshot, SocketWaitDirection};
+
+    if let Some(fd) = raw.strip_prefix("socket:").and_then(|s| s.parse::<u64>().ok()) {
+        return ResourceRefSnapshot::Socket {
+            process: process_name.to_string(),
+            fd,
+            label: Some(raw.to_string()),
+            direction: None,
+            peer: None,
+        };
+    }
+    if raw.starts_with("socket.") || raw.contains(".socket.") || raw == "socket" {
+        let direction = if raw.contains(".read") || raw.contains(".recv") {
+            Some(SocketWaitDirection::Readable)
+        } else if raw.contains(".write")
+            || raw.contains(".send")
+            || raw.contains(".flush")
+            || raw.contains(".connect")
+        {
+            Some(SocketWaitDirection::Writable)
+        } else {
+            None
+        };
+        return ResourceRefSnapshot::Socket {
+            process: process_name.to_string(),
+            fd: 0,
+            label: Some(raw.to_string()),
+            direction,
+            peer: None,
+        };
+    }
+
+    if raw.starts_with("lock:") || raw.starts_with("lock.") {
+        return ResourceRefSnapshot::Lock {
+            process: process_name.to_string(),
+            name: raw
+                .strip_prefix("lock:")
+                .or_else(|| raw.strip_prefix("lock."))
+                .unwrap_or(raw)
+                .to_string(),
+        };
+    }
+    if raw.starts_with("mpsc:") || raw.starts_with("mpsc.") || raw.starts_with("channel.") {
+        return ResourceRefSnapshot::Mpsc {
+            process: process_name.to_string(),
+            name: raw
+                .strip_prefix("mpsc:")
+                .or_else(|| raw.strip_prefix("mpsc."))
+                .or_else(|| raw.strip_prefix("channel."))
+                .unwrap_or(raw)
+                .to_string(),
+        };
+    }
+    if raw.starts_with("oneshot:") || raw.starts_with("oneshot.") {
+        return ResourceRefSnapshot::Oneshot {
+            process: process_name.to_string(),
+            name: raw
+                .strip_prefix("oneshot:")
+                .or_else(|| raw.strip_prefix("oneshot."))
+                .unwrap_or(raw)
+                .to_string(),
+        };
+    }
+    if raw.starts_with("watch:") || raw.starts_with("watch.") {
+        return ResourceRefSnapshot::Watch {
+            process: process_name.to_string(),
+            name: raw
+                .strip_prefix("watch:")
+                .or_else(|| raw.strip_prefix("watch."))
+                .unwrap_or(raw)
+                .to_string(),
+        };
+    }
+    if raw.starts_with("semaphore:") || raw.starts_with("semaphore.") {
+        return ResourceRefSnapshot::Semaphore {
+            process: process_name.to_string(),
+            name: raw
+                .strip_prefix("semaphore:")
+                .or_else(|| raw.strip_prefix("semaphore."))
+                .unwrap_or(raw)
+                .to_string(),
+        };
+    }
+    if raw.starts_with("once_cell:")
+        || raw.starts_with("once_cell.")
+        || raw.starts_with("oncecell:")
+        || raw.starts_with("oncecell.")
+    {
+        return ResourceRefSnapshot::OnceCell {
+            process: process_name.to_string(),
+            name: raw
+                .strip_prefix("once_cell:")
+                .or_else(|| raw.strip_prefix("once_cell."))
+                .or_else(|| raw.strip_prefix("oncecell:"))
+                .or_else(|| raw.strip_prefix("oncecell."))
+                .unwrap_or(raw)
+                .to_string(),
+        };
+    }
+    if let Some(id) = raw
+        .strip_prefix("roam.channel.")
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        return ResourceRefSnapshot::RoamChannel {
+            process: process_name.to_string(),
+            channel_id: id,
+        };
+    }
+
+    ResourceRefSnapshot::Unknown {
+        label: raw.to_string(),
+    }
 }
 
 /// Extract `RequestParentSnapshot` entries from incoming requests that carry

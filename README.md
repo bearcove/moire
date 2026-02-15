@@ -34,8 +34,7 @@ async fn main() {
 Start the dashboard server:
 
 ```bash
-cargo install peeps-dump
-peeps
+cargo run -p peeps-web
 ```
 
 By default:
@@ -62,4 +61,4 @@ PEEPS_DASHBOARD=127.0.0.1:9119 <your-binary>
 - `peeps-tasks`: Tokio task instrumentation
 - `peeps-threads`: SIGPROF-based thread sampling
 - `peeps-locks`: Lock contention tracking
-- `peeps-dump`: CLI tool and dashboard server (binary name: `peeps`)
+- `peeps-web`: SQLite-backed ingest + query server and investigation UI
