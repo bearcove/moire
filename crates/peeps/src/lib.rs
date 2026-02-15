@@ -5,12 +5,13 @@
 //! - `peeps::collect_graph()` - Collect canonical graph snapshot data
 
 mod collect;
+mod registry;
 
 #[cfg(feature = "dashboard")]
 mod dashboard_client;
 
-pub use peeps_sync as sync;
 pub use peeps_futures as futures;
+pub use peeps_sync as sync;
 pub use peeps_types::{self as types, Diagnostics};
 
 #[cfg(feature = "locks")]
