@@ -24,10 +24,12 @@ pub use disabled::*;
 
 **Additional requirement:** create a **single shared diagnostics registry** covering every tracked resource type (futures, locks, channels, oncecell, semaphores, RPC request/response, RPC tx/rx, etc.).
 
+**Hard constraint:** tasks do not exist in the canonical graph model. If task IDs exist anywhere, they are metadata only and must not create task nodes/edges.
+
 ## Non-Goals
 
 - Do not add new instrumentation features beyond current behavior.
-- Do not reintroduce task tracking (task IDs, task snapshots, wake edges).
+- Do not reintroduce task tracking (task nodes/edges, task snapshots, wake edges).
 - Do not preserve `peeps-futures`, `peeps-locks`, or `peeps-sync` as separate published crates.
 
 ## Constraints
@@ -44,7 +46,6 @@ Top-level exports from `peeps`:
 
 - Locks
   - `Mutex`, `RwLock`
-  - `AsyncMutex`, `AsyncRwLock`
 - Sync primitives
   - `channel`, `unbounded_channel`, `oneshot_channel`, `watch_channel`
   - `Sender`, `Receiver`, `UnboundedSender`, `UnboundedReceiver`
@@ -63,6 +64,85 @@ Top-level exports from `peeps`:
 
 Create a new module `peeps::registry`:
 
+## Canonical Graph Semantics (Stack-Based)
+
+The canonical graph must not contain redundant shortcut paths.
+
+To enforce this, all edge emission is mediated by a **task-local node stack**.
+
+### Invariants
+
+- The canonical graph contains no task nodes or task edges.
+- All canonical edges are immediate `needs` edges:
+  - `top_of_stack --needs--> resource_endpoint`
+  - `tx --needs--> rx` for gateway resources (channels)
+  - `request --needs--> response` for RPC
+- No transitive shortcuts:
+  - If `A --needs--> B` and `B --needs--> C`, do not also emit `A --needs--> C`.
+
+### What “stack” means here
+
+This is not an OS thread stack and not “tokio task” nodes in the graph.
+
+It is a **logical async stack** of *instrumented nodes* representing the current execution chain
+within a running async task:
+
+`future -> future -> future -> ...`
+
+Only the **top** is allowed to emit `needs` edges to resources.
+
+### Stack API (required)
+
+Implement a small API in `peeps` (or `peeps-tasks` during migration) gated by `diagnostics`:
+
+- `stack::push(node_id: &str)`
+- `stack::pop()`
+- `stack::top() -> Option<&str>`
+- `stack::with_top(|top| { ... })`
+
+Implementation requirement: task-local storage (e.g. `tokio::task_local!`) so it follows async
+execution across threads.
+
+When `diagnostics` is disabled, all stack operations compile away to no-ops.
+
+### How `peepable` integrates with the stack
+
+Each `PeepableFuture` must have a stable canonical node ID for its lifetime (not per poll).
+
+In `PeepableFuture::poll` (diagnostics enabled):
+
+1. `stack::push(self.node_id)`
+2. poll inner future
+3. `stack::pop()`
+
+This makes nested `peepable(...)` calls create a proper chain without requiring shortcut edges.
+
+### How wrappers emit edges using the stack
+
+Wrappers for locks/channels/semaphores/etc. must emit edges only via the stack.
+
+At the moment a wrapper determines it is *actually waiting* (contended lock, full buffer, empty
+recv, no permits, etc.), it must do:
+
+- `stack::with_top(|src| registry::edge(src, resource_endpoint_id))`
+
+Wrappers must not:
+
+- emit `task -> resource` edges
+- emit creator edges as `needs` edges
+- emit `request -> resource` shortcut edges unless the request node is literally on top of stack
+
+### Gateway resources
+
+Some resources are gateways that intentionally create a “bridge” edge:
+
+- `mpsc_tx --needs--> mpsc_rx` (progress of tx ultimately depends on rx draining)
+- `oneshot_tx --needs--> oneshot_rx`
+- `watch_tx --needs--> watch_rx`
+- `request --needs--> response`
+
+These edges are structural and always allowed because they represent the gateway itself.
+
 ### Registry Responsibilities
 
 - Central storage of all live diagnostics objects, keyed as weak references.
@@ -72,15 +152,15 @@ Create a new module `peeps::registry`:
 
 ### Registry Contents (minimum)
 
-- Futures wait info, spawn/poll edges, wake/resume edges (task fields removed)
-- Locks (mutex, rwlock, async locks)
+- Futures wait info and composition edges (no task nodes/edges; any task IDs are metadata only)
+- Locks (mutex, rwlock)
 - Channels:
   - mpsc
   - oneshot
   - watch
 - Semaphores
 - OnceCell
-- RPC request/response and RPC channel endpoints (tx/rx)
+- RPC request/response and RPC channel endpoints (tx/rx) emitted directly by the RPC/channel wrappers (no projection layer)
 
 ### Registry Interface (sketch)
 
@@ -97,7 +177,7 @@ All resource modules must register themselves into this registry, never maintain
 - New module under `peeps/src/registry.rs`.
 - Aggregates registries currently living in `peeps-sync` and `peeps-locks`.
 - Adds future-related registries from `peeps-futures`.
-- Add RPC request/response and RPC channel endpoint tracking (hook into existing roam collection structures).
+- Add RPC request/response and RPC channel endpoint tracking by instrumenting the RPC/channel wrappers themselves (no “collect session then project”).
 
 ### 2) Move `peeps-futures` into `peeps`
 - Create `peeps/src/futures/{mod.rs,enabled.rs,disabled.rs}` (shape similar to `peeps-locks`).
@@ -108,9 +188,9 @@ All resource modules must register themselves into this registry, never maintain
 
 ### 3) Move `peeps-locks` into `peeps`
 - Create `peeps/src/locks/{mod.rs,enabled.rs,disabled.rs}`.
-- Replace `peeps_futures::current_task_id()` usage with a removed/no-op or a placeholder (since tasks are removed).
+- Replace any `current_task_id()` usage with nothing (tasks are not part of the model).
 - Register lock info in the **central registry** (no private lock registry).
-- Preserve `DiagnosticMutex`, `DiagnosticRwLock`, `DiagnosticAsyncMutex`, `DiagnosticAsyncRwLock` behavior.
+- Preserve `DiagnosticMutex`, `DiagnosticRwLock` behavior.
 
 ### 4) Move `peeps-sync` into `peeps`
 - Create `peeps/src/sync/{mod.rs,channels.rs,semaphore.rs,oncecell.rs,enabled.rs,disabled.rs}`.
@@ -120,7 +200,7 @@ All resource modules must register themselves into this registry, never maintain
 ### 5) Update `collect_graph`
 - Replace all calls to old crate-specific `emit_graph` functions.
 - Use `registry::emit_graph(process_name, proc_key)` to emit all nodes/edges.
-- Preserve roam graph emission but integrate its resources into the unified registry if appropriate.
+- Remove any roam “session snapshot → projection” style collection. RPC/channel wrappers must emit canonical nodes/edges directly into the registry.
 
 ### 6) Update `peeps` Public API
 - Re-export types directly from the moved modules so `use peeps::Mutex;` works.
@@ -153,5 +233,4 @@ All resource modules must register themselves into this registry, never maintain
 
 ## Open Decisions (confirm with owner)
 
-- Roam can keep its own registry for RPC request/response and channel endpoints.
-- Canonical node kinds: `Request`/`Response` for RPC request/response, and `RemoteTx`/`RemoteRx` for RPC channel endpoints.
+- Exact wrapper boundaries for RPC instrumentation (which crate emits what, but still direct-to-registry).
