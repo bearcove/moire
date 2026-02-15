@@ -4,7 +4,7 @@
 //! timing, poll events, and backtraces. When disabled, `spawn_tracked` is
 //! a zero-cost wrapper around `tokio::spawn`.
 
-use std::future::Future;
+use std::future::{Future, IntoFuture};
 
 mod futures;
 mod snapshot;
@@ -115,12 +115,12 @@ where
 }
 
 /// Mark a future as an instrumented wait on a named resource.
-pub fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFuture<F>
+pub fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
     PeepableFuture {
-        inner: futures::peepable(future, resource),
+        inner: futures::peepable(future.into_future(), resource),
     }
 }
 
@@ -129,12 +129,12 @@ pub fn peepable_with_meta<F, const N: usize>(
     future: F,
     resource: impl Into<String>,
     meta: MetaBuilder<'_, N>,
-) -> PeepableFuture<F>
+) -> PeepableFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
     PeepableFuture {
-        inner: futures::peepable_with_meta(future, resource, meta),
+        inner: futures::peepable_with_meta(future.into_future(), resource, meta),
     }
 }
 
@@ -161,21 +161,23 @@ macro_rules! peep_meta {
 ///     { "request.id" => MetaValue::U64(id) }
 /// ).await?;
 /// ```
+#[cfg(feature = "diagnostics")]
 #[macro_export]
 macro_rules! peepable_with_meta {
     ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
-        #[cfg(feature = "diagnostics")]
-        {
-            $crate::PeepableFutureExt::peepable_with_meta(
-                $future,
-                $label,
-                $crate::peep_meta!($($k => $v),*),
-            )
-        }
-        #[cfg(not(feature = "diagnostics"))]
-        {
-            $future
-        }
+        $crate::PeepableFutureExt::peepable_with_meta(
+            $future,
+            $label,
+            $crate::peep_meta!($($k => $v),*),
+        )
+    }};
+}
+
+#[cfg(not(feature = "diagnostics"))]
+#[macro_export]
+macro_rules! peepable_with_meta {
+    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
+        $future
     }};
 }
 
@@ -193,106 +195,104 @@ macro_rules! peepable_with_meta {
 ///     "bytes" => buf.len(),
 /// }).await?;
 /// ```
+#[cfg(feature = "diagnostics")]
 #[macro_export]
 macro_rules! peep {
     // With custom metadata keys
     ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
-        #[cfg(feature = "diagnostics")]
-        {
-            let mut mb = $crate::MetaBuilder::<{
-                // 6 auto context keys + user keys
-                6 $(+ $crate::peep!(@count $k))*
-            }>::new();
-            mb.push(
-                $crate::meta_key::CTX_MODULE_PATH,
-                $crate::MetaValue::Static(module_path!()),
-            );
-            mb.push(
-                $crate::meta_key::CTX_FILE,
-                $crate::MetaValue::Static(file!()),
-            );
-            mb.push(
-                $crate::meta_key::CTX_LINE,
-                $crate::MetaValue::U64(line!() as u64),
-            );
-            mb.push(
-                $crate::meta_key::CTX_CRATE_NAME,
-                $crate::MetaValue::Static(env!("CARGO_PKG_NAME")),
-            );
-            mb.push(
-                $crate::meta_key::CTX_CRATE_VERSION,
-                $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")),
-            );
-            mb.push(
-                $crate::meta_key::CTX_CALLSITE,
-                $crate::MetaValue::Static(concat!(
-                    $label, "@", file!(), ":", line!(), "::", module_path!()
-                )),
-            );
-            $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-            $crate::peepable_with_meta($future, $label, mb)
-        }
-        #[cfg(not(feature = "diagnostics"))]
-        {
-            $future
-        }
+        let mut mb = $crate::MetaBuilder::<{
+            // 6 auto context keys + user keys
+            6 $(+ $crate::peep!(@count $k))*
+        }>::new();
+        mb.push(
+            $crate::meta_key::CTX_MODULE_PATH,
+            $crate::MetaValue::Static(module_path!()),
+        );
+        mb.push(
+            $crate::meta_key::CTX_FILE,
+            $crate::MetaValue::Static(file!()),
+        );
+        mb.push(
+            $crate::meta_key::CTX_LINE,
+            $crate::MetaValue::U64(line!() as u64),
+        );
+        mb.push(
+            $crate::meta_key::CTX_CRATE_NAME,
+            $crate::MetaValue::Static(env!("CARGO_PKG_NAME")),
+        );
+        mb.push(
+            $crate::meta_key::CTX_CRATE_VERSION,
+            $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")),
+        );
+        mb.push(
+            $crate::meta_key::CTX_CALLSITE,
+            $crate::MetaValue::Static(concat!(
+                $label, "@", file!(), ":", line!(), "::", module_path!()
+            )),
+        );
+        $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
+        $crate::peepable_with_meta($future, $label, mb)
     }};
     // Label only (no custom keys)
     ($future:expr, $label:literal) => {{
-        #[cfg(feature = "diagnostics")]
-        {
-            let mut mb = $crate::MetaBuilder::<6>::new();
-            mb.push(
-                $crate::meta_key::CTX_MODULE_PATH,
-                $crate::MetaValue::Static(module_path!()),
-            );
-            mb.push(
-                $crate::meta_key::CTX_FILE,
-                $crate::MetaValue::Static(file!()),
-            );
-            mb.push(
-                $crate::meta_key::CTX_LINE,
-                $crate::MetaValue::U64(line!() as u64),
-            );
-            mb.push(
-                $crate::meta_key::CTX_CRATE_NAME,
-                $crate::MetaValue::Static(env!("CARGO_PKG_NAME")),
-            );
-            mb.push(
-                $crate::meta_key::CTX_CRATE_VERSION,
-                $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")),
-            );
-            mb.push(
-                $crate::meta_key::CTX_CALLSITE,
-                $crate::MetaValue::Static(concat!(
-                    $label, "@", file!(), ":", line!(), "::", module_path!()
-                )),
-            );
-            $crate::peepable_with_meta($future, $label, mb)
-        }
-        #[cfg(not(feature = "diagnostics"))]
-        {
-            $future
-        }
+        let mut mb = $crate::MetaBuilder::<6>::new();
+        mb.push(
+            $crate::meta_key::CTX_MODULE_PATH,
+            $crate::MetaValue::Static(module_path!()),
+        );
+        mb.push(
+            $crate::meta_key::CTX_FILE,
+            $crate::MetaValue::Static(file!()),
+        );
+        mb.push(
+            $crate::meta_key::CTX_LINE,
+            $crate::MetaValue::U64(line!() as u64),
+        );
+        mb.push(
+            $crate::meta_key::CTX_CRATE_NAME,
+            $crate::MetaValue::Static(env!("CARGO_PKG_NAME")),
+        );
+        mb.push(
+            $crate::meta_key::CTX_CRATE_VERSION,
+            $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")),
+        );
+        mb.push(
+            $crate::meta_key::CTX_CALLSITE,
+            $crate::MetaValue::Static(concat!(
+                $label, "@", file!(), ":", line!(), "::", module_path!()
+            )),
+        );
+        $crate::peepable_with_meta($future, $label, mb)
     }};
     // Internal: counting helper
     (@count $x:literal) => { 1usize };
 }
 
-pub trait PeepableFutureExt: Future + Sized {
-    fn peepable(self, resource: impl Into<String>) -> PeepableFuture<Self> {
+#[cfg(not(feature = "diagnostics"))]
+#[macro_export]
+macro_rules! peep {
+    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
+        $future
+    }};
+    ($future:expr, $label:literal) => {{
+        $future
+    }};
+}
+
+pub trait PeepableFutureExt: IntoFuture + Sized {
+    fn peepable(self, resource: impl Into<String>) -> PeepableFuture<Self::IntoFuture> {
         peepable(self, resource)
     }
     fn peepable_with_meta<const N: usize>(
         self,
         resource: impl Into<String>,
         meta: MetaBuilder<'_, N>,
-    ) -> PeepableFuture<Self> {
+    ) -> PeepableFuture<Self::IntoFuture> {
         peepable_with_meta(self, resource, meta)
     }
 }
 
-impl<F: Future> PeepableFutureExt for F {}
+impl<F: IntoFuture> PeepableFutureExt for F {}
 
 /// Remove completed tasks from the registry. No-op without `diagnostics`.
 pub fn cleanup_completed_tasks() {
