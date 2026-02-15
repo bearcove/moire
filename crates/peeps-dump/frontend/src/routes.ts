@@ -55,19 +55,19 @@ export function resourceHref(ref: ResourceRef): string {
     case "thread":
       return `/threads/${enc(ref.process)}/${enc(ref.thread)}`;
     case "lock":
-      return `/locks/${enc(ref.process)}/${enc(ref.lock)}`;
+      return `/sync/lock/${enc(ref.process)}/${enc(ref.lock)}`;
     case "mpsc":
-      return `/sync/mpsc/${enc(ref.process)}/${enc(ref.name)}`;
+      return `/locks/mpsc/${enc(ref.process)}/${enc(ref.name)}`;
     case "oneshot":
-      return `/sync/oneshot/${enc(ref.process)}/${enc(ref.name)}`;
+      return `/locks/oneshot/${enc(ref.process)}/${enc(ref.name)}`;
     case "watch":
-      return `/sync/watch/${enc(ref.process)}/${enc(ref.name)}`;
+      return `/locks/watch/${enc(ref.process)}/${enc(ref.name)}`;
     case "once_cell":
-      return `/sync/once-cell/${enc(ref.process)}/${enc(ref.name)}`;
+      return `/locks/once-cell/${enc(ref.process)}/${enc(ref.name)}`;
     case "semaphore":
-      return `/semaphores/${enc(ref.process)}/${enc(ref.name)}`;
+      return `/sync/semaphores/${enc(ref.process)}/${enc(ref.name)}`;
     case "roam_channel":
-      return `/roam-channels/${enc(ref.process)}/${ref.channelId}`;
+      return `/locks/roam-channels/${enc(ref.process)}/${ref.channelId}`;
     case "future_wait":
       return `/tasks/future/${enc(ref.process)}/${ref.taskId}/${enc(ref.resource)}`;
     case "connection":

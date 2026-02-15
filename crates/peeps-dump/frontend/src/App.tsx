@@ -22,8 +22,8 @@ const TABS = [
   "deadlocks",
   "tasks",
   "threads",
-  "locks",
   "sync",
+  "locks",
   "requests",
   "connections",
   "processes",
@@ -129,18 +129,25 @@ export function App() {
     }
   };
 
-  const hasSync = dumps.some((d) => d.sync != null);
   const hasRoam = dumps.some((d) => d.roam != null);
   const hasShm = dumps.some((d) => d.shm != null);
-  const hasLocks = dumps.some((d) => d.locks != null);
+  const hasLockPrimitives = dumps.some((d) => (d.locks?.locks.length ?? 0) > 0)
+    || dumps.some((d) => (d.sync?.semaphores.length ?? 0) > 0);
+  const hasChannelPrimitives = dumps.some((d) =>
+    (d.sync?.mpsc_channels.length ?? 0) > 0
+    || (d.sync?.oneshot_channels.length ?? 0) > 0
+    || (d.sync?.watch_channels.length ?? 0) > 0
+    || (d.sync?.once_cells.length ?? 0) > 0
+    || ((d.roam?.channel_details?.length ?? 0) > 0)
+  );
 
   const visibleTabs = TABS.filter((t) => {
     if (t === "problems") return true;
-    if (t === "sync" && !hasSync) return false;
+    if (t === "sync" && !hasLockPrimitives) return false;
+    if (t === "locks" && !hasChannelPrimitives) return false;
     if (t === "requests" && !hasRoam) return false;
     if (t === "connections" && !hasRoam) return false;
     if (t === "shm" && !hasShm) return false;
-    if (t === "locks" && !hasLocks) return false;
     return true;
   });
 
@@ -176,8 +183,13 @@ export function App() {
         )}
         {tab === "tasks" && <TasksView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "threads" && <ThreadsView dumps={dumps} filter={filter} selectedPath={path} />}
-        {tab === "locks" && <LocksView dumps={dumps} filter={filter} selectedPath={path} />}
-        {tab === "sync" && <SyncView dumps={dumps} filter={filter} selectedPath={path} />}
+        {tab === "sync" && (
+          <>
+            <LocksView dumps={dumps} filter={filter} selectedPath={path} />
+            <SyncView dumps={dumps} filter={filter} selectedPath={path} mode="locks" />
+          </>
+        )}
+        {tab === "locks" && <SyncView dumps={dumps} filter={filter} selectedPath={path} mode="channels" />}
         {tab === "requests" && <RequestsView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "connections" && (
           <ConnectionsView dumps={dumps} filter={filter} selectedPath={path} />

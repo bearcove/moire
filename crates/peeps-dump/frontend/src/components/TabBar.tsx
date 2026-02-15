@@ -22,22 +22,23 @@ function badgeCount(tab: Tab, dumps: ProcessDump[], deadlockCandidates: Deadlock
     case "threads":
       return dumps.reduce((s, d) => s + d.threads.length, 0);
     case "locks":
+      return dumps.reduce((s, d) => {
+        let n = s;
+        if (d.sync) {
+          n +=
+            d.sync.mpsc_channels.length +
+            d.sync.oneshot_channels.length +
+            d.sync.watch_channels.length +
+            d.sync.once_cells.length;
+        }
+        n += d.roam?.channel_details.length ?? 0;
+        return n;
+      }, 0);
+    case "sync":
       return dumps.reduce(
-        (s, d) => s + (d.locks?.locks.length ?? 0),
+        (s, d) => s + (d.locks?.locks.length ?? 0) + (d.sync?.semaphores.length ?? 0),
         0
       );
-    case "sync": {
-      let n = 0;
-      for (const d of dumps) {
-        if (!d.sync) continue;
-        n +=
-          d.sync.mpsc_channels.length +
-          d.sync.oneshot_channels.length +
-          d.sync.watch_channels.length +
-          d.sync.once_cells.length;
-      }
-      return n;
-    }
     case "requests":
       return dumps.reduce(
         (s, d) =>
@@ -65,8 +66,8 @@ const TAB_LABELS: Record<Tab, string> = {
   deadlocks: "Deadlocks",
   tasks: "Tasks",
   threads: "Threads",
-  locks: "Locks",
-  sync: "Sync",
+  sync: "Locks",
+  locks: "Channels",
   requests: "Requests",
   connections: "Connections",
   processes: "Processes",

@@ -7,6 +7,7 @@ interface Props {
   dumps: ProcessDump[];
   filter: string;
   selectedPath: string;
+  mode?: "all" | "locks" | "channels";
 }
 
 type Severity = "danger" | "warn" | "idle";
@@ -175,7 +176,7 @@ function onceReason(ch: OnceCellSnapshot): string {
   return "healthy";
 }
 
-export function SyncView({ dumps, filter, selectedPath }: Props) {
+export function SyncView({ dumps, filter, selectedPath, mode = "all" }: Props) {
   const q = filter.toLowerCase();
 
   const mpsc: { process: string; ch: MpscChannelSnapshot; severity: Severity; bucket: MpscBucket; impact: number }[] = [];
@@ -303,9 +304,12 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
   const onceHot = onceFiltered.filter((o) => o.severity !== "idle");
   const onceIdle = onceFiltered.filter((o) => o.severity === "idle");
 
+  const showLocksFamily = mode === "all" || mode === "locks";
+  const showChannelsFamily = mode === "all" || mode === "channels";
+
   return (
     <div class="fade-in">
-      {sems.length > 0 && (
+      {showLocksFamily && sems.length > 0 && (
         <div class="card" style="margin-bottom: 16px">
           <div class="card-head">
             Semaphores
@@ -407,7 +411,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
         </div>
       )}
 
-      {roamChs.length > 0 && (
+      {showChannelsFamily && roamChs.length > 0 && (
         <div class="card" style="margin-bottom: 16px">
           <div class="card-head">
             Roam Channels
@@ -496,7 +500,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
         </div>
       )}
 
-      {mpsc.length > 0 && (
+      {showChannelsFamily && mpsc.length > 0 && (
         <div class="card" style="margin-bottom: 16px">
           <div class="card-head">
             MPSC Channels
@@ -584,7 +588,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
         </div>
       )}
 
-      {oneshot.length > 0 && (
+      {showChannelsFamily && oneshot.length > 0 && (
         <div class="card" style="margin-bottom: 16px">
           <div class="card-head">Oneshot Channels</div>
           {oneshotHot.length > 0 && (
@@ -631,7 +635,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
         </div>
       )}
 
-      {watch.length > 0 && (
+      {showChannelsFamily && watch.length > 0 && (
         <div class="card" style="margin-bottom: 16px">
           <div class="card-head">Watch Channels</div>
           {watchHot.length > 0 && (
@@ -680,7 +684,7 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
         </div>
       )}
 
-      {once.length > 0 && (
+      {showChannelsFamily && once.length > 0 && (
         <div class="card">
           <div class="card-head">OnceCells</div>
           {onceHot.length > 0 && (

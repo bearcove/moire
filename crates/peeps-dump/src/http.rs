@@ -1,6 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::io::Write;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
@@ -8,10 +6,6 @@ use axum::http::{header, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use flate2::Compression;
-use flate2::write::GzEncoder;
 use peeps_types::ProcessDump;
 use rust_embed::Embed;
 
@@ -21,41 +15,85 @@ use crate::server::DashboardState;
 #[folder = "frontend/dist/"]
 struct FrontendAssets;
 
-const WS_CHUNK_START_PREFIX: &str = "__peeps_chunk_start__:";
-const WS_CHUNK_PART_PREFIX: &str = "__peeps_chunk_part__:";
-const WS_CHUNK_END_PREFIX: &str = "__peeps_chunk_end__:";
-const WS_GZIP_PREFIX: &str = "__peeps_gzip_base64__:";
-const DEFAULT_WS_CHUNK_BYTES: usize = 256 * 1024;
-static WS_CHUNK_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
-
 pub fn router(state: Arc<DashboardState>) -> Router {
     Router::new()
         .route("/api/dumps", get(api_dumps))
+        .route("/api/summary", get(api_summary))
+        .route("/api/problems", get(api_problems))
+        .route("/api/deadlocks", get(api_deadlocks))
         .route("/api/tasks", get(api_tasks))
         .route("/api/threads", get(api_threads))
         .route("/api/locks", get(api_locks))
         .route("/api/sync", get(api_sync))
         .route("/api/requests", get(api_requests))
+        .route("/api/connections", get(api_connections))
         .route("/api/processes", get(api_processes))
+        .route("/api/shm", get(api_shm))
         .route("/api/ws", get(ws_upgrade))
         .fallback(static_handler)
         .with_state(state)
 }
 
+// ── Response envelope ────────────────────────────────────────────
+
+fn json_envelope_response(seq: u64, data_json: &str) -> Response {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let envelope = format!(
+        r#"{{"version":1,"seq":{seq},"server_time_ms":{now_ms},"data":{data_json}}}"#
+    );
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/json")],
+        envelope,
+    )
+        .into_response()
+}
+
+fn serialization_error(e: impl std::fmt::Display) -> Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("serialization error: {e}"),
+    )
+        .into_response()
+}
+
+// ── Endpoints ────────────────────────────────────────────────────
+
 async fn api_dumps(State(state): State<Arc<DashboardState>>) -> Response {
+    let seq = state.current_seq();
     let payload = state.dashboard_payload().await;
     match facet_json::to_string(&payload) {
-        Ok(json) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json")],
-            json,
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("serialization error: {e}"),
-        )
-            .into_response(),
+        Ok(json) => json_envelope_response(seq, &json),
+        Err(e) => serialization_error(e),
+    }
+}
+
+async fn api_summary(State(state): State<Arc<DashboardState>>) -> Response {
+    let seq = state.current_seq();
+    let dumps = state.all_dumps().await;
+    let process_count = dumps.len();
+    let task_count: usize = dumps.iter().map(|d| d.tasks.len()).sum();
+    let thread_count: usize = dumps.iter().map(|d| d.threads.len()).sum();
+    let data = format!(
+        r#"{{"process_count":{process_count},"task_count":{task_count},"thread_count":{thread_count},"seq":{seq}}}"#
+    );
+    json_envelope_response(seq, &data)
+}
+
+async fn api_problems(State(state): State<Arc<DashboardState>>) -> Response {
+    // For now, same as /api/dumps — client does problem detection.
+    api_dumps(State(state)).await
+}
+
+async fn api_deadlocks(State(state): State<Arc<DashboardState>>) -> Response {
+    let seq = state.current_seq();
+    let payload = state.dashboard_payload().await;
+    match facet_json::to_string(&payload.deadlock_candidates) {
+        Ok(json) => json_envelope_response(seq, &json),
+        Err(e) => serialization_error(e),
     }
 }
 
@@ -79,14 +117,23 @@ async fn api_requests(State(state): State<Arc<DashboardState>>) -> Response {
     api_slice(state, slim_for_requests).await
 }
 
+async fn api_connections(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_connections).await
+}
+
 async fn api_processes(State(state): State<Arc<DashboardState>>) -> Response {
     api_slice(state, slim_for_processes).await
+}
+
+async fn api_shm(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_shm).await
 }
 
 async fn api_slice(
     state: Arc<DashboardState>,
     slim: fn(ProcessDump) -> ProcessDump,
 ) -> Response {
+    let seq = state.current_seq();
     let dumps = state
         .all_dumps()
         .await
@@ -94,19 +141,12 @@ async fn api_slice(
         .map(slim)
         .collect::<Vec<_>>();
     match facet_json::to_string(&dumps) {
-        Ok(json) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json")],
-            json,
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("serialization error: {e}"),
-        )
-            .into_response(),
+        Ok(json) => json_envelope_response(seq, &json),
+        Err(e) => serialization_error(e),
     }
 }
+
+// ── Slim helpers ─────────────────────────────────────────────────
 
 fn slim_for_tasks(mut d: ProcessDump) -> ProcessDump {
     d.threads.clear();
@@ -165,6 +205,19 @@ fn slim_for_requests(mut d: ProcessDump) -> ProcessDump {
     d
 }
 
+fn slim_for_connections(mut d: ProcessDump) -> ProcessDump {
+    d.tasks.clear();
+    d.wake_edges.clear();
+    d.future_wake_edges.clear();
+    d.future_waits.clear();
+    d.threads.clear();
+    d.locks = None;
+    d.sync = None;
+    d.shm = None;
+    // Keep roam for connections + channels.
+    d
+}
+
 fn slim_for_processes(mut d: ProcessDump) -> ProcessDump {
     d.tasks.clear();
     d.wake_edges.clear();
@@ -178,6 +231,21 @@ fn slim_for_processes(mut d: ProcessDump) -> ProcessDump {
     d
 }
 
+fn slim_for_shm(mut d: ProcessDump) -> ProcessDump {
+    d.tasks.clear();
+    d.wake_edges.clear();
+    d.future_wake_edges.clear();
+    d.future_waits.clear();
+    d.threads.clear();
+    d.locks = None;
+    d.sync = None;
+    d.roam = None;
+    // Keep shm.
+    d
+}
+
+// ── WebSocket (notify-only) ──────────────────────────────────────
+
 async fn ws_upgrade(
     ws: WebSocketUpgrade,
     State(state): State<Arc<DashboardState>>,
@@ -186,24 +254,43 @@ async fn ws_upgrade(
 }
 
 async fn handle_ws(mut socket: WebSocket, state: Arc<DashboardState>) {
-    // Send initial state immediately
-    if let Err(_) = send_dumps(&mut socket, &state).await {
+    let now_ms = server_time_ms();
+    let latest_seq = state.current_seq();
+    let hello = format!(
+        r#"{{"type":"hello","version":1,"server_time_ms":{now_ms},"latest_seq":{latest_seq}}}"#
+    );
+    if socket.send(Message::Text(hello.into())).await.is_err() {
         return;
     }
 
     let mut rx = state.subscribe();
 
     loop {
-        // Wait for a broadcast notification (new dump arrived)
         match rx.recv().await {
-            Ok(()) => {
-                if let Err(_) = send_dumps(&mut socket, &state).await {
+            Ok(notif) => {
+                let now_ms = server_time_ms();
+                let changed_json = notif
+                    .changed
+                    .iter()
+                    .map(|s| format!("\"{s}\""))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let msg = format!(
+                    r#"{{"type":"updated","seq":{},"server_time_ms":{now_ms},"changed":[{changed_json}]}}"#,
+                    notif.seq
+                );
+                if socket.send(Message::Text(msg.into())).await.is_err() {
                     break;
                 }
             }
-            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                eprintln!("[peeps] WebSocket subscriber lagged by {n} messages, sending latest");
-                if let Err(_) = send_dumps(&mut socket, &state).await {
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                // Lagged — just send the latest seq so the client knows to refresh.
+                let now_ms = server_time_ms();
+                let seq = state.current_seq();
+                let msg = format!(
+                    r#"{{"type":"updated","seq":{seq},"server_time_ms":{now_ms},"changed":[]}}"#
+                );
+                if socket.send(Message::Text(msg.into())).await.is_err() {
                     break;
                 }
             }
@@ -214,136 +301,117 @@ async fn handle_ws(mut socket: WebSocket, state: Arc<DashboardState>) {
     }
 }
 
-async fn send_dumps(
-    socket: &mut WebSocket,
-    state: &DashboardState,
-) -> Result<(), axum::Error> {
-    let payload = state.dashboard_payload().await;
-    match facet_json::to_string(&payload) {
-        Ok(json) => {
-            let text = encode_ws_payload(&json);
-            let chunk_bytes = ws_chunk_bytes_from_env();
-            if text.len() <= chunk_bytes {
-                socket.send(Message::Text(text.into())).await
-            } else {
-                send_chunked_text(socket, &text, chunk_bytes).await
-            }
-        }
-        Err(e) => {
-            eprintln!("[peeps] WebSocket serialization error: {e}");
-            Ok(())
-        }
+fn server_time_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::test_dump;
+
+    #[test]
+    fn slim_for_tasks_clears_non_task_fields() {
+        let d = slim_for_tasks(test_dump("app", 1));
+        // tasks and related edges preserved
+        assert!(!d.tasks.is_empty());
+        assert!(!d.wake_edges.is_empty());
+        assert!(!d.future_wake_edges.is_empty());
+        assert!(!d.future_waits.is_empty());
+        // everything else cleared
+        assert!(d.threads.is_empty());
+        assert!(d.locks.is_none());
+        assert!(d.sync.is_none());
+        assert!(d.roam.is_none());
+        assert!(d.shm.is_none());
+        // identity preserved
+        assert_eq!(d.process_name, "app");
+        assert_eq!(d.pid, 1);
+    }
+
+    #[test]
+    fn slim_for_threads_clears_non_thread_fields() {
+        let d = slim_for_threads(test_dump("app", 1));
+        // threads preserved
+        assert!(!d.threads.is_empty());
+        // task-related fields cleared
+        assert!(d.tasks.is_empty());
+        assert!(d.wake_edges.is_empty());
+        assert!(d.future_wake_edges.is_empty());
+        assert!(d.future_waits.is_empty());
+        // other sections cleared
+        assert!(d.locks.is_none());
+        assert!(d.sync.is_none());
+        assert!(d.roam.is_none());
+        assert!(d.shm.is_none());
+    }
+
+    #[test]
+    fn slim_for_locks_clears_non_lock_fields() {
+        let d = slim_for_locks(test_dump("app", 1));
+        // locks preserved
+        assert!(d.locks.is_some());
+        // everything else cleared
+        assert!(d.tasks.is_empty());
+        assert!(d.wake_edges.is_empty());
+        assert!(d.future_wake_edges.is_empty());
+        assert!(d.future_waits.is_empty());
+        assert!(d.threads.is_empty());
+        assert!(d.sync.is_none());
+        assert!(d.roam.is_none());
+        assert!(d.shm.is_none());
+    }
+
+    #[test]
+    fn slim_for_sync_clears_non_sync_fields() {
+        let d = slim_for_sync(test_dump("app", 1));
+        // sync preserved
+        assert!(d.sync.is_some());
+        // roam kept for channel details
+        assert!(d.roam.is_some());
+        // everything else cleared
+        assert!(d.tasks.is_empty());
+        assert!(d.wake_edges.is_empty());
+        assert!(d.future_wake_edges.is_empty());
+        assert!(d.future_waits.is_empty());
+        assert!(d.threads.is_empty());
+        assert!(d.locks.is_none());
+        assert!(d.shm.is_none());
+    }
+
+    #[test]
+    fn slim_for_requests_keeps_roam() {
+        let d = slim_for_requests(test_dump("app", 1));
+        assert!(d.roam.is_some());
+        assert!(d.tasks.is_empty());
+        assert!(d.threads.is_empty());
+        assert!(d.locks.is_none());
+        assert!(d.sync.is_none());
+        assert!(d.shm.is_none());
+    }
+
+    #[test]
+    fn slim_for_processes_strips_everything() {
+        let d = slim_for_processes(test_dump("app", 1));
+        assert!(d.tasks.is_empty());
+        assert!(d.wake_edges.is_empty());
+        assert!(d.future_wake_edges.is_empty());
+        assert!(d.future_waits.is_empty());
+        assert!(d.threads.is_empty());
+        assert!(d.locks.is_none());
+        assert!(d.sync.is_none());
+        assert!(d.roam.is_none());
+        assert!(d.shm.is_none());
+        // identity preserved
+        assert_eq!(d.process_name, "app");
+        assert_eq!(d.pid, 1);
     }
 }
 
-async fn send_chunked_text(
-    socket: &mut WebSocket,
-    text: &str,
-    chunk_bytes: usize,
-) -> Result<(), axum::Error> {
-    let message_id = WS_CHUNK_MESSAGE_ID.fetch_add(1, Ordering::Relaxed);
-    let chunks = split_utf8_chunks(text, chunk_bytes.max(1024));
-
-    eprintln!(
-        "[peeps] WebSocket payload too large ({} bytes), streaming in {} chunks",
-        text.len(),
-        chunks.len()
-    );
-
-    socket
-        .send(Message::Text(
-            format!("{WS_CHUNK_START_PREFIX}{message_id}").into(),
-        ))
-        .await?;
-
-    for (index, chunk) in chunks.iter().enumerate() {
-        let mut message =
-            String::with_capacity(WS_CHUNK_PART_PREFIX.len() + 32 + chunk.len());
-        message.push_str(WS_CHUNK_PART_PREFIX);
-        message.push_str(&message_id.to_string());
-        message.push(':');
-        message.push_str(&index.to_string());
-        message.push(':');
-        message.push_str(chunk);
-        socket.send(Message::Text(message.into())).await?;
-    }
-
-    socket
-        .send(Message::Text(
-            format!("{WS_CHUNK_END_PREFIX}{message_id}").into(),
-        ))
-        .await?;
-
-    Ok(())
-}
-
-fn split_utf8_chunks(text: &str, max_bytes: usize) -> Vec<&str> {
-    if text.is_empty() {
-        return vec![""];
-    }
-    let mut chunks = Vec::new();
-    let mut start = 0usize;
-    let mut acc = 0usize;
-
-    for (idx, ch) in text.char_indices() {
-        let len = ch.len_utf8();
-        if acc + len > max_bytes && idx > start {
-            chunks.push(&text[start..idx]);
-            start = idx;
-            acc = 0;
-        }
-        acc += len;
-    }
-
-    if start < text.len() {
-        chunks.push(&text[start..]);
-    }
-    chunks
-}
-
-fn ws_chunk_bytes_from_env() -> usize {
-    std::env::var("PEEPS_WS_CHUNK_BYTES")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .filter(|n| *n >= 1024)
-        .unwrap_or(DEFAULT_WS_CHUNK_BYTES)
-}
-
-fn encode_ws_payload(json: &str) -> String {
-    if !ws_gzip_enabled_from_env() {
-        return json.to_string();
-    }
-
-    match gzip_bytes(json.as_bytes()) {
-        Ok(gz) => {
-            let b64 = BASE64_STANDARD.encode(gz);
-            let mut out = String::with_capacity(WS_GZIP_PREFIX.len() + b64.len());
-            out.push_str(WS_GZIP_PREFIX);
-            out.push_str(&b64);
-            out
-        }
-        Err(e) => {
-            eprintln!("[peeps] WebSocket gzip error: {e}");
-            json.to_string()
-        }
-    }
-}
-
-fn gzip_bytes(input: &[u8]) -> std::io::Result<Vec<u8>> {
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
-    encoder.write_all(input)?;
-    encoder.finish()
-}
-
-fn ws_gzip_enabled_from_env() -> bool {
-    match std::env::var("PEEPS_WS_GZIP") {
-        Ok(v) => {
-            let v = v.trim().to_ascii_lowercase();
-            !matches!(v.as_str(), "0" | "false" | "no" | "off")
-        }
-        Err(_) => true,
-    }
-}
+// ── Static file serving ──────────────────────────────────────────
 
 async fn static_handler(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');

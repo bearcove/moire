@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use peeps_types::{DashboardPayload, ProcessDump};
 use peeps_waitgraph::detect::{self, Severity};
@@ -11,10 +12,18 @@ use tokio::sync::{broadcast, Mutex};
 /// Key for identifying a process: (process_name, pid).
 type ProcessKey = (String, u32);
 
+/// Notification sent on each state update, carrying the new seq and which sections changed.
+#[derive(Clone, Debug)]
+pub struct UpdateNotification {
+    pub seq: u64,
+    pub changed: Vec<String>,
+}
+
 /// Shared dashboard state, holding the latest dump from each connected process.
 pub struct DashboardState {
     dumps: Mutex<HashMap<ProcessKey, ProcessDump>>,
-    notify: broadcast::Sender<()>,
+    notify: broadcast::Sender<UpdateNotification>,
+    seq: AtomicU64,
 }
 
 impl DashboardState {
@@ -23,14 +32,22 @@ impl DashboardState {
         Self {
             dumps: Mutex::new(HashMap::new()),
             notify,
+            seq: AtomicU64::new(0),
         }
     }
 
-    /// Insert or update a dump. Notifies subscribers.
+    /// Current sequence number.
+    pub fn current_seq(&self) -> u64 {
+        self.seq.load(Ordering::Relaxed)
+    }
+
+    /// Insert or update a dump. Notifies subscribers with seq and changed sections.
     pub async fn upsert_dump(&self, dump: ProcessDump) {
+        let changed = sections_from_dump(&dump);
         let key = (dump.process_name.clone(), dump.pid);
         self.dumps.lock().await.insert(key, dump);
-        let _ = self.notify.send(());
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
+        let _ = self.notify.send(UpdateNotification { seq, changed });
     }
 
     /// Get all current dumps as a sorted vec.
@@ -58,9 +75,36 @@ impl DashboardState {
     }
 
     /// Subscribe to change notifications.
-    pub fn subscribe(&self) -> broadcast::Receiver<()> {
+    pub fn subscribe(&self) -> broadcast::Receiver<UpdateNotification> {
         self.notify.subscribe()
     }
+}
+
+/// Determine which dashboard sections a dump contributes data to.
+fn sections_from_dump(dump: &ProcessDump) -> Vec<String> {
+    let mut sections = Vec::new();
+    if !dump.tasks.is_empty() {
+        sections.push("tasks".to_string());
+    }
+    if !dump.threads.is_empty() {
+        sections.push("threads".to_string());
+    }
+    if dump.locks.is_some() {
+        sections.push("locks".to_string());
+    }
+    if dump.sync.is_some() {
+        sections.push("sync".to_string());
+    }
+    if dump.roam.is_some() {
+        sections.push("requests".to_string());
+        sections.push("connections".to_string());
+    }
+    if dump.shm.is_some() {
+        sections.push("shm".to_string());
+    }
+    // Every dump represents a process.
+    sections.push("processes".to_string());
+    sections
 }
 
 // ── Candidate conversion ─────────────────────────────────────────
@@ -449,6 +493,96 @@ async fn handle_tcp_connection(
     }
 }
 
+#[cfg(test)]
+pub(crate) fn test_dump(name: &str, pid: u32) -> ProcessDump {
+    use peeps_types::*;
+    use std::collections::HashMap;
+
+    ProcessDump {
+        process_name: name.to_string(),
+        pid,
+        timestamp: "2026-02-15T00:00:00Z".to_string(),
+        tasks: vec![TaskSnapshot {
+            id: 1,
+            name: "test-task".to_string(),
+            state: TaskState::Pending,
+            spawned_at_secs: 0.0,
+            age_secs: 1.0,
+            spawn_backtrace: String::new(),
+            poll_events: vec![],
+            parent_task_id: None,
+            parent_task_name: None,
+        }],
+        wake_edges: vec![WakeEdgeSnapshot {
+            source_task_id: Some(1),
+            source_task_name: Some("src".to_string()),
+            target_task_id: 2,
+            target_task_name: Some("dst".to_string()),
+            wake_count: 1,
+            last_wake_age_secs: 0.5,
+        }],
+        future_wake_edges: vec![FutureWakeEdgeSnapshot {
+            source_task_id: Some(1),
+            source_task_name: Some("src".to_string()),
+            future_id: 100,
+            future_resource: "res".to_string(),
+            target_task_id: Some(2),
+            target_task_name: Some("dst".to_string()),
+            wake_count: 1,
+            last_wake_age_secs: 0.1,
+        }],
+        future_waits: vec![FutureWaitSnapshot {
+            future_id: 100,
+            task_id: 1,
+            task_name: Some("test-task".to_string()),
+            resource: "res".to_string(),
+            created_by_task_id: None,
+            created_by_task_name: None,
+            created_age_secs: 0.0,
+            last_polled_by_task_id: None,
+            last_polled_by_task_name: None,
+            pending_count: 1,
+            ready_count: 0,
+            total_pending_secs: 0.5,
+            last_seen_age_secs: 0.1,
+        }],
+        threads: vec![ThreadStackSnapshot {
+            name: "main".to_string(),
+            backtrace: Some("frame0\nframe1".to_string()),
+            samples: 10,
+            responded: 10,
+            same_location_count: 5,
+            dominant_frame: Some("frame0".to_string()),
+        }],
+        locks: Some(LockSnapshot {
+            locks: vec![LockInfoSnapshot {
+                name: "my-lock".to_string(),
+                acquires: 10,
+                releases: 9,
+                holders: vec![],
+                waiters: vec![],
+            }],
+        }),
+        sync: Some(SyncSnapshot {
+            mpsc_channels: vec![],
+            oneshot_channels: vec![],
+            watch_channels: vec![],
+            semaphores: vec![],
+            once_cells: vec![],
+        }),
+        roam: Some(SessionSnapshot {
+            connections: vec![],
+            method_names: HashMap::new(),
+            channel_details: vec![],
+        }),
+        shm: Some(ShmSnapshot {
+            segments: vec![],
+            channels: vec![],
+        }),
+        custom: HashMap::new(),
+    }
+}
+
 fn max_frame_bytes_from_env() -> usize {
     const DEFAULT_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
     match std::env::var("PEEPS_MAX_FRAME_BYTES") {
@@ -463,5 +597,89 @@ fn max_frame_bytes_from_env() -> usize {
             }
         },
         Err(_) => DEFAULT_MAX_FRAME_BYTES,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seq_starts_at_zero() {
+        let state = DashboardState::new();
+        assert_eq!(state.current_seq(), 0);
+    }
+
+    #[tokio::test]
+    async fn seq_increments_on_upsert() {
+        let state = DashboardState::new();
+        assert_eq!(state.current_seq(), 0);
+
+        state.upsert_dump(test_dump("app", 1)).await;
+        assert_eq!(state.current_seq(), 1);
+    }
+
+    #[tokio::test]
+    async fn seq_monotonic_across_multiple_upserts() {
+        let state = DashboardState::new();
+
+        for i in 0..5 {
+            state.upsert_dump(test_dump("app", i)).await;
+        }
+        assert_eq!(state.current_seq(), 5);
+    }
+
+    #[tokio::test]
+    async fn subscribe_receives_update_notification() {
+        let state = DashboardState::new();
+        let mut rx = state.subscribe();
+
+        state.upsert_dump(test_dump("app", 42)).await;
+
+        let notification = rx.recv().await.expect("should receive notification");
+        assert_eq!(notification.seq, 1);
+        assert!(notification.changed.contains(&"tasks".to_string()));
+        assert!(notification.changed.contains(&"threads".to_string()));
+        assert!(notification.changed.contains(&"locks".to_string()));
+        assert!(notification.changed.contains(&"processes".to_string()));
+    }
+
+    #[tokio::test]
+    async fn all_dumps_sorted_by_name() {
+        let state = DashboardState::new();
+        state.upsert_dump(test_dump("zebra", 3)).await;
+        state.upsert_dump(test_dump("alpha", 1)).await;
+        state.upsert_dump(test_dump("middle", 2)).await;
+
+        let dumps = state.all_dumps().await;
+        assert_eq!(dumps.len(), 3);
+        assert_eq!(dumps[0].process_name, "alpha");
+        assert_eq!(dumps[1].process_name, "middle");
+        assert_eq!(dumps[2].process_name, "zebra");
+    }
+
+    #[tokio::test]
+    async fn upsert_replaces_same_process_key() {
+        let state = DashboardState::new();
+        state.upsert_dump(test_dump("app", 1)).await;
+        state.upsert_dump(test_dump("app", 1)).await;
+
+        let dumps = state.all_dumps().await;
+        assert_eq!(dumps.len(), 1);
+        assert_eq!(state.current_seq(), 2);
+    }
+
+    #[test]
+    fn sections_from_full_dump() {
+        let dump = test_dump("app", 1);
+        let sections = sections_from_dump(&dump);
+        assert!(sections.contains(&"tasks".to_string()));
+        assert!(sections.contains(&"threads".to_string()));
+        assert!(sections.contains(&"locks".to_string()));
+        assert!(sections.contains(&"sync".to_string()));
+        assert!(sections.contains(&"requests".to_string()));
+        assert!(sections.contains(&"connections".to_string()));
+        assert!(sections.contains(&"shm".to_string()));
+        assert!(sections.contains(&"processes".to_string()));
     }
 }
