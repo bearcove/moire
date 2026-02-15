@@ -21,6 +21,11 @@ Every runtime/resource entity is a node with:
 - `proc_key`
 - `attrs_json`
 
+Shared metadata contract:
+- every node kind may include `attrs_json.meta` (object<string,string>)
+- `meta` schema is identical for all resources (futures, locks, channels, semaphores, oncecell, requests)
+- canonical keys live in `GRAPH.md` and `006-todo-wrapper-emission-api.md`
+
 Not a node:
 - process itself
 - thread itself (out of current scope)

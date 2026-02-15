@@ -30,6 +30,7 @@ Current `ProcessDump` lives in `/Users/amos/bearcove/peeps/crates/peeps-types/sr
 3. If dependency cannot be measured explicitly, do not emit an edge.
 4. Process is context (`node.process`), not a node.
 5. Threads are out of current graph scope.
+6. All wrappers use one shared metadata system via `attrs_json.meta`.
 
 ## Canonical IDs (v1)
 
@@ -53,6 +54,39 @@ IDs:
 
 RPC correlation key requirement:
 - request + response attrs must carry `correlation_key = "{connection}:{request_id}"`.
+
+## Shared metadata system (all resources)
+
+Canonical location:
+- `node.attrs_json.meta` (object<string,string>)
+
+Applies to:
+- futures
+- locks
+- channels (tokio + roam)
+- semaphores
+- oncecell
+- requests/responses
+
+Rules:
+- key charset: `[a-z0-9_.-]+`
+- max key length: 48 bytes
+- max value length: 256 bytes
+- max pairs: 16 per node
+- invalid pairs are dropped (no panics, no rejected snapshots)
+- wrappers should use stack-based metadata builders (no required heap allocs on hot paths)
+- provide macro entry points so metadata expressions compile away when diagnostics are disabled
+
+Canonical keys:
+- `request.id`
+- `request.method`
+- `request.correlation_key`
+- `rpc.connection`
+- `rpc.peer`
+- `task.id`
+- `future.id`
+- `channel.id`
+- `resource.path`
 
 ## Edge model
 

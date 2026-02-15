@@ -25,6 +25,11 @@ Each resource/runtime entity is a node with:
 - shared optional fields (label/source location/etc.)
 - `attrs_json` for type-specific fields
 
+Reserved attrs namespace (shared across all node kinds):
+- `attrs_json.meta` is the canonical metadata object for cross-resource context.
+- `attrs_json.meta` must follow one schema for all resource types.
+- resource-specific fields stay at top-level attrs keys (outside `meta`).
+
 Identity convention:
 - use `proc_key` as an opaque token segment with charset `[a-z0-9._-]+` (no `:`)
 - recommended construction: `proc_key = {process_slug}-{pid}`
@@ -170,6 +175,33 @@ Node attributes carry triage signal, for example:
 - semaphore: permits + waiter count
 
 Edges do not carry severity. Edges are traversal only.
+
+## Shared metadata schema (all resources)
+
+All node kinds may emit:
+
+```json
+{
+  "meta": {
+    "request.id": "...",
+    "request.method": "...",
+    "request.correlation_key": "...",
+    "rpc.connection": "...",
+    "rpc.peer": "...",
+    "task.id": "...",
+    "future.id": "...",
+    "channel.id": "...",
+    "resource.path": "..."
+  }
+}
+```
+
+Rules:
+- keys are ASCII `[a-z0-9_.-]+`
+- max key length 48 bytes
+- max value length 256 bytes
+- max 16 pairs per node
+- invalid pairs are dropped, never panic
 
 ## Debugging workflow model
 

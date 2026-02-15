@@ -32,6 +32,7 @@ Required attrs_json:
 - `name`
 - `state` (`pending|polling|completed`)
 - `spawned_at_ns`
+- `meta` (shared metadata object from global wrapper metadata system)
 
 Optional attrs_json:
 - `parent_task_id`

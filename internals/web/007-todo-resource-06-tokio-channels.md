@@ -35,7 +35,7 @@ Node kinds:
 - `mpsc_tx`, `mpsc_rx`, `oneshot_tx`, `oneshot_rx`, `watch_tx`, `watch_rx`
 
 Required attrs_json (per endpoint, type-specific):
-- common: `name`, `created_at_ns`, `creator_task_id`, closed flags
+- common: `name`, `created_at_ns`, `creator_task_id`, closed flags, `meta` (shared metadata object)
 - mpsc: `bounded`, `capacity`, `queue_len`, `high_watermark`, `utilization`, `sender_count`, `send_waiters`, `recv_waiters`, `sent_total`, `recv_total`
 - oneshot: `state`, `age_ns`
 - watch: `changes`, `receiver_count`, `age_ns`

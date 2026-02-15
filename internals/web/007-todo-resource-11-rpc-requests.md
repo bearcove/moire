@@ -42,7 +42,8 @@ Required attrs_json (request):
 - `connection` (`conn_{u64}`)
 - `peer`
 - `task_id` (nullable)
-- `metadata_json`
+- `meta` (shared metadata object from global wrapper metadata system)
+- `rpc_metadata_json` (raw propagated RPC metadata payload)
 - `correlation_key` (`{connection}:{request_id}`)
 - `args_preview` (Roam-formatted argument rendering)
 
@@ -60,6 +61,7 @@ Required attrs_json (response):
 - `connection` (`conn_{u64}`)
 - `peer`
 - `server_task_id`
+- `meta` (shared metadata object from global wrapper metadata system)
 - `correlation_key` (`{connection}:{request_id}`)
 
 Required `needs` edges:

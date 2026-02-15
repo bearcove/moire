@@ -35,6 +35,7 @@ Required attrs_json:
 - `oldest_wait_ns`
 - `high_waiters_watermark`
 - `creator_task_id`
+- `meta` (shared metadata object from global wrapper metadata system)
 
 Required `needs` edges:
 - `task -> semaphore` when task progress depends on permit availability

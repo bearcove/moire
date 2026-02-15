@@ -40,6 +40,7 @@ Required attrs_json:
 - `releases`
 - `holder_count`
 - `waiter_count`
+- `meta` (shared metadata object from global wrapper metadata system)
 
 Required `needs` edges:
 - `task -> lock` when task is waiting
