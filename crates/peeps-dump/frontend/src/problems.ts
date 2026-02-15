@@ -13,6 +13,7 @@ export type ProblemCategory =
   | "Threads"
   | "Locks"
   | "Channels"
+  | "Semaphores"
   | "RPC"
   | "SHM";
 
@@ -29,7 +30,7 @@ export interface Problem {
 
 export interface RelationshipIssue {
   severity: Severity;
-  category: "Locks" | "Channels" | "RPC";
+  category: "Locks" | "Channels" | "Semaphores" | "RPC";
   process: string;
   blocked: string;
   waitsOn: string;
@@ -64,7 +65,9 @@ export function detectProblems(dumps: ProcessDump[]): Problem[] {
     detectThreads(proc, dump, problems);
     detectLocks(proc, dump, problems);
     detectChannels(proc, dump, problems);
+    detectSemaphores(proc, dump, problems);
     detectRoam(proc, dump, problems);
+    detectRoamChannels(proc, dump, problems);
     detectShm(proc, dump, problems);
   }
 
@@ -231,6 +234,24 @@ export function detectRelationshipIssues(dumps: ProcessDump[]): RelationshipIssu
           description: `Backpressure on channel (${ch.send_waiters} blocked sender(s))`,
           timing: ch.age_secs,
           timingLabel: fmtAge(ch.age_secs),
+          backtrace: null,
+        });
+      }
+    }
+
+    if (dump.sync) {
+      for (const sem of dump.sync.semaphores) {
+        if (sem.oldest_wait_secs <= 1) continue;
+        upsert({
+          severity: sem.oldest_wait_secs > 10 ? "danger" : "warn",
+          category: "Semaphores",
+          process: proc,
+          blocked: `${sem.waiters} waiter(s)`,
+          waitsOn: `semaphore:${sem.name}`,
+          owner: sem.creator_task_name ?? null,
+          description: `Semaphore contention (oldest wait ${fmtDuration(sem.oldest_wait_secs)})`,
+          timing: sem.oldest_wait_secs,
+          timingLabel: fmtDuration(sem.oldest_wait_secs),
           backtrace: null,
         });
       }
@@ -446,6 +467,74 @@ function detectChannels(
         description: `OnceCell initializing for ${fmtAge(cell.age_secs)}`,
         timing: cell.age_secs,
         timingLabel: fmtAge(cell.age_secs),
+        backtrace: null,
+      });
+    }
+  }
+}
+
+function detectSemaphores(
+  proc: string,
+  dump: ProcessDump,
+  out: Problem[]
+): void {
+  if (!dump.sync) return;
+
+  for (const sem of dump.sync.semaphores) {
+    if (sem.oldest_wait_secs > 10) {
+      out.push({
+        severity: "danger",
+        category: "Semaphores",
+        process: proc,
+        resource: sem.name,
+        description: `${sem.waiters} waiter(s), oldest blocked ${fmtDuration(sem.oldest_wait_secs)} (${sem.permits_available}/${sem.permits_total} permits)`,
+        timing: sem.oldest_wait_secs,
+        timingLabel: fmtDuration(sem.oldest_wait_secs),
+        backtrace: null,
+      });
+    } else if (sem.oldest_wait_secs > 1) {
+      out.push({
+        severity: "warn",
+        category: "Semaphores",
+        process: proc,
+        resource: sem.name,
+        description: `${sem.waiters} waiter(s), oldest blocked ${fmtDuration(sem.oldest_wait_secs)} (${sem.permits_available}/${sem.permits_total} permits)`,
+        timing: sem.oldest_wait_secs,
+        timingLabel: fmtDuration(sem.oldest_wait_secs),
+        backtrace: null,
+      });
+    }
+  }
+}
+
+function detectRoamChannels(
+  proc: string,
+  dump: ProcessDump,
+  out: Problem[]
+): void {
+  if (!dump.roam) return;
+
+  for (const ch of (dump.roam.channel_details ?? [])) {
+    if (ch.closed) {
+      out.push({
+        severity: "danger",
+        category: "RPC",
+        process: proc,
+        resource: `roam-ch:${ch.name}`,
+        description: `Roam channel closed (age ${fmtAge(ch.age_secs)})`,
+        timing: ch.age_secs,
+        timingLabel: fmtAge(ch.age_secs),
+        backtrace: null,
+      });
+    } else if (ch.age_secs > 10 && (ch.queue_depth ?? 0) === 0) {
+      out.push({
+        severity: "warn",
+        category: "RPC",
+        process: proc,
+        resource: `roam-ch:${ch.name}`,
+        description: `Stale Roam channel (idle ${fmtAge(ch.age_secs)})`,
+        timing: ch.age_secs,
+        timingLabel: fmtAge(ch.age_secs),
         backtrace: null,
       });
     }

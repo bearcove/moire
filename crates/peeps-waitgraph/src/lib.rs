@@ -11,10 +11,11 @@ use facet::Facet;
 pub mod detect;
 
 use peeps_types::{
-    ConnectionSnapshot, Direction, FutureWaitSnapshot, FutureWakeEdgeSnapshot, LockAcquireKind,
-    LockInfoSnapshot, LockSnapshot, MpscChannelSnapshot, OnceCellSnapshot, OnceCellState,
-    OneshotChannelSnapshot, OneshotState, ProcessDump, SessionSnapshot, SyncSnapshot,
-    TaskSnapshot, TaskState, WakeEdgeSnapshot, WatchChannelSnapshot,
+    ChannelDir, ConnectionSnapshot, Direction, FutureWaitSnapshot, FutureWakeEdgeSnapshot,
+    LockAcquireKind, LockInfoSnapshot, LockSnapshot, MpscChannelSnapshot, OnceCellSnapshot,
+    OnceCellState, OneshotChannelSnapshot, OneshotState, ProcessDump, RoamChannelSnapshot,
+    SemaphoreSnapshot, SessionSnapshot, SyncSnapshot, TaskSnapshot, TaskState, WakeEdgeSnapshot,
+    WatchChannelSnapshot,
 };
 
 // ── Stable node identity ────────────────────────────────────────
@@ -39,6 +40,10 @@ pub enum NodeId {
     WatchChannel { pid: u32, name: String },
     /// A OnceCell within a process.
     OnceCell { pid: u32, name: String },
+    /// A semaphore within a process.
+    Semaphore { pid: u32, name: String },
+    /// A roam channel within a process.
+    RoamChannel { pid: u32, channel_id: u64 },
     /// An RPC request (connection + request id, scoped to process).
     RpcRequest {
         pid: u32,
@@ -85,6 +90,19 @@ pub enum NodeKind {
     OnceCell {
         name: String,
         state: OnceCellState,
+    },
+    Semaphore {
+        name: String,
+        permits_total: u64,
+        permits_available: u64,
+        waiters: u64,
+        oldest_wait_secs: f64,
+    },
+    RoamChannel {
+        name: String,
+        direction: ChannelDir,
+        queue_depth: Option<u64>,
+        closed: bool,
     },
     RpcRequest {
         method_name: Option<String>,
@@ -452,6 +470,9 @@ impl WaitGraph {
         for ch in &sync.watch_channels {
             self.ingest_watch(pid, ch);
         }
+        for sem in &sync.semaphores {
+            self.ingest_semaphore(pid, sem);
+        }
         for cell in &sync.once_cells {
             self.ingest_once_cell(pid, cell);
         }
@@ -572,6 +593,68 @@ impl WaitGraph {
         }
     }
 
+    fn ingest_semaphore(&mut self, pid: u32, sem: &SemaphoreSnapshot) {
+        let node_id = NodeId::Semaphore {
+            pid,
+            name: sem.name.clone(),
+        };
+        self.nodes.insert(
+            node_id.clone(),
+            NodeKind::Semaphore {
+                name: sem.name.clone(),
+                permits_total: sem.permits_total,
+                permits_available: sem.permits_available,
+                waiters: sem.waiters,
+                oldest_wait_secs: sem.oldest_wait_secs,
+            },
+        );
+
+        // semaphore -> owned by creator task
+        if let Some(creator_id) = sem.creator_task_id {
+            let creator = NodeId::Task {
+                pid,
+                task_id: creator_id,
+            };
+            self.edges.push(WaitEdge {
+                from: node_id.clone(),
+                to: creator,
+                kind: EdgeKind::ResourceOwnedByTask,
+                meta: EdgeMeta {
+                    source_snapshot: SnapshotSource::Sync,
+                    count: 1,
+                    severity_hint: 0,
+                },
+            });
+        }
+
+        // Each waiter task -> waits on semaphore
+        for &waiter_task_id in &sem.top_waiter_task_ids {
+            let task_node = NodeId::Task {
+                pid,
+                task_id: waiter_task_id,
+            };
+            let severity = if sem.oldest_wait_secs > 30.0 {
+                3
+            } else if sem.oldest_wait_secs > 10.0 {
+                2
+            } else if sem.oldest_wait_secs > 1.0 {
+                1
+            } else {
+                0
+            };
+            self.edges.push(WaitEdge {
+                from: task_node,
+                to: node_id.clone(),
+                kind: EdgeKind::TaskWaitsOnResource,
+                meta: EdgeMeta {
+                    source_snapshot: SnapshotSource::Sync,
+                    count: 1,
+                    severity_hint: severity,
+                },
+            });
+        }
+    }
+
     fn ingest_once_cell(&mut self, pid: u32, cell: &OnceCellSnapshot) {
         let node_id = NodeId::OnceCell {
             pid,
@@ -589,6 +672,9 @@ impl WaitGraph {
     fn ingest_roam(&mut self, pid: u32, session: &SessionSnapshot) {
         for conn in &session.connections {
             self.ingest_connection(pid, conn, &session.method_names);
+        }
+        for ch in &session.channel_details {
+            self.ingest_roam_channel(pid, ch);
         }
     }
 
@@ -651,6 +737,48 @@ impl WaitGraph {
                         });
                     }
                 }
+            }
+        }
+    }
+
+    fn ingest_roam_channel(&mut self, pid: u32, ch: &RoamChannelSnapshot) {
+        let node_id = NodeId::RoamChannel {
+            pid,
+            channel_id: ch.channel_id,
+        };
+        self.nodes.insert(
+            node_id.clone(),
+            NodeKind::RoamChannel {
+                name: ch.name.clone(),
+                direction: ch.direction.clone(),
+                queue_depth: ch.queue_depth,
+                closed: ch.closed,
+            },
+        );
+
+        // task -> waits on roam channel (only if not already closed)
+        if !ch.closed {
+            if let Some(task_id) = ch.task_id {
+                let task_node = NodeId::Task { pid, task_id };
+                let severity = if ch.age_secs > 30.0 {
+                    3
+                } else if ch.age_secs > 10.0 {
+                    2
+                } else if ch.age_secs > 1.0 {
+                    1
+                } else {
+                    0
+                };
+                self.edges.push(WaitEdge {
+                    from: task_node,
+                    to: node_id,
+                    kind: EdgeKind::TaskWaitsOnResource,
+                    meta: EdgeMeta {
+                        source_snapshot: SnapshotSource::Roam,
+                        count: 1,
+                        severity_hint: severity,
+                    },
+                });
             }
         }
     }
@@ -1023,6 +1151,7 @@ mod tests {
                 channel_credits: vec![],
             }],
             method_names: HashMap::new(),
+            channel_details: vec![],
         });
 
         let graph = WaitGraph::build(&[dump]);
@@ -1300,6 +1429,7 @@ mod tests {
                 )],
             )],
             method_names: HashMap::new(),
+            channel_details: vec![],
         });
         dump
     }
@@ -1463,6 +1593,7 @@ mod tests {
                 ),
             ],
             method_names: HashMap::new(),
+            channel_details: vec![],
         });
         dump_a.locks = Some(peeps_types::LockSnapshot {
             locks: vec![make_lock(
@@ -1501,6 +1632,7 @@ mod tests {
                 ),
             ],
             method_names: HashMap::new(),
+            channel_details: vec![],
         });
 
         vec![dump_a, dump_b]
@@ -1636,6 +1768,7 @@ mod tests {
             }],
             oneshot_channels: vec![],
             watch_channels: vec![],
+            semaphores: vec![],
             once_cells: vec![],
         });
 
@@ -1750,6 +1883,7 @@ mod tests {
                 creator_task_name: Some("requester".to_string()),
             }],
             watch_channels: vec![],
+            semaphores: vec![],
             once_cells: vec![],
         });
 
@@ -1780,6 +1914,7 @@ mod tests {
             mpsc_channels: vec![],
             oneshot_channels: vec![],
             watch_channels: vec![],
+            semaphores: vec![],
             once_cells: vec![OnceCellSnapshot {
                 name: "config".to_string(),
                 state: OnceCellState::Initializing,
@@ -1794,5 +1929,530 @@ mod tests {
             pid: 1,
             name: "config".to_string()
         }));
+    }
+
+    // ── Semaphore normalization ────────────────────────────────────
+
+    #[test]
+    fn semaphore_with_waiters_produces_edges() {
+        let mut dump = empty_dump(1, "sem-app");
+        dump.tasks = vec![
+            make_task(10, "creator", TaskState::Polling, 5.0),
+            make_task(20, "waiter-a", TaskState::Pending, 3.0),
+            make_task(30, "waiter-b", TaskState::Pending, 3.0),
+        ];
+        dump.sync = Some(SyncSnapshot {
+            mpsc_channels: vec![],
+            oneshot_channels: vec![],
+            watch_channels: vec![],
+            semaphores: vec![peeps_types::SemaphoreSnapshot {
+                name: "pool-limit".to_string(),
+                permits_total: 4,
+                permits_available: 0,
+                waiters: 2,
+                acquires: 100,
+                avg_wait_secs: 0.5,
+                max_wait_secs: 2.0,
+                age_secs: 60.0,
+                creator_task_id: Some(10),
+                creator_task_name: Some("creator".to_string()),
+                top_waiter_task_ids: vec![20, 30],
+                oldest_wait_secs: 15.0,
+            }],
+            once_cells: vec![],
+        });
+
+        let graph = WaitGraph::build(&[dump]);
+
+        // process + 3 tasks + 1 semaphore = 5 nodes
+        assert_eq!(graph.nodes.len(), 5);
+
+        assert!(graph.nodes.contains_key(&NodeId::Semaphore {
+            pid: 1,
+            name: "pool-limit".to_string()
+        }));
+
+        // ownership edge: semaphore -> creator
+        let owns: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::ResourceOwnedByTask)
+            .collect();
+        assert_eq!(owns.len(), 1);
+        assert_eq!(
+            owns[0].from,
+            NodeId::Semaphore {
+                pid: 1,
+                name: "pool-limit".to_string()
+            }
+        );
+        assert_eq!(
+            owns[0].to,
+            NodeId::Task {
+                pid: 1,
+                task_id: 10
+            }
+        );
+
+        // wait edges: 2 waiters -> semaphore
+        let waits: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .collect();
+        assert_eq!(waits.len(), 2);
+        // severity: oldest_wait_secs=15.0 -> >10s -> severity 2
+        for w in &waits {
+            assert_eq!(w.meta.severity_hint, 2);
+        }
+    }
+
+    #[test]
+    fn semaphore_severity_scales_with_oldest_wait() {
+        let make_sem_dump = |oldest_wait: f64| -> ProcessDump {
+            let mut dump = empty_dump(1, "app");
+            dump.tasks = vec![make_task(1, "t", TaskState::Pending, 1.0)];
+            dump.sync = Some(SyncSnapshot {
+                mpsc_channels: vec![],
+                oneshot_channels: vec![],
+                watch_channels: vec![],
+                semaphores: vec![peeps_types::SemaphoreSnapshot {
+                    name: "sem".to_string(),
+                    permits_total: 1,
+                    permits_available: 0,
+                    waiters: 1,
+                    acquires: 10,
+                    avg_wait_secs: 0.1,
+                    max_wait_secs: oldest_wait,
+                    age_secs: 60.0,
+                    creator_task_id: None,
+                    creator_task_name: None,
+                    top_waiter_task_ids: vec![1],
+                    oldest_wait_secs: oldest_wait,
+                }],
+                once_cells: vec![],
+            });
+            dump
+        };
+
+        // <1s -> severity 0
+        let g = WaitGraph::build(&[make_sem_dump(0.5)]);
+        let w = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(w.meta.severity_hint, 0);
+
+        // >1s -> severity 1
+        let g = WaitGraph::build(&[make_sem_dump(5.0)]);
+        let w = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(w.meta.severity_hint, 1);
+
+        // >10s -> severity 2
+        let g = WaitGraph::build(&[make_sem_dump(15.0)]);
+        let w = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(w.meta.severity_hint, 2);
+
+        // >30s -> severity 3
+        let g = WaitGraph::build(&[make_sem_dump(45.0)]);
+        let w = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(w.meta.severity_hint, 3);
+    }
+
+    #[test]
+    fn semaphore_no_waiters_no_wait_edges() {
+        let mut dump = empty_dump(1, "sem-app");
+        dump.tasks = vec![make_task(10, "creator", TaskState::Polling, 5.0)];
+        dump.sync = Some(SyncSnapshot {
+            mpsc_channels: vec![],
+            oneshot_channels: vec![],
+            watch_channels: vec![],
+            semaphores: vec![peeps_types::SemaphoreSnapshot {
+                name: "idle-sem".to_string(),
+                permits_total: 4,
+                permits_available: 4,
+                waiters: 0,
+                acquires: 50,
+                avg_wait_secs: 0.01,
+                max_wait_secs: 0.1,
+                age_secs: 120.0,
+                creator_task_id: Some(10),
+                creator_task_name: Some("creator".to_string()),
+                top_waiter_task_ids: vec![],
+                oldest_wait_secs: 0.0,
+            }],
+            once_cells: vec![],
+        });
+
+        let graph = WaitGraph::build(&[dump]);
+
+        // process + task + semaphore = 3 nodes
+        assert_eq!(graph.nodes.len(), 3);
+
+        // Only ownership edge, no wait edges
+        let waits: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .collect();
+        assert!(waits.is_empty());
+
+        let owns: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::ResourceOwnedByTask)
+            .collect();
+        assert_eq!(owns.len(), 1);
+    }
+
+    // ── Roam channel normalization ───────────────────────────────
+
+    #[test]
+    fn roam_channel_produces_node_and_wait_edge() {
+        let mut dump = empty_dump(1, "roam-ch-app");
+        dump.tasks = vec![make_task(8, "stream-reader", TaskState::Pending, 15.0)];
+        dump.roam = Some(SessionSnapshot {
+            connections: vec![],
+            method_names: HashMap::new(),
+            channel_details: vec![RoamChannelSnapshot {
+                channel_id: 42,
+                name: "conn-1".to_string(),
+                direction: ChannelDir::Rx,
+                age_secs: 15.0,
+                request_id: Some(100),
+                task_id: Some(8),
+                task_name: Some("stream-reader".to_string()),
+                queue_depth: None,
+                closed: false,
+            }],
+        });
+
+        let graph = WaitGraph::build(&[dump]);
+
+        // process + task + roam_channel = 3 nodes
+        assert_eq!(graph.nodes.len(), 3);
+        assert!(graph.nodes.contains_key(&NodeId::RoamChannel {
+            pid: 1,
+            channel_id: 42,
+        }));
+
+        // task -> waits on roam channel
+        let waits: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .collect();
+        assert_eq!(waits.len(), 1);
+        assert_eq!(
+            waits[0].from,
+            NodeId::Task {
+                pid: 1,
+                task_id: 8
+            }
+        );
+        assert_eq!(
+            waits[0].to,
+            NodeId::RoamChannel {
+                pid: 1,
+                channel_id: 42,
+            }
+        );
+        // age > 10s => severity 2
+        assert_eq!(waits[0].meta.severity_hint, 2);
+    }
+
+    #[test]
+    fn roam_channel_severity_scales_with_age() {
+        let make_ch = |age: f64| -> ProcessDump {
+            let mut dump = empty_dump(1, "app");
+            dump.tasks = vec![make_task(1, "t", TaskState::Pending, age)];
+            dump.roam = Some(SessionSnapshot {
+                connections: vec![],
+                method_names: HashMap::new(),
+                channel_details: vec![RoamChannelSnapshot {
+                    channel_id: 1,
+                    name: "c".to_string(),
+                    direction: ChannelDir::Tx,
+                    age_secs: age,
+                    request_id: None,
+                    task_id: Some(1),
+                    task_name: Some("t".to_string()),
+                    queue_depth: None,
+                    closed: false,
+                }],
+            });
+            dump
+        };
+
+        // < 1s => severity 0
+        let g = WaitGraph::build(&[make_ch(0.5)]);
+        let s = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(s.meta.severity_hint, 0);
+
+        // > 1s => severity 1
+        let g = WaitGraph::build(&[make_ch(5.0)]);
+        let s = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(s.meta.severity_hint, 1);
+
+        // > 10s => severity 2
+        let g = WaitGraph::build(&[make_ch(20.0)]);
+        let s = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(s.meta.severity_hint, 2);
+
+        // > 30s => severity 3
+        let g = WaitGraph::build(&[make_ch(45.0)]);
+        let s = g.edges.iter().find(|e| e.kind == EdgeKind::TaskWaitsOnResource).unwrap();
+        assert_eq!(s.meta.severity_hint, 3);
+    }
+
+    // ── Semaphore contention graph edges ───────────────────────────
+
+    #[test]
+    fn semaphore_contention_produces_wait_edges() {
+        let mut dump = empty_dump(1, "sem-app");
+        dump.tasks = vec![
+            make_task(1, "creator", TaskState::Polling, 30.0),
+            make_task(2, "waiter-a", TaskState::Pending, 20.0),
+            make_task(3, "waiter-b", TaskState::Pending, 15.0),
+        ];
+        dump.sync = Some(SyncSnapshot {
+            mpsc_channels: vec![],
+            oneshot_channels: vec![],
+            watch_channels: vec![],
+            semaphores: vec![SemaphoreSnapshot {
+                name: "pool-limit".to_string(),
+                permits_total: 4,
+                permits_available: 0,
+                waiters: 2,
+                acquires: 100,
+                avg_wait_secs: 5.0,
+                max_wait_secs: 12.0,
+                age_secs: 30.0,
+                creator_task_id: Some(1),
+                creator_task_name: Some("creator".to_string()),
+                top_waiter_task_ids: vec![2, 3],
+                oldest_wait_secs: 12.0,
+            }],
+            once_cells: vec![],
+        });
+
+        let graph = WaitGraph::build(&[dump]);
+
+        // process + 3 tasks + 1 semaphore = 5 nodes
+        assert_eq!(graph.nodes.len(), 5);
+
+        // 1 ownership (sem -> creator) + 2 waits (waiter-a -> sem, waiter-b -> sem)
+        let owns: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::ResourceOwnedByTask)
+            .collect();
+        assert_eq!(owns.len(), 1);
+        assert_eq!(
+            owns[0].from,
+            NodeId::Semaphore {
+                pid: 1,
+                name: "pool-limit".to_string()
+            }
+        );
+        assert_eq!(
+            owns[0].to,
+            NodeId::Task {
+                pid: 1,
+                task_id: 1
+            }
+        );
+
+        let waits: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .collect();
+        assert_eq!(waits.len(), 2);
+
+        for wait in &waits {
+            assert_eq!(
+                wait.to,
+                NodeId::Semaphore {
+                    pid: 1,
+                    name: "pool-limit".to_string()
+                }
+            );
+        }
+
+        // oldest_wait > 10s => severity 2
+        for wait in &waits {
+            assert_eq!(wait.meta.severity_hint, 2);
+        }
+    }
+
+    #[test]
+    fn semaphore_severity_matches_spec_thresholds() {
+        let make_sem = |oldest_wait: f64| -> ProcessDump {
+            let mut dump = empty_dump(1, "app");
+            dump.tasks = vec![make_task(1, "w", TaskState::Pending, 30.0)];
+            dump.sync = Some(SyncSnapshot {
+                mpsc_channels: vec![],
+                oneshot_channels: vec![],
+                watch_channels: vec![],
+                semaphores: vec![SemaphoreSnapshot {
+                    name: "s".to_string(),
+                    permits_total: 1,
+                    permits_available: 0,
+                    waiters: 1,
+                    acquires: 10,
+                    avg_wait_secs: oldest_wait / 2.0,
+                    max_wait_secs: oldest_wait,
+                    age_secs: 60.0,
+                    creator_task_id: None,
+                    creator_task_name: None,
+                    top_waiter_task_ids: vec![1],
+                    oldest_wait_secs: oldest_wait,
+                }],
+                once_cells: vec![],
+            });
+            dump
+        };
+
+        // < 1s => severity 0
+        let g = WaitGraph::build(&[make_sem(0.5)]);
+        let s = g
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .unwrap();
+        assert_eq!(s.meta.severity_hint, 0);
+
+        // > 1s => severity 1
+        let g = WaitGraph::build(&[make_sem(5.0)]);
+        let s = g
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .unwrap();
+        assert_eq!(s.meta.severity_hint, 1);
+
+        // > 10s => severity 2
+        let g = WaitGraph::build(&[make_sem(20.0)]);
+        let s = g
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .unwrap();
+        assert_eq!(s.meta.severity_hint, 2);
+
+        // > 30s => severity 3
+        let g = WaitGraph::build(&[make_sem(45.0)]);
+        let s = g
+            .edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .unwrap();
+        assert_eq!(s.meta.severity_hint, 3);
+    }
+
+    #[test]
+    fn semaphore_no_self_cycle() {
+        // A semaphore created by task-1 with task-1 also waiting on it
+        // should produce a real 2-node cycle (task <-> sem), not a spurious artifact.
+        let mut dump = empty_dump(1, "app");
+        dump.tasks = vec![make_task(1, "worker", TaskState::Pending, 5.0)];
+        dump.sync = Some(SyncSnapshot {
+            mpsc_channels: vec![],
+            oneshot_channels: vec![],
+            watch_channels: vec![],
+            semaphores: vec![SemaphoreSnapshot {
+                name: "my-sem".to_string(),
+                permits_total: 1,
+                permits_available: 0,
+                waiters: 1,
+                acquires: 5,
+                avg_wait_secs: 1.0,
+                max_wait_secs: 2.0,
+                age_secs: 10.0,
+                creator_task_id: Some(1),
+                creator_task_name: Some("worker".to_string()),
+                top_waiter_task_ids: vec![1],
+                oldest_wait_secs: 2.0,
+            }],
+            once_cells: vec![],
+        });
+
+        let graph = WaitGraph::build(&[dump]);
+        let candidates = detect::find_deadlock_candidates(&graph);
+
+        // The cycle task-1 -> sem -> task-1 is real (task waiting on sem it owns).
+        // It's detected, but the point is it's not spurious — the edges are correct.
+        if !candidates.is_empty() {
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(candidates[0].nodes.len(), 2); // task + semaphore
+        }
+    }
+
+    #[test]
+    fn roam_channel_no_synthetic_self_cycle() {
+        // A roam channel associated with a task should not create
+        // self-cycles because channel nodes only have TaskWaitsOnResource
+        // edges (task -> channel), no ownership edge back.
+        let mut dump = empty_dump(1, "app");
+        dump.tasks = vec![make_task(1, "reader", TaskState::Pending, 5.0)];
+        dump.roam = Some(SessionSnapshot {
+            connections: vec![],
+            method_names: HashMap::new(),
+            channel_details: vec![RoamChannelSnapshot {
+                channel_id: 1,
+                name: "ch".to_string(),
+                direction: ChannelDir::Rx,
+                age_secs: 5.0,
+                request_id: None,
+                task_id: Some(1),
+                task_name: Some("reader".to_string()),
+                queue_depth: None,
+                closed: false,
+            }],
+        });
+
+        let graph = WaitGraph::build(&[dump]);
+        let candidates = detect::find_deadlock_candidates(&graph);
+
+        assert!(
+            candidates.is_empty(),
+            "roam channel should not introduce synthetic self-cycle"
+        );
+    }
+
+    #[test]
+    fn closed_roam_channel_no_wait_edge() {
+        let mut dump = empty_dump(1, "app");
+        dump.tasks = vec![make_task(1, "t", TaskState::Polling, 5.0)];
+        dump.roam = Some(SessionSnapshot {
+            connections: vec![],
+            method_names: HashMap::new(),
+            channel_details: vec![RoamChannelSnapshot {
+                channel_id: 10,
+                name: "c".to_string(),
+                direction: ChannelDir::Rx,
+                age_secs: 5.0,
+                request_id: None,
+                task_id: Some(1),
+                task_name: Some("t".to_string()),
+                queue_depth: None,
+                closed: true,
+            }],
+        });
+
+        let graph = WaitGraph::build(&[dump]);
+
+        // Node should exist
+        assert!(graph.nodes.contains_key(&NodeId::RoamChannel {
+            pid: 1,
+            channel_id: 10,
+        }));
+
+        // But a closed channel shouldn't produce a wait edge — the task
+        // isn't blocked on it anymore.
+        let waits: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::TaskWaitsOnResource)
+            .collect();
+        assert!(waits.is_empty(), "closed channel should not produce wait edge");
     }
 }

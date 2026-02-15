@@ -130,11 +130,9 @@ export function App() {
   const hasRoam = dumps.some((d) => d.roam != null);
   const hasShm = dumps.some((d) => d.shm != null);
   const hasLocks = dumps.some((d) => d.locks != null);
-  const hasDeadlocks = deadlockCandidates.length > 0;
 
   const visibleTabs = TABS.filter((t) => {
     if (t === "problems") return true;
-    if (t === "deadlocks" && !hasDeadlocks) return false;
     if (t === "sync" && !hasSync) return false;
     if (t === "requests" && !hasRoam) return false;
     if (t === "connections" && !hasRoam) return false;

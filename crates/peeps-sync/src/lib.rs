@@ -612,6 +612,11 @@ mod diag {
 
     // ── Semaphore ───────────────────────────────────────────────
 
+    struct WaiterEntry {
+        task_id: u64,
+        started_at: Instant,
+    }
+
     struct SemaphoreInfo {
         name: String,
         permits_total: u64,
@@ -622,6 +627,7 @@ mod diag {
         created_at: Instant,
         creator_task_id: Option<u64>,
         available_permits: Box<dyn Fn() -> usize + Send + Sync>,
+        active_waiters: Mutex<Vec<WaiterEntry>>,
     }
 
     impl SemaphoreInfo {
@@ -632,6 +638,15 @@ mod diag {
                 0.0
             } else {
                 (total_wait_nanos as f64 / acquires as f64) / 1_000_000_000.0
+            };
+            let (top_waiter_task_ids, oldest_wait_secs) = {
+                let waiters = self.active_waiters.lock().unwrap();
+                let ids: Vec<u64> = waiters.iter().map(|w| w.task_id).collect();
+                let oldest = waiters
+                    .iter()
+                    .map(|w| now.duration_since(w.started_at).as_secs_f64())
+                    .fold(0.0_f64, f64::max);
+                (ids, oldest)
             };
             SemaphoreSnapshot {
                 name: self.name.clone(),
@@ -644,6 +659,8 @@ mod diag {
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
                 creator_task_id: self.creator_task_id,
                 creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
+                top_waiter_task_ids,
+                oldest_wait_secs,
             }
         }
     }
@@ -691,6 +708,7 @@ mod diag {
                 created_at: Instant::now(),
                 creator_task_id: peeps_tasks::current_task_id(),
                 available_permits: Box::new(move || inner_for_snapshot.available_permits()),
+                active_waiters: Mutex::new(Vec::new()),
             });
             prune_and_register_semaphore(&info);
             Self { inner, info }
@@ -715,10 +733,21 @@ mod diag {
         pub async fn acquire(
             &self,
         ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
             self.info.waiters.fetch_add(1, Ordering::Relaxed);
             let start = Instant::now();
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = self.inner.acquire().await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            {
+                let mut waiters = self.info.active_waiters.lock().unwrap();
+                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                    waiters.swap_remove(pos);
+                }
+            }
             if result.is_ok() {
                 self.info.acquires.fetch_add(1, Ordering::Relaxed);
                 let waited_nanos = start.elapsed().as_nanos() as u64;
@@ -734,10 +763,21 @@ mod diag {
             &self,
             n: u32,
         ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
             self.info.waiters.fetch_add(1, Ordering::Relaxed);
             let start = Instant::now();
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = self.inner.acquire_many(n).await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            {
+                let mut waiters = self.info.active_waiters.lock().unwrap();
+                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                    waiters.swap_remove(pos);
+                }
+            }
             if result.is_ok() {
                 self.info.acquires.fetch_add(1, Ordering::Relaxed);
                 let waited_nanos = start.elapsed().as_nanos() as u64;
@@ -752,10 +792,21 @@ mod diag {
         pub async fn acquire_owned(
             &self,
         ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
             self.info.waiters.fetch_add(1, Ordering::Relaxed);
             let start = Instant::now();
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = Arc::clone(&self.inner).acquire_owned().await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            {
+                let mut waiters = self.info.active_waiters.lock().unwrap();
+                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                    waiters.swap_remove(pos);
+                }
+            }
             if result.is_ok() {
                 self.info.acquires.fetch_add(1, Ordering::Relaxed);
                 let waited_nanos = start.elapsed().as_nanos() as u64;
@@ -771,10 +822,21 @@ mod diag {
             &self,
             n: u32,
         ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
             self.info.waiters.fetch_add(1, Ordering::Relaxed);
             let start = Instant::now();
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = Arc::clone(&self.inner).acquire_many_owned(n).await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            {
+                let mut waiters = self.info.active_waiters.lock().unwrap();
+                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                    waiters.swap_remove(pos);
+                }
+            }
             if result.is_ok() {
                 self.info.acquires.fetch_add(1, Ordering::Relaxed);
                 let waited_nanos = start.elapsed().as_nanos() as u64;

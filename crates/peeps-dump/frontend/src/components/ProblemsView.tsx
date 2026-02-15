@@ -55,6 +55,7 @@ function problemHref(p: Problem): string {
     case "Locks":
       return resourceHref({ kind: "lock", process: p.process, lock: p.resource });
     case "Channels":
+    case "Semaphores":
       return tabPath("sync");
     case "RPC":
       return tabPath("requests");
@@ -78,12 +79,14 @@ function issueWaitsOnHref(i: RelationshipIssue): string {
       return tabPath("locks");
     case "Channels":
       return tabPath("sync");
+    case "Semaphores":
+      return tabPath("sync");
     case "RPC":
       return tabPath("requests");
   }
 }
 
-function problemKind(p: Problem): "task" | "thread" | "lock" | "mpsc" | "request" | "shm_segment" {
+function problemKind(p: Problem): "task" | "thread" | "lock" | "mpsc" | "semaphore" | "request" | "shm_segment" {
   switch (p.category) {
     case "Tasks":
       return "task";
@@ -93,6 +96,8 @@ function problemKind(p: Problem): "task" | "thread" | "lock" | "mpsc" | "request
       return "lock";
     case "Channels":
       return "mpsc";
+    case "Semaphores":
+      return "semaphore";
     case "RPC":
       return "request";
     case "SHM":
@@ -100,30 +105,35 @@ function problemKind(p: Problem): "task" | "thread" | "lock" | "mpsc" | "request
   }
 }
 
-function waitsOnKind(i: RelationshipIssue): "lock" | "mpsc" | "request" {
+function waitsOnKind(i: RelationshipIssue): "lock" | "mpsc" | "semaphore" | "request" {
   switch (i.category) {
     case "Locks":
       return "lock";
     case "Channels":
       return "mpsc";
+    case "Semaphores":
+      return "semaphore";
     case "RPC":
       return "request";
   }
 }
 
-function ownerHref(owner: string): { href: string; kind: "process" | "request" | "mpsc" | "lock" } {
+function ownerHref(owner: string): { href: string; kind: "process" | "request" | "mpsc" | "semaphore" | "lock" } {
   if (owner.startsWith("rpc:")) return { href: tabPath("requests"), kind: "request" };
   if (owner.startsWith("channel:")) return { href: tabPath("sync"), kind: "mpsc" };
+  if (owner.startsWith("semaphore:")) return { href: tabPath("sync"), kind: "semaphore" };
   if (owner.startsWith("lock:")) return { href: tabPath("locks"), kind: "lock" };
   return { href: resourceHref({ kind: "process", process: owner }), kind: "process" };
 }
 
-function blockedHref(i: RelationshipIssue): { href: string; kind: "task" | "request" | "mpsc" } {
+function blockedHref(i: RelationshipIssue): { href: string; kind: "task" | "request" | "mpsc" | "semaphore" } {
   switch (i.category) {
     case "Locks":
       return { href: tabPath("tasks"), kind: "task" };
     case "Channels":
       return { href: tabPath("sync"), kind: "mpsc" };
+    case "Semaphores":
+      return { href: tabPath("sync"), kind: "semaphore" };
     case "RPC":
       return { href: tabPath("requests"), kind: "request" };
   }

@@ -250,6 +250,10 @@ pub struct SemaphoreSnapshot {
     /// Which task created this semaphore.
     pub creator_task_id: Option<u64>,
     pub creator_task_name: Option<String>,
+    /// Task IDs of the top waiters (those currently waiting for a permit).
+    pub top_waiter_task_ids: Vec<u64>,
+    /// How long the oldest current waiter has been waiting.
+    pub oldest_wait_secs: f64,
 }
 
 /// Snapshot of a tracked OnceCell.
@@ -290,11 +294,27 @@ pub enum ChannelDir {
     Rx,
 }
 
+/// Snapshot of a roam channel with enriched diagnostic data.
+#[derive(Debug, Clone, Facet)]
+pub struct RoamChannelSnapshot {
+    pub channel_id: u64,
+    pub name: String,
+    pub direction: ChannelDir,
+    pub age_secs: f64,
+    pub request_id: Option<u64>,
+    pub task_id: Option<u64>,
+    pub task_name: Option<String>,
+    pub queue_depth: Option<u64>,
+    pub closed: bool,
+}
+
 /// Snapshot of all roam-session diagnostic state.
 #[derive(Debug, Clone, Facet)]
 pub struct SessionSnapshot {
     pub connections: Vec<ConnectionSnapshot>,
     pub method_names: HashMap<u64, String>,
+    /// Enriched channel snapshots with task association and queue depth.
+    pub channel_details: Vec<RoamChannelSnapshot>,
 }
 
 /// Snapshot of a single connection's diagnostic state.

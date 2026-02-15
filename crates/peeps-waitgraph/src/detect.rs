@@ -123,16 +123,20 @@ pub fn find_deadlock_candidates_with_config(
 
 // ── Blocking-edge subgraph ──────────────────────────────────────
 
-/// Edge kinds that participate in deadlock cycles.
-fn is_blocking_edge(kind: &EdgeKind) -> bool {
-    matches!(
-        kind,
+/// Returns true when an edge should participate in deadlock SCC detection.
+///
+/// Note: future provenance edges (`Future -> Task` ownership) are kept in the
+/// graph for context, but excluded here because they frequently create trivial
+/// `Task -> Future -> same Task` loops that are not actionable deadlocks.
+fn is_blocking_edge(edge: &WaitEdge) -> bool {
+    match edge.kind {
         EdgeKind::TaskWaitsOnResource
-            | EdgeKind::ResourceOwnedByTask
-            | EdgeKind::RpcClientToRequest
-            | EdgeKind::RpcRequestToServerTask
-            | EdgeKind::RpcCrossProcessStitch
-    )
+        | EdgeKind::RpcClientToRequest
+        | EdgeKind::RpcRequestToServerTask
+        | EdgeKind::RpcCrossProcessStitch => true,
+        EdgeKind::ResourceOwnedByTask => !matches!(edge.from, NodeId::Future { .. }),
+        _ => false,
+    }
 }
 
 /// Build adjacency list for blocking edges only.
@@ -141,7 +145,7 @@ fn build_blocking_adjacency(graph: &WaitGraph) -> BTreeMap<NodeId, Vec<NodeId>> 
 
     // Ensure all nodes that participate in blocking edges are in the map
     for edge in &graph.edges {
-        if is_blocking_edge(&edge.kind) {
+        if is_blocking_edge(edge) {
             adj.entry(edge.from.clone()).or_default().push(edge.to.clone());
             adj.entry(edge.to.clone()).or_default();
         }
@@ -155,7 +159,7 @@ fn collect_blocking_edges(graph: &WaitGraph) -> Vec<WaitEdge> {
     graph
         .edges
         .iter()
-        .filter(|e| is_blocking_edge(&e.kind))
+        .filter(|e| is_blocking_edge(e))
         .cloned()
         .collect()
 }
@@ -359,7 +363,9 @@ fn compute_severity(
             | NodeId::MpscChannel { pid, .. }
             | NodeId::OneshotChannel { pid, .. }
             | NodeId::WatchChannel { pid, .. }
-            | NodeId::OnceCell { pid, .. } => {
+            | NodeId::OnceCell { pid, .. }
+            | NodeId::Semaphore { pid, .. }
+            | NodeId::RoamChannel { pid, .. } => {
                 pids.insert(*pid);
             }
         }
@@ -475,6 +481,10 @@ mod tests {
         }
     }
 
+    fn future_node(pid: u32, id: u64) -> NodeId {
+        NodeId::Future { pid, future_id: id }
+    }
+
     fn task_kind(name: &str, age: f64) -> NodeKind {
         NodeKind::Task {
             name: name.to_string(),
@@ -488,6 +498,12 @@ mod tests {
             name: name.to_string(),
             acquires: 10,
             releases: 9,
+        }
+    }
+
+    fn future_kind(resource: &str) -> NodeKind {
+        NodeKind::Future {
+            resource: resource.to_string(),
         }
     }
 
@@ -516,6 +532,33 @@ mod tests {
             vec![
                 blocking_edge(task_node(1, 1), lock_node(1, "m"), EdgeKind::TaskWaitsOnResource),
                 blocking_edge(lock_node(1, "m"), task_node(1, 2), EdgeKind::ResourceOwnedByTask),
+            ],
+        );
+
+        let candidates = find_deadlock_candidates(&graph);
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn future_self_loop_provenance_is_not_deadlock() {
+        // Task waits on a future that it created itself.
+        // This should not be treated as a deadlock cycle.
+        let graph = make_graph(
+            vec![
+                (task_node(1, 1), task_kind("driver", 20.0)),
+                (future_node(1, 42), future_kind("socket.read")),
+            ],
+            vec![
+                blocking_edge(
+                    task_node(1, 1),
+                    future_node(1, 42),
+                    EdgeKind::TaskWaitsOnResource,
+                ),
+                blocking_edge(
+                    future_node(1, 42),
+                    task_node(1, 1),
+                    EdgeKind::ResourceOwnedByTask,
+                ),
             ],
         );
 

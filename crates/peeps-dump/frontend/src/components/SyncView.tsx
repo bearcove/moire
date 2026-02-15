@@ -1,5 +1,5 @@
-import type { ProcessDump, MpscChannelSnapshot, OneshotChannelSnapshot, WatchChannelSnapshot, OnceCellSnapshot } from "../types";
-import { fmtAge, classNames } from "../util";
+import type { ProcessDump, MpscChannelSnapshot, OneshotChannelSnapshot, WatchChannelSnapshot, OnceCellSnapshot, SemaphoreSnapshot, RoamChannelSnapshot } from "../types";
+import { fmtAge, fmtDuration, classNames } from "../util";
 import { ResourceLink } from "./ResourceLink";
 import { isActivePath, resourceHref } from "../routes";
 
@@ -90,6 +90,32 @@ function onceSeverity(ch: OnceCellSnapshot): Severity {
   return "idle";
 }
 
+function semaphoreSeverity(sem: SemaphoreSnapshot): Severity {
+  if (sem.oldest_wait_secs > 10) return "danger";
+  if (sem.oldest_wait_secs > 1) return "warn";
+  if (sem.waiters > 0 && sem.permits_available === 0) return "warn";
+  return "idle";
+}
+
+function semaphoreReason(sem: SemaphoreSnapshot): string {
+  if (sem.oldest_wait_secs > 10) return `oldest waiter blocked ${fmtDuration(sem.oldest_wait_secs)}`;
+  if (sem.oldest_wait_secs > 1) return `waiter blocked ${fmtDuration(sem.oldest_wait_secs)}`;
+  if (sem.waiters > 0 && sem.permits_available === 0) return `${sem.waiters} waiter(s), no permits`;
+  return "healthy";
+}
+
+function roamChannelSeverity(ch: RoamChannelSnapshot): Severity {
+  if (ch.closed) return "danger";
+  if (ch.age_secs > 10 && (ch.queue_depth ?? 0) === 0) return "warn";
+  return "idle";
+}
+
+function roamChannelReason(ch: RoamChannelSnapshot): string {
+  if (ch.closed) return "closed";
+  if (ch.age_secs > 10 && (ch.queue_depth ?? 0) === 0) return `stale (${fmtAge(ch.age_secs)} idle)`;
+  return "healthy";
+}
+
 function mpscReason(ch: MpscChannelSnapshot): string {
   const closedEnds = [];
   if (ch.sender_closed) closedEnds.push("sender closed");
@@ -123,17 +149,40 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
   const oneshot: { process: string; ch: OneshotChannelSnapshot; severity: Severity }[] = [];
   const watch: { process: string; ch: WatchChannelSnapshot; severity: Severity }[] = [];
   const once: { process: string; ch: OnceCellSnapshot; severity: Severity }[] = [];
+  const sems: { process: string; sem: SemaphoreSnapshot; severity: Severity }[] = [];
+  const roamChs: { process: string; ch: RoamChannelSnapshot; severity: Severity }[] = [];
 
   for (const d of dumps) {
-    if (!d.sync) continue;
-    for (const ch of d.sync.mpsc_channels) mpsc.push({ process: d.process_name, ch, severity: mpscSeverity(ch) });
-    for (const ch of d.sync.oneshot_channels) oneshot.push({ process: d.process_name, ch, severity: oneshotSeverity(ch) });
-    for (const ch of d.sync.watch_channels) watch.push({ process: d.process_name, ch, severity: watchSeverity(ch) });
-    for (const ch of d.sync.once_cells) once.push({ process: d.process_name, ch, severity: onceSeverity(ch) });
+    if (d.sync) {
+      for (const ch of d.sync.mpsc_channels) mpsc.push({ process: d.process_name, ch, severity: mpscSeverity(ch) });
+      for (const ch of d.sync.oneshot_channels) oneshot.push({ process: d.process_name, ch, severity: oneshotSeverity(ch) });
+      for (const ch of d.sync.watch_channels) watch.push({ process: d.process_name, ch, severity: watchSeverity(ch) });
+      for (const ch of d.sync.once_cells) once.push({ process: d.process_name, ch, severity: onceSeverity(ch) });
+      for (const sem of d.sync.semaphores) sems.push({ process: d.process_name, sem, severity: semaphoreSeverity(sem) });
+    }
+    if (d.roam) {
+      for (const ch of (d.roam.channel_details ?? [])) roamChs.push({ process: d.process_name, ch, severity: roamChannelSeverity(ch) });
+    }
   }
 
   const filterMatch = (process: string, name: string) =>
     !q || process.toLowerCase().includes(q) || name.toLowerCase().includes(q);
+
+  const semsFiltered = sems
+    .filter((s) => filterMatch(s.process, s.sem.name))
+    .sort((a, b) => {
+      if (a.severity !== b.severity) return severityRank(b.severity) - severityRank(a.severity);
+      if (a.sem.oldest_wait_secs !== b.sem.oldest_wait_secs) return b.sem.oldest_wait_secs - a.sem.oldest_wait_secs;
+      if (a.sem.waiters !== b.sem.waiters) return b.sem.waiters - a.sem.waiters;
+      return b.sem.age_secs - a.sem.age_secs;
+    });
+
+  const roamChsFiltered = roamChs
+    .filter((r) => filterMatch(r.process, r.ch.name))
+    .sort((a, b) => {
+      if (a.severity !== b.severity) return severityRank(b.severity) - severityRank(a.severity);
+      return b.ch.age_secs - a.ch.age_secs;
+    });
 
   const mpscFiltered = mpsc
     .filter((m) => filterMatch(m.process, m.ch.name))
@@ -166,6 +215,12 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
       return b.ch.age_secs - a.ch.age_secs;
     });
 
+  const semsHot = semsFiltered.filter((s) => s.severity !== "idle");
+  const semsIdle = semsFiltered.filter((s) => s.severity === "idle");
+
+  const roamChsHot = roamChsFiltered.filter((r) => r.severity !== "idle");
+  const roamChsIdle = roamChsFiltered.filter((r) => r.severity === "idle");
+
   const mpscHot = mpscFiltered.filter((m) => m.severity !== "idle");
   const mpscIdle = mpscFiltered.filter((m) => m.severity === "idle");
 
@@ -180,6 +235,197 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
 
   return (
     <div class="fade-in">
+      {sems.length > 0 && (
+        <div class="card" style="margin-bottom: 16px">
+          <div class="card-head">
+            Semaphores
+            <span class="muted" style="margin-left: auto">oldest_wait &gt;1s warn, &gt;10s danger</span>
+          </div>
+          {semsHot.length > 0 && (
+            <table>
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th>Process</th>
+                  <th>Name</th>
+                  <th>Permits</th>
+                  <th>Waiters</th>
+                  <th>Oldest Wait</th>
+                  <th>Acquires</th>
+                  <th>Avg Wait</th>
+                  <th>Max Wait</th>
+                  <th>Age</th>
+                  <th>Reason</th>
+                  <th>Creator</th>
+                </tr>
+              </thead>
+              <tbody>
+                {semsHot.map((s, i) => (
+                  <tr key={i} class={rowClass(s.severity)}>
+                    <td>{severityBadge(s.severity)}</td>
+                    <td class="mono">{processRef(s.process, selectedPath)}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "semaphore", process: s.process, name: s.sem.name })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "semaphore", process: s.process, name: s.sem.name }))}
+                        kind="semaphore"
+                      >
+                        {s.sem.name}
+                      </ResourceLink>
+                    </td>
+                    <td class="num">
+                      <span class={classNames(s.sem.permits_available === 0 && "text-amber")}>
+                        {s.sem.permits_available}
+                      </span>
+                      {" / "}{s.sem.permits_total}
+                    </td>
+                    <td class={classNames("num", s.sem.waiters > 0 && "text-amber")}>{s.sem.waiters}</td>
+                    <td class={classNames("num", s.sem.oldest_wait_secs > 1 && "text-amber")}>
+                      {s.sem.oldest_wait_secs > 0 ? fmtDuration(s.sem.oldest_wait_secs) : "\u2014"}
+                    </td>
+                    <td class="num">{s.sem.acquires}</td>
+                    <td class="num">{s.sem.avg_wait_secs > 0 ? fmtDuration(s.sem.avg_wait_secs) : "\u2014"}</td>
+                    <td class="num">{s.sem.max_wait_secs > 0 ? fmtDuration(s.sem.max_wait_secs) : "\u2014"}</td>
+                    <td class="num">{fmtAge(s.sem.age_secs)}</td>
+                    <td>{semaphoreReason(s.sem)}</td>
+                    <td>{taskRef(s.process, s.sem.creator_task_id, s.sem.creator_task_name, selectedPath)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {semsIdle.length > 0 && (
+            <details style="padding: 8px 12px 12px">
+              <summary class="muted" style="cursor: pointer">Idle semaphores ({semsIdle.length})</summary>
+              <table style="margin-top: 8px">
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Process</th>
+                    <th>Name</th>
+                    <th>Permits</th>
+                    <th>Waiters</th>
+                    <th>Acquires</th>
+                    <th>Age</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {semsIdle.map((s, i) => (
+                    <tr key={i}>
+                      <td>{severityBadge(s.severity)}</td>
+                      <td class="mono">{processRef(s.process, selectedPath)}</td>
+                      <td class="mono">
+                        <ResourceLink
+                          href={resourceHref({ kind: "semaphore", process: s.process, name: s.sem.name })}
+                          active={isActivePath(selectedPath, resourceHref({ kind: "semaphore", process: s.process, name: s.sem.name }))}
+                          kind="semaphore"
+                        >
+                          {s.sem.name}
+                        </ResourceLink>
+                      </td>
+                      <td class="num">{s.sem.permits_available} / {s.sem.permits_total}</td>
+                      <td class="num">{s.sem.waiters}</td>
+                      <td class="num">{s.sem.acquires}</td>
+                      <td class="num">{fmtAge(s.sem.age_secs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
+        </div>
+      )}
+
+      {roamChs.length > 0 && (
+        <div class="card" style="margin-bottom: 16px">
+          <div class="card-head">
+            Roam Channels
+            <span class="muted" style="margin-left: auto">stale channels (&gt;10s idle) flagged as warn</span>
+          </div>
+          {roamChsHot.length > 0 && (
+            <table>
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th>Process</th>
+                  <th>Name</th>
+                  <th>Direction</th>
+                  <th>Queue Depth</th>
+                  <th>Age</th>
+                  <th>Closed</th>
+                  <th>Task</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roamChsHot.map((r, i) => (
+                  <tr key={i} class={rowClass(r.severity)}>
+                    <td>{severityBadge(r.severity)}</td>
+                    <td class="mono">{processRef(r.process, selectedPath)}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "roam_channel", process: r.process, channelId: r.ch.channel_id })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "roam_channel", process: r.process, channelId: r.ch.channel_id }))}
+                        kind="roam_channel"
+                      >
+                        {r.ch.name}
+                      </ResourceLink>
+                    </td>
+                    <td class="mono">{r.ch.direction}</td>
+                    <td class="num">{r.ch.queue_depth ?? "\u2014"}</td>
+                    <td class="num">{fmtAge(r.ch.age_secs)}</td>
+                    <td>{r.ch.closed ? <span class="state-badge state-dropped">closed</span> : "\u2014"}</td>
+                    <td>{taskRef(r.process, r.ch.task_id, r.ch.task_name, selectedPath)}</td>
+                    <td>{roamChannelReason(r.ch)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {roamChsIdle.length > 0 && (
+            <details style="padding: 8px 12px 12px">
+              <summary class="muted" style="cursor: pointer">Idle channels ({roamChsIdle.length})</summary>
+              <table style="margin-top: 8px">
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Process</th>
+                    <th>Name</th>
+                    <th>Direction</th>
+                    <th>Queue Depth</th>
+                    <th>Age</th>
+                    <th>Task</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roamChsIdle.map((r, i) => (
+                    <tr key={i}>
+                      <td>{severityBadge(r.severity)}</td>
+                      <td class="mono">{processRef(r.process, selectedPath)}</td>
+                      <td class="mono">
+                        <ResourceLink
+                          href={resourceHref({ kind: "roam_channel", process: r.process, channelId: r.ch.channel_id })}
+                          active={isActivePath(selectedPath, resourceHref({ kind: "roam_channel", process: r.process, channelId: r.ch.channel_id }))}
+                          kind="roam_channel"
+                        >
+                          {r.ch.name}
+                        </ResourceLink>
+                      </td>
+                      <td class="mono">{r.ch.direction}</td>
+                      <td class="num">{r.ch.queue_depth ?? "\u2014"}</td>
+                      <td class="num">{fmtAge(r.ch.age_secs)}</td>
+                      <td>{taskRef(r.process, r.ch.task_id, r.ch.task_name, selectedPath)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
+        </div>
+      )}
+
       {mpsc.length > 0 && (
         <div class="card" style="margin-bottom: 16px">
           <div class="card-head">

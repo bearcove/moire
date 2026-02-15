@@ -220,6 +220,8 @@ export interface SemaphoreSnapshot {
   age_secs: number;
   creator_task_id: number | null;
   creator_task_name: string | null;
+  top_waiter_task_ids: number[];
+  oldest_wait_secs: number;
 }
 
 export interface OnceCellSnapshot {
@@ -236,9 +238,22 @@ export type OnceCellState = "Empty" | "Initializing" | "Initialized";
 export type Direction = "Outgoing" | "Incoming";
 export type ChannelDir = "Tx" | "Rx";
 
+export interface RoamChannelSnapshot {
+  channel_id: number;
+  name: string;
+  direction: ChannelDir;
+  age_secs: number;
+  request_id: number | null;
+  task_id: number | null;
+  task_name: string | null;
+  queue_depth: number | null;
+  closed: boolean;
+}
+
 export interface SessionSnapshot {
   connections: ConnectionSnapshot[];
   method_names: Record<string, string>;
+  channel_details: RoamChannelSnapshot[];
 }
 
 export interface ConnectionSnapshot {

@@ -9,6 +9,8 @@ export type ResourceRef =
   | { kind: "oneshot"; process: string; name: string }
   | { kind: "watch"; process: string; name: string }
   | { kind: "once_cell"; process: string; name: string }
+  | { kind: "semaphore"; process: string; name: string }
+  | { kind: "roam_channel"; process: string; channelId: number }
   | { kind: "future_wait"; process: string; taskId: number; resource: string }
   | { kind: "connection"; process: string; connection: string }
   | { kind: "request"; process: string; connection: string; requestId: number }
@@ -62,6 +64,10 @@ export function resourceHref(ref: ResourceRef): string {
       return `/sync/watch/${enc(ref.process)}/${enc(ref.name)}`;
     case "once_cell":
       return `/sync/once-cell/${enc(ref.process)}/${enc(ref.name)}`;
+    case "semaphore":
+      return `/semaphores/${enc(ref.process)}/${enc(ref.name)}`;
+    case "roam_channel":
+      return `/roam-channels/${enc(ref.process)}/${ref.channelId}`;
     case "future_wait":
       return `/tasks/future/${enc(ref.process)}/${ref.taskId}/${enc(ref.resource)}`;
     case "connection":

@@ -164,6 +164,8 @@ fn node_pid(node: &NodeId) -> Option<u32> {
         | NodeId::MpscChannel { pid, .. }
         | NodeId::OneshotChannel { pid, .. }
         | NodeId::WatchChannel { pid, .. }
+        | NodeId::Semaphore { pid, .. }
+        | NodeId::RoamChannel { pid, .. }
         | NodeId::OnceCell { pid, .. }
         | NodeId::RpcRequest { pid, .. }
         | NodeId::Process { pid } => Some(*pid),
@@ -226,6 +228,18 @@ fn node_id_to_cycle_node(
         Some(NodeKind::WatchChannel { name, .. }) => peeps_types::CycleNode {
             label: name.clone(),
             kind: "channel".to_string(),
+            process,
+            task_id: None,
+        },
+        Some(NodeKind::Semaphore { name, .. }) => peeps_types::CycleNode {
+            label: name.clone(),
+            kind: "semaphore".to_string(),
+            process,
+            task_id: None,
+        },
+        Some(NodeKind::RoamChannel { name, .. }) => peeps_types::CycleNode {
+            label: name.clone(),
+            kind: "roam-channel".to_string(),
             process,
             task_id: None,
         },

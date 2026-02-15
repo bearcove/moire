@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::io::Write;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
@@ -6,6 +8,10 @@ use axum::http::{header, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use flate2::Compression;
+use flate2::write::GzEncoder;
 use rust_embed::Embed;
 
 use crate::server::DashboardState;
@@ -13,6 +19,13 @@ use crate::server::DashboardState;
 #[derive(Embed)]
 #[folder = "frontend/dist/"]
 struct FrontendAssets;
+
+const WS_CHUNK_START_PREFIX: &str = "__peeps_chunk_start__:";
+const WS_CHUNK_PART_PREFIX: &str = "__peeps_chunk_part__:";
+const WS_CHUNK_END_PREFIX: &str = "__peeps_chunk_end__:";
+const WS_GZIP_PREFIX: &str = "__peeps_gzip_base64__:";
+const DEFAULT_WS_CHUNK_BYTES: usize = 256 * 1024;
+static WS_CHUNK_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
 
 pub fn router(state: Arc<DashboardState>) -> Router {
     Router::new()
@@ -81,11 +94,128 @@ async fn send_dumps(
 ) -> Result<(), axum::Error> {
     let payload = state.dashboard_payload().await;
     match facet_json::to_string(&payload) {
-        Ok(json) => socket.send(Message::Text(json.into())).await,
+        Ok(json) => {
+            let text = encode_ws_payload(&json);
+            let chunk_bytes = ws_chunk_bytes_from_env();
+            if text.len() <= chunk_bytes {
+                socket.send(Message::Text(text.into())).await
+            } else {
+                send_chunked_text(socket, &text, chunk_bytes).await
+            }
+        }
         Err(e) => {
             eprintln!("[peeps] WebSocket serialization error: {e}");
             Ok(())
         }
+    }
+}
+
+async fn send_chunked_text(
+    socket: &mut WebSocket,
+    text: &str,
+    chunk_bytes: usize,
+) -> Result<(), axum::Error> {
+    let message_id = WS_CHUNK_MESSAGE_ID.fetch_add(1, Ordering::Relaxed);
+    let chunks = split_utf8_chunks(text, chunk_bytes.max(1024));
+
+    eprintln!(
+        "[peeps] WebSocket payload too large ({} bytes), streaming in {} chunks",
+        text.len(),
+        chunks.len()
+    );
+
+    socket
+        .send(Message::Text(
+            format!("{WS_CHUNK_START_PREFIX}{message_id}").into(),
+        ))
+        .await?;
+
+    for (index, chunk) in chunks.iter().enumerate() {
+        let mut message =
+            String::with_capacity(WS_CHUNK_PART_PREFIX.len() + 32 + chunk.len());
+        message.push_str(WS_CHUNK_PART_PREFIX);
+        message.push_str(&message_id.to_string());
+        message.push(':');
+        message.push_str(&index.to_string());
+        message.push(':');
+        message.push_str(chunk);
+        socket.send(Message::Text(message.into())).await?;
+    }
+
+    socket
+        .send(Message::Text(
+            format!("{WS_CHUNK_END_PREFIX}{message_id}").into(),
+        ))
+        .await?;
+
+    Ok(())
+}
+
+fn split_utf8_chunks(text: &str, max_bytes: usize) -> Vec<&str> {
+    if text.is_empty() {
+        return vec![""];
+    }
+    let mut chunks = Vec::new();
+    let mut start = 0usize;
+    let mut acc = 0usize;
+
+    for (idx, ch) in text.char_indices() {
+        let len = ch.len_utf8();
+        if acc + len > max_bytes && idx > start {
+            chunks.push(&text[start..idx]);
+            start = idx;
+            acc = 0;
+        }
+        acc += len;
+    }
+
+    if start < text.len() {
+        chunks.push(&text[start..]);
+    }
+    chunks
+}
+
+fn ws_chunk_bytes_from_env() -> usize {
+    std::env::var("PEEPS_WS_CHUNK_BYTES")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n >= 1024)
+        .unwrap_or(DEFAULT_WS_CHUNK_BYTES)
+}
+
+fn encode_ws_payload(json: &str) -> String {
+    if !ws_gzip_enabled_from_env() {
+        return json.to_string();
+    }
+
+    match gzip_bytes(json.as_bytes()) {
+        Ok(gz) => {
+            let b64 = BASE64_STANDARD.encode(gz);
+            let mut out = String::with_capacity(WS_GZIP_PREFIX.len() + b64.len());
+            out.push_str(WS_GZIP_PREFIX);
+            out.push_str(&b64);
+            out
+        }
+        Err(e) => {
+            eprintln!("[peeps] WebSocket gzip error: {e}");
+            json.to_string()
+        }
+    }
+}
+
+fn gzip_bytes(input: &[u8]) -> std::io::Result<Vec<u8>> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(input)?;
+    encoder.finish()
+}
+
+fn ws_gzip_enabled_from_env() -> bool {
+    match std::env::var("PEEPS_WS_GZIP") {
+        Ok(v) => {
+            let v = v.trim().to_ascii_lowercase();
+            !matches!(v.as_str(), "0" | "false" | "no" | "off")
+        }
+        Err(_) => true,
     }
 }
 
