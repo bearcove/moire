@@ -10,6 +10,7 @@ interface Props {
 }
 
 type Severity = "danger" | "warn" | "idle";
+type MpscBucket = "active" | "closed_benign" | "closed_waiters" | "idle";
 
 function stateClass(state: string): string {
   switch (state) {
@@ -69,9 +70,40 @@ function processRef(process: string, selectedPath: string) {
 }
 
 function mpscSeverity(ch: MpscChannelSnapshot): Severity {
-  if (ch.sender_closed || ch.receiver_closed) return "danger";
-  if (ch.send_waiters > 0) return "warn";
+  if (ch.send_waiters > 0) return "danger";
+  if (ch.receiver_closed && ch.sender_count > 0) return "warn";
+  if (ch.sender_closed || ch.receiver_closed) return "idle";
   return "idle";
+}
+
+function mpscBucket(ch: MpscChannelSnapshot): MpscBucket {
+  if ((ch.sender_closed || ch.receiver_closed) && ch.send_waiters > 0) return "closed_waiters";
+  if (ch.sender_closed || ch.receiver_closed) return "closed_benign";
+  if (ch.send_waiters === 0 && ch.sent === ch.received) return "idle";
+  return "active";
+}
+
+function mpscBacklog(ch: MpscChannelSnapshot): number {
+  return Math.max(0, ch.sent - ch.received);
+}
+
+function mpscStateLabel(ch: MpscChannelSnapshot): string {
+  if (ch.sender_closed && ch.receiver_closed) return "Both ends closed";
+  if (ch.receiver_closed) return "Receiver closed";
+  if (ch.sender_closed) return "Sender closed";
+  if (ch.send_waiters > 0) return "Senders waiting";
+  if (mpscBacklog(ch) > 0) return "Backlog growing";
+  return "Healthy";
+}
+
+function mpscImpactScore(ch: MpscChannelSnapshot): number {
+  let score = 0;
+  if (ch.send_waiters > 0) score += 1000 + ch.send_waiters * 100;
+  if (ch.receiver_closed && ch.sender_count > 0) score += 300;
+  if (ch.sender_closed && !ch.receiver_closed) score += 40;
+  score += Math.min(mpscBacklog(ch), 200);
+  score += Math.floor(Math.min(ch.age_secs, 600) / 30);
+  return score;
 }
 
 function oneshotSeverity(ch: OneshotChannelSnapshot): Severity {
@@ -122,6 +154,7 @@ function mpscReason(ch: MpscChannelSnapshot): string {
   if (ch.receiver_closed) closedEnds.push("receiver closed");
   if (closedEnds.length > 0) return closedEnds.join(", ");
   if (ch.send_waiters > 0) return `${ch.send_waiters} sender waiter(s)`;
+  if (mpscBacklog(ch) > 0) return `backlog ${mpscBacklog(ch)}`;
   return "healthy";
 }
 
@@ -145,7 +178,7 @@ function onceReason(ch: OnceCellSnapshot): string {
 export function SyncView({ dumps, filter, selectedPath }: Props) {
   const q = filter.toLowerCase();
 
-  const mpsc: { process: string; ch: MpscChannelSnapshot; severity: Severity }[] = [];
+  const mpsc: { process: string; ch: MpscChannelSnapshot; severity: Severity; bucket: MpscBucket; impact: number }[] = [];
   const oneshot: { process: string; ch: OneshotChannelSnapshot; severity: Severity }[] = [];
   const watch: { process: string; ch: WatchChannelSnapshot; severity: Severity }[] = [];
   const once: { process: string; ch: OnceCellSnapshot; severity: Severity }[] = [];
@@ -154,7 +187,15 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
 
   for (const d of dumps) {
     if (d.sync) {
-      for (const ch of d.sync.mpsc_channels) mpsc.push({ process: d.process_name, ch, severity: mpscSeverity(ch) });
+      for (const ch of d.sync.mpsc_channels) {
+        mpsc.push({
+          process: d.process_name,
+          ch,
+          severity: mpscSeverity(ch),
+          bucket: mpscBucket(ch),
+          impact: mpscImpactScore(ch),
+        });
+      }
       for (const ch of d.sync.oneshot_channels) oneshot.push({ process: d.process_name, ch, severity: oneshotSeverity(ch) });
       for (const ch of d.sync.watch_channels) watch.push({ process: d.process_name, ch, severity: watchSeverity(ch) });
       for (const ch of d.sync.once_cells) once.push({ process: d.process_name, ch, severity: onceSeverity(ch) });
@@ -187,9 +228,9 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
   const mpscFiltered = mpsc
     .filter((m) => filterMatch(m.process, m.ch.name))
     .sort((a, b) => {
+      if (a.impact !== b.impact) return b.impact - a.impact;
       if (a.severity !== b.severity) return severityRank(b.severity) - severityRank(a.severity);
-      if (a.ch.send_waiters !== b.ch.send_waiters) return b.ch.send_waiters - a.ch.send_waiters;
-      if (a.ch.sender_count !== b.ch.sender_count) return b.ch.sender_count - a.ch.sender_count;
+      if (mpscBacklog(a.ch) !== mpscBacklog(b.ch)) return mpscBacklog(b.ch) - mpscBacklog(a.ch);
       return b.ch.age_secs - a.ch.age_secs;
     });
 
@@ -221,8 +262,37 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
   const roamChsHot = roamChsFiltered.filter((r) => r.severity !== "idle");
   const roamChsIdle = roamChsFiltered.filter((r) => r.severity === "idle");
 
-  const mpscHot = mpscFiltered.filter((m) => m.severity !== "idle");
-  const mpscIdle = mpscFiltered.filter((m) => m.severity === "idle");
+  const mpscSummary = {
+    active: mpscFiltered.filter((m) => m.bucket === "active").length,
+    closedBenign: mpscFiltered.filter((m) => m.bucket === "closed_benign").length,
+    closedWithWaiters: mpscFiltered.filter((m) => m.bucket === "closed_waiters").length,
+    idle: mpscFiltered.filter((m) => m.bucket === "idle").length,
+  };
+
+  const mpscGroups = Array.from(
+    mpscFiltered.reduce((acc, m) => {
+      const list = acc.get(m.ch.name) ?? [];
+      list.push(m);
+      acc.set(m.ch.name, list);
+      return acc;
+    }, new Map<string, typeof mpscFiltered>()),
+  )
+    .map(([name, items]) => {
+      const processes = new Set(items.map((i) => i.process));
+      items.sort((a, b) => b.impact - a.impact || b.ch.age_secs - a.ch.age_secs);
+      return {
+        name,
+        items,
+        processCount: processes.size,
+        topImpact: items[0]?.impact ?? 0,
+        topSeverity: items[0]?.severity ?? "idle",
+      };
+    })
+    .sort((a, b) => {
+      if (a.topImpact !== b.topImpact) return b.topImpact - a.topImpact;
+      if (a.items.length !== b.items.length) return b.items.length - a.items.length;
+      return a.name.localeCompare(b.name);
+    });
 
   const oneshotHot = oneshotFiltered.filter((o) => o.severity !== "idle");
   const oneshotIdle = oneshotFiltered.filter((o) => o.severity === "idle");
@@ -430,105 +500,86 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
         <div class="card" style="margin-bottom: 16px">
           <div class="card-head">
             MPSC Channels
-            <span class="muted" style="margin-left: auto">sender count alone is usually not a problem; waiters/closed ends are</span>
+            <span class="muted" style="margin-left: auto">state-space lens: active, closed, idle</span>
           </div>
-          {mpscHot.length > 0 && (
-            <table>
-              <thead>
-                <tr>
-                  <th>Severity</th>
-                  <th>Process</th>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Sent</th>
-                  <th>Recv</th>
-                  <th>Senders</th>
-                  <th>Waiters</th>
-                  <th>Ends</th>
-                  <th>Age</th>
-                  <th>Reason</th>
-                  <th>Creator</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mpscHot.map((m, i) => (
-                  <tr key={i} class={rowClass(m.severity)}>
-                    <td>{severityBadge(m.severity)}</td>
-                    <td class="mono">{processRef(m.process, selectedPath)}</td>
-                    <td class="mono">
-                      <ResourceLink
-                        href={resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name })}
-                        active={isActivePath(selectedPath, resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name }))}
-                        kind="mpsc"
-                      >
-                        {m.ch.name}
-                      </ResourceLink>
-                    </td>
-                    <td class="mono">{m.ch.bounded ? `bounded(${m.ch.capacity})` : "unbounded"}</td>
-                    <td class="num">{m.ch.sent}</td>
-                    <td class="num">{m.ch.received}</td>
-                    <td class="num">{m.ch.sender_count}</td>
-                    <td class={classNames("num", m.ch.send_waiters > 0 && "text-amber")}>{m.ch.send_waiters}</td>
-                    <td class="mono">
-                      {m.ch.sender_closed || m.ch.receiver_closed
-                        ? `${m.ch.sender_closed ? "Sx" : "\u2014"} / ${m.ch.receiver_closed ? "Rx" : "\u2014"}`
-                        : "\u2014"}
-                    </td>
-                    <td class="num">{fmtAge(m.ch.age_secs)}</td>
-                    <td>{mpscReason(m.ch)}</td>
-                    <td>{taskRef(m.process, m.ch.creator_task_id, m.ch.creator_task_name, selectedPath)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <div class="sync-buckets">
+            <div class="sync-bucket"><span class="label">Active</span><span class="value">{mpscSummary.active}</span></div>
+            <div class="sync-bucket"><span class="label">Closed (no impact)</span><span class="value">{mpscSummary.closedBenign}</span></div>
+            <div class="sync-bucket sync-bucket-danger"><span class="label">Closed (with waiters)</span><span class="value">{mpscSummary.closedWithWaiters}</span></div>
+            <div class="sync-bucket"><span class="label">Idle</span><span class="value">{mpscSummary.idle}</span></div>
+          </div>
 
-          {mpscIdle.length > 0 && (
-            <details style="padding: 8px 12px 12px">
-              <summary class="muted" style="cursor: pointer">Idle channels ({mpscIdle.length})</summary>
-              <table style="margin-top: 8px">
-                <thead>
-                  <tr>
-                    <th>Severity</th>
-                    <th>Process</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Senders</th>
-                    <th>Waiters</th>
-                    <th>Ends</th>
-                    <th>Age</th>
-                    <th>Reason</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mpscIdle.map((m, i) => (
-                    <tr key={i}>
-                      <td>{severityBadge(m.severity)}</td>
-                      <td class="mono">{processRef(m.process, selectedPath)}</td>
-                      <td class="mono">
-                        <ResourceLink
-                          href={resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name })}
-                          active={isActivePath(selectedPath, resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name }))}
-                          kind="mpsc"
-                        >
-                          {m.ch.name}
-                        </ResourceLink>
-                      </td>
-                      <td class="mono">{m.ch.bounded ? `bounded(${m.ch.capacity})` : "unbounded"}</td>
-                      <td class="num">{m.ch.sender_count}</td>
-                      <td class="num">{m.ch.send_waiters}</td>
-                      <td class="mono">
-                        {m.ch.sender_closed || m.ch.receiver_closed
-                          ? `${m.ch.sender_closed ? "Sx" : "\u2014"} / ${m.ch.receiver_closed ? "Rx" : "\u2014"}`
-                          : "\u2014"}
-                      </td>
-                      <td class="num">{fmtAge(m.ch.age_secs)}</td>
-                      <td>{mpscReason(m.ch)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
+          <div class="sync-groups">
+            {mpscGroups.map((group) => (
+              <details key={group.name} class="sync-group" open={group.topSeverity !== "idle"}>
+                <summary class="sync-group-summary">
+                  <div class="sync-group-title">
+                    <ResourceLink
+                      href={resourceHref({ kind: "mpsc", process: group.items[0]?.process ?? "", name: group.name })}
+                      active={group.items.some((m) => isActivePath(selectedPath, resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name })))}
+                      kind="mpsc"
+                    >
+                      {group.name}
+                    </ResourceLink>
+                    <span class="muted">{group.items.length} instance{group.items.length > 1 ? "s" : ""} across {group.processCount} process{group.processCount > 1 ? "es" : ""}</span>
+                  </div>
+                  <div class="sync-group-meta">{severityBadge(group.topSeverity)}</div>
+                </summary>
+
+                <div class="sync-instance-list">
+                  {group.items.map((m, i) => {
+                    const backlog = mpscBacklog(m.ch);
+                    const anomalous = m.ch.send_waiters > 0 || backlog > 0 || (m.ch.receiver_closed && m.ch.sender_count > 0);
+                    return (
+                      <article key={`${group.name}:${m.process}:${i}`} class={classNames("sync-instance-card", rowClass(m.severity))}>
+                        <div class="sync-instance-head">
+                          <div class="sync-instance-title">
+                            <ResourceLink
+                              href={resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name })}
+                              active={isActivePath(selectedPath, resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name }))}
+                              kind="mpsc"
+                            >
+                              {m.ch.name}
+                            </ResourceLink>
+                            <span class={classNames("state-badge", m.severity === "danger" ? "state-dropped" : m.severity === "warn" ? "state-pending" : "state-empty")}>
+                              {mpscStateLabel(m.ch)}
+                            </span>
+                          </div>
+                          <div class="sync-instance-process">{processRef(m.process, selectedPath)} · {fmtAge(m.ch.age_secs)}</div>
+                        </div>
+
+                        <div class="sync-instance-body">
+                          <div class="sync-kv"><span class="k">Senders</span><span class="v num">{m.ch.sender_count}</span></div>
+                          <div class="sync-kv"><span class="k">Waiters</span><span class={classNames("v num", m.ch.send_waiters > 0 && "text-amber")}>{m.ch.send_waiters}</span></div>
+                          {anomalous && (
+                            <>
+                              <div class="sync-kv"><span class="k">Traffic</span><span class="v num">{m.ch.sent} / {m.ch.received}</span></div>
+                              {backlog > 0 && <div class="sync-kv"><span class="k">Backlog</span><span class="v num text-amber">{backlog}</span></div>}
+                            </>
+                          )}
+                        </div>
+
+                        <div class="sync-instance-foot">
+                          <span>{mpscReason(m.ch)}</span>
+                          {m.ch.creator_task_id != null && (
+                            <details class="sync-details">
+                              <summary>Details</summary>
+                              <div>{taskRef(m.process, m.ch.creator_task_id, m.ch.creator_task_name, selectedPath)}</div>
+                            </details>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </details>
+            ))}
+          </div>
+
+          {mpscGroups.length === 0 && (
+            <div class="empty-state" style="padding: 16px">
+              <p>No channels matched the current filter</p>
+            </div>
           )}
         </div>
       )}

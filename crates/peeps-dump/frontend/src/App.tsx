@@ -87,7 +87,10 @@ export function App() {
           }
         },
         onError: (err) => {
-          if (!cancelled) setError(err);
+          if (!cancelled) {
+            console.error("[peeps/app] websocket error:", err);
+            setError(err);
+          }
         },
         onClose: () => {
           if (cancelled) return;

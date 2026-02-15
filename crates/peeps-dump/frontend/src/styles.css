@@ -788,6 +788,148 @@ tbody tr.severity-warn:hover td {
     gap: 6px 10px;
 }
 
+.sync-buckets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    padding: 12px 16px 8px;
+}
+
+.sync-bucket {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 8px 10px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sync-bucket .label {
+    color: var(--fg-muted);
+    font-size: 11px;
+}
+
+.sync-bucket .value {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.sync-bucket-danger {
+    border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+    background: color-mix(in srgb, var(--red-bg) 40%, var(--surface));
+}
+
+.sync-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 12px 14px;
+}
+
+.sync-group {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+
+.sync-group-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    padding: 8px 10px;
+    list-style: none;
+}
+
+.sync-group-summary::-webkit-details-marker {
+    display: none;
+}
+
+.sync-group-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sync-instance-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 10px 10px;
+}
+
+.sync-instance-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    padding: 10px;
+}
+
+.sync-instance-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.sync-instance-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sync-instance-process {
+    font-size: 11px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+}
+
+.sync-instance-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 6px 10px;
+    margin-top: 8px;
+}
+
+.sync-kv {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sync-kv .k {
+    color: var(--fg-muted);
+    font-size: 11px;
+}
+
+.sync-kv .v {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.sync-instance-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.sync-details summary {
+    cursor: pointer;
+    color: var(--fg-muted);
+    font-size: 11px;
+}
+
 /* ═══════════════════════════════════════════
    DEADLOCK CANDIDATES
    ═══════════════════════════════════════════ */

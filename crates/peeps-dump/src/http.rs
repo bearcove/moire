@@ -12,6 +12,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use peeps_types::ProcessDump;
 use rust_embed::Embed;
 
 use crate::server::DashboardState;
@@ -30,6 +31,12 @@ static WS_CHUNK_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
 pub fn router(state: Arc<DashboardState>) -> Router {
     Router::new()
         .route("/api/dumps", get(api_dumps))
+        .route("/api/tasks", get(api_tasks))
+        .route("/api/threads", get(api_threads))
+        .route("/api/locks", get(api_locks))
+        .route("/api/sync", get(api_sync))
+        .route("/api/requests", get(api_requests))
+        .route("/api/processes", get(api_processes))
         .route("/api/ws", get(ws_upgrade))
         .fallback(static_handler)
         .with_state(state)
@@ -50,6 +57,125 @@ async fn api_dumps(State(state): State<Arc<DashboardState>>) -> Response {
         )
             .into_response(),
     }
+}
+
+async fn api_tasks(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_tasks).await
+}
+
+async fn api_threads(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_threads).await
+}
+
+async fn api_locks(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_locks).await
+}
+
+async fn api_sync(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_sync).await
+}
+
+async fn api_requests(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_requests).await
+}
+
+async fn api_processes(State(state): State<Arc<DashboardState>>) -> Response {
+    api_slice(state, slim_for_processes).await
+}
+
+async fn api_slice(
+    state: Arc<DashboardState>,
+    slim: fn(ProcessDump) -> ProcessDump,
+) -> Response {
+    let dumps = state
+        .all_dumps()
+        .await
+        .into_iter()
+        .map(slim)
+        .collect::<Vec<_>>();
+    match facet_json::to_string(&dumps) {
+        Ok(json) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json")],
+            json,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("serialization error: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+fn slim_for_tasks(mut d: ProcessDump) -> ProcessDump {
+    d.threads.clear();
+    d.locks = None;
+    d.sync = None;
+    d.roam = None;
+    d.shm = None;
+    d
+}
+
+fn slim_for_threads(mut d: ProcessDump) -> ProcessDump {
+    d.tasks.clear();
+    d.wake_edges.clear();
+    d.future_wake_edges.clear();
+    d.future_waits.clear();
+    d.locks = None;
+    d.sync = None;
+    d.roam = None;
+    d.shm = None;
+    d
+}
+
+fn slim_for_locks(mut d: ProcessDump) -> ProcessDump {
+    d.tasks.clear();
+    d.wake_edges.clear();
+    d.future_wake_edges.clear();
+    d.future_waits.clear();
+    d.threads.clear();
+    d.sync = None;
+    d.roam = None;
+    d.shm = None;
+    d
+}
+
+fn slim_for_sync(mut d: ProcessDump) -> ProcessDump {
+    d.tasks.clear();
+    d.wake_edges.clear();
+    d.future_wake_edges.clear();
+    d.future_waits.clear();
+    d.threads.clear();
+    d.locks = None;
+    // Keep roam for channel details used by Sync tab.
+    d.shm = None;
+    d
+}
+
+fn slim_for_requests(mut d: ProcessDump) -> ProcessDump {
+    d.tasks.clear();
+    d.wake_edges.clear();
+    d.future_wake_edges.clear();
+    d.future_waits.clear();
+    d.threads.clear();
+    d.locks = None;
+    d.sync = None;
+    d.shm = None;
+    d
+}
+
+fn slim_for_processes(mut d: ProcessDump) -> ProcessDump {
+    d.tasks.clear();
+    d.wake_edges.clear();
+    d.future_wake_edges.clear();
+    d.future_waits.clear();
+    d.threads.clear();
+    d.locks = None;
+    d.sync = None;
+    d.roam = None;
+    d.shm = None;
+    d
 }
 
 async fn ws_upgrade(
