@@ -5,8 +5,35 @@
 //! dependencies between peeps subcrates and instrumented libraries.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use facet::Facet;
+
+// ── Global process name ─────────────────────────────────────────
+
+static PROCESS_NAME: OnceLock<String> = OnceLock::new();
+
+/// Set the global process name for this process.
+///
+/// Should be called once at startup (e.g. from `peeps::init_named`).
+/// Subsequent calls are ignored (first write wins).
+pub fn set_process_name(name: impl Into<String>) {
+    let _ = PROCESS_NAME.set(name.into());
+}
+
+/// Get the global process name, if set.
+pub fn process_name() -> Option<&'static str> {
+    PROCESS_NAME.get().map(|s| s.as_str())
+}
+
+// ── Reserved metadata keys for context propagation ──────────────
+
+/// Metadata key for the caller's process name.
+pub const PEEPS_CALLER_PROCESS_KEY: &str = "peeps.caller_process";
+/// Metadata key for the caller's connection name.
+pub const PEEPS_CALLER_CONNECTION_KEY: &str = "peeps.caller_connection";
+/// Metadata key for the caller's request ID.
+pub const PEEPS_CALLER_REQUEST_ID_KEY: &str = "peeps.caller_request_id";
 
 // ── Task snapshot types ──────────────────────────────────────────
 
@@ -515,6 +542,14 @@ pub struct FutureResumeEdgeSnapshot {
     pub last_resume_age_secs: f64,
 }
 
+/// Direction of a socket wait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
+#[repr(u8)]
+pub enum SocketWaitDirection {
+    Readable,
+    Writable,
+}
+
 /// Structured resource identity for future waits.
 #[derive(Debug, Clone, Facet)]
 #[repr(u8)]
@@ -524,9 +559,51 @@ pub enum ResourceRefSnapshot {
     Oneshot { process: String, name: String },
     Watch { process: String, name: String },
     Semaphore { process: String, name: String },
+    OnceCell { process: String, name: String },
     RoamChannel { process: String, channel_id: u64 },
-    Socket { process: String, fd: u64, label: Option<String> },
+    Socket {
+        process: String,
+        fd: u64,
+        label: Option<String>,
+        direction: Option<SocketWaitDirection>,
+        peer: Option<String>,
+    },
     Unknown { label: String },
+}
+
+impl ResourceRefSnapshot {
+    /// Stable dashboard URL path for this resource.
+    pub fn dashboard_url(&self) -> String {
+        match self {
+            ResourceRefSnapshot::Lock { process, name } => {
+                format!("/locks?process={process}&name={name}")
+            }
+            ResourceRefSnapshot::Mpsc { process, name } => {
+                format!("/sync?process={process}&tab=mpsc&name={name}")
+            }
+            ResourceRefSnapshot::Oneshot { process, name } => {
+                format!("/sync?process={process}&tab=oneshot&name={name}")
+            }
+            ResourceRefSnapshot::Watch { process, name } => {
+                format!("/sync?process={process}&tab=watch&name={name}")
+            }
+            ResourceRefSnapshot::Semaphore { process, name } => {
+                format!("/sync?process={process}&tab=semaphore&name={name}")
+            }
+            ResourceRefSnapshot::OnceCell { process, name } => {
+                format!("/sync?process={process}&tab=oncecell&name={name}")
+            }
+            ResourceRefSnapshot::RoamChannel { process, channel_id } => {
+                format!("/connections?process={process}&channel={channel_id}")
+            }
+            ResourceRefSnapshot::Socket { process, fd, .. } => {
+                format!("/sockets?process={process}&fd={fd}")
+            }
+            ResourceRefSnapshot::Unknown { label } => {
+                format!("/resources?label={label}")
+            }
+        }
+    }
 }
 
 /// Future waiting on a structured resource.
@@ -573,6 +650,18 @@ pub struct CycleNode {
     pub task_id: Option<TaskId>,
 }
 
+/// Confidence level of a cycle edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
+#[repr(u8)]
+pub enum CycleEdgeConfidence {
+    /// Emitted directly by instrumentation.
+    Explicit,
+    /// Computed or inferred from other data.
+    Derived,
+    /// Guess-level correlation.
+    Heuristic,
+}
+
 /// An edge in a deadlock cycle path.
 #[derive(Debug, Clone, Facet)]
 pub struct CycleEdge {
@@ -584,6 +673,8 @@ pub struct CycleEdge {
     pub explanation: String,
     /// How long this edge has been waiting.
     pub wait_secs: f64,
+    /// Confidence level of this edge.
+    pub confidence: CycleEdgeConfidence,
 }
 
 /// A deadlock candidate: a cycle or near-cycle in the wait graph.

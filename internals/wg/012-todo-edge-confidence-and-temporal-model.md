@@ -1,6 +1,6 @@
 # Edge Confidence And Temporal Model
 
-Status: todo
+Status: done
 Owner: wg-analysis
 Scope: `peeps-waitgraph`, deadlock detector, dashboard graph renderers
 

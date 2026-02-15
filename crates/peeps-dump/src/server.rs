@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use peeps_types::{DashboardPayload, ProcessDump};
 use peeps_waitgraph::detect::{self, Severity};
-use peeps_waitgraph::{EdgeKind, NodeId, NodeKind, WaitGraph};
+use peeps_waitgraph::{EdgeConfidence, EdgeKind, NodeId, NodeKind, WaitGraph};
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
@@ -143,13 +143,14 @@ fn convert_candidate(
                 let to = ((i + 1) % path_nodes.len()) as u32;
                 let from_id = path_nodes[i];
                 let to_id = path_nodes[(i + 1) % path_nodes.len()];
-                let (explanation, wait_secs) =
+                let (explanation, wait_secs, confidence) =
                     edge_explanation(from_id, to_id, graph, &cycle_path);
                 peeps_types::CycleEdge {
                     from_node: from,
                     to_node: to,
                     explanation,
                     wait_secs,
+                    confidence,
                 }
             })
             .collect()
@@ -211,6 +212,8 @@ fn node_pid(node: &NodeId) -> Option<u32> {
         | NodeId::Semaphore { pid, .. }
         | NodeId::RoamChannel { pid, .. }
         | NodeId::OnceCell { pid, .. }
+        | NodeId::Socket { pid, .. }
+        | NodeId::Unknown { pid, .. }
         | NodeId::RpcRequest { pid, .. }
         | NodeId::Process { pid } => Some(*pid),
     }
@@ -299,6 +302,18 @@ fn node_id_to_cycle_node(
             process,
             task_id: None,
         },
+        Some(NodeKind::Socket { fd, label, .. }) => peeps_types::CycleNode {
+            label: label.clone().unwrap_or_else(|| format!("socket:{fd}")),
+            kind: "socket".to_string(),
+            process,
+            task_id: None,
+        },
+        Some(NodeKind::Unknown { label }) => peeps_types::CycleNode {
+            label: label.clone(),
+            kind: "unknown".to_string(),
+            process,
+            task_id: None,
+        },
         Some(NodeKind::Process { name, .. }) => peeps_types::CycleNode {
             label: name.clone(),
             kind: "process".to_string(),
@@ -319,7 +334,7 @@ fn edge_explanation(
     to: &NodeId,
     graph: &WaitGraph,
     cycle_nodes: &[peeps_types::CycleNode],
-) -> (String, f64) {
+) -> (String, f64, peeps_types::CycleEdgeConfidence) {
     // Find the matching edge in the graph
     for edge in &graph.edges {
         if edge.from == *from && edge.to == *to {
@@ -351,11 +366,16 @@ fn edge_explanation(
                 }
                 _ => format!("{from_label} -> {to_label}"),
             };
-            return (explanation, wait_secs);
+            let confidence = match edge.meta.confidence {
+                EdgeConfidence::Explicit => peeps_types::CycleEdgeConfidence::Explicit,
+                EdgeConfidence::Derived => peeps_types::CycleEdgeConfidence::Derived,
+                EdgeConfidence::Heuristic => peeps_types::CycleEdgeConfidence::Heuristic,
+            };
+            return (explanation, wait_secs, confidence);
         }
     }
     let _ = cycle_nodes; // used for context in the signature
-    ("unknown relationship".to_string(), 0.0)
+    ("unknown relationship".to_string(), 0.0, peeps_types::CycleEdgeConfidence::Derived)
 }
 
 fn node_label(node: &NodeId, graph: &WaitGraph) -> String {
@@ -368,8 +388,16 @@ fn node_label(node: &NodeId, graph: &WaitGraph) -> String {
         Some(NodeKind::MpscChannel { name, .. }) => format!("channel \"{name}\""),
         Some(NodeKind::OneshotChannel { name, .. }) => format!("oneshot \"{name}\""),
         Some(NodeKind::WatchChannel { name, .. }) => format!("watch \"{name}\""),
+        Some(NodeKind::Semaphore { name, .. }) => format!("semaphore \"{name}\""),
+        Some(NodeKind::OnceCell { name, .. }) => format!("oncecell \"{name}\""),
+        Some(NodeKind::RoamChannel { name, .. }) => format!("roam-channel \"{name}\""),
+        Some(NodeKind::Socket { fd, label, .. }) => {
+            format!("socket \"{}\"", label.as_deref().unwrap_or(&format!("fd:{fd}")))
+        }
+        Some(NodeKind::Unknown { label }) => format!("resource \"{label}\""),
         Some(NodeKind::Future { resource }) => format!("future \"{resource}\""),
-        _ => "unknown".to_string(),
+        Some(NodeKind::Process { name, .. }) => format!("process \"{name}\""),
+        None => "unknown".to_string(),
     }
 }
 

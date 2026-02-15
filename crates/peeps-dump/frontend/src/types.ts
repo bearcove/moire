@@ -18,11 +18,14 @@ export interface CycleNode {
   task_id: number | null;
 }
 
+export type CycleEdgeConfidence = "Explicit" | "Derived" | "Heuristic";
+
 export interface CycleEdge {
   from_node: number;
   to_node: number;
   explanation: string;
   wait_secs: number;
+  confidence: CycleEdgeConfidence;
 }
 
 export interface DeadlockCandidate {

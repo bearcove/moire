@@ -50,6 +50,7 @@ interface RequestGraphEdge {
   target: string;
   label: string;
   severity: "warn" | "danger";
+  confidence: "explicit" | "inferred";
 }
 
 interface RequestGraphLayoutNode {
@@ -274,6 +275,7 @@ function RequestInlineGraph({
   interactionsByTask: Map<string, RequestTaskInteraction[]>;
 }) {
   const [open, setOpen] = useState(false);
+  const [showInferred, setShowInferred] = useState(false);
   const graph = useMemo(() => {
     if (!dump || r.task_id == null) return { nodes: [] as RequestGraphNode[], edges: [] as RequestGraphEdge[] };
     const nodes = new Map<string, RequestGraphNode>();
@@ -316,6 +318,7 @@ function RequestInlineGraph({
       target: rootTaskNodeId,
       label: "handled by",
       severity: "warn",
+      confidence: "explicit",
     });
 
     // Parent task lineage (limited depth to keep card graph readable).
@@ -337,6 +340,7 @@ function RequestInlineGraph({
         target: `task:${lineageCursor.id}`,
         label: "spawns",
         severity: "warn",
+        confidence: "explicit",
       });
       lineageCursor = parent;
       lineageDepth += 1;
@@ -363,6 +367,7 @@ function RequestInlineGraph({
         target: futureNodeId,
         label: `awaits ${fmtDuration(w.total_pending_secs)}`,
         severity: w.total_pending_secs > 10 ? "danger" : "warn",
+        confidence: "explicit",
       });
 
       if (w.created_by_task_id != null) {
@@ -379,6 +384,7 @@ function RequestInlineGraph({
           target: futureNodeId,
           label: "creates",
           severity: "warn",
+          confidence: "explicit",
         });
       }
     }
@@ -400,6 +406,7 @@ function RequestInlineGraph({
           target: futureNodeId,
           label: `wakes x${e.wake_count}`,
           severity: "warn",
+          confidence: "explicit",
         });
       }
       if (e.target_task_id != null) {
@@ -416,6 +423,7 @@ function RequestInlineGraph({
           target: targetNodeId,
           label: `resumes x${e.wake_count}`,
           severity: "warn",
+          confidence: "explicit",
         });
       }
     }
@@ -435,6 +443,7 @@ function RequestInlineGraph({
         target: resNodeId,
         label: "touches",
         severity: "warn",
+        confidence: "inferred",
       });
     }
 
@@ -443,23 +452,39 @@ function RequestInlineGraph({
       edges: [...edges.values()],
     };
   }, [dump, interactionsByTask, r]);
+  const visibleGraph = useMemo(() => {
+    const edges = showInferred
+      ? graph.edges
+      : graph.edges.filter((e) => e.confidence === "explicit");
+    const nodeIds = new Set<string>();
+    for (const e of edges) {
+      nodeIds.add(e.source);
+      nodeIds.add(e.target);
+    }
+    // Always keep request root visible.
+    for (const n of graph.nodes) {
+      if (n.kind === "request") nodeIds.add(n.id);
+    }
+    const nodes = graph.nodes.filter((n) => nodeIds.has(n.id));
+    return { nodes, edges };
+  }, [graph, showInferred]);
 
   const [layout, setLayout] = useState<RequestGraphLayout | null>(null);
   useEffect(() => {
     let cancelled = false;
     async function run() {
       if (!open) return;
-      if (graph.nodes.length === 0) {
+      if (visibleGraph.nodes.length === 0) {
         setLayout(null);
         return;
       }
       const elk = new ELK();
-      const elkNodes: ElkNode[] = graph.nodes.map((n) => ({
+      const elkNodes: ElkNode[] = visibleGraph.nodes.map((n) => ({
         id: n.id,
         width: Math.max(180, Math.min(340, 130 + n.label.length * 4)),
         height: 34,
       }));
-      const elkEdges: ElkExtendedEdge[] = graph.edges.map((e) => ({
+      const elkEdges: ElkExtendedEdge[] = visibleGraph.edges.map((e) => ({
         id: e.id,
         sources: [e.source],
         targets: [e.target],
@@ -471,8 +496,13 @@ function RequestInlineGraph({
           "elk.direction": "RIGHT",
           "elk.edgeRouting": "SPLINES",
           "elk.padding": "[top=16,left=20,bottom=16,right=20]",
-          "elk.spacing.nodeNode": "32",
-          "elk.layered.spacing.nodeNodeBetweenLayers": "80",
+          "elk.spacing.nodeNode": "44",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "120",
+          "elk.layered.spacing.edgeNodeBetweenLayers": "40",
+          "elk.layered.spacing.edgeEdgeBetweenLayers": "22",
+          "elk.layered.mergeEdges": "false",
+          "elk.layered.considerModelOrder": "true",
+          "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
         },
         children: elkNodes,
         edges: elkEdges,
@@ -480,8 +510,8 @@ function RequestInlineGraph({
       const out = await elk.layout(graphDef);
       if (cancelled) return;
 
-      const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
-      const edgeById = new Map(graph.edges.map((e) => [e.id, e]));
+      const nodeById = new Map(visibleGraph.nodes.map((n) => [n.id, n]));
+      const edgeById = new Map(visibleGraph.edges.map((e) => [e.id, e]));
       const laidNodes: RequestGraphLayoutNode[] = (out.children ?? []).map((n) => ({
         graph: nodeById.get(n.id!)!,
         x: n.x ?? 0,
@@ -520,17 +550,30 @@ function RequestInlineGraph({
     return () => {
       cancelled = true;
     };
-  }, [graph, open]);
+  }, [open, visibleGraph]);
 
-  if (graph.nodes.length === 0) {
+  if (visibleGraph.nodes.length === 0) {
     return <span class="muted">no graphable causality yet (missing task/future edges)</span>;
   }
 
   return (
     <details class="sync-details" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
-      <summary>Graph (ELK)</summary>
+      <summary>Graph (ELK, explicit by default)</summary>
       {open && (
         <div class="causal-graph-wrap" style="padding: 8px 0 4px">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 0 8px 8px">
+            <label class="mono muted" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px">
+              <input
+                type="checkbox"
+                checked={showInferred}
+                onChange={(e) => setShowInferred((e.currentTarget as HTMLInputElement).checked)}
+              />
+              show inferred edges
+            </label>
+            <span class="mono muted" style="font-size: 11px">
+              {visibleGraph.edges.length} edges
+            </span>
+          </div>
           {!layout && <div class="muted">Computing ELK layout…</div>}
           {layout && (
             <svg
@@ -554,6 +597,7 @@ function RequestInlineGraph({
                       "causal-edge",
                       e.graph.severity === "danger" ? "causal-edge-danger" : "causal-edge-warn",
                     )}
+                    style={e.graph.confidence === "inferred" ? "stroke-dasharray: 5 4; opacity: 0.75" : undefined}
                     marker-end={e.graph.severity === "danger" ? "url(#req-elk-arrow-danger)" : "url(#req-elk-arrow-warn)"}
                   />
                   <text class="causal-edge-label" x={e.labelX} y={e.labelY} text-anchor="middle">

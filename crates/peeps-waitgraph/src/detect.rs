@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use crate::{EdgeKind, NodeId, NodeKind, WaitEdge, WaitGraph};
+use crate::{EdgeConfidence, EdgeKind, NodeId, NodeKind, WaitEdge, WaitGraph};
 
 // ── Configuration ───────────────────────────────────────────────
 
@@ -367,7 +367,9 @@ fn compute_severity(
             | NodeId::WatchChannel { pid, .. }
             | NodeId::OnceCell { pid, .. }
             | NodeId::Semaphore { pid, .. }
-            | NodeId::RoamChannel { pid, .. } => {
+            | NodeId::RoamChannel { pid, .. }
+            | NodeId::Socket { pid, .. }
+            | NodeId::Unknown { pid, .. } => {
                 pids.insert(*pid);
             }
         }
@@ -421,6 +423,34 @@ fn compute_severity(
     if task_count > 4 {
         score += 5;
         rationale.push(format!("{task_count} tasks in cycle"));
+    }
+
+    // Confidence breakdown: reduce score when cycle relies on heuristic edges
+    if !scc_edges.is_empty() {
+        let mut explicit_count: usize = 0;
+        let mut derived_count: usize = 0;
+        let mut heuristic_count: usize = 0;
+        for edge in scc_edges {
+            match edge.meta.confidence {
+                EdgeConfidence::Explicit => explicit_count += 1,
+                EdgeConfidence::Derived => derived_count += 1,
+                EdgeConfidence::Heuristic => heuristic_count += 1,
+            }
+        }
+
+        if heuristic_count > 0 {
+            // Heuristic edges are least trustworthy — discount heavily
+            let penalty = (heuristic_count as u32 * 10).min(score.saturating_sub(10));
+            score = score.saturating_sub(penalty);
+            rationale.push(format!(
+                "confidence: {explicit_count} explicit, {derived_count} derived, {heuristic_count} heuristic"
+            ));
+        } else if explicit_count > 0 && derived_count > 0 {
+            // Mixed explicit/derived — informational only, no penalty
+            rationale.push(format!(
+                "confidence: {explicit_count} explicit, {derived_count} derived"
+            ));
+        }
     }
 
     (score, rationale)
@@ -838,5 +868,158 @@ mod tests {
         for node in path {
             assert!(candidates[0].nodes.contains(node));
         }
+    }
+
+    fn heuristic_edge(from: NodeId, to: NodeId, kind: EdgeKind) -> WaitEdge {
+        WaitEdge {
+            from,
+            to,
+            kind,
+            meta: EdgeMeta::heuristic(SnapshotSource::Locks, 1, 1),
+        }
+    }
+
+    fn explicit_edge(from: NodeId, to: NodeId, kind: EdgeKind) -> WaitEdge {
+        WaitEdge {
+            from,
+            to,
+            kind,
+            meta: EdgeMeta::explicit(SnapshotSource::Locks, 1, 1),
+        }
+    }
+
+    #[test]
+    fn heuristic_edges_reduce_score() {
+        // Same cycle as simple_two_task_deadlock but with heuristic edges
+        let graph = make_graph(
+            vec![
+                (task_node(1, 1), task_kind("task-a", 5.0)),
+                (task_node(1, 2), task_kind("task-b", 5.0)),
+                (lock_node(1, "lock-x"), lock_kind("lock-x")),
+                (lock_node(1, "lock-y"), lock_kind("lock-y")),
+            ],
+            vec![
+                heuristic_edge(task_node(1, 1), lock_node(1, "lock-y"), EdgeKind::TaskWaitsOnResource),
+                heuristic_edge(lock_node(1, "lock-y"), task_node(1, 2), EdgeKind::ResourceOwnedByTask),
+                heuristic_edge(task_node(1, 2), lock_node(1, "lock-x"), EdgeKind::TaskWaitsOnResource),
+                heuristic_edge(lock_node(1, "lock-x"), task_node(1, 1), EdgeKind::ResourceOwnedByTask),
+            ],
+        );
+
+        let heuristic_candidates = find_deadlock_candidates(&graph);
+        assert_eq!(heuristic_candidates.len(), 1);
+
+        // Same cycle with derived edges (normal case)
+        let derived_graph = make_graph(
+            vec![
+                (task_node(1, 1), task_kind("task-a", 5.0)),
+                (task_node(1, 2), task_kind("task-b", 5.0)),
+                (lock_node(1, "lock-x"), lock_kind("lock-x")),
+                (lock_node(1, "lock-y"), lock_kind("lock-y")),
+            ],
+            vec![
+                blocking_edge(task_node(1, 1), lock_node(1, "lock-y"), EdgeKind::TaskWaitsOnResource),
+                blocking_edge(lock_node(1, "lock-y"), task_node(1, 2), EdgeKind::ResourceOwnedByTask),
+                blocking_edge(task_node(1, 2), lock_node(1, "lock-x"), EdgeKind::TaskWaitsOnResource),
+                blocking_edge(lock_node(1, "lock-x"), task_node(1, 1), EdgeKind::ResourceOwnedByTask),
+            ],
+        );
+
+        let derived_candidates = find_deadlock_candidates(&derived_graph);
+        assert_eq!(derived_candidates.len(), 1);
+
+        // Heuristic cycle should have a lower score than derived cycle
+        assert!(
+            heuristic_candidates[0].severity_score < derived_candidates[0].severity_score,
+            "heuristic score {} should be less than derived score {}",
+            heuristic_candidates[0].severity_score,
+            derived_candidates[0].severity_score,
+        );
+
+        // Rationale should include confidence breakdown
+        assert!(heuristic_candidates[0]
+            .rationale
+            .iter()
+            .any(|r| r.contains("heuristic")));
+    }
+
+    #[test]
+    fn mixed_confidence_shows_breakdown_in_rationale() {
+        // Cycle with a mix of explicit and derived edges
+        let graph = make_graph(
+            vec![
+                (task_node(1, 1), task_kind("task-a", 5.0)),
+                (task_node(1, 2), task_kind("task-b", 5.0)),
+                (lock_node(1, "lock-x"), lock_kind("lock-x")),
+                (lock_node(1, "lock-y"), lock_kind("lock-y")),
+            ],
+            vec![
+                explicit_edge(task_node(1, 1), lock_node(1, "lock-y"), EdgeKind::TaskWaitsOnResource),
+                blocking_edge(lock_node(1, "lock-y"), task_node(1, 2), EdgeKind::ResourceOwnedByTask),
+                explicit_edge(task_node(1, 2), lock_node(1, "lock-x"), EdgeKind::TaskWaitsOnResource),
+                blocking_edge(lock_node(1, "lock-x"), task_node(1, 1), EdgeKind::ResourceOwnedByTask),
+            ],
+        );
+
+        let candidates = find_deadlock_candidates(&graph);
+        assert_eq!(candidates.len(), 1);
+
+        // Rationale should report confidence breakdown
+        assert!(candidates[0]
+            .rationale
+            .iter()
+            .any(|r| r.contains("explicit") && r.contains("derived")));
+    }
+
+    #[test]
+    fn all_derived_edges_no_penalty() {
+        // All-derived is the normal case; score should match a pure derived cycle
+        let graph = make_graph(
+            vec![
+                (task_node(1, 1), task_kind("task-a", 5.0)),
+                (task_node(1, 2), task_kind("task-b", 5.0)),
+                (lock_node(1, "lock-x"), lock_kind("lock-x")),
+                (lock_node(1, "lock-y"), lock_kind("lock-y")),
+            ],
+            vec![
+                blocking_edge(task_node(1, 1), lock_node(1, "lock-y"), EdgeKind::TaskWaitsOnResource),
+                blocking_edge(lock_node(1, "lock-y"), task_node(1, 2), EdgeKind::ResourceOwnedByTask),
+                blocking_edge(task_node(1, 2), lock_node(1, "lock-x"), EdgeKind::TaskWaitsOnResource),
+                blocking_edge(lock_node(1, "lock-x"), task_node(1, 1), EdgeKind::ResourceOwnedByTask),
+            ],
+        );
+
+        let candidates = find_deadlock_candidates(&graph);
+        assert_eq!(candidates.len(), 1);
+
+        // No confidence breakdown in rationale for all-derived (it's the default)
+        assert!(!candidates[0]
+            .rationale
+            .iter()
+            .any(|r| r.contains("confidence")));
+    }
+
+    #[test]
+    fn edge_meta_temporal_fields() {
+        // Verify temporal fields are present and default to None
+        let meta = EdgeMeta::derived(SnapshotSource::Locks, 1, 1);
+        assert!(meta.first_seen_age_secs.is_none());
+        assert!(meta.sample_count.is_none());
+
+        // Verify they can be set
+        let meta_with_temporal = EdgeMeta {
+            first_seen_age_secs: Some(42.5),
+            sample_count: Some(10),
+            ..EdgeMeta::explicit(SnapshotSource::Locks, 1, 1)
+        };
+        assert_eq!(meta_with_temporal.first_seen_age_secs, Some(42.5));
+        assert_eq!(meta_with_temporal.sample_count, Some(10));
+        assert_eq!(meta_with_temporal.confidence, EdgeConfidence::Explicit);
+    }
+
+    #[test]
+    fn heuristic_confidence_variant() {
+        let meta = EdgeMeta::heuristic(SnapshotSource::Locks, 1, 1);
+        assert_eq!(meta.confidence, EdgeConfidence::Heuristic);
     }
 }

@@ -15,7 +15,7 @@ use peeps_types::{
     FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot, FutureWaitSnapshot, FutureWakeEdgeSnapshot,
     LockAcquireKind, LockInfoSnapshot, LockSnapshot, MpscChannelSnapshot, OnceCellSnapshot,
     OnceCellState, OneshotChannelSnapshot, OneshotState, ProcessDump, ResourceRefSnapshot,
-    RoamChannelSnapshot, SemaphoreSnapshot, SessionSnapshot, SyncSnapshot,
+    RoamChannelSnapshot, SemaphoreSnapshot, SessionSnapshot, SocketWaitDirection, SyncSnapshot,
     TaskSnapshot, TaskState, WakeEdgeSnapshot, WatchChannelSnapshot,
 };
 
@@ -45,6 +45,10 @@ pub enum NodeId {
     Semaphore { pid: u32, name: String },
     /// A roam channel within a process.
     RoamChannel { pid: u32, channel_id: u64 },
+    /// A socket within a process.
+    Socket { pid: u32, fd: u64 },
+    /// An unknown/opaque resource within a process.
+    Unknown { pid: u32, label: String },
     /// An RPC request (connection + request id, scoped to process).
     RpcRequest {
         pid: u32,
@@ -105,6 +109,15 @@ pub enum NodeKind {
         queue_depth: Option<u64>,
         closed: bool,
     },
+    Socket {
+        fd: u64,
+        label: Option<String>,
+        direction: Option<SocketWaitDirection>,
+        peer: Option<String>,
+    },
+    Unknown {
+        label: String,
+    },
     RpcRequest {
         method_name: Option<String>,
         direction: Direction,
@@ -157,6 +170,8 @@ pub enum EdgeConfidence {
     Explicit,
     /// Computed or inferred from other data.
     Derived,
+    /// Guess-level correlation (e.g. temporal proximity).
+    Heuristic,
 }
 
 /// Metadata attached to every edge.
@@ -170,6 +185,10 @@ pub struct EdgeMeta {
     pub severity_hint: u8,
     /// Whether this edge is explicit (instrumented) or derived (inferred).
     pub confidence: EdgeConfidence,
+    /// How long ago this edge was first observed (seconds).
+    pub first_seen_age_secs: Option<f64>,
+    /// Number of independent samples that confirmed this edge.
+    pub sample_count: Option<u64>,
 }
 
 impl EdgeMeta {
@@ -180,6 +199,8 @@ impl EdgeMeta {
             count,
             severity_hint,
             confidence: EdgeConfidence::Derived,
+            first_seen_age_secs: None,
+            sample_count: None,
         }
     }
 
@@ -190,6 +211,20 @@ impl EdgeMeta {
             count,
             severity_hint,
             confidence: EdgeConfidence::Explicit,
+            first_seen_age_secs: None,
+            sample_count: None,
+        }
+    }
+
+    /// Create heuristic edge metadata (guess-level correlation).
+    fn heuristic(source: SnapshotSource, count: u64, severity_hint: u8) -> Self {
+        Self {
+            source_snapshot: source,
+            count,
+            severity_hint,
+            confidence: EdgeConfidence::Heuristic,
+            first_seen_age_secs: None,
+            sample_count: None,
         }
     }
 }
@@ -275,7 +310,7 @@ impl WaitGraph {
         self.ingest_future_spawn_edges(pid, &dump.future_spawn_edges);
         self.ingest_future_poll_edges(pid, &dump.future_poll_edges);
         self.ingest_future_resume_edges(pid, &dump.future_resume_edges);
-        self.ingest_future_resource_edges(pid, &dump.future_resource_edges, &dump.process_name);
+        self.ingest_future_resource_edges(pid, &dump.future_resource_edges);
     }
 
     fn ingest_tasks(&mut self, pid: u32, tasks: &[TaskSnapshot]) {
@@ -962,7 +997,6 @@ impl WaitGraph {
         &mut self,
         pid: u32,
         edges: &[FutureResourceEdgeSnapshot],
-        process_name: &str,
     ) {
         for edge in edges {
             let future_node = NodeId::Future {
@@ -970,7 +1004,33 @@ impl WaitGraph {
                 future_id: edge.future_id,
             };
 
-            let resource_node = resource_ref_to_node_id(pid, &edge.resource, process_name);
+            let resource_node = resource_ref_to_node_id(pid, &edge.resource);
+
+            // Ensure NodeKind exists for resources that don't have their own
+            // ingestion path (Socket, Unknown). For Lock/Channel/etc the kind
+            // is populated by ingest_locks/ingest_sync and will overwrite this
+            // entry with richer data, which is fine.
+            self.nodes.entry(resource_node.clone()).or_insert_with(|| {
+                match &edge.resource {
+                    ResourceRefSnapshot::Socket { fd, label, direction, peer, .. } => {
+                        NodeKind::Socket {
+                            fd: *fd,
+                            label: label.clone(),
+                            direction: *direction,
+                            peer: peer.clone(),
+                        }
+                    }
+                    ResourceRefSnapshot::Unknown { label } => {
+                        NodeKind::Unknown {
+                            label: label.clone(),
+                        }
+                    }
+                    // Other resource types get their NodeKind from their own ingestion.
+                    _ => NodeKind::Unknown {
+                        label: format!("{:?}", edge.resource),
+                    },
+                }
+            });
 
             self.edges.push(WaitEdge {
                 from: future_node,
@@ -1039,11 +1099,7 @@ impl WaitGraph {
     }
 }
 
-fn resource_ref_to_node_id(
-    pid: u32,
-    resource: &ResourceRefSnapshot,
-    process_name: &str,
-) -> NodeId {
+fn resource_ref_to_node_id(pid: u32, resource: &ResourceRefSnapshot) -> NodeId {
     match resource {
         ResourceRefSnapshot::Lock { name, .. } => NodeId::Lock {
             pid,
@@ -1065,17 +1121,21 @@ fn resource_ref_to_node_id(
             pid,
             name: name.clone(),
         },
+        ResourceRefSnapshot::OnceCell { name, .. } => NodeId::OnceCell {
+            pid,
+            name: name.clone(),
+        },
         ResourceRefSnapshot::RoamChannel { channel_id, .. } => NodeId::RoamChannel {
             pid,
             channel_id: *channel_id,
         },
-        ResourceRefSnapshot::Socket { fd, label, .. } => NodeId::Lock {
+        ResourceRefSnapshot::Socket { fd, .. } => NodeId::Socket {
             pid,
-            name: label.clone().unwrap_or_else(|| format!("socket:{fd}")),
+            fd: *fd,
         },
-        ResourceRefSnapshot::Unknown { label } => NodeId::Lock {
+        ResourceRefSnapshot::Unknown { label } => NodeId::Unknown {
             pid,
-            name: format!("{process_name}:{label}"),
+            label: label.clone(),
         },
     }
 }

@@ -1,6 +1,6 @@
 # Future->Resource And Socket Wait Edges
 
-Status: todo
+Status: done
 Owner: wg-resource-edges
 Scope: `peeps-types`, sync/socket wrappers in Roam/Vixen, waitgraph ingestion
 
