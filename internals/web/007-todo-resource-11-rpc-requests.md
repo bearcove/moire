@@ -83,6 +83,9 @@ Required:
 
 ## Validation SQL
 
+Validation scope:
+- validation queries in this file are for direct DB checks (not `/api/sql` scoped TEMP VIEW mode).
+
 ```sql
 SELECT src_id, dst_id
 FROM edges

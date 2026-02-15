@@ -61,7 +61,7 @@ CREATE TABLE snapshot_processes (
   snapshot_id INTEGER NOT NULL,
   process TEXT NOT NULL,
   pid INTEGER,
-  proc_key TEXT NOT NULL, -- e.g. "{process}:{pid}" (or stable runtime instance id)
+  proc_key TEXT NOT NULL, -- opaque token segment ([a-z0-9._-]+), no ':'
   status TEXT NOT NULL, -- responded|timeout|disconnected|error
   recv_at_ns INTEGER,
   error_text TEXT,
@@ -82,7 +82,7 @@ CREATE TABLE edges (
   snapshot_id INTEGER NOT NULL,
   src_id TEXT NOT NULL,
   dst_id TEXT NOT NULL,
-  kind TEXT NOT NULL, -- always 'needs'
+  kind TEXT NOT NULL CHECK (kind = 'needs'),
   attrs_json TEXT NOT NULL,
   PRIMARY KEY (snapshot_id, src_id, dst_id)
 );
@@ -124,6 +124,13 @@ CREATE INDEX idx_unresolved_edges_snapshot ON unresolved_edges(snapshot_id);
 - reply skew is stored (`recv_at_ns`) and surfaced for debugging.
 - if edge endpoints are missing because referenced process did not respond, write into `unresolved_edges` (not `edges`).
 - if referenced process responded but endpoint is still missing, treat as ingest error.
+
+`referenced_proc_key` derivation for `unresolved_edges`:
+- parse node IDs as colon-delimited segments with fixed shape: `{kind}:{proc_key}:...`.
+- `proc_key` is always the second segment.
+- if `src` is missing and `dst` exists, use `src.proc_key`.
+- if `dst` is missing and `src` exists, use `dst.proc_key`.
+- if both sides are missing, set `referenced_proc_key` to the side whose process status is non-responded (or NULL if ambiguous).
 
 ## Retention
 

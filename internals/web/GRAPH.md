@@ -26,7 +26,8 @@ Each resource/runtime entity is a node with:
 - `attrs_json` for type-specific fields
 
 Identity convention:
-- use `proc_key = {process}:{pid}` (or stable runtime instance id)
+- use `proc_key` as an opaque token segment with charset `[a-z0-9._-]+` (no `:`)
+- recommended construction: `proc_key = {process_slug}-{pid}`
 - resource IDs must include `proc_key` to avoid cross-process collisions
 - connection IDs must be sanitized stable tokens (`conn_{u64}`)
 
@@ -175,7 +176,7 @@ Edges do not carry severity. Edges are traversal only.
 1. Start from a node you recognize (stuck request/task/future).
 2. Traverse outgoing `needs` edges.
 3. Stop at nodes whose attrs indicate unhealthy state.
-4. Run SCC over filtered subgraph (only nodes in unhealthy states) for deadlock cycles.
+4. Run SCC over the full `needs` graph, then rank/highlight SCC members using node health attrs.
 
 ## UI scope (for now)
 

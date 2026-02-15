@@ -66,6 +66,7 @@ Snapshot scoping enforcement (mechanical, server-side):
   - `unresolved_edges AS SELECT * FROM main.unresolved_edges WHERE snapshot_id = :snapshot_id`
   - `snapshot_processes AS SELECT * FROM main.snapshot_processes WHERE snapshot_id = :snapshot_id`
 - authorizer must reject direct reads of `main.nodes`, `main.edges`, `main.unresolved_edges`, `main.snapshot_processes`; only scoped TEMP VIEWs are allowed.
+- authorizer should allow reads from `temp.*` scoped views only; block `main.sqlite_master`/`temp.sqlite_master` reads in v1.
 
 ## UX contract implications
 
@@ -93,6 +94,9 @@ WHERE r.kind = 'request'
 ORDER BY CAST(json_extract(r.attrs_json, '$.elapsed_ns') AS INTEGER) DESC
 LIMIT 500;
 ```
+
+Indexing note for correlation-key joins:
+- if request/response volume grows, add generated column `correlation_key` on `nodes` for `request|response` kinds and index `(snapshot_id, kind, correlation_key)` to keep this query under the 750 ms cap.
 
 ## Acceptance criteria
 

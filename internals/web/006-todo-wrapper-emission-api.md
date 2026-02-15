@@ -34,7 +34,8 @@ Current `ProcessDump` lives in `/Users/amos/bearcove/peeps/crates/peeps-types/sr
 ## Canonical IDs (v1)
 
 Define:
-- `proc_key = {process}:{pid}` (or stable runtime instance id when pid reuse is a concern)
+- `proc_key` is an opaque token segment with charset `[a-z0-9._-]+` and must not contain `:`
+- recommended construction: `{process_slug}-{pid}` (or stable runtime instance token when pid reuse is a concern)
 - `connection` must be a sanitized stable token: `conn_{u64}` (not raw socket string)
 
 IDs:

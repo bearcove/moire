@@ -56,7 +56,7 @@ HAVING kind <> 'needs';
 ```
 
 ```sql
--- Unresolved edges should map to non-responded processes only
+-- Should return zero rows; non-zero means unresolved-edge ingest classification bug
 SELECT ue.src_id, ue.dst_id, ue.reason, sp.status
 FROM unresolved_edges ue
 LEFT JOIN snapshot_processes sp

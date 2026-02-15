@@ -52,7 +52,8 @@ Not in base model:
 ## ID conventions (v1)
 
 Define:
-- `proc_key = {process}:{pid}` (or stable runtime instance id)
+- `proc_key` is an opaque token segment with charset `[a-z0-9._-]+` and must not contain `:`
+- recommended construction: `{process_slug}-{pid}` or stable runtime instance token
 - `connection = conn_{u64}` (sanitized stable token)
 
 IDs:
