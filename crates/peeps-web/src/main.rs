@@ -248,7 +248,7 @@ async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {
     }
 }
 
-// Same wire format as peeps-dump:
+// Ingest wire format (v1):
 // [u32 big-endian frame_len][UTF-8 JSON ProcessDump]
 async fn handle_conn(mut stream: TcpStream, state: AppState) -> Result<(), String> {
     loop {

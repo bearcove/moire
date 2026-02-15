@@ -8,6 +8,12 @@ Scope: `crates/peeps-web` normalization layer
 
 Project `ProcessDump` into canonical nodes/edges with stable IDs.
 
+Canonical wrapper emission API is defined in `peeps-types`:
+- `GraphNodeSnapshot`
+- `GraphEdgeSnapshot`
+- `GraphSnapshotBuilder`
+- `GraphEdgeOrigin::Explicit` (only allowed provenance)
+
 ## ID conventions (v1)
 
 - Process: `process:{process}:{pid}`

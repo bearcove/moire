@@ -6,8 +6,8 @@ Scope: tests, observability, migration plan
 
 ## Correctness tests
 
-1. Ingest compatibility
-- framed `ProcessDump` accepted from current producers
+1. Ingest contract
+- framed payloads accepted per `peeps-web` ingest contract
 - malformed frame handling verified
 
 2. Snapshot atomicity
@@ -18,8 +18,8 @@ Scope: tests, observability, migration plan
 - unique `(seq,src_id,dst_id,kind)` edges
 - required edge kinds present for representative dumps
 
-4. Confidence invariants
-- all causal edges have `confidence` in attrs
+4. Explicit-edge invariants
+- all stored causal edges are explicit instrumentation events (no heuristics)
 
 ## Perf tests
 
@@ -31,14 +31,13 @@ Scope: tests, observability, migration plan
 
 ## Rollout phases
 
-1. Run `peeps-web` alongside `peeps-dump`.
-2. Validate parity for stuck request triage.
-3. Move developers to `/investigate` flow.
-4. Deprecate old dashboard after parity signoff.
+1. Validate `peeps-web` stuck-request triage on real workloads.
+2. Move developers to `/investigate` flow.
+3. Iterate query packs and graph tooling for deadlock analysis.
 
 ## Signoff checklist
 
-- [ ] Producers unchanged and compatible
+- [ ] Producers emit required explicit events
 - [ ] Snapshot pinning behavior verified
 - [ ] Stuck-request workflow unblocks real bug triage
 - [ ] No critical regressions vs old path for deadlock context

@@ -5,7 +5,7 @@ Owner: wg-peeps-web
 
 ## Objective
 
-Replace `peeps-dump` with a new crate `peeps-web` built around a single canonical graph model in SQLite:
+Build `peeps-web` as the canonical crate around a single graph model in SQLite:
 - `nodes(seq, id, kind, process, attrs_json)`
 - `edges(seq, src_id, dst_id, kind, attrs_json)`
 
@@ -16,7 +16,8 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 1. Canonical model is node/edge only (for causal analysis and graph exploration).
 2. Frontend rebuilt from scratch (Vite + Preact), no legacy tab coupling.
 3. Manual snapshot navigation (point-in-time exploration).
-4. Ingest contract is explicitly defined by `peeps-web` requirements (not legacy protocol compatibility).
+4. Single raw SQL HTTP endpoint for reads (`POST /api/sql`), so frontend and LLM workflows can iterate without backend query rewrites.
+5. Light mode and dark mode are both first-class.
 
 ## Workstreams (parallelizable)
 
@@ -25,6 +26,7 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 3. `003-todo-api-contract.md`
 4. `004-todo-frontend-investigate-mvp.md`
 5. `005-todo-correctness-perf-rollout.md`
+6. `006-todo-wrapper-emission-api.md`
 
 ## Suggested execution order
 
@@ -34,8 +36,27 @@ No auto-refresh exploration. UI explores one snapshot (`seq`) at a time and only
 
 ## Definition of done (program)
 
-1. `peeps-web` receives instrumented event streams required to build node/edge snapshots.
+1. `peeps-web` receives JSON ingest frames from instrumented programs and persists snapshots.
 2. SQLite stores canonical graph snapshots by `seq`.
-3. UI shows stuck RPCs (`>5s`) and renders related graph for selected request.
+3. UI starts from Requests: shows stuck RPCs (`>5s`) and renders related graph for selected request.
 4. UI does not auto-update selected snapshot.
 5. "Jump to now" switches to latest seq snapshot explicitly.
+
+## Why raw SQL
+
+- Frontend can iterate quickly with HMR without backend endpoint churn.
+- Snapshot persistence survives backend/frontend restarts.
+- LLMs can issue SQL directly to investigate deadlocks and causal chains.
+
+## Ingest format note (v1)
+
+- Keep JSON ingest between internal programs for now.
+- Wire format stays framed (`u32-be length` + JSON payload).
+- Exact JSON schema must be pinned in `001-todo-storage-and-ingest.md` and versioned when changed.
+
+## Initial product slice
+
+1. Requests page only.
+2. Default query: stuck requests (`elapsed >= 5s`).
+3. Click request to open connected subgraph explorer.
+4. Backtrace is optional detail, not a required primary workflow.

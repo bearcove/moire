@@ -113,6 +113,7 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         future_resume_edges,
         future_resource_edges,
         request_parents,
+        graph: None,
         custom,
     }
 }

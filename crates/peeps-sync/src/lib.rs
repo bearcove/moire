@@ -162,10 +162,7 @@ mod diag {
     }
 
     impl<T> Sender<T> {
-        pub async fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+        pub async fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
             self.info.send_waiters.fetch_add(1, Ordering::Relaxed);
             let result = self.inner.send(value).await;
             self.info.send_waiters.fetch_sub(1, Ordering::Relaxed);
@@ -175,10 +172,7 @@ mod diag {
             result
         }
 
-        pub fn try_send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
+        pub fn try_send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
             let result = self.inner.try_send(value);
             if result.is_ok() {
                 self.info.sent.fetch_add(1, Ordering::Relaxed);
@@ -219,9 +213,7 @@ mod diag {
             result
         }
 
-        pub fn try_recv(
-            &mut self,
-        ) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
+        pub fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
             let result = self.inner.try_recv();
             if result.is_ok() {
                 self.info.received.fetch_add(1, Ordering::Relaxed);
@@ -252,7 +244,10 @@ mod diag {
         });
         prune_and_register_mpsc(&info);
         (
-            Sender { inner: tx, info: Arc::clone(&info) },
+            Sender {
+                inner: tx,
+                info: Arc::clone(&info),
+            },
             Receiver { inner: rx, info },
         )
     }
@@ -284,10 +279,7 @@ mod diag {
     }
 
     impl<T> UnboundedSender<T> {
-        pub fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+        pub fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
             let result = self.inner.send(value);
             if result.is_ok() {
                 self.info.sent.fetch_add(1, Ordering::Relaxed);
@@ -320,9 +312,7 @@ mod diag {
             result
         }
 
-        pub fn try_recv(
-            &mut self,
-        ) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
+        pub fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
             let result = self.inner.try_recv();
             if result.is_ok() {
                 self.info.received.fetch_add(1, Ordering::Relaxed);
@@ -355,7 +345,10 @@ mod diag {
         });
         prune_and_register_mpsc(&info);
         (
-            UnboundedSender { inner: tx, info: Arc::clone(&info) },
+            UnboundedSender {
+                inner: tx,
+                info: Arc::clone(&info),
+            },
             UnboundedReceiver { inner: rx, info },
         )
     }
@@ -403,12 +396,15 @@ mod diag {
         fn drop(&mut self) {
             if self.inner.is_some() {
                 // Sender dropped without sending
-                self.info.state.compare_exchange(
-                    ONESHOT_PENDING,
-                    ONESHOT_SENDER_DROPPED,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                ).ok();
+                self.info
+                    .state
+                    .compare_exchange(
+                        ONESHOT_PENDING,
+                        ONESHOT_SENDER_DROPPED,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    )
+                    .ok();
             }
         }
     }
@@ -436,12 +432,15 @@ mod diag {
     impl<T> Drop for OneshotReceiver<T> {
         fn drop(&mut self) {
             // If still pending, receiver dropped without receiving
-            self.info.state.compare_exchange(
-                ONESHOT_PENDING,
-                ONESHOT_RECEIVER_DROPPED,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ).ok();
+            self.info
+                .state
+                .compare_exchange(
+                    ONESHOT_PENDING,
+                    ONESHOT_RECEIVER_DROPPED,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .ok();
         }
     }
 
@@ -454,9 +453,7 @@ mod diag {
             result
         }
 
-        pub fn try_recv(
-            &mut self,
-        ) -> Result<T, tokio::sync::oneshot::error::TryRecvError> {
+        pub fn try_recv(&mut self) -> Result<T, tokio::sync::oneshot::error::TryRecvError> {
             let result = self.inner.try_recv();
             if result.is_ok() {
                 self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
@@ -465,9 +462,7 @@ mod diag {
         }
     }
 
-    pub fn oneshot_channel<T>(
-        name: impl Into<String>,
-    ) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let info = Arc::new(OneshotInfo {
             name: name.into(),
@@ -477,7 +472,10 @@ mod diag {
         });
         prune_and_register_oneshot(&info);
         (
-            OneshotSender { inner: Some(tx), info: Arc::clone(&info) },
+            OneshotSender {
+                inner: Some(tx),
+                info: Arc::clone(&info),
+            },
             OneshotReceiver { inner: rx, info },
         )
     }
@@ -571,9 +569,7 @@ mod diag {
     }
 
     impl<T> WatchReceiver<T> {
-        pub async fn changed(
-            &mut self,
-        ) -> Result<(), tokio::sync::watch::error::RecvError> {
+        pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
             self.inner.changed().await
         }
 
@@ -605,8 +601,14 @@ mod diag {
         });
         prune_and_register_watch(&info);
         (
-            WatchSender { inner: tx, info: Arc::clone(&info) },
-            WatchReceiver { inner: rx, _info: info },
+            WatchSender {
+                inner: tx,
+                info: Arc::clone(&info),
+            },
+            WatchReceiver {
+                inner: rx,
+                _info: info,
+            },
         )
     }
 
@@ -744,7 +746,10 @@ mod diag {
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {
                 let mut waiters = self.info.active_waiters.lock().unwrap();
-                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                if let Some(pos) = waiters
+                    .iter()
+                    .position(|w| w.task_id == task_id && w.started_at == start)
+                {
                     waiters.swap_remove(pos);
                 }
             }
@@ -774,7 +779,10 @@ mod diag {
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {
                 let mut waiters = self.info.active_waiters.lock().unwrap();
-                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                if let Some(pos) = waiters
+                    .iter()
+                    .position(|w| w.task_id == task_id && w.started_at == start)
+                {
                     waiters.swap_remove(pos);
                 }
             }
@@ -803,7 +811,10 @@ mod diag {
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {
                 let mut waiters = self.info.active_waiters.lock().unwrap();
-                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                if let Some(pos) = waiters
+                    .iter()
+                    .position(|w| w.task_id == task_id && w.started_at == start)
+                {
                     waiters.swap_remove(pos);
                 }
             }
@@ -833,7 +844,10 @@ mod diag {
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {
                 let mut waiters = self.info.active_waiters.lock().unwrap();
-                if let Some(pos) = waiters.iter().position(|w| w.task_id == task_id && w.started_at == start) {
+                if let Some(pos) = waiters
+                    .iter()
+                    .position(|w| w.task_id == task_id && w.started_at == start)
+                {
                     waiters.swap_remove(pos);
                 }
             }
@@ -915,11 +929,7 @@ mod diag {
                 name: self.name.clone(),
                 state,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
-                init_duration_secs: self
-                    .init_duration
-                    .lock()
-                    .unwrap()
-                    .map(|d| d.as_secs_f64()),
+                init_duration_secs: self.init_duration.lock().unwrap().map(|d| d.as_secs_f64()),
             }
         }
     }
@@ -963,7 +973,12 @@ mod diag {
 
             self.info
                 .state
-                .compare_exchange(ONCE_EMPTY, ONCE_INITIALIZING, Ordering::Relaxed, Ordering::Relaxed)
+                .compare_exchange(
+                    ONCE_EMPTY,
+                    ONCE_INITIALIZING,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
                 .ok();
             let start = Instant::now();
 
@@ -972,7 +987,12 @@ mod diag {
             if self
                 .info
                 .state
-                .compare_exchange(ONCE_INITIALIZING, ONCE_INITIALIZED, Ordering::Relaxed, Ordering::Relaxed)
+                .compare_exchange(
+                    ONCE_INITIALIZING,
+                    ONCE_INITIALIZED,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
                 .is_ok()
             {
                 *self.info.init_duration.lock().unwrap() = Some(start.elapsed());
@@ -992,7 +1012,12 @@ mod diag {
 
             self.info
                 .state
-                .compare_exchange(ONCE_EMPTY, ONCE_INITIALIZING, Ordering::Relaxed, Ordering::Relaxed)
+                .compare_exchange(
+                    ONCE_EMPTY,
+                    ONCE_INITIALIZING,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
                 .ok();
             let start = Instant::now();
 
@@ -1032,7 +1057,12 @@ mod diag {
             let start = Instant::now();
             self.info
                 .state
-                .compare_exchange(ONCE_EMPTY, ONCE_INITIALIZING, Ordering::Relaxed, Ordering::Relaxed)
+                .compare_exchange(
+                    ONCE_EMPTY,
+                    ONCE_INITIALIZING,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
                 .ok();
             match self.inner.set(value) {
                 Ok(()) => {
@@ -1090,18 +1120,12 @@ mod diag {
 
     impl<T> Sender<T> {
         #[inline]
-        pub async fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+        pub async fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
             self.0.send(value).await
         }
 
         #[inline]
-        pub fn try_send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
+        pub fn try_send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
             self.0.try_send(value)
         }
 
@@ -1130,9 +1154,7 @@ mod diag {
         }
 
         #[inline]
-        pub fn try_recv(
-            &mut self,
-        ) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
+        pub fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
             self.0.try_recv()
         }
 
@@ -1161,10 +1183,7 @@ mod diag {
 
     impl<T> UnboundedSender<T> {
         #[inline]
-        pub fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+        pub fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
             self.0.send(value)
         }
 
@@ -1183,9 +1202,7 @@ mod diag {
         }
 
         #[inline]
-        pub fn try_recv(
-            &mut self,
-        ) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
+        pub fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
             self.0.try_recv()
         }
 
@@ -1228,17 +1245,13 @@ mod diag {
         }
 
         #[inline]
-        pub fn try_recv(
-            &mut self,
-        ) -> Result<T, tokio::sync::oneshot::error::TryRecvError> {
+        pub fn try_recv(&mut self) -> Result<T, tokio::sync::oneshot::error::TryRecvError> {
             self.0.try_recv()
         }
     }
 
     #[inline]
-    pub fn oneshot_channel<T>(
-        _name: impl Into<String>,
-    ) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    pub fn oneshot_channel<T>(_name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
         let (tx, rx) = tokio::sync::oneshot::channel();
         (OneshotSender(tx), OneshotReceiver(rx))
     }
@@ -1249,10 +1262,7 @@ mod diag {
 
     impl<T> WatchSender<T> {
         #[inline]
-        pub fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::watch::error::SendError<T>> {
+        pub fn send(&self, value: T) -> Result<(), tokio::sync::watch::error::SendError<T>> {
             self.0.send(value)
         }
 
@@ -1298,9 +1308,7 @@ mod diag {
 
     impl<T> WatchReceiver<T> {
         #[inline]
-        pub async fn changed(
-            &mut self,
-        ) -> Result<(), tokio::sync::watch::error::RecvError> {
+        pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
             self.0.changed().await
         }
 
@@ -1315,9 +1323,7 @@ mod diag {
         }
 
         #[inline]
-        pub fn has_changed(
-            &self,
-        ) -> Result<bool, tokio::sync::watch::error::RecvError> {
+        pub fn has_changed(&self) -> Result<bool, tokio::sync::watch::error::RecvError> {
             self.0.has_changed()
         }
     }
@@ -1481,17 +1487,25 @@ mod diag {
 
 pub use diag::{
     // mpsc bounded
-    channel, Receiver, Sender,
-    // mpsc unbounded
-    unbounded_channel, UnboundedReceiver, UnboundedSender,
+    channel,
     // oneshot
-    oneshot_channel, OneshotReceiver, OneshotSender,
+    oneshot_channel,
+    // snapshot
+    snapshot_all,
+    // mpsc unbounded
+    unbounded_channel,
     // watch
-    watch_channel, WatchReceiver, WatchSender,
+    watch_channel,
     // semaphore
     DiagnosticSemaphore,
     // OnceCell
     OnceCell,
-    // snapshot
-    snapshot_all,
+    OneshotReceiver,
+    OneshotSender,
+    Receiver,
+    Sender,
+    UnboundedReceiver,
+    UnboundedSender,
+    WatchReceiver,
+    WatchSender,
 };

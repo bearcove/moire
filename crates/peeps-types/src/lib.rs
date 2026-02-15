@@ -592,6 +592,96 @@ pub struct RequestParentSnapshot {
     pub parent_request_id: u64,
 }
 
+// ── Canonical graph emission API (wrapper crates) ───────────────
+
+/// Canonical node row emitted by instrumentation wrappers.
+///
+/// This is the common contract for all resources (`task`, `thread`, `lock`,
+/// `mpsc`, `socket`, `request`, etc.). Type-specific fields belong in
+/// `attrs_json`.
+#[derive(Debug, Clone, Facet)]
+pub struct GraphNodeSnapshot {
+    pub id: String,
+    pub kind: String,
+    pub process: String,
+    pub label: Option<String>,
+    pub task_id: Option<TaskId>,
+    pub thread_name: Option<String>,
+    pub source_file: Option<String>,
+    pub source_line: Option<u32>,
+    pub source_col: Option<u32>,
+    pub attrs_json: String,
+}
+
+/// Edge provenance. Deliberately restricted to explicit measured data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
+#[repr(u8)]
+pub enum GraphEdgeOrigin {
+    Explicit,
+}
+
+/// Canonical edge row emitted by instrumentation wrappers.
+///
+/// All edges are explicit measurements/events. No inferred edges.
+#[derive(Debug, Clone, Facet)]
+pub struct GraphEdgeSnapshot {
+    pub id: String,
+    pub src_id: String,
+    pub dst_id: String,
+    pub kind: String,
+    pub process: String,
+    pub event_ns: Option<u64>,
+    pub duration_ns: Option<u64>,
+    pub count: u64,
+    pub label: Option<String>,
+    pub source_file: Option<String>,
+    pub source_line: Option<u32>,
+    pub source_col: Option<u32>,
+    pub attrs_json: String,
+    pub origin: GraphEdgeOrigin,
+}
+
+/// Per-process canonical graph snapshot envelope.
+#[derive(Debug, Clone, Facet)]
+pub struct GraphSnapshot {
+    pub nodes: Vec<GraphNodeSnapshot>,
+    pub edges: Vec<GraphEdgeSnapshot>,
+}
+
+impl GraphSnapshot {
+    pub fn empty() -> Self {
+        Self {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        }
+    }
+}
+
+/// Shared helper used by wrapper crates to emit canonical rows.
+pub struct GraphSnapshotBuilder {
+    graph: GraphSnapshot,
+}
+
+impl GraphSnapshotBuilder {
+    pub fn new() -> Self {
+        Self {
+            graph: GraphSnapshot::empty(),
+        }
+    }
+
+    pub fn push_node(&mut self, node: GraphNodeSnapshot) {
+        self.graph.nodes.push(node);
+    }
+
+    pub fn push_edge(&mut self, edge: GraphEdgeSnapshot) {
+        self.graph.edges.push(edge);
+    }
+
+    pub fn finish(self) -> GraphSnapshot {
+        self.graph
+    }
+}
+
 // ── Deadlock candidate types ─────────────────────────────────────
 
 /// Severity level for a deadlock candidate.
@@ -698,5 +788,6 @@ pub struct ProcessDump {
     pub future_resume_edges: Vec<FutureResumeEdgeSnapshot>,
     pub future_resource_edges: Vec<FutureResourceEdgeSnapshot>,
     pub request_parents: Vec<RequestParentSnapshot>,
+    pub graph: Option<GraphSnapshot>,
     pub custom: HashMap<String, String>,
 }

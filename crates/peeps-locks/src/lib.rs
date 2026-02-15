@@ -7,9 +7,6 @@
 //! - Who is waiting to acquire the lock (with backtrace + duration)
 //! - Who currently holds the lock (with backtrace + duration)
 //!
-//! Call [`dump_lock_diagnostics()`] (e.g. from a SIGUSR1 handler) to get a
-//! human-readable snapshot of all contention.
-//!
 //! ## Sync locks (`DiagnosticRwLock`, `DiagnosticMutex`)
 //! Wrappers around `parking_lot::RwLock` and `parking_lot::Mutex`.
 //!
@@ -30,82 +27,6 @@ mod inner {
 
     static LOCK_REGISTRY: LazyLock<StdMutex<Vec<Weak<LockInfo>>>> =
         LazyLock::new(|| StdMutex::new(Vec::new()));
-
-    /// Snapshot all tracked locks and return a human-readable report.
-    pub fn dump_lock_diagnostics() -> String {
-        let Ok(registry) = LOCK_REGISTRY.lock() else {
-            return "(lock registry poisoned)\n".to_string();
-        };
-        let mut out = String::new();
-
-        for weak in registry.iter() {
-            let Some(info) = weak.upgrade() else {
-                continue;
-            };
-
-            let (Ok(waiters), Ok(holders)) = (info.waiters.lock(), info.holders.lock()) else {
-                out.push_str(&format!(
-                    "Lock \"{}\": (diagnostics mutex poisoned)\n",
-                    info.name
-                ));
-                continue;
-            };
-
-            // Skip quiescent locks
-            if waiters.is_empty() && holders.is_empty() {
-                continue;
-            }
-
-            let acquires = info.total_acquires.load(Ordering::SeqCst);
-            let releases = info.total_releases.load(Ordering::SeqCst);
-            let held_count = holders.len() as u64;
-            let balanced = acquires == releases + held_count;
-            out.push_str(&format!(
-                "Lock \"{}\" (acquires={}, releases={}, holding={}{}):\n",
-                info.name,
-                acquires,
-                releases,
-                held_count,
-                if balanced { "" } else { " *** MISMATCH ***" }
-            ));
-
-            if holders.is_empty() {
-                out.push_str("  Holders: (none)\n");
-            } else {
-                out.push_str(&format!("  Holders ({}):\n", holders.len()));
-                for h in holders.iter() {
-                    let elapsed = h.since.elapsed();
-                    let task_info = format_peeps_task_info(h.peeps_task_id);
-                    out.push_str(&format!(
-                        "    [{}]{} held for {:.3}s\n",
-                        h.kind,
-                        task_info,
-                        elapsed.as_secs_f64()
-                    ));
-                    format_backtrace(&h.backtrace, &mut out);
-                }
-            }
-
-            if waiters.is_empty() {
-                out.push_str("  Waiters: (none)\n");
-            } else {
-                out.push_str(&format!("  Waiters ({}):\n", waiters.len()));
-                for w in waiters.iter() {
-                    let elapsed = w.since.elapsed();
-                    let task_info = format_peeps_task_info(w.peeps_task_id);
-                    out.push_str(&format!(
-                        "    [{}]{} waiting for {:.3}s\n",
-                        w.kind,
-                        task_info,
-                        elapsed.as_secs_f64()
-                    ));
-                    format_backtrace(&w.backtrace, &mut out);
-                }
-            }
-        }
-
-        out
-    }
 
     /// Snapshot all tracked locks and return structured data.
     pub fn snapshot_lock_diagnostics() -> crate::LockSnapshot {

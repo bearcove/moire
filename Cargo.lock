@@ -772,14 +772,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeps-waitgraph"
-version = "0.1.0"
-dependencies = [
- "facet",
- "peeps-types",
-]
-
-[[package]]
 name = "peeps-web"
 version = "0.1.0"
 dependencies = [
