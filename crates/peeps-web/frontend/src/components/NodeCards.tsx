@@ -1235,7 +1235,19 @@ export const PeepsNode = memo((props: NodeProps<Node<NodeData>>) => {
   const kind = props.data.kind;
   const Card = cardByKind[kind] ?? GenericCard;
   const isDimmed = props.data.attrs?._ui_dimmed === true;
-  return <div className={isDimmed ? "card-wrap card-wrap--dimmed" : "card-wrap"}>{Card(props)}</div>;
+  return (
+    <div
+      className={[
+        "card-wrap",
+        isDimmed && "card-wrap--dimmed",
+        props.selected && "card-wrap--selected",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {Card(props)}
+    </div>
+  );
 });
 
 /** Estimate node height for ELK layout based on kind */

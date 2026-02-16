@@ -332,6 +332,13 @@ body {
     filter: saturate(0.45);
 }
 
+.card-wrap--selected .card {
+    border-color: light-dark(#0071e3, #0a84ff);
+    box-shadow:
+      0 0 0 2px light-dark(rgba(0, 113, 227, 0.3), rgba(10, 132, 255, 0.4)),
+      0 6px 18px light-dark(rgba(0, 113, 227, 0.18), rgba(10, 132, 255, 0.22));
+}
+
 .filter-reset-btn {
     margin-left: auto;
     display: inline-flex;

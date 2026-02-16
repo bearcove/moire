@@ -518,10 +518,26 @@ export function App() {
     sessionStorage.setItem("peeps-inspector-width", String(inspectorWidth));
   }, [inspectorWidth]);
 
-  // Keep graph/inspector focus-first: left and right panels are collapsed by default,
-  // but users can expand them and the state is sticky for the current browser session.
+  useEffect(() => {
+    const clampToViewport = () => {
+      const viewportMax = Math.max(INSPECTOR_WIDTH_MIN, window.innerWidth - 260);
+      setInspectorWidth((prev) =>
+        Math.min(
+          Math.min(INSPECTOR_WIDTH_MAX, viewportMax),
+          Math.max(INSPECTOR_WIDTH_MIN, prev),
+        ),
+      );
+    };
+
+    clampToViewport();
+    window.addEventListener("resize", clampToViewport);
+    return () => window.removeEventListener("resize", clampToViewport);
+  }, []);
+
+  // Keep graph focus-first: left panel starts collapsed, inspector starts visible.
+  // Both states are sticky for the current browser session.
   const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", true);
-  const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", true);
+  const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", false);
   const [deadlockFocus, toggleDeadlockFocus] = useSessionState("peeps-deadlock-focus", true);
 
   const handleSetMode = useCallback((mode: InvestigationMode) => {
@@ -954,7 +970,7 @@ export function App() {
               rightCollapsed && "main-content--right-collapsed",
             ].filter(Boolean).join(" ")}
             style={{
-              ["--inspector-col-width" as string]: `${inspectorWidth}px`,
+              ["--inspector-col-width" as string]: rightCollapsed ? "40px" : `${inspectorWidth}px`,
               ["--inspector-resizer-width" as string]: rightCollapsed ? "0px" : "10px",
             }}
           >
