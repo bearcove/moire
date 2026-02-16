@@ -24,7 +24,7 @@ function elapsedClass(ns: number): string {
 }
 
 export function RequestsTable({ requests, selectedId, onSelect, collapsed, onToggleCollapse }: RequestsTableProps) {
-  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const selectedIndex = requests.findIndex((r) => r.id === selectedId);
 
@@ -61,9 +61,9 @@ export function RequestsTable({ requests, selectedId, onSelect, collapsed, onTog
   );
 
   function scrollToRow(idx: number) {
-    const tbody = tbodyRef.current;
-    if (!tbody) return;
-    const row = tbody.children[idx] as HTMLElement | undefined;
+    const list = listRef.current;
+    if (!list) return;
+    const row = list.children[idx] as HTMLElement | undefined;
     row?.scrollIntoView({ block: "nearest" });
   }
 
@@ -97,26 +97,36 @@ export function RequestsTable({ requests, selectedId, onSelect, collapsed, onTog
           No stuck requests found.
         </div>
       ) : (
-        <table className="requests-table">
-          <thead>
-            <tr>
-              <th>method</th>
-              <th>elapsed</th>
-              <th>process</th>
-              <th>connection</th>
-            </tr>
-          </thead>
-          <tbody ref={tbodyRef}>
-            {requests.map((req) => (
-              <tr key={req.id} data-selected={req.id === selectedId} onClick={() => onSelect(req)}>
-                <td>{req.method ?? "—"}</td>
-                <td className={elapsedClass(req.elapsed_ns)}>{formatElapsed(req.elapsed_ns)}</td>
-                <td>{req.process}</td>
-                <td style={{ fontSize: "11px", opacity: 0.7 }}>{req.connection ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="request-list" ref={listRef}>
+          {requests.map((req) => {
+            const method = req.method?.trim() ? req.method : "unknown method";
+            const subtitle = req.connection?.trim()
+              ? req.connection
+              : "unknown connection";
+            return (
+              <button
+                key={req.id}
+                type="button"
+                className="request-card"
+                data-selected={req.id === selectedId}
+                onClick={() => onSelect(req)}
+              >
+                <div className="request-card-top">
+                  <span className="request-card-main" title={`${method} • ${req.process}`}>
+                    {method}
+                    <span className="request-card-process-inline">{req.process}</span>
+                  </span>
+                  <span className={`request-card-elapsed ${elapsedClass(req.elapsed_ns)}`}>
+                    {formatElapsed(req.elapsed_ns)}
+                  </span>
+                </div>
+                <div className="request-card-bottom">
+                  <span className="request-card-meta" title={subtitle}>{subtitle}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );

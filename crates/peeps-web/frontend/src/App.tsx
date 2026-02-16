@@ -107,12 +107,22 @@ export function App() {
     handleJumpNow();
   }, [handleJumpNow]);
 
-  const handleSelectRequest = useCallback((req: StuckRequest) => {
-    setSelectedRequest(req);
-    setSelectedNode(null);
-    setSelectedNodeId(req.id);
-    setFilteredNodeId(req.id);
-  }, []);
+  const handleSelectRequest = useCallback(
+    (req: StuckRequest) => {
+      const node = graph?.nodes.find((n) => n.id === req.id) ?? null;
+      setSelectedNodeId(req.id);
+      setFilteredNodeId(req.id);
+      // Prefer full graph node metadata in inspector when available.
+      if (node) {
+        setSelectedNode(node);
+        setSelectedRequest(null);
+      } else {
+        setSelectedNode(null);
+        setSelectedRequest(req);
+      }
+    },
+    [graph],
+  );
 
   const handleSelectGraphNode = useCallback(
     (nodeId: string) => {
@@ -175,7 +185,7 @@ export function App() {
       >
         <RequestsTable
           requests={requests}
-          selectedId={selectedRequest?.id ?? null}
+          selectedId={selectedNodeId}
           onSelect={handleSelectRequest}
           collapsed={leftCollapsed}
           onToggleCollapse={toggleLeft}

@@ -503,8 +503,6 @@ fn persist_reply(
     .map_err(|e| e.to_string())?;
 
     if let Some(graph) = graph {
-        let local_node_ids: BTreeSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
-
         for node in &graph.nodes {
             tx.execute(
                 "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
@@ -522,119 +520,16 @@ fn persist_reply(
         }
 
         for edge in &graph.edges {
-            let src_exists = local_node_ids.contains(edge.src.as_str())
-                || node_exists_in_snapshot(&tx, snapshot_id, &edge.src);
-            let dst_exists = local_node_ids.contains(edge.dst.as_str())
-                || node_exists_in_snapshot(&tx, snapshot_id, &edge.dst);
-
-            if src_exists && dst_exists {
-                tx.execute(
-                    "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
-                     VALUES (?1, ?2, ?3, 'needs', ?4)",
-                    params![snapshot_id, edge.src, edge.dst, edge.attrs_json],
-                )
-                .map_err(|e| e.to_string())?;
-            } else {
-                let (missing_side, referenced_proc_key) = if !src_exists && !dst_exists {
-                    let src_pk = extract_proc_key(&edge.src);
-                    let dst_pk = extract_proc_key(&edge.dst);
-                    let rpk = resolve_referenced_proc_key_both(&tx, snapshot_id, src_pk, dst_pk);
-                    ("both", rpk)
-                } else if !src_exists {
-                    let pk = extract_proc_key(&edge.src);
-                    ("src", pk.map(|s| s.to_string()))
-                } else {
-                    let pk = extract_proc_key(&edge.dst);
-                    ("dst", pk.map(|s| s.to_string()))
-                };
-
-                let reason = determine_unresolved_reason(&tx, snapshot_id, &referenced_proc_key);
-
-                tx.execute(
-                    "INSERT OR REPLACE INTO unresolved_edges (snapshot_id, src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    params![
-                        snapshot_id,
-                        edge.src,
-                        edge.dst,
-                        missing_side,
-                        reason,
-                        referenced_proc_key,
-                        edge.attrs_json
-                    ],
-                )
-                .map_err(|e| e.to_string())?;
-            }
+            tx.execute(
+                "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
+                 VALUES (?1, ?2, ?3, 'needs', ?4)",
+                params![snapshot_id, edge.src, edge.dst, edge.attrs_json],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
     tx.commit().map_err(|e| e.to_string())
-}
-
-fn node_exists_in_snapshot(tx: &rusqlite::Transaction, snapshot_id: i64, node_id: &str) -> bool {
-    tx.query_row(
-        "SELECT 1 FROM nodes WHERE snapshot_id = ?1 AND id = ?2 LIMIT 1",
-        params![snapshot_id, node_id],
-        |_| Ok(()),
-    )
-    .is_ok()
-}
-
-fn extract_proc_key(node_id: &str) -> Option<&str> {
-    let mut parts = node_id.splitn(3, ':');
-    let _kind = parts.next()?;
-    let proc_key = parts.next()?;
-    if proc_key.is_empty() {
-        None
-    } else {
-        Some(proc_key)
-    }
-}
-
-fn resolve_referenced_proc_key_both(
-    tx: &rusqlite::Transaction,
-    snapshot_id: i64,
-    src_pk: Option<&str>,
-    dst_pk: Option<&str>,
-) -> Option<String> {
-    for pk in [src_pk, dst_pk].into_iter().flatten() {
-        let status: Option<String> = tx
-            .query_row(
-                "SELECT status FROM snapshot_processes WHERE snapshot_id = ?1 AND proc_key = ?2",
-                params![snapshot_id, pk],
-                |row| row.get(0),
-            )
-            .ok();
-        if status.as_deref() != Some("responded") {
-            return Some(pk.to_string());
-        }
-    }
-    None
-}
-
-fn determine_unresolved_reason(
-    tx: &rusqlite::Transaction,
-    snapshot_id: i64,
-    referenced_proc_key: &Option<String>,
-) -> String {
-    let Some(pk) = referenced_proc_key else {
-        return "referenced_proc_missing".to_string();
-    };
-
-    let status: Option<String> = tx
-        .query_row(
-            "SELECT status FROM snapshot_processes WHERE snapshot_id = ?1 AND proc_key = ?2",
-            params![snapshot_id, pk],
-            |row| row.get(0),
-        )
-        .ok();
-
-    match status.as_deref() {
-        Some("responded") => "referenced_proc_missing".to_string(),
-        Some("timeout") => "referenced_proc_timeout".to_string(),
-        Some("disconnected") => "referenced_proc_disconnected".to_string(),
-        _ => "referenced_proc_missing".to_string(),
-    }
 }
 
 // ── Ingest events ────────────────────────────────────────────────

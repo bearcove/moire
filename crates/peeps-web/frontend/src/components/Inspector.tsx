@@ -27,6 +27,7 @@ import {
   Crosshair,
   CopySimple,
   Check,
+  ArrowSquareOut,
 } from "@phosphor-icons/react";
 import type { StuckRequest, SnapshotNode } from "../types";
 
@@ -170,8 +171,6 @@ export function Inspector({
 function RequestDetail({ req }: { req: StuckRequest }) {
   return (
     <dl>
-      <dt>ID</dt>
-      <dd>{req.id}</dd>
       <dt>Method</dt>
       <dd>{req.method ?? "unknown"}</dd>
       <dt>Process</dt>
@@ -301,14 +300,16 @@ function NodeDetail({
       </div>
 
       <div className="inspect-section">
-        <div className="inspect-row">
-          <span className="inspect-key">ID</span>
-          <span className="inspect-val inspect-val--copyable">
-            {node.id}
-            <CopyIdButton id={node.id} />
-          </span>
-        </div>
-        {method && (
+        {node.kind !== "request" && node.kind !== "response" && (
+          <div className="inspect-row">
+            <span className="inspect-key">ID</span>
+            <span className="inspect-val inspect-val--copyable">
+              {node.id}
+              <CopyIdButton id={node.id} />
+            </span>
+          </div>
+        )}
+        {method && node.kind !== "request" && node.kind !== "response" && (
           <div className="inspect-row">
             <span className="inspect-key">Method</span>
             <span className="inspect-val inspect-val--mono">{method}</span>
@@ -375,18 +376,41 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   function MetaView({ meta }: { meta: Record<string, unknown> }) {
     const loc = metaLocation(meta);
     if (!loc) return <span className="inspect-val inspect-val--mono">—</span>;
-    // Render as a Zed deep link using absolute `path:line(:col)` syntax.
+
+    function displayLocation(location: string): string {
+      if (!location.startsWith("/")) return location;
+
+      const roots = [
+        "/crates/",
+        "/apps/",
+        "/docs/",
+        "/internal/",
+        "/scripts/",
+        "/tests/",
+        "/xtask/",
+      ];
+      for (const root of roots) {
+        const idx = location.indexOf(root);
+        if (idx >= 0) return location.slice(idx + 1);
+      }
+      return location;
+    }
+
     const href = `zed://file/${encodeURIComponent(loc)}`;
+    const display = displayLocation(loc);
     return (
       <div className="inspect-meta">
         <div className="inspect-meta-row">
-          <span className="inspect-meta-key">Location</span>
+          <span className="inspect-meta-key inspect-meta-key--icon" title="Rust source location">
+            rs
+          </span>
           <a
             className="inspect-meta-val inspect-val--mono inspect-link"
             href={href}
             title="Open in Zed"
           >
-            {loc}
+            <ArrowSquareOut size={12} weight="bold" className="inspect-link-icon" />
+            {display}
           </a>
         </div>
       </div>
@@ -419,12 +443,7 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
 
     const maybeNs = asFiniteNumber(val);
     if (maybeNs != null && (k.endsWith("_ns") || k.includes("duration") || k.includes("age"))) {
-      return (
-        <>
-          {formatDuration(maybeNs)}
-          <span className="inspect-raw-val-sub"> ({Math.trunc(maybeNs).toLocaleString()}ns)</span>
-        </>
-      );
+      return formatDuration(maybeNs);
     }
 
     if (typeof val === "number" && Number.isFinite(val)) {
