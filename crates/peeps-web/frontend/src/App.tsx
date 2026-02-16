@@ -56,13 +56,11 @@ function connectedSubgraph(graph: SnapshotGraph, seedId: string): SnapshotGraph 
   };
 }
 
-/** Filter out nodes of hidden kinds, bridging edges through them as pass-throughs. */
-function filterHiddenKinds(graph: SnapshotGraph, hiddenKinds: Set<string>): SnapshotGraph {
-  if (hiddenKinds.size === 0) return graph;
-
+/** Filter out nodes matching a predicate, bridging edges through them as pass-throughs. */
+function filterHiddenNodes(graph: SnapshotGraph, isHidden: (node: SnapshotNode) => boolean): SnapshotGraph {
   const hiddenIds = new Set<string>();
   for (const n of graph.nodes) {
-    if (hiddenKinds.has(n.kind)) hiddenIds.add(n.id);
+    if (isHidden(n)) hiddenIds.add(n.id);
   }
   if (hiddenIds.size === 0) return graph;
 
@@ -158,6 +156,7 @@ export function App() {
   const [selectedNode, setSelectedNode] = useState<SnapshotNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<SnapshotEdge | null>(null);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
+  const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
 
   // Keep graph/inspector focus-first: left and right panels are collapsed by default,
   // but users can expand them and the state is sticky for the current browser session.
@@ -250,6 +249,15 @@ export function App() {
     return Array.from(kinds).sort();
   }, [graph]);
 
+  const allProcesses = useMemo(() => {
+    if (!graph) return [];
+    const procs = new Set<string>();
+    for (const n of graph.nodes) {
+      if (n.kind !== "ghost") procs.add(n.process);
+    }
+    return Array.from(procs).sort();
+  }, [graph]);
+
   const toggleKind = useCallback((kind: string) => {
     setHiddenKinds((prev) => {
       const next = new Set(prev);
@@ -258,6 +266,39 @@ export function App() {
       return next;
     });
   }, []);
+
+  const toggleProcess = useCallback((process: string) => {
+    setHiddenProcesses((prev) => {
+      const next = new Set(prev);
+      if (next.has(process)) next.delete(process);
+      else next.add(process);
+      return next;
+    });
+  }, []);
+
+  const soloKind = useCallback((kind: string) => {
+    setHiddenKinds((prev) => {
+      // If this is already the only visible kind, show all
+      const othersAllHidden = allKinds.every((k) => k === kind || prev.has(k));
+      if (othersAllHidden && !prev.has(kind)) {
+        return new Set();
+      }
+      // Otherwise, hide everything except this kind
+      return new Set(allKinds.filter((k) => k !== kind));
+    });
+  }, [allKinds]);
+
+  const soloProcess = useCallback((process: string) => {
+    setHiddenProcesses((prev) => {
+      // If this is already the only visible process, show all
+      const othersAllHidden = allProcesses.every((p) => p === process || prev.has(p));
+      if (othersAllHidden && !prev.has(process)) {
+        return new Set();
+      }
+      // Otherwise, hide everything except this process
+      return new Set(allProcesses.filter((p) => p !== process));
+    });
+  }, [allProcesses]);
 
   // Compute the displayed graph: full graph normally,
   // connected subgraph only when filtering via stuck request click.
@@ -268,8 +309,10 @@ export function App() {
     if (filteredNodeId && graph.nodes.some((n) => n.id === filteredNodeId)) {
       g = connectedSubgraph(g, filteredNodeId);
     }
-    return filterHiddenKinds(g, hiddenKinds);
-  }, [graph, filteredNodeId, hiddenKinds]);
+    g = filterHiddenNodes(g, (n) => hiddenKinds.has(n.kind));
+    g = filterHiddenNodes(g, (n) => hiddenProcesses.has(n.process));
+    return g;
+  }, [graph, filteredNodeId, hiddenKinds, hiddenProcesses]);
 
   const searchResults = useMemo(() => {
     if (!graph) return [];
@@ -322,6 +365,11 @@ export function App() {
           allKinds={allKinds}
           hiddenKinds={hiddenKinds}
           onToggleKind={toggleKind}
+          onSoloKind={soloKind}
+          allProcesses={allProcesses}
+          hiddenProcesses={hiddenProcesses}
+          onToggleProcess={toggleProcess}
+          onSoloProcess={soloProcess}
           onSearchQueryChange={setGraphSearchQuery}
           onSelectSearchResult={handleSelectSearchResult}
           onSelectNode={handleSelectGraphNode}

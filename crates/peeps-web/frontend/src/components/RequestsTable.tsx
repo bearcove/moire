@@ -116,7 +116,6 @@ export function RequestsTable({
                 onClick={() => onSelect(req)}
               >
                 <div className="request-card-top">
-                  <pre>{JSON.stringify(req, null, 2)}</pre>
                   <span className="request-card-main" title={`${method} • ${req.process}`}>
                     {method}
                     <span className="request-card-process-inline">{req.process}</span>

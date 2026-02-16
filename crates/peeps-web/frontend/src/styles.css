@@ -416,6 +416,25 @@ body {
     color: light-dark(#8e8e93, #7a7a80);
 }
 
+.graph-filter-clear {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: 0;
+    border-radius: 50%;
+    background: light-dark(#d2d2d7, #4a4a4e);
+    color: light-dark(#fff, #e0e0e4);
+    cursor: pointer;
+    padding: 0;
+}
+
+.graph-filter-clear:hover {
+    background: light-dark(#8e8e93, #636366);
+}
+
 .graph-search-results {
     margin-top: 8px;
     max-height: 180px;
@@ -486,12 +505,17 @@ body {
     text-overflow: ellipsis;
 }
 
-/* ── Kind filter dropdown ─────────────────────────────────── */
+/* ── Filter dropdowns row ─────────────────────────────────── */
+
+.graph-filter-dropdowns {
+    display: flex;
+    gap: 6px;
+    padding: 4px 10px 6px;
+    border-bottom: 1px solid light-dark(#ebebf0, #2a2a2e);
+}
 
 .kind-filter-dropdown {
     position: relative;
-    padding: 4px 10px 6px;
-    border-bottom: 1px solid light-dark(#ebebf0, #2a2a2e);
 }
 
 .kind-filter-trigger {
@@ -538,7 +562,7 @@ body {
 .kind-filter-menu {
     position: absolute;
     top: 100%;
-    left: 10px;
+    left: 0;
     z-index: 50;
     margin-top: 2px;
     min-width: 220px;
@@ -606,6 +630,7 @@ body {
     font-size: 11px;
     min-width: 180px;
     max-width: 220px;
+    overflow: hidden;
 }
 
 .card--danger-border {
@@ -678,6 +703,7 @@ body {
     gap: 5px;
     font-size: 10px;
     min-height: 16px;
+    min-width: 0;
 }
 
 .card-row--center {
@@ -695,6 +721,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
 }
 
 .card-val-truncate {
@@ -703,6 +730,8 @@ body {
     white-space: nowrap;
     font-family: var(--font-mono);
     font-size: 10px;
+    min-width: 0;
+    flex-shrink: 1;
 }
 
 .holder-text {

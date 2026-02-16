@@ -17,7 +17,7 @@ import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import { Graph as GraphIcon, MagnifyingGlass, X, Funnel, CaretDown } from "@phosphor-icons/react";
 import type { SnapshotGraph, SnapshotEdge } from "../types";
-import { PeepsNode, processColor, estimateNodeHeight, kindMeta, type NodeData } from "./NodeCards";
+import { PeepsNode, processColor, ProcessSwatch, estimateNodeHeight, kindMeta, type NodeData } from "./NodeCards";
 
 const elkOptions = {
   "elk.algorithm": "layered",
@@ -176,6 +176,11 @@ interface GraphViewProps {
   allKinds: string[];
   hiddenKinds: Set<string>;
   onToggleKind: (kind: string) => void;
+  onSoloKind: (kind: string) => void;
+  allProcesses: string[];
+  hiddenProcesses: Set<string>;
+  onToggleProcess: (process: string) => void;
+  onSoloProcess: (process: string) => void;
   onSearchQueryChange: (value: string) => void;
   onSelectSearchResult: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
@@ -288,10 +293,12 @@ function KindFilterDropdown({
   allKinds,
   hiddenKinds,
   onToggleKind,
+  onSoloKind,
 }: {
   allKinds: string[];
   hiddenKinds: Set<string>;
   onToggleKind: (kind: string) => void;
+  onSoloKind: (kind: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -328,7 +335,16 @@ function KindFilterDropdown({
             const meta = kindMeta[kind];
             const checked = !hiddenKinds.has(kind);
             return (
-              <label key={kind} className="kind-filter-item">
+              <label
+                key={kind}
+                className="kind-filter-item"
+                onClick={(e) => {
+                  if (e.altKey) {
+                    e.preventDefault();
+                    onSoloKind(kind);
+                  }
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={checked}
@@ -338,6 +354,78 @@ function KindFilterDropdown({
                 <span className="kind-filter-icon">{meta?.icon ?? <Funnel size={14} weight="bold" />}</span>
                 <span className="kind-filter-name">{meta?.displayName ?? kind}</span>
                 <span className="kind-filter-kind">{kind}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProcessFilterDropdown({
+  allProcesses,
+  hiddenProcesses,
+  onToggleProcess,
+  onSoloProcess,
+}: {
+  allProcesses: string[];
+  hiddenProcesses: Set<string>;
+  onToggleProcess: (process: string) => void;
+  onSoloProcess: (process: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as globalThis.Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const hiddenCount = allProcesses.filter((p) => hiddenProcesses.has(p)).length;
+
+  return (
+    <div className="kind-filter-dropdown" ref={ref}>
+      <button
+        className={`kind-filter-trigger${hiddenCount > 0 ? " kind-filter-trigger--active" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Funnel size={12} weight="bold" />
+        <span>Processes</span>
+        {hiddenCount > 0 && (
+          <span className="kind-filter-badge">{hiddenCount} hidden</span>
+        )}
+        <CaretDown size={10} weight="bold" className={`kind-filter-caret${open ? " kind-filter-caret--open" : ""}`} />
+      </button>
+      {open && (
+        <div className="kind-filter-menu">
+          {allProcesses.map((proc) => {
+            const checked = !hiddenProcesses.has(proc);
+            return (
+              <label
+                key={proc}
+                className="kind-filter-item"
+                onClick={(e) => {
+                  if (e.altKey) {
+                    e.preventDefault();
+                    onSoloProcess(proc);
+                  }
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggleProcess(proc)}
+                  className="kind-filter-checkbox"
+                />
+                <ProcessSwatch process={proc} size={12} />
+                <span className="kind-filter-name">{proc}</span>
               </label>
             );
           })}
@@ -358,6 +446,11 @@ export function GraphView({
   allKinds,
   hiddenKinds,
   onToggleKind,
+  onSoloKind,
+  allProcesses,
+  hiddenProcesses,
+  onToggleProcess,
+  onSoloProcess,
   onSearchQueryChange,
   onSelectSearchResult,
   onSelectNode,
@@ -398,6 +491,16 @@ export function GraphView({
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
           />
+          {hasSearch && (
+            <button
+              className="graph-filter-clear"
+              onClick={() => onSearchQueryChange("")}
+              title="Clear search"
+              type="button"
+            >
+              <X size={10} weight="bold" />
+            </button>
+          )}
         </label>
         {hasSearch && (
           <div className="graph-search-results">
@@ -423,12 +526,25 @@ export function GraphView({
           </div>
         )}
       </div>
-      {allKinds.length > 0 && (
-        <KindFilterDropdown
-          allKinds={allKinds}
-          hiddenKinds={hiddenKinds}
-          onToggleKind={onToggleKind}
-        />
+      {(allKinds.length > 0 || allProcesses.length > 0) && (
+        <div className="graph-filter-dropdowns">
+          {allKinds.length > 0 && (
+            <KindFilterDropdown
+              allKinds={allKinds}
+              hiddenKinds={hiddenKinds}
+              onToggleKind={onToggleKind}
+              onSoloKind={onSoloKind}
+            />
+          )}
+          {allProcesses.length > 0 && (
+            <ProcessFilterDropdown
+              allProcesses={allProcesses}
+              hiddenProcesses={hiddenProcesses}
+              onToggleProcess={onToggleProcess}
+              onSoloProcess={onSoloProcess}
+            />
+          )}
+        </div>
       )}
       <div className="react-flow-wrapper">
         {graph && graph.nodes.length > 0 ? (

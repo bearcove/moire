@@ -25,8 +25,8 @@ facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
 libc = "0.2"
 parking_lot = "0.12"
-roam-session = { path = "../roam/rust/roam-session", features = ["diagnostics"] }
-roam-shm = { path = "../roam/rust/roam-shm", features = ["diagnostics"] }
+roam-session = { path = "../roam/rust/roam-session" }
+roam-shm = { path = "../roam/rust/roam-shm" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.49", features = ["full"] }

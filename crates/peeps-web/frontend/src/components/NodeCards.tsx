@@ -87,19 +87,108 @@ function durationSeverity(ns: number, warnNs: number, critNs: number): string {
   return "ok";
 }
 
-// Stable color from process name
-const processColorCache = new Map<string, string>();
-export function processColor(process: string): string {
-  let color = processColorCache.get(process);
-  if (color) return color;
-  let hash = 0;
-  for (let i = 0; i < process.length; i++) {
-    hash = process.charCodeAt(i) + ((hash << 5) - hash);
+// Stable color + shape from process name
+const PROCESS_COLORS = [
+  "#e04545", // red
+  "#e8a32e", // amber
+  "#3cb44b", // green
+  "#2196f3", // blue
+  "#9c27b0", // purple
+  "#00bcd4", // cyan
+  "#ff6f00", // orange
+  "#e91e8a", // pink
+  "#8bc34a", // lime
+  "#607d8b", // slate
+];
+
+export type ProcessShape = "circle" | "square" | "diamond" | "triangle" | "star";
+const PROCESS_SHAPES: ProcessShape[] = ["circle", "square", "diamond", "triangle", "star"];
+
+export interface ProcessIdentity {
+  color: string;
+  shape: ProcessShape;
+}
+
+function djb2(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
   }
-  const h = ((hash % 360) + 360) % 360;
-  color = `hsl(${h}, 65%, 55%)`;
-  processColorCache.set(process, color);
-  return color;
+  return h;
+}
+
+const processIdentityCache = new Map<string, ProcessIdentity>();
+export function processIdentity(process: string): ProcessIdentity {
+  let id = processIdentityCache.get(process);
+  if (id) return id;
+  const h = djb2(process);
+  const colorIdx = h % PROCESS_COLORS.length;
+  const shapeIdx = Math.floor(h / PROCESS_COLORS.length) % PROCESS_SHAPES.length;
+  id = { color: PROCESS_COLORS[colorIdx], shape: PROCESS_SHAPES[shapeIdx] };
+  processIdentityCache.set(process, id);
+  return id;
+}
+
+/** Backwards-compat helper — returns just the color */
+export function processColor(process: string): string {
+  return processIdentity(process).color;
+}
+
+/** Inline SVG swatch for a process identity (color + shape) */
+export function ProcessSwatch({ process, size = 10 }: { process: string; size?: number }) {
+  const { color, shape } = processIdentity(process);
+  const s = size;
+  const half = s / 2;
+  let shapeEl: React.ReactNode;
+  switch (shape) {
+    case "circle":
+      shapeEl = <circle cx={half} cy={half} r={half * 0.85} fill={color} />;
+      break;
+    case "square":
+      shapeEl = (
+        <rect
+          x={s * 0.1} y={s * 0.1}
+          width={s * 0.8} height={s * 0.8}
+          rx={s * 0.1}
+          fill={color}
+        />
+      );
+      break;
+    case "diamond":
+      shapeEl = (
+        <polygon
+          points={`${half},${s * 0.05} ${s * 0.95},${half} ${half},${s * 0.95} ${s * 0.05},${half}`}
+          fill={color}
+        />
+      );
+      break;
+    case "triangle":
+      shapeEl = (
+        <polygon
+          points={`${half},${s * 0.08} ${s * 0.95},${s * 0.88} ${s * 0.05},${s * 0.88}`}
+          fill={color}
+        />
+      );
+      break;
+    case "star": {
+      const cx = half, cy = half;
+      const outer = half * 0.92, inner = half * 0.38;
+      const pts: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const aOuter = (Math.PI / 2) * -1 + (2 * Math.PI * i) / 5;
+        const aInner = aOuter + Math.PI / 5;
+        pts.push(`${cx + outer * Math.cos(aOuter)},${cy + outer * Math.sin(aOuter)}`);
+        pts.push(`${cx + inner * Math.cos(aInner)},${cy + inner * Math.sin(aInner)}`);
+      }
+      shapeEl = <polygon points={pts.join(" ")} fill={color} />;
+      break;
+    }
+  }
+  return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} style={{ flexShrink: 0, display: "block" }}>
+      {shapeEl}
+    </svg>
+  );
 }
 
 // ── Shared card chrome ───────────────────────────────────────
@@ -119,7 +208,7 @@ function CardShell({
   stateClass?: string;
   children?: React.ReactNode;
 }) {
-  const color = processColor(process);
+  const { color } = processIdentity(process);
   return (
     <div
       className={`card card--${kind}${stateClass ? ` ${stateClass}` : ""}`}
@@ -127,6 +216,7 @@ function CardShell({
     >
       <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
       <div className="card-head">
+        <ProcessSwatch process={process} size={10} />
         <span className="card-icon">{icon}</span>
         <span className="card-label" title={label}>
           {label}
@@ -311,10 +401,24 @@ function ChannelTxCard({ data }: NodeProps<Node<NodeData>>) {
     "channel_type",
     "channel.type",
   ]);
-  const buffered = numAttr(attrs, "buffered") ?? 0;
+  const buffered =
+    numAttr(attrs, "queue_len") ??
+    numAttr(attrs, "buffered") ??
+    0;
   const capacity = numAttr(attrs, "capacity") ?? 0;
   const senderCount = numAttr(attrs, "sender_count");
+  const sendWaiters = numAttr(attrs, "send_waiters") ?? 0;
+  const highWatermark = numAttr(attrs, "high_watermark") ?? buffered;
+  const utilization =
+    numAttr(attrs, "utilization") ??
+    (capacity > 0 ? buffered / capacity : undefined);
+  const highWaterRatio = capacity > 0 ? highWatermark / capacity : 0;
   const isFull = capacity > 0 && buffered >= capacity;
+  const isHot =
+    sendWaiters > 0 ||
+    isFull ||
+    (capacity > 0 && (utilization ?? 0) >= 0.9) ||
+    (capacity > 0 && highWaterRatio >= 0.9);
 
   const icon =
     channelKind === "watch" ? (
@@ -331,13 +435,18 @@ function ChannelTxCard({ data }: NodeProps<Node<NodeData>>) {
       process={process}
       label={label}
       icon={icon}
-      stateClass={isFull ? "card--danger-border" : undefined}
+      stateClass={isHot ? "card--danger-border" : undefined}
     >
       {capacity > 0 && (
-        <CapacityBar current={buffered} max={capacity} label={`${buffered}/${capacity}`} />
+        <CapacityBar
+          current={buffered}
+          max={capacity}
+          label={`${buffered}/${capacity} (peak ${Math.min(highWatermark, capacity)}/${capacity})`}
+        />
       )}
       <div className="card-row">
         {isFull && <StatePill state="FULL" variant="crit" />}
+        {!isFull && sendWaiters > 0 && <StatePill state={`${sendWaiters} WAITERS`} variant="warn" />}
         {senderCount != null && (
           <span className="badge">{senderCount} senders</span>
         )}
@@ -356,7 +465,8 @@ function ChannelRxCard({ data }: NodeProps<Node<NodeData>>) {
   ]);
   const state = attr(attrs, "state") ?? "idle";
   const receiverAlive = attr(attrs, "receiver_alive");
-  const pending = numAttr(attrs, "pending");
+  const pending = numAttr(attrs, "queue_len") ?? numAttr(attrs, "pending");
+  const recvWaiters = numAttr(attrs, "recv_waiters") ?? 0;
   const isAlive = receiverAlive !== "false" && receiverAlive !== "0";
 
   const stateVariant: "ok" | "warn" | "crit" | "neutral" =
@@ -377,6 +487,7 @@ function ChannelRxCard({ data }: NodeProps<Node<NodeData>>) {
       process={process}
       label={label}
       icon={icon}
+      stateClass={recvWaiters > 0 ? "card--danger-border" : undefined}
     >
       <div className="card-row">
         <StatePill state={state} variant={stateVariant} />
@@ -384,6 +495,7 @@ function ChannelRxCard({ data }: NodeProps<Node<NodeData>>) {
           {isAlive ? <Check size={10} weight="bold" /> : <XIcon size={10} weight="bold" />}
           rx
         </span>
+        {recvWaiters > 0 && <span className="badge">{recvWaiters} waiters</span>}
       </div>
       {pending != null && (
         <div className="card-row">

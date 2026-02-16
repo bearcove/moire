@@ -65,14 +65,18 @@ fn begin_op(op: &str, path: &str) -> String {
     node_id
 }
 
-/// Update the file_op node with final attrs and keep it as a historical node.
-fn end_op(node_id: &str, op: &str, path: &str, attrs: String) {
+/// Update the file_op node with final attrs.
+/// If `keep` is false, removes it after update.
+fn end_op(node_id: &str, op: &str, path: &str, attrs: String, keep: bool) {
     crate::registry::register_node(Node {
         id: node_id.to_string(),
         kind: NodeKind::FileOp,
         label: Some(format!("{op}: {path}")),
         attrs_json: attrs,
     });
+    if !keep {
+        crate::registry::remove_node(node_id);
+    }
 }
 
 pub async fn create_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
@@ -98,7 +102,7 @@ pub async fn create_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "create_dir_all", &path_str, attrs);
+    end_op(&node_id, "create_dir_all", &path_str, attrs, error.is_some());
 
     result
 }
@@ -127,7 +131,7 @@ pub async fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Re
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "write", &path_str, attrs);
+    end_op(&node_id, "write", &path_str, attrs, error.is_some());
 
     result
 }
@@ -155,7 +159,7 @@ pub async fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "read_to_string", &path_str, attrs);
+    end_op(&node_id, "read_to_string", &path_str, attrs, error.is_some());
 
     result
 }
@@ -183,7 +187,7 @@ pub async fn metadata(path: impl AsRef<Path>) -> io::Result<std::fs::Metadata> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "metadata", &path_str, attrs);
+    end_op(&node_id, "metadata", &path_str, attrs, error.is_some());
 
     result
 }
@@ -214,7 +218,7 @@ pub async fn set_permissions(
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "set_permissions", &path_str, attrs);
+    end_op(&node_id, "set_permissions", &path_str, attrs, error.is_some());
 
     result
 }
@@ -247,7 +251,7 @@ pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "rename", &label, attrs);
+    end_op(&node_id, "rename", &label, attrs, error.is_some());
 
     result
 }
@@ -276,7 +280,7 @@ pub async fn try_exists(path: impl AsRef<Path>) -> io::Result<bool> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "try_exists", &path_str, attrs);
+    end_op(&node_id, "try_exists", &path_str, attrs, error.is_some());
 
     result
 }
@@ -304,7 +308,7 @@ pub async fn read(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "read", &path_str, attrs);
+    end_op(&node_id, "read", &path_str, attrs, error.is_some());
 
     result
 }
@@ -332,7 +336,7 @@ pub async fn remove_file(path: impl AsRef<Path>) -> io::Result<()> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "remove_file", &path_str, attrs);
+    end_op(&node_id, "remove_file", &path_str, attrs, error.is_some());
 
     result
 }
@@ -360,7 +364,7 @@ pub async fn remove_dir(path: impl AsRef<Path>) -> io::Result<()> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "remove_dir", &path_str, attrs);
+    end_op(&node_id, "remove_dir", &path_str, attrs, error.is_some());
 
     result
 }
@@ -388,7 +392,7 @@ pub async fn remove_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "remove_dir_all", &path_str, attrs);
+    end_op(&node_id, "remove_dir_all", &path_str, attrs, error.is_some());
 
     result
 }
@@ -416,7 +420,7 @@ pub async fn canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "canonicalize", &path_str, attrs);
+    end_op(&node_id, "canonicalize", &path_str, attrs, error.is_some());
 
     result
 }
@@ -450,7 +454,7 @@ pub async fn symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> io::
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "symlink", &label, attrs);
+    end_op(&node_id, "symlink", &label, attrs, error.is_some());
 
     result
 }
@@ -484,7 +488,7 @@ pub async fn symlink_file(original: impl AsRef<Path>, link: impl AsRef<Path>) ->
         result_str,
         error.as_deref(),
     );
-    end_op(&node_id, "symlink_file", &label, attrs);
+    end_op(&node_id, "symlink_file", &label, attrs, error.is_some());
 
     result
 }
