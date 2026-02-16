@@ -247,9 +247,9 @@ where
     tokio::spawn(async move {
         if let Some(parent) = parent {
             let fut = crate::stack::scope(&parent, future);
-            crate::stack::with_stack(fut).await
+            crate::stack::ensure(fut).await
         } else {
-            crate::stack::with_stack(future).await
+            crate::stack::ensure(future).await
         }
     })
 }

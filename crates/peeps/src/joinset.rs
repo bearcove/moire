@@ -1,37 +1,78 @@
 use std::future::Future;
 
-/// Extension trait to make `tokio::task::JoinSet::spawn` preserve the peeps stack.
+/// Diagnostic wrapper around `tokio::task::JoinSet`.
 ///
-/// `JoinSet` is commonly used for task groups; if those tasks are spawned while
-/// handling a request, we almost always want them to remain descendants of that
-/// request/response node.
-pub trait JoinSetExt<T> {
-    fn spawn_peeps<F>(&mut self, label: &'static str, future: F)
-    where
-        F: Future<Output = T> + Send + 'static;
+/// JoinSet is a first-class resource node so spawned tasks can be attached as
+/// descendants through canonical edges.
+pub struct JoinSet<T> {
+    node_id: String,
+    inner: tokio::task::JoinSet<T>,
 }
 
-impl<T> JoinSetExt<T> for tokio::task::JoinSet<T>
+impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    fn spawn_peeps<F>(&mut self, label: &'static str, future: F)
+    pub fn new() -> Self {
+        let node_id = peeps_types::new_node_id("joinset");
+        #[cfg(feature = "diagnostics")]
+        {
+            crate::registry::register_node(peeps_types::Node {
+                id: node_id.clone(),
+                kind: peeps_types::NodeKind::JoinSet,
+                label: Some("joinset".to_string()),
+                attrs_json: "{}".to_string(),
+            });
+            crate::stack::with_top(|src| crate::registry::edge(src, &node_id));
+        }
+        Self {
+            node_id,
+            inner: tokio::task::JoinSet::new(),
+        }
+    }
+
+    pub fn spawn<F>(&mut self, label: &'static str, future: F)
     where
         F: Future<Output = T> + Send + 'static,
     {
-        let parent = crate::stack::capture_top();
-        self.spawn(async move {
-            // Provide a stable root future node for the joinset task body.
-            let fut = crate::peepable(future, label);
-
-            // If we have a parent frame, seed it so we get parent->child edges.
-            if let Some(parent) = parent {
-                let fut = crate::stack::scope(&parent, fut);
-                crate::stack::with_stack(fut).await
-            } else {
-                crate::stack::with_stack(fut).await
-            }
+        let joinset_node_id = self.node_id.clone();
+        self.inner.spawn(async move {
+            // Build a stable root future for this joinset child and scope it under joinset.
+            let child = crate::peepable(future, label);
+            let scoped = crate::stack::scope(&joinset_node_id, child);
+            crate::stack::ensure(scoped).await
         });
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn abort_all(&mut self) {
+        self.inner.abort_all();
+    }
+
+    pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
+        self.inner.join_next().await
     }
 }
 
+impl<T> Default for JoinSet<T>
+where
+    T: Send + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> Drop for JoinSet<T> {
+    fn drop(&mut self) {
+        #[cfg(feature = "diagnostics")]
+        crate::registry::remove_node(&self.node_id);
+    }
+}

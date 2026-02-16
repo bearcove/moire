@@ -117,6 +117,8 @@ pub enum NodeKind {
     Request,
     /// Canonical ID format: `response:{span_id}`
     Response,
+    /// Canonical ID format: `joinset:{ulid}`
+    JoinSet,
     /// Canonical ID format: `semaphore:{ulid}`
     Semaphore,
     /// Canonical ID format: `oncecell:{ulid}`
@@ -135,6 +137,7 @@ impl NodeKind {
             NodeKind::RemoteRx => "remote_rx",
             NodeKind::Request => "request",
             NodeKind::Response => "response",
+            NodeKind::JoinSet => "joinset",
             NodeKind::Semaphore => "semaphore",
             NodeKind::OnceCell => "oncecell",
         }
