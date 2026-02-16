@@ -70,6 +70,13 @@ function defaultDetailLevelForKind(kind: string): DetailLevel {
   return "info";
 }
 
+const RESOURCE_KINDS = new Set<string>(["connection", "joinset", "task"]);
+
+function isResourceKind(kind: string): boolean {
+  // Add future resource kinds here explicitly as they are introduced.
+  return RESOURCE_KINDS.has(kind);
+}
+
 function nodeDetailLevel(node: SnapshotNode): DetailLevel {
   const directLevel = firstString(node.attrs, ["peeps.level"]);
   if (directLevel) return parseDetailLevel(directLevel);
@@ -539,6 +546,7 @@ export function App() {
   const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", true);
   const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", false);
   const [deadlockFocus, toggleDeadlockFocus] = useSessionState("peeps-deadlock-focus", true);
+  const [showResources, toggleShowResources] = useSessionState("peeps-show-resources", false);
 
   const handleSetMode = useCallback((mode: InvestigationMode) => {
     setInvestigationMode(mode);
@@ -811,12 +819,24 @@ export function App() {
     if (filteredNodeId && enrichedGraph.nodes.some((n) => n.id === filteredNodeId)) {
       g = connectedSubgraph(g, filteredNodeId);
     }
+    if (!showResources) {
+      g = filterHiddenNodes(g, (n) => isResourceKind(n.kind));
+    }
     g = filterHiddenNodes(g, (n) => hiddenKinds.has(n.kind));
     g = filterHiddenNodes(g, (n) => hiddenProcesses.has(n.process));
     g = filterByDetailWithNeedsContext(g, detailLevel);
     g = applyDeadlockFocus(g, deadlockFocus, selectedNodeId);
     return g;
-  }, [enrichedGraph, filteredNodeId, hiddenKinds, hiddenProcesses, detailLevel, deadlockFocus, selectedNodeId]);
+  }, [
+    enrichedGraph,
+    filteredNodeId,
+    showResources,
+    hiddenKinds,
+    hiddenProcesses,
+    detailLevel,
+    deadlockFocus,
+    selectedNodeId,
+  ]);
 
   const searchResults = useMemo(() => {
     if (!enrichedGraph) return [];
@@ -1000,6 +1020,8 @@ export function App() {
                 onSoloProcess={soloProcess}
                 deadlockFocus={deadlockFocus}
                 onToggleDeadlockFocus={toggleDeadlockFocus}
+                showResources={showResources}
+                onToggleShowResources={toggleShowResources}
                 detailLevel={detailLevel}
                 onDetailLevelChange={handleDetailLevelChange}
                 hasActiveFilters={hasActiveFilters}

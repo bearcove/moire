@@ -12,7 +12,6 @@ tokio = { version = "1.49", features = ["macros", "rt-multi-thread", "signal", "
 roam = { path = "../../../roam/rust/roam" }
 roam-session = { path = "../../../roam/rust/roam-session", features = ["diagnostics"] }
 roam-wire = { path = "../../../roam/rust/roam-wire" }
-ulid = "1"
 
 [patch."https://github.com/bearcove/peeps"]
 peeps = { path = "../../crates/peeps" }

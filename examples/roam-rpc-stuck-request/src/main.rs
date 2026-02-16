@@ -8,29 +8,14 @@ use tokio::sync::mpsc;
 
 #[service]
 trait DemoRpc {
-    async fn sleepy_forever(&self, span_id: String) -> String;
+    async fn sleepy_forever(&self) -> String;
 }
 
 #[derive(Clone, Default)]
 struct DemoService;
 
 impl DemoRpc for DemoService {
-    async fn sleepy_forever(&self, _cx: &roam::Context, span_id: String) -> String {
-        let request_id = peeps::types::canonical_id::request_from_span_id(&span_id);
-        let response_id = format!("response:{span_id}");
-
-        peeps::rpc_response_event!(
-            &response_id,
-            "DemoRpc.sleepy_forever",
-            parent = &request_id,
-            {
-                "rpc.connection" => "in_memory",
-                "request.id" => span_id.as_str(),
-                "request.method" => "sleepy_forever",
-                "rpc.state" => "handler_started"
-            }
-        );
-
+    async fn sleepy_forever(&self, _cx: &roam::Context) -> String {
         peeps::peep!(
             async {
                 loop {
@@ -40,7 +25,6 @@ impl DemoRpc for DemoService {
             "rpc.handler.sleep_forever",
             {
                 "rpc.connection" => "in_memory",
-                "request.id" => span_id.as_str(),
                 "request.method" => "sleepy_forever"
             }
         )
@@ -125,22 +109,11 @@ async fn main() {
     let client = DemoRpcClient::new(client_handle);
 
     peeps::spawn_tracked("roam.client.request_task", async move {
-        let span_id = ulid::Ulid::new().to_string();
-        let request_id = peeps::types::canonical_id::request_from_span_id(&span_id);
-
-        peeps::rpc_request_event!(&request_id, "DemoRpc.sleepy_forever", {
-            "rpc.connection" => "in_memory",
-            "request.id" => span_id.as_str(),
-            "request.method" => "sleepy_forever",
-            "rpc.state" => "sent"
-        });
-
         peeps::peep!(
-            client.sleepy_forever(span_id.clone()),
+            client.sleepy_forever(),
             "rpc.client.await_response",
             {
                 "rpc.connection" => "in_memory",
-                "request.id" => span_id.as_str(),
                 "request.method" => "sleepy_forever"
             }
         )

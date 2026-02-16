@@ -189,6 +189,8 @@ interface GraphViewProps {
   onSoloProcess: (process: string) => void;
   deadlockFocus: boolean;
   onToggleDeadlockFocus: () => void;
+  showResources: boolean;
+  onToggleShowResources: () => void;
   detailLevel: "info" | "debug" | "trace";
   onDetailLevelChange: (level: "info" | "debug" | "trace") => void;
   onSearchQueryChange: (value: string) => void;
@@ -217,7 +219,7 @@ function GraphFlow({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges);
-  const { fitView, setCenter, getZoom } = useReactFlow();
+  const { fitView } = useReactFlow();
 
   useEffect(() => {
     const { nodes: n, edges: e } = graphToFlowElements(graph);
@@ -247,15 +249,6 @@ function GraphFlow({
       })),
     );
   }, [selectedNodeId, selectedEdge, setNodes]);
-
-  useEffect(() => {
-    if (!selectedNodeId) return;
-    const selected = nodes.find((n) => n.id === selectedNodeId);
-    if (!selected) return;
-    const cx = selected.position.x + 125;
-    const cy = selected.position.y + estimateNodeHeight(selected.data.kind) / 2;
-    setCenter(cx, cy, { duration: 220, zoom: Math.max(getZoom(), 0.7) });
-  }, [selectedNodeId, nodes, setCenter, getZoom]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -465,6 +458,8 @@ export function GraphView({
   onSoloProcess,
   deadlockFocus,
   onToggleDeadlockFocus,
+  showResources,
+  onToggleShowResources,
   detailLevel,
   onDetailLevelChange,
   onSearchQueryChange,
@@ -529,6 +524,14 @@ export function GraphView({
       </div>
       <div className="graph-filter-row">
         <div className="graph-level-row">
+          <label className="graph-resources-toggle">
+            <input
+              type="checkbox"
+              checked={showResources}
+              onChange={onToggleShowResources}
+            />
+            <span>Show resources</span>
+          </label>
           <span className="graph-level-label">Detail level</span>
           <input
             className="graph-level-slider"

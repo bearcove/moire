@@ -636,6 +636,20 @@ body {
     margin-bottom: 8px;
 }
 
+.graph-resources-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: light-dark(#3a3a3c, #d1d1d6);
+    user-select: none;
+}
+
+.graph-resources-toggle input {
+    margin: 0;
+    accent-color: light-dark(#0071e3, #0a84ff);
+}
+
 .graph-level-label {
     font-size: 11px;
     font-weight: 600;

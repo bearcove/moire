@@ -799,7 +799,6 @@ dependencies = [
  "roam-session",
  "roam-wire",
  "tokio",
- "ulid",
 ]
 
 [[package]]

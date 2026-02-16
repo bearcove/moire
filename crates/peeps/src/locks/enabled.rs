@@ -16,6 +16,8 @@ struct LockAttrs<'a> {
     releases: u64,
     holder_count: u64,
     waiter_count: u64,
+    #[facet(rename = "peeps.level")]
+    peeps_level: &'a str,
     meta: LocationMeta<'a>,
 }
 
@@ -74,6 +76,7 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             releases,
             holder_count,
             waiter_count,
+            peeps_level: lock_detail_level(info.name),
             meta: LocationMeta {
                 ctx_location: &info.location,
             },
@@ -85,6 +88,14 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             label: Some(info.name.to_string()),
             attrs_json: facet_json::to_string(&attrs).unwrap(),
         });
+    }
+}
+
+fn lock_detail_level(name: &str) -> &'static str {
+    if name.starts_with("ConnectionHandle.") {
+        peeps_types::InstrumentationLevel::Debug.as_str()
+    } else {
+        peeps_types::InstrumentationLevel::Info.as_str()
     }
 }
 
@@ -251,6 +262,7 @@ pub struct DiagnosticRwLock<T> {
 }
 
 impl<T> DiagnosticRwLock<T> {
+    #[track_caller]
     pub fn new(name: &'static str, value: T) -> Self {
         Self {
             inner: parking_lot::RwLock::new(value),
@@ -343,6 +355,7 @@ pub struct DiagnosticMutex<T> {
 }
 
 impl<T> DiagnosticMutex<T> {
+    #[track_caller]
     pub fn new(name: &'static str, value: T) -> Self {
         Self {
             inner: parking_lot::Mutex::new(value),
@@ -400,6 +413,7 @@ pub struct DiagnosticAsyncRwLock<T> {
 }
 
 impl<T> DiagnosticAsyncRwLock<T> {
+    #[track_caller]
     pub fn new(name: &'static str, value: T) -> Self {
         Self {
             inner: tokio::sync::RwLock::new(value),
@@ -522,6 +536,7 @@ pub struct DiagnosticAsyncMutex<T> {
 }
 
 impl<T> DiagnosticAsyncMutex<T> {
+    #[track_caller]
     pub fn new(name: &'static str, value: T) -> Self {
         Self {
             inner: tokio::sync::Mutex::new(value),
