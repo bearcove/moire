@@ -138,7 +138,7 @@ impl LockInfo {
     #[track_caller]
     fn new(name: &'static str) -> Arc<Self> {
         let caller = std::panic::Location::caller();
-        let location = format!("{}:{}", caller.file(), caller.line());
+        let location = crate::caller_location(caller);
         let info = Arc::new(Self {
             name,
             endpoint_id: peeps_types::new_node_id("lock"),

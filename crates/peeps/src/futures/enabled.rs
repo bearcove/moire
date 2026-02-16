@@ -209,7 +209,7 @@ where
     let node_id = peeps_types::new_node_id("future");
     let resource = resource.into();
     let caller = std::panic::Location::caller();
-    let location = format!("{}:{}", caller.file(), caller.line());
+    let location = crate::caller_location(caller);
     let meta_json = inject_location_meta_json(meta.to_json_object(), &location);
 
     register_future(node_id.clone(), resource.clone(), meta_json);

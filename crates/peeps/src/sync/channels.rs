@@ -274,7 +274,7 @@ pub fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receive
     let (tx, rx) = tokio::sync::mpsc::channel(buffer);
     let name = name.into();
     let caller = std::panic::Location::caller();
-    let location = format!("{}:{}", caller.file(), caller.line());
+    let location = crate::caller_location(caller);
     let tx_node_id = peeps_types::new_node_id("mpsc_tx");
     let rx_node_id = peeps_types::new_node_id("mpsc_rx");
     let info = Arc::new(MpscInfo {
@@ -391,7 +391,7 @@ pub fn unbounded_channel<T>(
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let name = name.into();
     let caller = std::panic::Location::caller();
-    let location = format!("{}:{}", caller.file(), caller.line());
+    let location = crate::caller_location(caller);
     let tx_node_id = peeps_types::new_node_id("mpsc_tx");
     let rx_node_id = peeps_types::new_node_id("mpsc_rx");
     let info = Arc::new(MpscInfo {
@@ -507,7 +507,7 @@ pub fn oneshot_channel<T>(
     let (tx, rx) = tokio::sync::oneshot::channel();
     let name = name.into();
     let caller = std::panic::Location::caller();
-    let location = format!("{}:{}", caller.file(), caller.line());
+    let location = crate::caller_location(caller);
     let tx_node_id = peeps_types::new_node_id("oneshot_tx");
     let rx_node_id = peeps_types::new_node_id("oneshot_rx");
     let info = Arc::new(OneshotInfo {
@@ -623,7 +623,7 @@ pub fn watch_channel<T: Send + Sync + 'static>(
     let tx_clone = tx.clone();
     let name = name.into();
     let caller = std::panic::Location::caller();
-    let location = format!("{}:{}", caller.file(), caller.line());
+    let location = crate::caller_location(caller);
     let tx_node_id = peeps_types::new_node_id("watch_tx");
     let rx_node_id = peeps_types::new_node_id("watch_rx");
     let info = Arc::new(WatchInfo {

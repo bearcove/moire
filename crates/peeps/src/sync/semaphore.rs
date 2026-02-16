@@ -73,7 +73,7 @@ impl DiagnosticSemaphore {
         let inner = Arc::new(tokio::sync::Semaphore::new(permits));
         let inner_for_snapshot = Arc::clone(&inner);
         let caller = std::panic::Location::caller();
-        let location = format!("{}:{}", caller.file(), caller.line());
+        let location = crate::caller_location(caller);
         let info = Arc::new(SemaphoreInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("semaphore"),

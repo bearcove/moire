@@ -18,6 +18,10 @@
 //! - [`channel`], [`unbounded_channel`], [`oneshot_channel`], [`watch_channel`] - Channels
 
 use std::future::IntoFuture;
+#[cfg(feature = "diagnostics")]
+use std::path::{Path, PathBuf};
+#[cfg(feature = "diagnostics")]
+use std::sync::LazyLock;
 
 mod collect;
 pub(crate) mod futures;
@@ -76,12 +80,29 @@ pub use sync::{UnboundedReceiver, UnboundedSender, WatchReceiver, WatchSender};
 pub type Semaphore = sync::DiagnosticSemaphore;
 pub use sync::OnceCell;
 
+#[cfg(feature = "diagnostics")]
+static START_CWD: LazyLock<PathBuf> =
+    LazyLock::new(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+#[cfg(feature = "diagnostics")]
+pub(crate) fn caller_location(caller: &std::panic::Location<'_>) -> String {
+    let file = Path::new(caller.file());
+    let path = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        START_CWD.join(file)
+    };
+    format!("{}:{}", path.display(), caller.line())
+}
+
 // ── PeepableFutureExt ───────────────────────────────────
 
 pub trait PeepableFutureExt: IntoFuture + Sized {
+    #[track_caller]
     fn peepable(self, resource: impl Into<String>) -> PeepableFuture<Self::IntoFuture> {
         crate::futures::peepable(self, resource)
     }
+    #[track_caller]
     fn peepable_with_meta<const N: usize>(
         self,
         resource: impl Into<String>,

@@ -43,7 +43,7 @@ impl<T> OnceCell<T> {
     #[track_caller]
     pub fn new(name: impl Into<String>) -> Self {
         let caller = std::panic::Location::caller();
-        let location = format!("{}:{}", caller.file(), caller.line());
+        let location = crate::caller_location(caller);
         let info = Arc::new(OnceCellInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("oncecell"),
