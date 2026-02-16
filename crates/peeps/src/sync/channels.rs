@@ -135,6 +135,7 @@ pub(super) struct WatchInfo {
     pub(super) rx_node_id: String,
     pub(super) location: String,
     pub(super) changes: AtomicU64,
+    pub(super) sender_closed: AtomicU8,
     pub(super) created_at: Instant,
     pub(super) receiver_count: Box<dyn Fn() -> usize + Send + Sync>,
 }
@@ -546,6 +547,12 @@ pub struct WatchSender<T> {
     info: Arc<WatchInfo>,
 }
 
+impl<T> Drop for WatchSender<T> {
+    fn drop(&mut self) {
+        self.info.sender_closed.store(1, Ordering::Relaxed);
+    }
+}
+
 impl<T> WatchSender<T> {
     pub fn send(
         &self,
@@ -646,6 +653,7 @@ pub fn watch_channel<T: Send + Sync + 'static>(
         rx_node_id,
         location,
         changes: AtomicU64::new(0),
+        sender_closed: AtomicU8::new(0),
         created_at: Instant::now(),
         receiver_count: Box::new(move || tx_clone.receiver_count()),
     });
@@ -719,10 +727,25 @@ struct OneshotNodeAttrs {
 }
 
 #[derive(Facet)]
-struct WatchNodeAttrs {
+struct WatchTxAttrs {
     name: String,
     channel_kind: String,
     created_at_ns: u64,
+    closed: bool,
+    changes: u64,
+    receiver_count: u64,
+    age_ns: u64,
+    #[facet(skip_unless_truthy)]
+    close_cause: Option<String>,
+    meta: ChannelMeta,
+}
+
+#[derive(Facet)]
+struct WatchRxAttrs {
+    name: String,
+    channel_kind: String,
+    created_at_ns: u64,
+    closed: bool,
     changes: u64,
     receiver_count: u64,
     age_ns: u64,
@@ -967,16 +990,23 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             let age_ns = now.duration_since(info.created_at).as_nanos() as u64;
             let changes = info.changes.load(Ordering::Relaxed);
             let receiver_count = (info.receiver_count)() as u64;
+            let sender_closed = info.sender_closed.load(Ordering::Relaxed) != 0;
 
             // TX node
             {
-                let attrs = WatchNodeAttrs {
+                let attrs = WatchTxAttrs {
                     name: name.clone(),
                     channel_kind: "watch".to_owned(),
                     created_at_ns: age_ns,
+                    closed: sender_closed,
                     changes,
                     receiver_count,
                     age_ns,
+                    close_cause: if sender_closed {
+                        Some("sender_dropped".to_owned())
+                    } else {
+                        None
+                    },
                     meta: ChannelMeta {
                         ctx_location: info.location.clone(),
                     },
@@ -992,10 +1022,11 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
 
             // RX node
             {
-                let attrs = WatchNodeAttrs {
+                let attrs = WatchRxAttrs {
                     name: name.clone(),
                     channel_kind: "watch".to_owned(),
                     created_at_ns: age_ns,
+                    closed: sender_closed,
                     changes,
                     receiver_count,
                     age_ns,
@@ -1019,6 +1050,16 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 kind: EdgeKind::Needs,
                 attrs_json: "{}".to_string(),
             });
+
+            // ClosedBy causal edge: sender dropped causes rx to get RecvError
+            if sender_closed {
+                graph.edges.push(Edge {
+                    src: info.rx_node_id.clone(),
+                    dst: info.tx_node_id.clone(),
+                    kind: EdgeKind::ClosedBy,
+                    attrs_json: "{}".to_string(),
+                });
+            }
         }
     }
 }
