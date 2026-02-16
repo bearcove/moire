@@ -1,4 +1,4 @@
-use std::future::{Future, IntoFuture};
+use std::future::IntoFuture;
 
 /// Wrap a connect future with network readiness instrumentation.
 /// When diagnostics are disabled, this is a zero-cost pass-through.

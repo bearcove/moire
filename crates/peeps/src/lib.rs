@@ -87,7 +87,7 @@ pub use sync::OnceCell;
 // ── timers ─────────────────────────────────────────────
 
 pub use sync::{interval, interval_at};
-pub use sync::{DiagnosticInterval as Interval, DiagnosticSleep as Sleep, DiagnosticTimeout as Timeout};
+pub use sync::DiagnosticInterval as Interval;
 
 // ── command ────────────────────────────────────────────
 

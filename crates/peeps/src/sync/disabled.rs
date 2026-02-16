@@ -424,15 +424,6 @@ impl DiagnosticNotify {
     }
 }
 
-// ── Sleep ────────────────────────────────────────────────
-
-pub type DiagnosticSleep = tokio::time::Sleep;
-
-#[inline]
-pub fn sleep(duration: std::time::Duration) -> tokio::time::Sleep {
-    tokio::time::sleep(duration)
-}
-
 // ── Interval ─────────────────────────────────────────────
 
 pub type DiagnosticInterval = tokio::time::Interval;
@@ -445,18 +436,6 @@ pub fn interval(period: std::time::Duration) -> tokio::time::Interval {
 #[inline]
 pub fn interval_at(start: tokio::time::Instant, period: std::time::Duration) -> tokio::time::Interval {
     tokio::time::interval_at(start, period)
-}
-
-// ── Timeout ──────────────────────────────────────────────
-
-pub type DiagnosticTimeout<F> = tokio::time::Timeout<F>;
-
-#[inline]
-pub fn timeout<F: std::future::Future>(
-    duration: std::time::Duration,
-    future: F,
-) -> tokio::time::Timeout<F> {
-    tokio::time::timeout(duration, future)
 }
 
 // ── Graph emission (no-op) ──────────────────────────────
