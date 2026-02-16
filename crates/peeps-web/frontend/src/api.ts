@@ -14,6 +14,8 @@ import type {
   TimelineProcessOption,
   TimelineRelation,
   TimelineRow,
+  SnapshotProcessesResponse,
+  ProcessDebugResponse,
 } from "./types";
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -71,6 +73,24 @@ export async function querySql(
 ): Promise<SqlResponse> {
   const req: SqlRequest = { snapshot_id: snapshotId, sql, params };
   return post<SqlResponse>("/api/sql", req);
+}
+
+export async function fetchSnapshotProcesses(snapshotId: number): Promise<SnapshotProcessesResponse> {
+  return get<SnapshotProcessesResponse>(`/api/snapshot-processes/${snapshotId}`);
+}
+
+export async function requestProcessDebug(
+  snapshotId: number,
+  procKey: string,
+  action: "sample" | "spindump",
+  run = false,
+): Promise<ProcessDebugResponse> {
+  return post<ProcessDebugResponse>("/api/process-debug", {
+    snapshot_id: snapshotId,
+    proc_key: procKey,
+    action,
+    run,
+  });
 }
 
 const STUCK_REQUEST_SQL = `SELECT

@@ -145,6 +145,11 @@ async fn main() {
         .route("/api/jump-now", post(api::api_jump_now))
         .route("/api/snapshot-progress", get(api::api_snapshot_progress))
         .route("/api/connections", get(api::api_connections))
+        .route(
+            "/api/snapshot-processes/:snapshot_id",
+            get(api::api_snapshot_processes),
+        )
+        .route("/api/process-debug", post(api::api_process_debug))
         .route("/api/sql", post(api::api_sql))
         .with_state(state.clone());
 

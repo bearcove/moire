@@ -6,6 +6,7 @@ import {
   fetchRecentTimelineEvents,
   fetchSnapshotProgress,
   fetchTimelineProcessOptions,
+  fetchSnapshotProcesses,
   jumpNow,
 } from "./api";
 import { Header } from "./components/Header";
@@ -21,6 +22,7 @@ import type {
   SnapshotEdge,
   SnapshotGraph,
   SnapshotNode,
+  SnapshotProcessInfo,
   TimelineEvent,
   TimelineProcessOption,
 } from "./types";
@@ -413,14 +415,12 @@ function enrichGraph(graph: SnapshotGraph, capturedAtNs: number | null): Snapsho
 function applyDeadlockFocus(
   graph: SnapshotGraph,
   enabled: boolean,
-  selectedNodeId: string | null,
 ): SnapshotGraph {
   const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
   const focusSeeds = new Set<string>();
   for (const n of graph.nodes) {
     if (n.attrs._ui_deadlock_candidate === true) focusSeeds.add(n.id);
   }
-  if (selectedNodeId && nodesById.has(selectedNodeId)) focusSeeds.add(selectedNodeId);
 
   if (!enabled || focusSeeds.size === 0) {
     return {
@@ -491,6 +491,7 @@ export function App() {
   const [snapshotProgress, setSnapshotProgress] = useState<SnapshotProgressResponse | null>(null);
   const [connectedProcessCount, setConnectedProcessCount] = useState(0);
   const [connectedProcessNames, setConnectedProcessNames] = useState<string[]>([]);
+  const [snapshotProcesses, setSnapshotProcesses] = useState<SnapshotProcessInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(() => {
     return sessionStorage.getItem("peeps-investigation-mode") === "timeline" ? "timeline" : "graph";
@@ -566,11 +567,19 @@ export function App() {
     setLoading(true);
     setSnapshotProgress(null);
     setError(null);
+    setSnapshotProcesses([]);
     try {
       const snap = await jumpNow();
       setSnapshot(snap);
-      const graphData = await fetchGraph(snap.snapshot_id);
+      const [graphData, processData] = await Promise.all([
+        fetchGraph(snap.snapshot_id),
+        fetchSnapshotProcesses(snap.snapshot_id).catch((error) => {
+          console.error("fetch snapshot process metadata failed", error);
+          return { snapshot_id: snap.snapshot_id, processes: [] };
+        }),
+      ]);
       setGraph(graphData);
+      setSnapshotProcesses(processData.processes);
       setSelectedNode(null);
       setSelectedNodeId(null);
       setSelectedEdge(null);
@@ -860,7 +869,7 @@ export function App() {
     g = filterHiddenNodes(g, (n) => hiddenKinds.has(n.kind));
     g = filterHiddenNodes(g, (n) => hiddenProcesses.has(n.process));
     g = filterByDetailWithNeedsContext(g, detailLevel);
-    g = applyDeadlockFocus(g, deadlockFocus, selectedNodeId);
+    g = applyDeadlockFocus(g, deadlockFocus);
     return g;
   }, [
     enrichedGraph,
@@ -870,7 +879,6 @@ export function App() {
     hiddenProcesses,
     detailLevel,
     deadlockFocus,
-    selectedNodeId,
   ]);
 
   const searchResults = useMemo(() => {
@@ -1138,6 +1146,8 @@ export function App() {
                 <ResourcesPanel
                   graph={enrichedGraph}
                   snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
+                  snapshotId={snapshot?.snapshot_id ?? null}
+                  snapshotProcesses={snapshotProcesses}
                   selectedNodeId={selectedNodeId}
                   onSelectNode={handleSelectGraphNode}
                   collapsed={resourcesCollapsed}

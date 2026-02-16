@@ -487,6 +487,32 @@ function CopyIdButton({ id }: { id: string }) {
   );
 }
 
+function CopyTextButton({ text, title = "Copy value" }: { text: string; title?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="inspect-copy-btn"
+      onClick={onCopy}
+      title={copied ? "Copied" : title}
+      aria-label={title}
+    >
+      {copied ? <Check size={12} weight="bold" /> : <CopySimple size={12} weight="bold" />}
+    </button>
+  );
+}
+
 const TIMELINE_NODE_KINDS = new Set(["request", "response", "tx", "rx", "remote_tx", "remote_rx"]);
 const TIMELINE_PAGE_SIZE = 25;
 
@@ -894,6 +920,7 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   const [expanded, setExpanded] = useState(false);
   const entries = Object.entries(attrs).filter(([k, v]) => v != null && !k.startsWith("_ui_"));
   if (entries.length === 0) return null;
+  const rawJson = useMemo(() => JSON.stringify(Object.fromEntries(entries), null, 2), [entries]);
 
   function asFiniteNumber(v: unknown): number | null {
     if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -981,6 +1008,7 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
     <div className="inspect-raw">
       <div className="inspect-raw-head">
         <div className="inspect-raw-title">All attributes ({entries.length})</div>
+        <CopyTextButton text={rawJson} title="Copy all attributes" />
         <button
           className="inspect-raw-toggle"
           type="button"

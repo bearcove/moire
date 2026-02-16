@@ -41,6 +41,35 @@ export interface SqlResponse {
   truncated: boolean;
 }
 
+export interface SnapshotProcessInfo {
+  process: string;
+  pid: number | null;
+  proc_key: string;
+  status: string;
+  recv_at_ns: number | null;
+  error_text: string | null;
+  command: string | null;
+  cmd_args_preview: string | null;
+}
+
+export interface SnapshotProcessesResponse {
+  snapshot_id: number;
+  processes: SnapshotProcessInfo[];
+}
+
+export interface ProcessDebugResponse {
+  snapshot_id: number;
+  process: string;
+  proc_key: string;
+  pid: number | null;
+  action: string;
+  command: string;
+  status: string;
+  status_message: string | null;
+  command_output: string | null;
+  command_exit_code: number | null;
+}
+
 export interface StuckRequest {
   id: string;
   method: string | null;

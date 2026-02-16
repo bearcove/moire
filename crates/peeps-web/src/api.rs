@@ -1,15 +1,17 @@
 //! HTTP API endpoints: POST /api/jump-now, GET /api/snapshot-progress,
-//! GET /api/connections, POST /api/sql
+//! GET /api/connections, POST /api/process-debug, POST /api/sql
 //!
 //! SQL enforcement: authorizer, progress handler, hard caps.
 
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::Instant;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use rusqlite::types::Value;
+use rusqlite::OptionalExtension;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -71,6 +73,47 @@ pub struct ConnectionsResponse {
 pub struct ConnectedProcessInfo {
     pub proc_key: String,
     pub process_name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SnapshotProcessInfo {
+    pub process: String,
+    pub pid: Option<i64>,
+    pub proc_key: String,
+    pub status: String,
+    pub recv_at_ns: Option<i64>,
+    pub error_text: Option<String>,
+    pub command: Option<String>,
+    pub cmd_args_preview: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SnapshotProcessesResponse {
+    pub snapshot_id: i64,
+    pub processes: Vec<SnapshotProcessInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProcessDebugRequest {
+    pub snapshot_id: i64,
+    pub proc_key: String,
+    pub action: String,
+    #[serde(default)]
+    pub run: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProcessDebugResponse {
+    pub snapshot_id: i64,
+    pub process: String,
+    pub proc_key: String,
+    pub pid: Option<i64>,
+    pub action: String,
+    pub command: String,
+    pub status: String,
+    pub status_message: Option<String>,
+    pub command_output: Option<String>,
+    pub command_exit_code: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,6 +302,255 @@ pub async fn api_connections(
     }))
 }
 
+pub async fn api_snapshot_processes(
+    State(state): State<AppState>,
+    Path(snapshot_id): Path<i64>,
+) -> Result<Json<SnapshotProcessesResponse>, (StatusCode, Json<ApiError>)> {
+    let db_path = state.db_path.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let conn = Connection::open(&*db_path)
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("db open: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "WITH command_nodes AS (
+                 SELECT snapshot_id, proc_key,
+                        MAX(json_extract(attrs_json, '$.cmd.program')) AS command,
+                        MAX(json_extract(attrs_json, '$.cmd.args_preview')) AS cmd_args_preview
+                 FROM nodes
+                 WHERE snapshot_id = ?1 AND kind = 'command'
+                 GROUP BY snapshot_id, proc_key
+                )
+                SELECT sp.process, sp.pid, sp.proc_key, sp.status, sp.recv_at_ns, sp.error_text,
+                       cn.command, cn.cmd_args_preview
+                FROM snapshot_processes AS sp
+                LEFT JOIN command_nodes AS cn
+                  ON cn.snapshot_id = sp.snapshot_id AND cn.proc_key = sp.proc_key
+                WHERE sp.snapshot_id = ?1
+                ORDER BY sp.process, sp.proc_key",
+            )
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("prepare: {e}")))?;
+
+        let rows = stmt
+            .query_map(params![snapshot_id], |row| {
+                Ok(SnapshotProcessInfo {
+                    process: row.get(0)?,
+                    pid: row.get(1)?,
+                    proc_key: row.get(2)?,
+                    status: row.get(3)?,
+                    recv_at_ns: row.get(4)?,
+                    error_text: row.get(5)?,
+                    command: row.get(6)?,
+                    cmd_args_preview: row.get(7)?,
+                })
+            })
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("query: {e}")))?;
+
+        let mut processes = Vec::new();
+        for row in rows {
+            processes.push(row.map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?);
+        }
+
+        Ok(SnapshotProcessesResponse {
+            snapshot_id,
+            processes,
+        })
+    })
+    .await
+    .map_err(|e| {
+        error!(snapshot_id = snapshot_id, %e, "api snapshot_processes response join error");
+        api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}"))
+    })??;
+
+    debug!(
+        snapshot_id = snapshot_id,
+        process_count = result.processes.len(),
+        "api snapshot_processes"
+    );
+    Ok(Json(result))
+}
+
+pub async fn api_process_debug(
+    State(state): State<AppState>,
+    Json(req): Json<ProcessDebugRequest>,
+) -> Result<Json<ProcessDebugResponse>, (StatusCode, Json<ApiError>)> {
+    let action = req.action.trim().to_ascii_lowercase();
+    if action.is_empty() {
+        return Err(api_error(StatusCode::BAD_REQUEST, "missing action"));
+    }
+
+    let proc_key = req.proc_key.trim().to_string();
+    if proc_key.is_empty() {
+        return Err(api_error(StatusCode::BAD_REQUEST, "missing proc_key"));
+    }
+
+    let db_path = state.db_path.clone();
+    let snapshot_id = req.snapshot_id;
+    let run = req.run;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let conn = Connection::open(&*db_path)
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("db open: {e}")))?;
+
+        let row = conn
+            .query_row(
+                "SELECT sp.process, sp.pid, sp.proc_key
+                 FROM snapshot_processes AS sp
+                 WHERE sp.snapshot_id = ?1 AND sp.proc_key = ?2",
+                params![snapshot_id, proc_key],
+                |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?, r.get::<_, String>(2)?))
+                },
+            )
+            .optional()
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("query: {e}")))?;
+
+        let Some((process, pid_opt, proc_key)) = row else {
+            return Err(api_error(StatusCode::NOT_FOUND, "process not found in snapshot"));
+        };
+
+        let Some(pid) = pid_opt else {
+            return Ok(ProcessDebugResponse {
+                snapshot_id,
+                process,
+                proc_key,
+                pid: None,
+                action,
+                command: "pid unavailable for this process".to_string(),
+                status: "missing_pid".to_string(),
+                status_message: Some("No pid available for this snapshot process".to_string()),
+                command_output: None,
+                command_exit_code: None,
+            });
+        };
+
+        let (command, status, status_message, output, exit_code) = match action.as_str() {
+            "sample" => {
+                let command = if cfg!(target_os = "macos") {
+                    format!("sample {pid} 1")
+                } else {
+                    "sample (unsupported on this OS)".to_string()
+                };
+                let status = if cfg!(target_os = "macos") && run {
+                    match run_sample_command(pid) {
+                        Ok((command_output, exit_code)) => {
+                            let s = if exit_code == 0 { "executed" } else { "execution_failed" };
+                            (command, s.to_string(), None, Some(command_output), Some(exit_code))
+                        }
+                        Err(err) => (command, "execution_error".to_string(), Some(err), None, None),
+                    }
+                } else if !cfg!(target_os = "macos") {
+                    (
+                        command,
+                        "unsupported".to_string(),
+                        Some("sample is available on macOS only".to_string()),
+                        None,
+                        None,
+                    )
+                } else {
+                    (
+                        command,
+                        "prepared".to_string(),
+                        Some("sample command prepared, not executed".to_string()),
+                        None,
+                        None,
+                    )
+                };
+                status
+            }
+            "spindump" => {
+                let command = if cfg!(target_os = "macos") {
+                    format!("spindump -pid {pid}")
+                } else {
+                    "spindump (unsupported on this OS)".to_string()
+                };
+                let status = if cfg!(target_os = "macos") && run {
+                    match run_spindump_command(pid) {
+                        Ok((command_output, exit_code)) => {
+                            let s = if exit_code == 0 { "executed" } else { "execution_failed" };
+                            (command, s.to_string(), None, Some(command_output), Some(exit_code))
+                        }
+                        Err(err) => (command, "execution_error".to_string(), Some(err), None, None),
+                    }
+                } else if !cfg!(target_os = "macos") {
+                    (
+                        command,
+                        "unsupported".to_string(),
+                        Some("spindump is available on macOS only".to_string()),
+                        None,
+                        None,
+                    )
+                } else {
+                    (
+                        command,
+                        "prepared".to_string(),
+                        Some("spindump command prepared, not executed".to_string()),
+                        None,
+                        None,
+                    )
+                };
+                status
+            }
+            _ => {
+                return Err(api_error(StatusCode::BAD_REQUEST, format!("unsupported action: {action}")));
+            }
+        };
+
+        Ok(ProcessDebugResponse {
+            snapshot_id,
+            process,
+            proc_key,
+            pid: Some(pid),
+            action,
+            command,
+            status,
+            status_message,
+            command_output: output,
+            command_exit_code: exit_code,
+        })
+    })
+    .await
+    .map_err(|e| {
+        error!(snapshot_id = snapshot_id, %e, "api process debug join error");
+        api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}"))
+    })??;
+
+    Ok(Json(result))
+}
+
+fn run_sample_command(pid: i64) -> Result<(String, i32), String> {
+    run_debug_command(&["sample", &pid.to_string(), "1"])
+}
+
+fn run_spindump_command(pid: i64) -> Result<(String, i32), String> {
+    run_debug_command(&["spindump", "-pid", &pid.to_string()])
+}
+
+fn run_debug_command(args: &[&str]) -> Result<(String, i32), String> {
+    let mut command = Command::new(args[0]);
+    command.args(args.iter().skip(1));
+    let output = command
+        .output()
+        .map_err(|err| format!("failed to execute command: {err}"))?;
+
+    let mut result = String::new();
+    if !output.stdout.is_empty() {
+        result.push_str(&String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+
+    let status_code = output.status.code().unwrap_or(-1);
+    if result.len() > 65_536 {
+        result.truncate(65_536);
+    }
+    Ok((result, status_code))
+}
+
 // ── POST /api/sql ────────────────────────────────────────────────
 
 pub async fn api_sql(
@@ -269,16 +561,16 @@ pub async fn api_sql(
     let sql_preview = preview_sql(&req.sql);
     let param_count = req.params.len();
     debug!(
-        snapshot_id,
+        snapshot_id = snapshot_id,
         %sql_preview,
-        param_count,
+        param_count = param_count,
         "api sql request"
     );
     let db_path = state.db_path.clone();
     let result = tokio::task::spawn_blocking(move || sql_blocking(&db_path, req))
         .await
         .map_err(|e| {
-            error!(snapshot_id, %e, "api sql join error");
+            error!(snapshot_id = snapshot_id, %e, "api sql join error");
             api_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("join error: {e}"),
@@ -287,7 +579,7 @@ pub async fn api_sql(
     match result {
         Ok(resp) => {
             debug!(
-                snapshot_id,
+                snapshot_id = snapshot_id,
                 row_count = resp.row_count,
                 truncated = resp.truncated,
                 column_count = resp.columns.len(),
@@ -297,7 +589,7 @@ pub async fn api_sql(
         }
         Err(err) => {
             warn!(
-                snapshot_id,
+                snapshot_id = snapshot_id,
                 %sql_preview,
                 "api sql request rejected or failed"
             );
