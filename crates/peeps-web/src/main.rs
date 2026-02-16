@@ -8,7 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::Router;
-use peeps_types::{DashboardHandshake, GraphReply, SnapshotRequest};
+use facet::Facet;
+use peeps_types::{DashboardClientError, DashboardHandshake, GraphReply, SnapshotRequest};
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -63,6 +64,40 @@ const FAVICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0
   <path d="M201.54,54.46A104,104,0,0,0,54.46,201.54,104,104,0,0,0,201.54,54.46ZM190.23,65.78a88.18,88.18,0,0,1,11,13.48L167.55,119,139.63,40.78A87.34,87.34,0,0,1,190.23,65.78ZM155.59,133l-18.16,21.37-27.59-5L100.41,123l18.16-21.37,27.59,5ZM65.77,65.78a87.34,87.34,0,0,1,56.66-25.59l17.51,49L58.3,74.32A88,88,0,0,1,65.77,65.78ZM46.65,161.54a88.41,88.41,0,0,1,2.53-72.62l51.21,9.35Zm19.12,28.68a88.18,88.18,0,0,1-11-13.48L88.45,137l27.92,78.18A87.34,87.34,0,0,1,65.77,190.22Zm124.46,0a87.34,87.34,0,0,1-56.66,25.59l-17.51-49,81.64,14.91A88,88,0,0,1,190.23,190.22Zm-34.62-32.49,53.74-63.27a88.41,88.41,0,0,1-2.53,72.62Z"/>
 </svg>
 "##;
+
+static PROTOCOL_TRACE: std::sync::LazyLock<bool> =
+    std::sync::LazyLock::new(|| match std::env::var("PEEPS_PROTOCOL_TRACE") {
+        Ok(v) => {
+            let v = v.trim().to_ascii_lowercase();
+            !(v.is_empty() || v == "0" || v == "false" || v == "off")
+        }
+        Err(_) => false,
+    });
+
+#[derive(Facet)]
+struct DashboardFrameEnvelope {
+    r#type: String,
+}
+
+enum DashboardFrame {
+    Handshake,
+    GraphReply,
+    ClientError,
+    Unknown(String),
+}
+
+impl DashboardFrame {
+    fn decode(frame: &[u8]) -> Result<Self, String> {
+        let env = facet_json::from_slice::<DashboardFrameEnvelope>(frame)
+            .map_err(|e| format!("facet decode frame kind failed: {e}"))?;
+        Ok(match env.r#type.as_str() {
+            "handshake" => Self::Handshake,
+            "graph_reply" => Self::GraphReply,
+            "client_error" => Self::ClientError,
+            other => Self::Unknown(other.to_string()),
+        })
+    }
+}
 
 // ── Main ─────────────────────────────────────────────────────────
 
@@ -321,6 +356,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
     let writer_handle = tokio::spawn(async move {
         while let Some(payload) = msg_rx.recv().await {
             let len = (payload.len() as u32).to_be_bytes();
+            trace_protocol_frame(conn_id, "send", &payload);
             if writer.write_all(&len).await.is_err() {
                 break;
             }
@@ -369,6 +405,7 @@ async fn read_replies(
             .read_exact(&mut frame)
             .await
             .map_err(|e| format!("read frame payload: {e}"))?;
+        trace_protocol_frame(conn_id, "recv", &frame);
         {
             let mut ctl = state.snapshot_ctl.inner.lock().await;
             if let Some(conn) = ctl.connections.get_mut(&conn_id) {
@@ -377,16 +414,10 @@ async fn read_replies(
         }
 
         debug!(conn_id, frame_len = len, "received full frame");
-        let msg_type = match serde_json::from_slice::<serde_json::Value>(&frame)
-            .ok()
-            .and_then(|v| {
-                v.get("type")
-                    .and_then(|t| t.as_str())
-                    .map(|s| s.to_string())
-            }) {
-            Some(t) => t,
-            None => {
-                warn!(conn_id, "failed to read message type");
+        let msg = match DashboardFrame::decode(&frame) {
+            Ok(kind) => kind,
+            Err(e) => {
+                warn!(conn_id, %e, "failed to decode frame kind");
                 record_ingest_event(
                     &state.db_path,
                     None,
@@ -394,14 +425,14 @@ async fn read_replies(
                     None,
                     None,
                     "decode_error",
-                    "JSON decode failed or missing type field",
+                    &format!("frame kind decode failed: {e}"),
                 );
                 continue;
             }
         };
 
-        match msg_type.as_str() {
-            "handshake" => {
+        match msg {
+            DashboardFrame::Handshake => {
                 let hello: DashboardHandshake = match facet_json::from_slice(&frame) {
                     Ok(h) => h,
                     Err(e) => {
@@ -430,7 +461,7 @@ async fn read_replies(
                 }
                 apply_connection_identity(state, conn_id, proc_key, hello.process).await;
             }
-            "graph_reply" => {
+            DashboardFrame::GraphReply => {
                 let reply: GraphReply = match facet_json::from_slice(&frame) {
                     Ok(r) => r,
                     Err(e) => {
@@ -453,7 +484,56 @@ async fn read_replies(
                     .await;
                 process_reply(state, &reply, &proc_key).await;
             }
-            _ => {
+            DashboardFrame::ClientError => {
+                let msg: DashboardClientError = match facet_json::from_slice(&frame) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        warn!(conn_id, %e, "failed to deserialize client_error frame");
+                        record_ingest_event(
+                            &state.db_path,
+                            None,
+                            None,
+                            None,
+                            None,
+                            "decode_error",
+                            &format!("client_error decode failed: {e}"),
+                        );
+                        continue;
+                    }
+                };
+
+                apply_connection_identity(
+                    state,
+                    conn_id,
+                    peeps_types::make_proc_key(&msg.process, msg.pid),
+                    msg.process.clone(),
+                )
+                .await;
+
+                let mut detail = format!("stage={} error={}", msg.stage, msg.error);
+                if let Some(last_frame) = msg.last_frame_utf8 {
+                    detail.push_str(" last_frame=");
+                    detail.push_str(&last_frame);
+                }
+                record_ingest_event(
+                    &state.db_path,
+                    None,
+                    Some(&msg.process),
+                    Some(msg.pid),
+                    Some(&msg.proc_key),
+                    "client_error",
+                    &detail,
+                );
+                warn!(
+                    conn_id,
+                    process = %msg.process,
+                    proc_key = %msg.proc_key,
+                    stage = %msg.stage,
+                    error = %msg.error,
+                    "received terminal client_error frame"
+                );
+            }
+            DashboardFrame::Unknown(msg_type) => {
                 warn!(conn_id, %msg_type, "unexpected message type");
                 record_ingest_event(
                     &state.db_path,
@@ -496,6 +576,24 @@ async fn apply_connection_identity(
             }
         }
     }
+}
+
+fn trace_protocol_frame(conn_id: u64, direction: &str, frame: &[u8]) {
+    if !*PROTOCOL_TRACE {
+        return;
+    }
+    let mut preview = String::from_utf8_lossy(frame).into_owned();
+    if preview.len() > 512 {
+        preview.truncate(512);
+        preview.push_str("…");
+    }
+    info!(
+        conn_id,
+        direction,
+        frame_len = frame.len(),
+        frame_preview = %preview,
+        "dashboard protocol frame"
+    );
 }
 
 async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {

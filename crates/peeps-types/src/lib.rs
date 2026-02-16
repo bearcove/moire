@@ -683,3 +683,16 @@ pub struct GraphReply {
     pub pid: u32,
     pub graph: Option<GraphSnapshot>,
 }
+
+/// Client-to-server: terminal protocol/decoder error emitted before disconnect.
+#[derive(Debug, Clone, Facet)]
+pub struct DashboardClientError {
+    pub r#type: String,
+    pub process: String,
+    pub pid: u32,
+    pub proc_key: String,
+    pub stage: String,
+    pub error: String,
+    #[facet(skip_unless_truthy)]
+    pub last_frame_utf8: Option<String>,
+}

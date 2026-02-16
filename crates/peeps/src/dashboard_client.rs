@@ -4,10 +4,21 @@
 //! and waits for snapshot requests. On receiving a request, collects a local
 //! dump and sends it back as a snapshot reply.
 
-use peeps_types::{DashboardHandshake, GraphReply, SnapshotRequest};
+use std::sync::LazyLock;
+
+use peeps_types::{DashboardClientError, DashboardHandshake, GraphReply, SnapshotRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, info, warn};
+
+static PROTOCOL_TRACE: LazyLock<bool> =
+    LazyLock::new(|| match std::env::var("PEEPS_PROTOCOL_TRACE") {
+        Ok(v) => {
+            let v = v.trim().to_ascii_lowercase();
+            !(v.is_empty() || v == "0" || v == "false" || v == "off")
+        }
+        Err(_) => false,
+    });
 
 /// Start the background pull loop. Spawns a tracked task that reconnects on failure.
 pub fn start_pull_loop(process_name: String, addr: String) {
@@ -39,7 +50,7 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
         r#type: "handshake".to_string(),
         process: process_name.to_string(),
         pid,
-        proc_key,
+        proc_key: proc_key.clone(),
     };
     let handshake_bytes = facet_json::to_vec(&handshake).map_err(|e| {
         std::io::Error::new(
@@ -47,6 +58,7 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
             format!("serialize handshake: {e}"),
         )
     })?;
+    trace_protocol_frame("send", process_name, &handshake_bytes);
     send_frame_bytes(&mut writer, &handshake_bytes).await?;
     info!(process = %process_name, pid, "sent dashboard handshake");
 
@@ -67,18 +79,45 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
 
         let mut frame = vec![0u8; len];
         reader.read_exact(&mut frame).await?;
+        trace_protocol_frame("recv", process_name, &frame);
 
         let req: SnapshotRequest = match facet_json::from_slice(&frame) {
             Ok(r) => r,
             Err(e) => {
                 warn!(%e, "failed to deserialize snapshot request");
-                continue;
+                send_client_error(
+                    &mut writer,
+                    process_name,
+                    pid,
+                    &proc_key,
+                    "decode_snapshot_request",
+                    &e.to_string(),
+                    Some(&frame),
+                )
+                .await;
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("snapshot request decode failed: {e}"),
+                ));
             }
         };
 
         if req.r#type != "snapshot_request" {
             warn!(msg_type = %req.r#type, "ignoring unknown message type");
-            continue;
+            send_client_error(
+                &mut writer,
+                process_name,
+                pid,
+                &proc_key,
+                "unexpected_message_type",
+                &format!("expected snapshot_request, got {}", req.r#type),
+                Some(&frame),
+            )
+            .await;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("unexpected message type: {}", req.r#type),
+            ));
         }
 
         debug!(snapshot_id = req.snapshot_id, "collecting graph");
@@ -95,6 +134,7 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
         let reply_bytes = facet_json::to_vec(&reply).map_err(|e| {
             std::io::Error::new(std::io::ErrorKind::Other, format!("serialize reply: {e}"))
         })?;
+        trace_protocol_frame("send", process_name, &reply_bytes);
         let reply_bytes_len = send_frame_bytes(&mut writer, &reply_bytes).await?;
 
         info!(
@@ -103,6 +143,69 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
             "sent snapshot reply"
         );
     }
+}
+
+async fn send_client_error(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    process_name: &str,
+    pid: u32,
+    proc_key: &str,
+    stage: &str,
+    error: &str,
+    last_frame: Option<&[u8]>,
+) {
+    let last_frame_utf8 = last_frame.map(|frame| {
+        let mut s = String::from_utf8_lossy(frame).into_owned();
+        if s.len() > 1024 {
+            s.truncate(1024);
+            s.push_str("…");
+        }
+        s
+    });
+
+    let msg = DashboardClientError {
+        r#type: "client_error".to_string(),
+        process: process_name.to_string(),
+        pid,
+        proc_key: proc_key.to_string(),
+        stage: stage.to_string(),
+        error: error.to_string(),
+        last_frame_utf8,
+    };
+
+    match facet_json::to_vec(&msg) {
+        Ok(bytes) => {
+            trace_protocol_frame("send", process_name, &bytes);
+            if let Err(e) = send_frame_bytes(writer, &bytes).await {
+                warn!(process = %process_name, %e, "failed to send client_error frame");
+            }
+        }
+        Err(e) => {
+            warn!(
+                process = %process_name,
+                %e,
+                "failed to serialize client_error frame"
+            );
+        }
+    }
+}
+
+fn trace_protocol_frame(direction: &str, process_name: &str, bytes: &[u8]) {
+    if !*PROTOCOL_TRACE {
+        return;
+    }
+    let mut preview = String::from_utf8_lossy(bytes).into_owned();
+    if preview.len() > 512 {
+        preview.truncate(512);
+        preview.push_str("…");
+    }
+    info!(
+        process = %process_name,
+        direction,
+        frame_len = bytes.len(),
+        frame_preview = %preview,
+        "dashboard protocol frame"
+    );
 }
 
 async fn send_frame_bytes(

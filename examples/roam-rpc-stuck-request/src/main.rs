@@ -16,21 +16,9 @@ struct DemoService;
 
 impl DemoRpc for DemoService {
     async fn sleepy_forever(&self, _cx: &roam::Context) -> String {
-        peeps::peep!(
-            async {
-                loop {
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                }
-            },
-            "rpc.handler.sleep_forever",
-            {
-                "rpc.connection" => "in_memory",
-                "request.method" => "sleepy_forever"
-            }
-        )
-        .await;
-
-        unreachable!();
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
     }
 }
 
@@ -109,16 +97,10 @@ async fn main() {
     let client = DemoRpcClient::new(client_handle);
 
     peeps::spawn_tracked("roam.client.request_task", async move {
-        peeps::peep!(
-            client.sleepy_forever(),
-            "rpc.client.await_response",
-            {
-                "rpc.connection" => "in_memory",
-                "request.method" => "sleepy_forever"
-            }
-        )
-        .await
-        .expect("request unexpectedly completed");
+        client
+            .sleepy_forever()
+            .await
+            .expect("request unexpectedly completed");
     });
 
     println!("example running: one roam RPC request is intentionally stuck forever");

@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_URL="${1:-http://127.0.0.1:9120}"
+
+if [[ "${BASE_URL}" == "--help" || "${BASE_URL}" == "-h" ]]; then
+  cat <<'USAGE'
+Usage:
+  scripts/check-canonical-contract [base_url]
+
+Examples:
+  scripts/check-canonical-contract
+  scripts/check-canonical-contract http://127.0.0.1:19320
+USAGE
+  exit 0
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "missing required command: curl" >&2
+  exit 2
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "missing required command: node" >&2
+  exit 2
+fi
+
+health="$(curl -fsS "${BASE_URL}/health")"
+if [[ "${health}" != "ok" ]]; then
+  echo "unexpected health response: ${health}" >&2
+  exit 2
+fi
+
+connections_json="$(curl -fsS "${BASE_URL}/api/connections")"
+jump_json="$(curl -fsS -X POST "${BASE_URL}/api/jump-now" -H 'content-type: application/json' -d '{}')"
+
+snapshot_id="$(echo "${jump_json}" | node -e 'const s=JSON.parse(require("fs").readFileSync(0,"utf8")); process.stdout.write(String(s.snapshot_id));')"
+
+nodes_json="$(curl -fsS -X POST "${BASE_URL}/api/sql" \
+  -H 'content-type: application/json' \
+  -d "{\"snapshot_id\":${snapshot_id},\"sql\":\"SELECT id, kind, process, proc_key, attrs_json FROM nodes ORDER BY id\"}")"
+
+ingest_json="$(curl -fsS -X POST "${BASE_URL}/api/sql" \
+  -H 'content-type: application/json' \
+  -d "{\"snapshot_id\":${snapshot_id},\"sql\":\"SELECT event_kind, process, proc_key, detail FROM ingest_events WHERE snapshot_id = ${snapshot_id} ORDER BY event_at_ns DESC LIMIT 500\"}")"
+
+tmp_report="$(mktemp -t peeps-canonical-contract-XXXXXX.json)"
+export CHECK_CANONICAL_CONNECTIONS_JSON="${connections_json}"
+export CHECK_CANONICAL_JUMP_JSON="${jump_json}"
+export CHECK_CANONICAL_NODES_JSON="${nodes_json}"
+export CHECK_CANONICAL_INGEST_JSON="${ingest_json}"
+export CHECK_CANONICAL_REPORT_PATH="${tmp_report}"
+
+node <<'NODE'
+const fs = require("fs");
+
+const forbiddenAliasKeys = [
+  "request.method",
+  "response.method",
+  "request.status",
+  "response.status",
+  "response.state",
+  "request.id",
+  "request_id",
+  "request.correlation_key",
+  "response.correlation_key",
+  "request.started_at_ns",
+  "request.delivered_at_ns",
+  "response.started_at_ns",
+  "response.created_at_ns",
+  "started_at_ns",
+  "ctx.location",
+  "correlation_key",
+  "correlation_id",
+  "trace_id",
+  "created_at_ns",
+];
+
+const connections = JSON.parse(process.env.CHECK_CANONICAL_CONNECTIONS_JSON);
+const jump = JSON.parse(process.env.CHECK_CANONICAL_JUMP_JSON);
+const nodesResp = JSON.parse(process.env.CHECK_CANONICAL_NODES_JSON);
+const ingestResp = JSON.parse(process.env.CHECK_CANONICAL_INGEST_JSON);
+
+const violations = [];
+
+for (const row of nodesResp.rows || []) {
+  const [id, kind, process, procKey, attrsJson] = row;
+  if (String(kind) === "ghost") continue;
+
+  let attrs = {};
+  try {
+    attrs = JSON.parse(String(attrsJson || "{}"));
+  } catch (e) {
+    violations.push({
+      type: "invalid_attrs_json",
+      node_id: String(id),
+      kind: String(kind),
+      process: String(process),
+      proc_key: String(procKey),
+      detail: String(e),
+    });
+    continue;
+  }
+
+  if (typeof attrs.created_at !== "number" || !Number.isFinite(attrs.created_at) || attrs.created_at <= 0) {
+    violations.push({
+      type: "missing_or_invalid_created_at",
+      node_id: String(id),
+      kind: String(kind),
+      process: String(process),
+      proc_key: String(procKey),
+      value: attrs.created_at ?? null,
+    });
+  }
+
+  if (typeof attrs.source !== "string" || attrs.source.trim() === "") {
+    violations.push({
+      type: "missing_or_invalid_source",
+      node_id: String(id),
+      kind: String(kind),
+      process: String(process),
+      proc_key: String(procKey),
+      value: attrs.source ?? null,
+    });
+  }
+
+  for (const key of forbiddenAliasKeys) {
+    if (Object.prototype.hasOwnProperty.call(attrs, key)) {
+      violations.push({
+        type: "forbidden_alias_key_present",
+        node_id: String(id),
+        kind: String(kind),
+        process: String(process),
+        proc_key: String(procKey),
+        key,
+      });
+    }
+  }
+}
+
+for (const row of ingestResp.rows || []) {
+  const [eventKind, process, procKey, detail] = row.map((v) => (v == null ? "" : String(v)));
+  if (
+    detail.includes("attrs contract: forbidden alias key") ||
+    detail.includes("missing required `created_at`") ||
+    detail.includes("missing required `source`")
+  ) {
+    violations.push({
+      type: "ingest_contract_violation",
+      event_kind: eventKind,
+      process,
+      proc_key: procKey,
+      detail,
+    });
+  }
+}
+
+const report = {
+  ok: violations.length === 0,
+  snapshot: {
+    snapshot_id: jump.snapshot_id,
+    requested: jump.requested,
+    responded: jump.responded,
+    timed_out: jump.timed_out,
+    connected_processes: connections.connected_processes,
+    processes: connections.processes,
+    node_rows: nodesResp.row_count ?? (nodesResp.rows || []).length,
+  },
+  violations,
+};
+
+fs.writeFileSync(process.env.CHECK_CANONICAL_REPORT_PATH, JSON.stringify(report, null, 2));
+process.stdout.write(JSON.stringify(report, null, 2));
+process.stdout.write("\n");
+process.stderr.write(`report_path=${process.env.CHECK_CANONICAL_REPORT_PATH}\n`);
+
+if (!report.ok) {
+  process.exit(1);
+}
+NODE

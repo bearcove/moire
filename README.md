@@ -41,6 +41,10 @@ By default:
 - TCP ingest: `127.0.0.1:9119` (`PEEPS_LISTEN`)
 - HTTP UI: `127.0.0.1:9120` (`PEEPS_HTTP`)
 
+Protocol debugging:
+- `PEEPS_PROTOCOL_TRACE=1` on `peeps-web` and/or instrumented processes logs every dashboard frame send/receive (size + JSON preview).
+- On dashboard-protocol decode failures, clients now emit a terminal `client_error` frame with stage/error/last-frame preview before disconnecting.
+
 Enable dashboard push in your app:
 
 ```toml
