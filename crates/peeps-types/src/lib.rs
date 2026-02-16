@@ -92,6 +92,19 @@ pub struct Node {
     pub attrs_json: String,
 }
 
+/// Canonical shared node attrs used by frontend inspector/timeline paths.
+///
+/// Canonical-only contract: no legacy alias fields are supported.
+#[derive(Debug, Clone, Facet)]
+pub struct CanonicalNodeAttrs {
+    pub created_at: i64,
+    pub source: String,
+    #[facet(skip_unless_truthy)]
+    pub method: Option<String>,
+    #[facet(skip_unless_truthy)]
+    pub correlation: Option<String>,
+}
+
 /// Node kind enumeration for canonical graph nodes.
 ///
 /// Corresponds to the `kind` field in [`GraphNodeSnapshot`].
@@ -537,8 +550,8 @@ pub fn json_escape_into(out: &mut String, s: &str) {
 /// ```ignore
 /// use peeps_types::{peep_meta, MetaValue};
 /// let meta = peep_meta! {
-///     "request.id" => MetaValue::U64(42),
-///     "request.method" => MetaValue::Static("GetUser"),
+///     "correlation" => MetaValue::U64(42),
+///     "method" => MetaValue::Static("GetUser"),
 /// };
 /// ```
 #[macro_export]
@@ -614,10 +627,11 @@ pub mod canonical_id {
 
 // ── Canonical metadata keys ─────────────────────────────────────
 
-/// Well-known metadata keys for `attrs_json.meta`.
+/// Canonical metadata keys for node attrs (canonical-only; no aliases).
 pub mod meta_key {
-    pub const REQUEST_ID: &str = "request.id";
-    pub const REQUEST_METHOD: &str = "request.method";
+    pub const CORRELATION: &str = "correlation";
+    pub const METHOD: &str = "method";
+    pub const SOURCE: &str = "source";
     pub const RPC_CONNECTION: &str = "rpc.connection";
     pub const RPC_PEER: &str = "rpc.peer";
     pub const TASK_ID: &str = "task.id";
@@ -625,8 +639,6 @@ pub mod meta_key {
     pub const CHANNEL_ID: &str = "channel.id";
     pub const RESOURCE_PATH: &str = "resource.path";
     pub const PEEPS_LEVEL: &str = "peeps.level";
-    /// Canonical source location, formatted as `path:line` or `path:line:column`.
-    pub const CTX_LOCATION: &str = "ctx.location";
     pub const CTX_MODULE_PATH: &str = "ctx.module_path";
     pub const CTX_FILE: &str = "ctx.file";
     pub const CTX_LINE: &str = "ctx.line";

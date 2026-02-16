@@ -882,18 +882,11 @@ pub fn watch_channel<T: Send + Sync + 'static>(
 // ── Attrs structs ───────────────────────────────────────
 
 #[derive(Facet)]
-struct ChannelMeta {
-    #[facet(rename = "ctx.location")]
-    ctx_location: String,
-    #[facet(rename = "peeps.level")]
-    peeps_level: &'static str,
-}
-
-#[derive(Facet)]
 struct MpscTxAttrs {
     name: String,
+    source: String,
     channel_kind: String,
-    created_at_ns: u64,
+    age_ns: u64,
     closed: bool,
     bounded: bool,
     #[facet(skip_unless_truthy)]
@@ -907,60 +900,66 @@ struct MpscTxAttrs {
     utilization: Option<f64>,
     #[facet(skip_unless_truthy)]
     close_cause: Option<String>,
-    meta: ChannelMeta,
+    #[facet(rename = "peeps.level")]
+    peeps_level: &'static str,
 }
 
 #[derive(Facet)]
 struct MpscRxAttrs {
     name: String,
+    source: String,
     channel_kind: String,
-    created_at_ns: u64,
+    age_ns: u64,
     closed: bool,
     recv_waiters: u64,
     recv_total: u64,
     queue_len: u64,
     #[facet(skip_unless_truthy)]
     close_cause: Option<String>,
-    meta: ChannelMeta,
+    #[facet(rename = "peeps.level")]
+    peeps_level: &'static str,
 }
 
 #[derive(Facet)]
 struct OneshotNodeAttrs {
     name: String,
+    source: String,
     channel_kind: String,
-    created_at_ns: u64,
+    age_ns: u64,
     closed: bool,
     state: String,
-    age_ns: u64,
     #[facet(skip_unless_truthy)]
     close_cause: Option<String>,
-    meta: ChannelMeta,
+    #[facet(rename = "peeps.level")]
+    peeps_level: &'static str,
 }
 
 #[derive(Facet)]
 struct WatchTxAttrs {
     name: String,
+    source: String,
     channel_kind: String,
-    created_at_ns: u64,
+    age_ns: u64,
     closed: bool,
     changes: u64,
     receiver_count: u64,
-    age_ns: u64,
     #[facet(skip_unless_truthy)]
     close_cause: Option<String>,
-    meta: ChannelMeta,
+    #[facet(rename = "peeps.level")]
+    peeps_level: &'static str,
 }
 
 #[derive(Facet)]
 struct WatchRxAttrs {
     name: String,
+    source: String,
     channel_kind: String,
-    created_at_ns: u64,
+    age_ns: u64,
     closed: bool,
     changes: u64,
     receiver_count: u64,
-    age_ns: u64,
-    meta: ChannelMeta,
+    #[facet(rename = "peeps.level")]
+    peeps_level: &'static str,
 }
 
 // ── Graph emission ──────────────────────────────────────
@@ -1002,8 +1001,9 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             {
                 let attrs = MpscTxAttrs {
                     name: name.clone(),
+                    source: info.location.clone(),
                     channel_kind: "mpsc".to_owned(),
-                    created_at_ns,
+                    age_ns: created_at_ns,
                     closed: sender_closed,
                     bounded: info.bounded,
                     capacity: info.capacity,
@@ -1018,10 +1018,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     } else {
                         None
                     },
-                    meta: ChannelMeta {
-                        ctx_location: info.location.clone(),
-                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
-                    },
+                    peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                 };
 
                 graph.nodes.push(crate::registry::make_node(
@@ -1043,17 +1040,15 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
 
                 let attrs = MpscRxAttrs {
                     name: name.clone(),
+                    source: info.location.clone(),
                     channel_kind: "mpsc".to_owned(),
-                    created_at_ns,
+                    age_ns: created_at_ns,
                     closed: receiver_closed,
                     recv_waiters,
                     recv_total: received,
                     queue_len,
                     close_cause,
-                    meta: ChannelMeta {
-                        ctx_location: info.location.clone(),
-                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
-                    },
+                    peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                 };
 
                 graph.nodes.push(crate::registry::make_node(
@@ -1122,16 +1117,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
 
                 let attrs = OneshotNodeAttrs {
                     name: name.clone(),
+                    source: info.location.clone(),
                     channel_kind: "oneshot".to_owned(),
-                    created_at_ns: age_ns,
+                    age_ns,
                     closed: sender_closed,
                     state: state_str.to_owned(),
-                    age_ns,
                     close_cause,
-                    meta: ChannelMeta {
-                        ctx_location: info.location.clone(),
-                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
-                    },
+                    peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                 };
 
                 graph.nodes.push(crate::registry::make_node(
@@ -1153,16 +1145,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
 
                 let attrs = OneshotNodeAttrs {
                     name: name.clone(),
+                    source: info.location.clone(),
                     channel_kind: "oneshot".to_owned(),
-                    created_at_ns: age_ns,
+                    age_ns,
                     closed: receiver_closed,
                     state: state_str.to_owned(),
-                    age_ns,
                     close_cause,
-                    meta: ChannelMeta {
-                        ctx_location: info.location.clone(),
-                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
-                    },
+                    peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                 };
 
                 graph.nodes.push(crate::registry::make_node(
@@ -1219,21 +1208,18 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             {
                 let attrs = WatchTxAttrs {
                     name: name.clone(),
+                    source: info.location.clone(),
                     channel_kind: "watch".to_owned(),
-                    created_at_ns: age_ns,
+                    age_ns,
                     closed: sender_closed,
                     changes,
                     receiver_count,
-                    age_ns,
                     close_cause: if sender_closed {
                         Some("sender_dropped".to_owned())
                     } else {
                         None
                     },
-                    meta: ChannelMeta {
-                        ctx_location: info.location.clone(),
-                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
-                    },
+                    peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                 };
 
                 graph.nodes.push(crate::registry::make_node(
@@ -1249,16 +1235,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             {
                 let attrs = WatchRxAttrs {
                     name: name.clone(),
+                    source: info.location.clone(),
                     channel_kind: "watch".to_owned(),
-                    created_at_ns: age_ns,
+                    age_ns,
                     closed: sender_closed,
                     changes,
                     receiver_count,
-                    age_ns,
-                    meta: ChannelMeta {
-                        ctx_location: info.location.clone(),
-                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
-                    },
+                    peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                 };
 
                 graph.nodes.push(crate::registry::make_node(

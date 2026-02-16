@@ -36,8 +36,6 @@ pub(crate) struct SnapshotControllerInner {
 pub(crate) struct ConnectedProcess {
     pub(crate) proc_key: String,
     pub(crate) process_name: String,
-    pub(crate) connection_token: String,
-    pub(crate) opened_at_ns: i64,
     pub(crate) closed_at_ns: Option<i64>,
     pub(crate) last_frame_recv_at_ns: Option<i64>,
     pub(crate) last_frame_sent_at_ns: Option<i64>,
@@ -306,14 +304,11 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         let mut ctl = state.snapshot_ctl.inner.lock().await;
         let id = ctl.next_conn_id;
         ctl.next_conn_id += 1;
-        let now_ns = now_nanos();
         ctl.connections.insert(
             id,
             ConnectedProcess {
                 proc_key: format!("unknown-{id}"),
                 process_name: String::new(),
-                connection_token: peeps_types::canonical_id::connection(id),
-                opened_at_ns: now_ns,
                 closed_at_ns: None,
                 last_frame_recv_at_ns: None,
                 last_frame_sent_at_ns: None,
@@ -384,8 +379,11 @@ async fn read_replies(
         debug!(conn_id, frame_len = len, "received full frame");
         let msg_type = match serde_json::from_slice::<serde_json::Value>(&frame)
             .ok()
-            .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(|s| s.to_string()))
-        {
+            .and_then(|v| {
+                v.get("type")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+            }) {
             Some(t) => t,
             None => {
                 warn!(conn_id, "failed to read message type");
@@ -622,7 +620,13 @@ fn persist_reply(
     if let Some(graph) = graph {
         for node in &graph.nodes {
             let canonical_attrs_json = canonicalize_inspector_attrs(node.attrs_json.as_str())
-                .map_err(|e| format!("node {} ({}) attrs contract: {e}", node.id, node.kind.as_str()))?;
+                .map_err(|e| {
+                    format!(
+                        "node {} ({}) attrs contract: {e}",
+                        node.id,
+                        node.kind.as_str()
+                    )
+                })?;
             tx.execute(
                 "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -681,9 +685,16 @@ fn persist_reply(
     tx.commit().map_err(|e| e.to_string())
 }
 
-const FORBIDDEN_INSPECTOR_ALIAS_KEYS: [&str; 10] = [
+const FORBIDDEN_INSPECTOR_ALIAS_KEYS: [&str; 19] = [
     "request.method",
     "response.method",
+    "request.status",
+    "response.status",
+    "response.state",
+    "request.id",
+    "request_id",
+    "request.correlation_key",
+    "response.correlation_key",
     "request.started_at_ns",
     "request.delivered_at_ns",
     "response.started_at_ns",
@@ -691,6 +702,8 @@ const FORBIDDEN_INSPECTOR_ALIAS_KEYS: [&str; 10] = [
     "started_at_ns",
     "ctx.location",
     "correlation_key",
+    "correlation_id",
+    "trace_id",
     "created_at_ns",
 ];
 
@@ -1013,13 +1026,16 @@ mod tests {
             "test-proc-1",
             now_nanos(),
             Some(&graph),
-            None,
         )
         .expect("persist reply");
 
         let conn = open_db(&db_path);
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM nodes WHERE snapshot_id = 1", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM nodes WHERE snapshot_id = 1",
+                [],
+                |row| row.get(0),
+            )
             .expect("count rows");
         assert_eq!(count as usize, all_node_kinds().len());
 
@@ -1032,9 +1048,27 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .expect("collect");
         for attrs_json in rows {
-            let value: serde_json::Value = serde_json::from_str(&attrs_json).expect("valid attrs json");
-            assert!(value.get("created_at").and_then(|v| v.as_i64()).unwrap_or_default() > 0);
-            assert!(!value.get("source").and_then(|v| v.as_str()).unwrap_or("").is_empty());
+            let value: serde_json::Value =
+                serde_json::from_str(&attrs_json).expect("valid attrs json");
+            assert!(
+                value
+                    .get("created_at")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or_default()
+                    > 0
+            );
+            assert!(!value
+                .get("source")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty());
+            let obj = value.as_object().expect("attrs object");
+            for forbidden in FORBIDDEN_INSPECTOR_ALIAS_KEYS {
+                assert!(
+                    !obj.contains_key(forbidden),
+                    "forbidden alias key should never be serialized: {forbidden}"
+                );
+            }
         }
     }
 
@@ -1064,7 +1098,6 @@ mod tests {
             "test-proc-1",
             now_nanos(),
             Some(&graph),
-            None,
         )
         .expect_err("alias keys must fail");
         assert!(err.contains("forbidden alias key `request.method`"));

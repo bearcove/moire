@@ -115,7 +115,7 @@ pub(crate) fn caller_location(caller: &std::panic::Location<'_>) -> String {
 /// Build a `MetaBuilder` on the stack from key-value pairs.
 ///
 /// ```ignore
-/// peep_meta!("request.id" => MetaValue::U64(42), "request.method" => MetaValue::Static("get"))
+/// peep_meta!("correlation" => MetaValue::U64(42), "method" => MetaValue::Static("get"))
 /// ```
 #[macro_export]
 macro_rules! peep_meta {

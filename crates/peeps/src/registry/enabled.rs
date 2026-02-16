@@ -115,20 +115,33 @@ pub fn make_node(
 }
 
 fn attrs_with_created_at(attrs_json: String, created_at: i64) -> String {
+    #[derive(Facet)]
+    struct SourceAttr {
+        source: Option<String>,
+    }
+
+    let has_source = facet_json::from_slice::<SourceAttr>(attrs_json.as_bytes())
+        .ok()
+        .and_then(|attrs| attrs.source)
+        .map(|source| !source.trim().is_empty())
+        .unwrap_or(false);
+
     let trimmed = attrs_json.trim();
     if trimmed.is_empty() || trimmed == "{}" {
-        return format!(r#"{{"created_at":{created_at}}}"#);
+        return format!(r#"{{"created_at":{created_at},"source":"peeps/unknown"}}"#);
     }
 
     if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
-        return format!(r#"{{"created_at":{created_at}}}"#);
+        return format!(r#"{{"created_at":{created_at},"source":"peeps/unknown"}}"#);
     }
 
     let inner = &trimmed[1..trimmed.len() - 1];
     if inner.trim().is_empty() {
-        format!(r#"{{"created_at":{created_at}}}"#)
-    } else {
+        format!(r#"{{"created_at":{created_at},"source":"peeps/unknown"}}"#)
+    } else if has_source {
         format!(r#"{{"created_at":{created_at},{inner}}}"#)
+    } else {
+        format!(r#"{{"created_at":{created_at},"source":"peeps/unknown",{inner}}}"#)
     }
 }
 
@@ -531,6 +544,17 @@ mod tests {
     use super::*;
     use peeps_types::NodeKind;
 
+    fn extract_source(attrs_json: &str) -> Option<String> {
+        #[derive(Facet)]
+        struct SourceAttrs {
+            source: String,
+        }
+
+        facet_json::from_slice::<SourceAttrs>(attrs_json.as_bytes())
+            .ok()
+            .map(|attrs| attrs.source)
+    }
+
     fn reset_registry_state_for_test() {
         EXTERNAL_NODES.lock().unwrap().clear();
         EDGES.lock().unwrap().clear();
@@ -620,6 +644,14 @@ mod tests {
             assert!(
                 extract_created_at(&node.attrs_json).unwrap_or_default() > 0,
                 "node kind {} missing created_at",
+                kind.as_str()
+            );
+            assert!(
+                !extract_source(&node.attrs_json)
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty(),
+                "node kind {} missing source",
                 kind.as_str()
             );
         }

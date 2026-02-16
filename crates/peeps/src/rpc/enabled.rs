@@ -1,27 +1,18 @@
 use facet::Facet;
-use facet_json::RawJson;
 use peeps_types::{MetaBuilder, Node, NodeKind};
 
 use super::RpcEvent;
 
 #[derive(Facet)]
-struct RpcAttrs<'a> {
-    #[facet(rename = "rpc.name")]
-    rpc_name: &'a str,
-    meta: RawJson<'a>,
-}
-
-#[derive(Facet)]
-struct RpcMetaAttrs {
-    #[facet(rename = "rpc.connection")]
-    rpc_connection: Option<String>,
+struct RpcAttrs {
+    source: String,
+    method: String,
 }
 
 #[derive(Facet)]
 struct RpcEventAttrs {
     #[facet(rename = "rpc.connection")]
     rpc_connection: Option<String>,
-    meta: Option<RpcMetaAttrs>,
 }
 
 #[derive(Facet)]
@@ -49,14 +40,16 @@ pub fn record_response(event: RpcEvent<'_>) {
 /// Record or update a request node using stack-built metadata.
 ///
 /// Builds `attrs_json` as:
-/// `{"rpc.name":"...","meta":{...}}`
+/// `{"method":"...","source":"..."}`.
+#[track_caller]
 pub fn record_request_with_meta<const N: usize>(
     entity_id: &str,
     name: &str,
-    meta: MetaBuilder<'_, N>,
+    _meta: MetaBuilder<'_, N>,
     parent_entity_id: Option<&str>,
 ) {
-    let attrs_json = attrs_json_with_meta(name, &meta.to_json_object());
+    let caller = std::panic::Location::caller();
+    let attrs_json = attrs_json_for_method(name, crate::caller_location(caller));
     record_request(RpcEvent {
         entity_id,
         name,
@@ -68,14 +61,16 @@ pub fn record_request_with_meta<const N: usize>(
 /// Record or update a response node using stack-built metadata.
 ///
 /// Builds `attrs_json` as:
-/// `{"rpc.name":"...","meta":{...}}`
+/// `{"method":"...","source":"..."}`.
+#[track_caller]
 pub fn record_response_with_meta<const N: usize>(
     entity_id: &str,
     name: &str,
-    meta: MetaBuilder<'_, N>,
+    _meta: MetaBuilder<'_, N>,
     parent_entity_id: Option<&str>,
 ) {
-    let attrs_json = attrs_json_with_meta(name, &meta.to_json_object());
+    let caller = std::panic::Location::caller();
+    let attrs_json = attrs_json_for_method(name, crate::caller_location(caller));
     record_response(RpcEvent {
         entity_id,
         name,
@@ -115,20 +110,17 @@ fn record(event: RpcEvent<'_>, kind: NodeKind) {
     }
 }
 
-fn attrs_json_with_meta(name: &str, meta_json: &str) -> String {
+fn attrs_json_for_method(name: &str, source: String) -> String {
     let attrs = RpcAttrs {
-        rpc_name: name,
-        meta: RawJson::new(meta_json),
+        source,
+        method: name.to_string(),
     };
     facet_json::to_string(&attrs).unwrap()
 }
 
 fn extract_connection(attrs_json: &str) -> Option<String> {
     let attrs = facet_json::from_slice::<RpcEventAttrs>(attrs_json.as_bytes()).ok()?;
-    attrs
-        .rpc_connection
-        .or_else(|| attrs.meta.and_then(|meta| meta.rpc_connection))
-        .filter(|v| !v.is_empty())
+    attrs.rpc_connection.filter(|v| !v.is_empty())
 }
 
 fn connection_node_id(connection: &str) -> String {

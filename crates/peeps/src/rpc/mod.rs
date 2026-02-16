@@ -16,7 +16,8 @@
 //!
 //! peeps::rpc_request_event!(&request_id, "GetUser", {
 //!     "rpc.connection" => "conn_42",
-//!     "request.method" => "GetUser",
+//!     "method" => "GetUser",
+//!     "correlation" => span_id,
 //! });
 //!
 //! // Responder side: explicitly attach to caller request when metadata provides it.
@@ -25,7 +26,7 @@
 //! });
 //!
 //! // Optional raw attrs_json path if the wrapper already built structured attrs.
-//! let attrs_json = r#"{"rpc.status":"ok","meta":{"request.method":"GetUser"}}"#;
+//! let attrs_json = r#"{"method":"GetUser","source":"/srv/api.rs:42","rpc.status":"ok"}"#;
 //! peeps::rpc::record_response(RpcEvent {
 //!     entity_id: &response_id,
 //!     name: "GetUser",
@@ -51,7 +52,8 @@ pub struct RpcEvent<'a> {
     pub name: &'a str,
     /// Full JSON attributes object for this entity.
     ///
-    /// Convention: place shared metadata under `attrs_json.meta`.
+    /// Canonical-only convention: emit `created_at` + `source`, and optional
+    /// `method`/`correlation` for shared inspector fields.
     pub attrs_json: &'a str,
     /// Optional explicit parent entity id.
     ///

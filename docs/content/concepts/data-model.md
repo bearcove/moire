@@ -19,6 +19,7 @@ Stable guarantees:
   - `source` (required)
   - `method` (optional)
   - `correlation` (optional)
+- Legacy alias keys are not part of the contract and are rejected at ingest.
 - Optional metadata can be attached for debugging context.
 - Metadata shape is intentionally flexible and may evolve.
 

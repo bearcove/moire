@@ -42,7 +42,10 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
         proc_key,
     };
     let handshake_bytes = facet_json::to_vec(&handshake).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::Other, format!("serialize handshake: {e}"))
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("serialize handshake: {e}"),
+        )
     })?;
     send_frame_bytes(&mut writer, &handshake_bytes).await?;
     info!(process = %process_name, pid, "sent dashboard handshake");

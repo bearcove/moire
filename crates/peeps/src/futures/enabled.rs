@@ -474,6 +474,7 @@ pub fn sleep(
 #[derive(Facet)]
 struct FutureAttrs<'a> {
     label: &'a str,
+    source: &'a str,
     poll_count: u64,
     pending_count: u64,
     ready_count: u64,
@@ -491,8 +492,6 @@ struct FutureAttrs<'a> {
     age_ns: u64,
     /// Nanoseconds since the future was last polled.
     idle_ns: u64,
-    #[facet(rename = "ctx.location")]
-    ctx_location: &'a str,
     meta: RawJson<'a>,
 }
 
@@ -559,7 +558,7 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             },
             age_ns,
             idle_ns,
-            ctx_location: &info.location,
+            source: &info.location,
             meta: RawJson::new(meta_str),
         };
 

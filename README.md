@@ -106,3 +106,40 @@ Inspector path node attrs must use canonical keys only:
 - `correlation` (optional)
 
 Legacy alias keys are rejected at the `peeps-web` persistence boundary and covered by CI tests.
+
+## Breaking Change: Canonical Attrs Only
+
+Legacy alias keys were removed from emitted node attrs and inspector/timeline serializers.
+
+- Removed aliases:
+  - `request.*` / `response.*` field variants for method/status/timing/correlation
+  - `ctx.location`
+  - `correlation_key`, `request_id`, `trace_id`, `correlation_id`
+  - `created_at_ns` as a canonical timestamp alias
+- Required canonical fields for node attrs:
+  - `created_at` (`i64`, Unix epoch ns)
+  - `source` (non-empty string)
+- Optional canonical cross-node fields:
+  - `method`
+  - `correlation`
+
+Migration for downstream consumers:
+
+1. Read `method` instead of `request.method`/`response.method`.
+2. Read `correlation` instead of `correlation_key`/`request.id`/`request_id`.
+3. Read `source` instead of `ctx.location`.
+4. Treat `created_at` as the only canonical creation timestamp.
+
+Example payloads:
+
+```json
+{"id":"request:01J...","kind":"request","process":"api","attrs":{"created_at":1700000000000000000,"source":"/srv/api/request.rs:42","method":"GetUser","correlation":"01J...","status":"in_flight"}}
+```
+
+```json
+{"id":"tx:01J...","kind":"tx","process":"worker","attrs":{"created_at":1700000001000000000,"source":"/srv/queue.rs:88","channel_kind":"mpsc","age_ns":512000000,"queue_len":3}}
+```
+
+```json
+{"id":"lock:01J...","kind":"lock","process":"worker","attrs":{"created_at":1700000002000000000,"source":"/srv/state.rs:17","lock_kind":"mutex","holder_count":1,"waiter_count":2}}
+```
