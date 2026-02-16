@@ -15,19 +15,19 @@ mod enabled;
 // Re-export public API items for external crates
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::{
-    edge, record_event, register_node, remove_edge, remove_edges_from, remove_edges_to,
-    remove_node, remove_spawn_edges_to, remove_touch_edge, remove_touch_edges_from,
-    remove_touch_edges_to, spawn_edge, touch_edge,
+    created_at_now_ns, edge, make_node, record_event, register_node, remove_edge,
+    remove_edges_from, remove_edges_to, remove_node, remove_spawn_edges_to, remove_touch_edge,
+    remove_touch_edges_from, remove_touch_edges_to, spawn_edge, touch_edge,
 };
 #[cfg(feature = "diagnostics")]
 pub use enabled::{
-    edge, record_event, register_node, remove_edge, remove_edges_from, remove_edges_to,
-    remove_node, remove_spawn_edges_to, remove_touch_edge, remove_touch_edges_from,
-    remove_touch_edges_to, spawn_edge, touch_edge,
+    created_at_now_ns, edge, make_node, record_event, register_node, remove_edge,
+    remove_edges_from, remove_edges_to, remove_node, remove_spawn_edges_to, remove_touch_edge,
+    remove_touch_edges_from, remove_touch_edges_to, spawn_edge, touch_edge,
 };
 
 // Re-export crate-internal items
 #[cfg(not(feature = "diagnostics"))]
-pub(crate) use disabled::{emit_graph, init, proc_key, process_name};
+pub(crate) use disabled::{emit_graph, init};
 #[cfg(feature = "diagnostics")]
-pub(crate) use enabled::{emit_graph, init, proc_key, process_name};
+pub(crate) use enabled::{emit_graph, init};

@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Instant;
 
 use facet::Facet;
-use peeps_types::{Node, NodeKind};
+use peeps_types::NodeKind;
 
 // ── Attrs structs ─────────────────────────────────────
 
@@ -32,6 +32,7 @@ const ONCE_INITIALIZED: u8 = 2;
 pub(super) struct OnceCellInfo {
     pub(super) name: String,
     pub(super) node_id: String,
+    pub(super) created_at_ns: i64,
     pub(super) location: String,
     pub(super) state: AtomicU8,
     pub(super) created_at: Instant,
@@ -64,6 +65,7 @@ impl<T> OnceCell<T> {
         let info = Arc::new(OnceCellInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("oncecell"),
+            created_at_ns: crate::registry::created_at_now_ns(),
             location,
             state: AtomicU8::new(ONCE_EMPTY),
             created_at: Instant::now(),
@@ -263,11 +265,12 @@ pub(super) fn emit_oncecell_nodes(graph: &mut peeps_types::GraphSnapshot) {
             },
         };
 
-        graph.nodes.push(Node {
-            id: info.node_id.clone(),
-            kind: NodeKind::OnceCell,
-            label: Some(name.clone()),
-            attrs_json: facet_json::to_string(&attrs).unwrap(),
-        });
+        graph.nodes.push(crate::registry::make_node(
+            info.node_id.clone(),
+            NodeKind::OnceCell,
+            Some(name.clone()),
+            facet_json::to_string(&attrs).unwrap(),
+            info.created_at_ns,
+        ));
     }
 }

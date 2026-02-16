@@ -1,17 +1,7 @@
-use peeps_types::{GraphSnapshot, Node};
+use peeps_types::{GraphSnapshot, Node, NodeKind};
 
 #[inline(always)]
 pub(crate) fn init(_process_name: &str, _proc_key: &str) {}
-
-#[inline(always)]
-pub(crate) fn process_name() -> Option<&'static str> {
-    None
-}
-
-#[inline(always)]
-pub(crate) fn proc_key() -> Option<&'static str> {
-    None
-}
 
 #[inline(always)]
 pub fn edge(_src: &str, _dst: &str) {}
@@ -45,6 +35,27 @@ pub fn remove_spawn_edges_to(_dst: &str) {}
 
 #[inline(always)]
 pub fn register_node(_node: Node) {}
+
+#[inline(always)]
+pub fn make_node(
+    id: impl Into<String>,
+    kind: NodeKind,
+    label: Option<String>,
+    attrs_json: impl Into<String>,
+    _created_at: i64,
+) -> Node {
+    Node {
+        id: id.into(),
+        kind,
+        label,
+        attrs_json: attrs_json.into(),
+    }
+}
+
+#[inline(always)]
+pub fn created_at_now_ns() -> i64 {
+    0
+}
 
 #[inline(always)]
 pub fn remove_node(_id: &str) {}

@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Instant;
 
 use facet::Facet;
-use peeps_types::{Node, NodeKind};
+use peeps_types::NodeKind;
 
 // ── Attrs structs ─────────────────────────────────────
 
@@ -30,6 +30,7 @@ struct SemaphoreMeta<'a> {
 pub(super) struct SemaphoreInfo {
     pub(super) name: String,
     pub(super) node_id: String,
+    pub(super) created_at_ns: i64,
     pub(super) location: String,
     pub(super) permits_total: u64,
     pub(super) waiters: AtomicU64,
@@ -37,7 +38,6 @@ pub(super) struct SemaphoreInfo {
     pub(super) total_wait_nanos: AtomicU64,
     pub(super) max_wait_nanos: AtomicU64,
     pub(super) high_waiters_watermark: AtomicU64,
-    pub(super) created_at: Instant,
     pub(super) available_permits: Box<dyn Fn() -> usize + Send + Sync>,
     pub(super) active_waiter_starts: Mutex<Vec<Instant>>,
 }
@@ -96,6 +96,7 @@ impl DiagnosticSemaphore {
         let info = Arc::new(SemaphoreInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("semaphore"),
+            created_at_ns: crate::registry::created_at_now_ns(),
             location,
             permits_total: permits as u64,
             waiters: AtomicU64::new(0),
@@ -103,7 +104,6 @@ impl DiagnosticSemaphore {
             total_wait_nanos: AtomicU64::new(0),
             max_wait_nanos: AtomicU64::new(0),
             high_waiters_watermark: AtomicU64::new(0),
-            created_at: Instant::now(),
             available_permits: Box::new(move || inner_for_snapshot.available_permits()),
             active_waiter_starts: Mutex::new(Vec::new()),
         });
@@ -343,11 +343,12 @@ pub(super) fn emit_semaphore_nodes(graph: &mut peeps_types::GraphSnapshot) {
             },
         };
 
-        graph.nodes.push(Node {
-            id: info.node_id.clone(),
-            kind: NodeKind::Semaphore,
-            label: Some(name.clone()),
-            attrs_json: facet_json::to_string(&attrs).unwrap(),
-        });
+        graph.nodes.push(crate::registry::make_node(
+            info.node_id.clone(),
+            NodeKind::Semaphore,
+            Some(name.clone()),
+            facet_json::to_string(&attrs).unwrap(),
+            info.created_at_ns,
+        ));
     }
 }

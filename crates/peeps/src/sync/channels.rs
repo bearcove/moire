@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 
 use facet::Facet;
-use peeps_types::{Edge, EdgeKind, Node, NodeKind};
+use peeps_types::{Edge, EdgeKind, NodeKind};
 
 // ── WaitEdge ───────────────────────────────────────────
 //
@@ -87,6 +87,7 @@ pub(super) struct MpscInfo {
     pub(super) sender_closed: AtomicU8,
     pub(super) receiver_closed: AtomicU8,
     pub(super) high_watermark: AtomicU64,
+    pub(super) created_at_ns: i64,
     pub(super) created_at: Instant,
 }
 
@@ -116,6 +117,7 @@ pub(super) struct OneshotInfo {
     pub(super) rx_node_id: String,
     pub(super) location: String,
     pub(super) state: AtomicU8,
+    pub(super) created_at_ns: i64,
     pub(super) created_at: Instant,
 }
 
@@ -132,6 +134,7 @@ pub(super) struct WatchInfo {
     pub(super) location: String,
     pub(super) changes: AtomicU64,
     pub(super) sender_closed: AtomicU8,
+    pub(super) created_at_ns: i64,
     pub(super) created_at: Instant,
     pub(super) receiver_count: Box<dyn Fn() -> usize + Send + Sync>,
 }
@@ -361,6 +364,7 @@ pub fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receive
         sender_closed: AtomicU8::new(0),
         receiver_closed: AtomicU8::new(0),
         high_watermark: AtomicU64::new(0),
+        created_at_ns: crate::registry::created_at_now_ns(),
         created_at: Instant::now(),
     });
     prune_and_register_mpsc(&info);
@@ -529,6 +533,7 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
         sender_closed: AtomicU8::new(0),
         receiver_closed: AtomicU8::new(0),
         high_watermark: AtomicU64::new(0),
+        created_at_ns: crate::registry::created_at_now_ns(),
         created_at: Instant::now(),
     });
     prune_and_register_mpsc(&info);
@@ -670,6 +675,7 @@ pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, Oneshot
         rx_node_id,
         location,
         state: AtomicU8::new(ONESHOT_PENDING),
+        created_at_ns: crate::registry::created_at_now_ns(),
         created_at: Instant::now(),
     });
     prune_and_register_oneshot(&info);
@@ -846,6 +852,7 @@ pub fn watch_channel<T: Send + Sync + 'static>(
         location,
         changes: AtomicU64::new(0),
         sender_closed: AtomicU8::new(0),
+        created_at_ns: crate::registry::created_at_now_ns(),
         created_at: Instant::now(),
         receiver_count: Box::new(move || tx_clone.receiver_count()),
     });
@@ -1017,12 +1024,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                 };
 
-                graph.nodes.push(Node {
-                    id: info.tx_node_id.clone(),
-                    kind: NodeKind::Tx,
-                    label: Some(format!("{name}:tx")),
-                    attrs_json: facet_json::to_string(&attrs).unwrap(),
-                });
+                graph.nodes.push(crate::registry::make_node(
+                    info.tx_node_id.clone(),
+                    NodeKind::Tx,
+                    Some(format!("{name}:tx")),
+                    facet_json::to_string(&attrs).unwrap(),
+                    info.created_at_ns,
+                ));
             }
 
             // RX node
@@ -1048,12 +1056,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                 };
 
-                graph.nodes.push(Node {
-                    id: info.rx_node_id.clone(),
-                    kind: NodeKind::Rx,
-                    label: Some(format!("{name}:rx")),
-                    attrs_json: facet_json::to_string(&attrs).unwrap(),
-                });
+                graph.nodes.push(crate::registry::make_node(
+                    info.rx_node_id.clone(),
+                    NodeKind::Rx,
+                    Some(format!("{name}:rx")),
+                    facet_json::to_string(&attrs).unwrap(),
+                    info.created_at_ns,
+                ));
             }
 
             // tx → rx gateway edge
@@ -1125,12 +1134,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                 };
 
-                graph.nodes.push(Node {
-                    id: info.tx_node_id.clone(),
-                    kind: NodeKind::Tx,
-                    label: Some(format!("{name}:tx")),
-                    attrs_json: facet_json::to_string(&attrs).unwrap(),
-                });
+                graph.nodes.push(crate::registry::make_node(
+                    info.tx_node_id.clone(),
+                    NodeKind::Tx,
+                    Some(format!("{name}:tx")),
+                    facet_json::to_string(&attrs).unwrap(),
+                    info.created_at_ns,
+                ));
             }
 
             // RX node
@@ -1155,12 +1165,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                 };
 
-                graph.nodes.push(Node {
-                    id: info.rx_node_id.clone(),
-                    kind: NodeKind::Rx,
-                    label: Some(format!("{name}:rx")),
-                    attrs_json: facet_json::to_string(&attrs).unwrap(),
-                });
+                graph.nodes.push(crate::registry::make_node(
+                    info.rx_node_id.clone(),
+                    NodeKind::Rx,
+                    Some(format!("{name}:rx")),
+                    facet_json::to_string(&attrs).unwrap(),
+                    info.created_at_ns,
+                ));
             }
 
             // tx → rx gateway edge
@@ -1225,12 +1236,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                 };
 
-                graph.nodes.push(Node {
-                    id: info.tx_node_id.clone(),
-                    kind: NodeKind::Tx,
-                    label: Some(format!("{name}:tx")),
-                    attrs_json: facet_json::to_string(&attrs).unwrap(),
-                });
+                graph.nodes.push(crate::registry::make_node(
+                    info.tx_node_id.clone(),
+                    NodeKind::Tx,
+                    Some(format!("{name}:tx")),
+                    facet_json::to_string(&attrs).unwrap(),
+                    info.created_at_ns,
+                ));
             }
 
             // RX node
@@ -1249,12 +1261,13 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                 };
 
-                graph.nodes.push(Node {
-                    id: info.rx_node_id.clone(),
-                    kind: NodeKind::Rx,
-                    label: Some(format!("{name}:rx")),
-                    attrs_json: facet_json::to_string(&attrs).unwrap(),
-                });
+                graph.nodes.push(crate::registry::make_node(
+                    info.rx_node_id.clone(),
+                    NodeKind::Rx,
+                    Some(format!("{name}:rx")),
+                    facet_json::to_string(&attrs).unwrap(),
+                    info.created_at_ns,
+                ));
             }
 
             // tx → rx gateway edge

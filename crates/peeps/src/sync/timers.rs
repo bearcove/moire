@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use facet::Facet;
-use peeps_types::{Node, NodeKind};
+use peeps_types::NodeKind;
 
 // ── Attrs structs ─────────────────────────────────────
 
@@ -29,6 +29,7 @@ struct TimerMeta<'a> {
 struct IntervalInfo {
     name: String,
     node_id: String,
+    created_at_ns: i64,
     location: String,
     period_ms: u64,
     tick_count: AtomicU64,
@@ -93,6 +94,7 @@ pub fn interval(period: Duration) -> DiagnosticInterval {
     let info = Arc::new(IntervalInfo {
         name: label,
         node_id: peeps_types::new_node_id("interval"),
+        created_at_ns: crate::registry::created_at_now_ns(),
         location,
         period_ms: period.as_millis().min(u64::MAX as u128) as u64,
         tick_count: AtomicU64::new(0),
@@ -114,6 +116,7 @@ pub fn interval_at(start: tokio::time::Instant, period: Duration) -> DiagnosticI
     let info = Arc::new(IntervalInfo {
         name: label,
         node_id: peeps_types::new_node_id("interval"),
+        created_at_ns: crate::registry::created_at_now_ns(),
         location,
         period_ms: period.as_millis().min(u64::MAX as u128) as u64,
         tick_count: AtomicU64::new(0),
@@ -150,11 +153,12 @@ pub(super) fn emit_interval_nodes(graph: &mut peeps_types::GraphSnapshot) {
             },
         };
 
-        graph.nodes.push(Node {
-            id: info.node_id.clone(),
-            kind: NodeKind::Interval,
-            label: Some(info.name.clone()),
-            attrs_json: facet_json::to_string(&attrs).unwrap(),
-        });
+        graph.nodes.push(crate::registry::make_node(
+            info.node_id.clone(),
+            NodeKind::Interval,
+            Some(info.name.clone()),
+            facet_json::to_string(&attrs).unwrap(),
+            info.created_at_ns,
+        ));
     }
 }

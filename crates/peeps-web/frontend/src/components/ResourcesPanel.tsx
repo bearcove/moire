@@ -3,8 +3,15 @@ import { CaretDown, CaretLeft, CaretRight, Plugs } from "@phosphor-icons/react";
 import { isResourceKind } from "../resourceKinds";
 import type { SnapshotGraph } from "../types";
 
-type SortKey = "connection" | "state" | "pending" | "last_recv" | "last_sent";
+type SortKey = "health" | "connection" | "state" | "pending" | "last_recv" | "last_sent";
 type SortDir = "asc" | "desc";
+type Health = "healthy" | "warning" | "critical";
+type SeverityFilter = "all" | "warning_plus" | "critical";
+
+const WARN_PENDING = 10;
+const CRIT_PENDING = 25;
+const WARN_STALE_NS = 15_000_000_000;
+const CRIT_STALE_NS = 60_000_000_000;
 
 interface ResourcesPanelProps {
   graph: SnapshotGraph | null;
@@ -22,6 +29,7 @@ interface ConnectionRow {
   pending: number | null;
   lastRecvAgeNs: number | null;
   lastSentAgeNs: number | null;
+  health: Health;
 }
 
 function firstString(attrs: Record<string, unknown>, keys: string[]): string | undefined {
@@ -70,6 +78,26 @@ function toAgeNs(snapshotCapturedAtNs: number | null, tsNs: number | undefined):
   return Math.max(0, snapshotCapturedAtNs - tsNs);
 }
 
+function connectionHealth(pending: number | null, lastRecvAgeNs: number | null): Health {
+  if ((pending ?? 0) >= CRIT_PENDING) return "critical";
+  if ((pending ?? 0) >= WARN_PENDING) return "warning";
+  if ((lastRecvAgeNs ?? -1) >= CRIT_STALE_NS) return "critical";
+  if ((lastRecvAgeNs ?? -1) >= WARN_STALE_NS) return "warning";
+  return "healthy";
+}
+
+function healthRank(health: Health): number {
+  if (health === "critical") return 2;
+  if (health === "warning") return 1;
+  return 0;
+}
+
+function healthAtLeast(row: ConnectionRow, filter: SeverityFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "critical") return row.health === "critical";
+  return row.health === "critical" || row.health === "warning";
+}
+
 function sortRows(rows: ConnectionRow[], key: SortKey, dir: SortDir): ConnectionRow[] {
   const sign = dir === "asc" ? 1 : -1;
   const stateRank = (state: string) => (state === "open" ? 2 : state === "closed" ? 1 : 0);
@@ -84,6 +112,7 @@ function sortRows(rows: ConnectionRow[], key: SortKey, dir: SortDir): Connection
     };
 
     let primary = 0;
+    if (key === "health") primary = healthRank(a.health) - healthRank(b.health);
     if (key === "connection") primary = a.connectionId.localeCompare(b.connectionId);
     if (key === "state") primary = stateRank(a.state) - stateRank(b.state);
     if (key === "pending") primary = cmpNumber(a.pending, b.pending, true);
@@ -116,6 +145,7 @@ export function ResourcesPanel({
 }: ResourcesPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>("pending");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
 
   const rows = useMemo(() => {
     if (!graph) return [] as ConnectionRow[];
@@ -125,18 +155,32 @@ export function ResourcesPanel({
         const pending = firstNumber(node.attrs, ["connection.pending_requests", "pending_requests"]);
         const lastRecvTsNs = firstNumber(node.attrs, ["connection.last_frame_recv_at_ns", "last_frame_recv_at_ns"]);
         const lastSentTsNs = firstNumber(node.attrs, ["connection.last_frame_sent_at_ns", "last_frame_sent_at_ns"]);
+        const lastRecvAgeNs = toAgeNs(snapshotCapturedAtNs, lastRecvTsNs);
+        const pendingValue = pending ?? null;
         return {
           nodeId: node.id,
           connectionId: connectionToken(node.id, node.attrs),
           state: connectionState(node.attrs),
-          pending: pending ?? null,
-          lastRecvAgeNs: toAgeNs(snapshotCapturedAtNs, lastRecvTsNs),
+          pending: pendingValue,
+          lastRecvAgeNs,
           lastSentAgeNs: toAgeNs(snapshotCapturedAtNs, lastSentTsNs),
+          health: connectionHealth(pendingValue, lastRecvAgeNs),
         } satisfies ConnectionRow;
       });
 
     return sortRows(connectionRows, sortKey, sortDir);
   }, [graph, snapshotCapturedAtNs, sortDir, sortKey]);
+
+  const visibleRows = useMemo(
+    () => rows.filter((row) => healthAtLeast(row, severityFilter)),
+    [rows, severityFilter],
+  );
+
+  const summary = useMemo(() => {
+    const warningCount = rows.filter((row) => row.health === "warning").length;
+    const criticalCount = rows.filter((row) => row.health === "critical").length;
+    return { total: rows.length, warningCount, criticalCount };
+  }, [rows]);
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -167,19 +211,56 @@ export function ResourcesPanel({
   return (
     <div className="panel panel--resources">
       <div className="panel-header">
-        <Plugs size={14} weight="bold" /> Resources ({rows.length})
+        <Plugs size={14} weight="bold" /> Resources ({summary.total})
         <button className="panel-collapse-btn" onClick={onToggleCollapse} title="Collapse panel">
           <CaretLeft size={14} weight="bold" />
         </button>
       </div>
 
+      <div className="resources-summary-row">
+        <span className="resources-chip">total {summary.total}</span>
+        <span className="resources-chip resources-chip--warn">warning {summary.warningCount}</span>
+        <span className="resources-chip resources-chip--crit">critical {summary.criticalCount}</span>
+      </div>
+
+      <div className="resources-filter-row">
+        <button
+          type="button"
+          className={`resources-filter-btn${severityFilter === "all" ? " resources-filter-btn--active" : ""}`}
+          onClick={() => setSeverityFilter("all")}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          className={`resources-filter-btn${severityFilter === "warning_plus" ? " resources-filter-btn--active" : ""}`}
+          onClick={() => setSeverityFilter("warning_plus")}
+        >
+          Warning+
+        </button>
+        <button
+          type="button"
+          className={`resources-filter-btn${severityFilter === "critical" ? " resources-filter-btn--active" : ""}`}
+          onClick={() => setSeverityFilter("critical")}
+        >
+          Critical
+        </button>
+      </div>
+
       {rows.length === 0 ? (
         <div className="resources-empty">No connection resources in this snapshot.</div>
+      ) : visibleRows.length === 0 ? (
+        <div className="resources-empty">No connections match this health filter.</div>
       ) : (
         <div className="resources-table-wrap">
           <table className="resources-table">
             <thead>
               <tr>
+                <th>
+                  <button type="button" className="resources-sort" onClick={() => toggleSort("health")}>
+                    Health{sortArrow("health")}
+                  </button>
+                </th>
                 <th>
                   <button type="button" className="resources-sort" onClick={() => toggleSort("connection")}>
                     Connection{sortArrow("connection")}
@@ -208,13 +289,26 @@ export function ResourcesPanel({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr
                   key={row.nodeId}
                   className={selectedNodeId === row.nodeId ? "resources-row resources-row--selected" : "resources-row"}
                   onClick={() => onSelectNode(row.nodeId)}
                   title={row.nodeId}
                 >
+                  <td>
+                    <span
+                      className={`resources-health-pill resources-health-pill--${
+                        row.health === "critical"
+                          ? "crit"
+                          : row.health === "warning"
+                            ? "warn"
+                            : "ok"
+                      }`}
+                    >
+                      {row.health}
+                    </span>
+                  </td>
                   <td className="resources-cell-mono">{row.connectionId}</td>
                   <td>{row.state}</td>
                   <td>{row.pending != null ? row.pending : "—"}</td>

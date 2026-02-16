@@ -4,7 +4,7 @@ use std::sync::{Arc, LazyLock, Mutex as StdMutex, Weak};
 use std::time::Instant;
 
 use facet::Facet;
-use peeps_types::{GraphSnapshot, Node};
+use peeps_types::GraphSnapshot;
 
 // ── Attrs structs ─────────────────────────────────────
 
@@ -82,12 +82,13 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             },
         };
 
-        graph.nodes.push(Node {
-            id: info.endpoint_id.clone(),
-            kind: peeps_types::NodeKind::Lock,
-            label: Some(info.name.to_string()),
-            attrs_json: facet_json::to_string(&attrs).unwrap(),
-        });
+        graph.nodes.push(crate::registry::make_node(
+            info.endpoint_id.clone(),
+            peeps_types::NodeKind::Lock,
+            Some(info.name.to_string()),
+            facet_json::to_string(&attrs).unwrap(),
+            info.created_at_ns,
+        ));
     }
 }
 
@@ -118,6 +119,7 @@ struct WaiterOrHolder {
 struct LockInfo {
     name: &'static str,
     endpoint_id: String,
+    created_at_ns: i64,
     location: String,
     next_id: AtomicU64,
     waiters: StdMutex<Vec<WaiterOrHolder>>,
@@ -134,6 +136,7 @@ impl LockInfo {
         let info = Arc::new(Self {
             name,
             endpoint_id: peeps_types::new_node_id("lock"),
+            created_at_ns: crate::registry::created_at_now_ns(),
             location,
             next_id: AtomicU64::new(0),
             waiters: StdMutex::new(Vec::new()),

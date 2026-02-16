@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use facet::Facet;
 use peeps_types::{Edge, EdgeKind, Event, GraphSnapshot, Node};
 
 // ── Process metadata ─────────────────────────────────────
@@ -44,6 +45,7 @@ static SPAWNED_EDGES: LazyLock<Mutex<HashSet<(String, String)>>> =
 
 struct ExternalNodeEntry {
     node: Node,
+    created_at: i64,
 }
 
 static EXTERNAL_NODES: LazyLock<Mutex<HashMap<String, ExternalNodeEntry>>> =
@@ -78,19 +80,56 @@ pub(crate) fn init(process_name: &str, proc_key: &str) {
 
 // ── Accessors ────────────────────────────────────────────
 
-pub(crate) fn process_name() -> Option<&'static str> {
-    PROCESS_INFO.get().map(|p| p.name.as_str())
-}
-
-pub(crate) fn proc_key() -> Option<&'static str> {
-    PROCESS_INFO.get().map(|p| p.proc_key.as_str())
-}
-
-fn now_unix_ns() -> u64 {
+fn now_unix_ns_u64() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos() as u64
+}
+
+pub fn created_at_now_ns() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as i64
+}
+
+pub fn make_node(
+    id: impl Into<String>,
+    kind: peeps_types::NodeKind,
+    label: Option<String>,
+    attrs_json: impl Into<String>,
+    created_at: i64,
+) -> Node {
+    let canonical_created_at = if created_at > 0 {
+        created_at
+    } else {
+        created_at_now_ns()
+    };
+    Node {
+        id: id.into(),
+        kind,
+        label,
+        attrs_json: attrs_with_created_at(attrs_json.into(), canonical_created_at),
+    }
+}
+
+fn attrs_with_created_at(attrs_json: String, created_at: i64) -> String {
+    let trimmed = attrs_json.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return format!(r#"{{"created_at":{created_at}}}"#);
+    }
+
+    if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
+        return format!(r#"{{"created_at":{created_at}}}"#);
+    }
+
+    let inner = &trimmed[1..trimmed.len() - 1];
+    if inner.trim().is_empty() {
+        format!(r#"{{"created_at":{created_at}}}"#)
+    } else {
+        format!(r#"{{"created_at":{created_at},{inner}}}"#)
+    }
 }
 
 pub fn record_event(entity_id: &str, name: &str, attrs_json: impl Into<String>) {
@@ -100,7 +139,7 @@ pub fn record_event(entity_id: &str, name: &str, attrs_json: impl Into<String>) 
 
     let event = Event {
         id: peeps_types::new_node_id("event"),
-        ts_ns: now_unix_ns(),
+        ts_ns: now_unix_ns_u64(),
         proc_key: info.proc_key.clone(),
         entity_id: entity_id.to_string(),
         name: name.to_string(),
@@ -222,10 +261,67 @@ pub fn remove_spawn_edges_to(dst: &str) {
 /// nodes that should appear in the canonical graph.
 pub fn register_node(node: Node) {
     let mut nodes = EXTERNAL_NODES.lock().unwrap();
-    nodes
-        .entry(node.id.clone())
-        .and_modify(|entry| entry.node = node.clone())
-        .or_insert_with(|| ExternalNodeEntry { node });
+    let node_id = node.id.clone();
+    let incoming_attrs_json = node.attrs_json;
+    let incoming_created_at = extract_created_at(&incoming_attrs_json);
+    let raw_attrs_json = strip_created_at_prefix(incoming_attrs_json);
+    if let Some(entry) = nodes.get_mut(&node_id) {
+        entry.node = make_node(
+            node.id,
+            node.kind,
+            node.label,
+            raw_attrs_json,
+            entry.created_at,
+        );
+        return;
+    }
+
+    let created_at = incoming_created_at.unwrap_or_else(created_at_now_ns);
+    let canonical = make_node(node.id, node.kind, node.label, raw_attrs_json, created_at);
+    nodes.insert(
+        node_id,
+        ExternalNodeEntry {
+            created_at,
+            node: canonical,
+        },
+    );
+}
+
+fn extract_created_at(attrs_json: &str) -> Option<i64> {
+    #[derive(Facet)]
+    struct CreatedAtAttrs {
+        created_at: i64,
+    }
+
+    facet_json::from_slice::<CreatedAtAttrs>(attrs_json.as_bytes())
+        .ok()
+        .map(|attrs| attrs.created_at)
+}
+
+fn strip_created_at_prefix(attrs_json: String) -> String {
+    let trimmed = attrs_json.trim();
+    let prefix = r#"{"created_at":"#;
+    if !trimmed.starts_with(prefix) {
+        return attrs_json;
+    }
+
+    let bytes = trimmed.as_bytes();
+    let mut idx = prefix.len();
+    while idx < bytes.len() && (bytes[idx].is_ascii_digit() || bytes[idx] == b'-') {
+        idx += 1;
+    }
+    if idx >= bytes.len() {
+        return attrs_json;
+    }
+
+    match bytes[idx] {
+        b'}' => "{}".to_string(),
+        b',' => {
+            let rest = &trimmed[idx + 1..trimmed.len() - 1];
+            format!("{{{rest}}}")
+        }
+        _ => attrs_json,
+    }
 }
 
 /// Remove a node from the global registry.
@@ -303,6 +399,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     crate::futures::emit_into_graph(&mut graph);
     crate::locks::emit_into_graph(&mut graph);
     crate::sync::emit_into_graph(&mut graph);
+    enforce_created_at_invariant(&graph.nodes);
 
     let mut needs = 0u32;
     let mut touches = 0u32;
@@ -403,4 +500,139 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     );
 
     graph
+}
+
+fn enforce_created_at_invariant(nodes: &[Node]) {
+    #[derive(Facet)]
+    struct CreatedAtAttrs {
+        created_at: i64,
+    }
+
+    for node in nodes {
+        let attrs = facet_json::from_slice::<CreatedAtAttrs>(node.attrs_json.as_bytes())
+            .unwrap_or_else(|_| {
+                panic!(
+                    "node {} ({}) attrs_json missing parseable created_at",
+                    node.id,
+                    node.kind.as_str()
+                )
+            });
+        assert!(
+            attrs.created_at > 0,
+            "node {} ({}) missing canonical created_at",
+            node.id,
+            node.kind.as_str()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use peeps_types::NodeKind;
+
+    fn reset_registry_state_for_test() {
+        EXTERNAL_NODES.lock().unwrap().clear();
+        EDGES.lock().unwrap().clear();
+        TOUCH_EDGES.lock().unwrap().clear();
+        SPAWNED_EDGES.lock().unwrap().clear();
+        EVENTS.lock().unwrap().clear();
+    }
+
+    fn all_node_kinds() -> [NodeKind; 23] {
+        [
+            NodeKind::Future,
+            NodeKind::Lock,
+            NodeKind::Tx,
+            NodeKind::Rx,
+            NodeKind::RemoteTx,
+            NodeKind::RemoteRx,
+            NodeKind::Request,
+            NodeKind::Response,
+            NodeKind::Connection,
+            NodeKind::JoinSet,
+            NodeKind::Semaphore,
+            NodeKind::OnceCell,
+            NodeKind::Command,
+            NodeKind::FileOp,
+            NodeKind::Notify,
+            NodeKind::Sleep,
+            NodeKind::Interval,
+            NodeKind::Timeout,
+            NodeKind::NetConnect,
+            NodeKind::NetAccept,
+            NodeKind::NetReadable,
+            NodeKind::NetWritable,
+            NodeKind::Syscall,
+        ]
+    }
+
+    #[test]
+    fn register_node_preserves_first_created_at_for_same_id() {
+        init("test-process", "test-proc-key");
+        reset_registry_state_for_test();
+
+        register_node(Node {
+            id: "node:stable".to_string(),
+            kind: NodeKind::Command,
+            label: Some("first".to_string()),
+            attrs_json: r#"{"created_at":111}"#.to_string(),
+        });
+        register_node(Node {
+            id: "node:stable".to_string(),
+            kind: NodeKind::Command,
+            label: Some("second".to_string()),
+            attrs_json: r#"{"created_at":999}"#.to_string(),
+        });
+
+        let graph = emit_graph();
+        let node = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == "node:stable")
+            .expect("node should exist");
+        assert_eq!(extract_created_at(&node.attrs_json), Some(111));
+    }
+
+    #[test]
+    fn all_node_kinds_emit_with_created_at() {
+        init("test-process", "test-proc-key");
+        reset_registry_state_for_test();
+
+        for kind in all_node_kinds() {
+            register_node(make_node(
+                format!("{}:test", kind.as_str()),
+                kind,
+                Some(kind.as_str().to_string()),
+                "{}",
+                0,
+            ));
+        }
+
+        let graph = emit_graph();
+        assert_eq!(graph.nodes.len(), all_node_kinds().len());
+        for kind in all_node_kinds() {
+            let node = graph
+                .nodes
+                .iter()
+                .find(|n| n.kind == kind)
+                .unwrap_or_else(|| panic!("missing node kind {}", kind.as_str()));
+            assert!(
+                extract_created_at(&node.attrs_json).unwrap_or_default() > 0,
+                "node kind {} missing created_at",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "missing parseable created_at")]
+    fn invariant_panics_when_created_at_missing() {
+        enforce_created_at_invariant(&[Node {
+            id: "bad:node".to_string(),
+            kind: NodeKind::Future,
+            label: None,
+            attrs_json: "{}".to_string(),
+        }]);
+    }
 }

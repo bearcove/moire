@@ -82,6 +82,12 @@ pub struct Node {
     pub label: Option<String>,
 
     /// JSON-encoded type-specific attributes. Contains a `meta` sub-object
+    ///
+    /// Contract: all emitted nodes must include a top-level `created_at` field
+    /// in `attrs_json` as an `i64` Unix epoch nanosecond timestamp.
+    ///
+    /// Readers must remain backward compatible with older snapshots that may
+    /// omit this field.
     /// for shared cross-resource metadata.
     pub attrs_json: String,
 }

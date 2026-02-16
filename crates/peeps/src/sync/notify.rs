@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Instant;
 
 use facet::Facet;
-use peeps_types::{Node, NodeKind};
+use peeps_types::NodeKind;
 
 // ── Attrs structs ─────────────────────────────────────
 
@@ -32,6 +32,7 @@ struct NotifyMeta<'a> {
 pub(super) struct NotifyInfo {
     pub(super) name: String,
     pub(super) node_id: String,
+    pub(super) created_at_ns: i64,
     pub(super) location: String,
     pub(super) waiters: AtomicU64,
     pub(super) notify_count: AtomicU64,
@@ -91,6 +92,7 @@ impl DiagnosticNotify {
         let info = Arc::new(NotifyInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("notify"),
+            created_at_ns: crate::registry::created_at_now_ns(),
             location,
             waiters: AtomicU64::new(0),
             notify_count: AtomicU64::new(0),
@@ -194,11 +196,12 @@ pub(super) fn emit_notify_nodes(graph: &mut peeps_types::GraphSnapshot) {
             },
         };
 
-        graph.nodes.push(Node {
-            id: info.node_id.clone(),
-            kind: NodeKind::Notify,
-            label: Some(name.clone()),
-            attrs_json: facet_json::to_string(&attrs).unwrap(),
-        });
+        graph.nodes.push(crate::registry::make_node(
+            info.node_id.clone(),
+            NodeKind::Notify,
+            Some(name.clone()),
+            facet_json::to_string(&attrs).unwrap(),
+            info.created_at_ns,
+        ));
     }
 }

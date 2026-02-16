@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use facet::Facet;
 use facet_json::RawJson;
-use peeps_types::{GraphSnapshot, InstrumentationLevel, Node, NodeKind};
+use peeps_types::{GraphSnapshot, InstrumentationLevel, NodeKind};
 
 // ── Storage ──────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ static FUTURE_WAIT_REGISTRY: LazyLock<Mutex<HashMap<String, FutureWaitInfo>>> =
 struct FutureWaitInfo {
     kind: NodeKind,
     resource: String,
+    created_at_ns: i64,
     created_at: Instant,
     poll_count: u64,
     pending_count: u64,
@@ -45,6 +46,7 @@ fn register_future(
         FutureWaitInfo {
             kind,
             resource,
+            created_at_ns: crate::registry::created_at_now_ns(),
             created_at: Instant::now(),
             poll_count: 0,
             pending_count: 0,
@@ -561,11 +563,12 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             meta: RawJson::new(meta_str),
         };
 
-        graph.nodes.push(Node {
-            id: node_id.clone(),
-            kind: info.kind,
-            label: Some(info.resource.clone()),
-            attrs_json: facet_json::to_string(&attrs).unwrap(),
-        });
+        graph.nodes.push(crate::registry::make_node(
+            node_id.clone(),
+            info.kind,
+            Some(info.resource.clone()),
+            facet_json::to_string(&attrs).unwrap(),
+            info.created_at_ns,
+        ));
     }
 }

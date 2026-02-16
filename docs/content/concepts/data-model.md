@@ -13,6 +13,7 @@ Stable guarantees:
 
 - Every node has a globally unique ID.
 - Every node has a kind so the UI can group similar entities.
+- Every node has a mandatory `created_at` timestamp in `attrs_json` (`i64`, Unix epoch nanoseconds).
 - Optional metadata can be attached for debugging context.
 - Metadata shape is intentionally flexible and may evolve.
 
