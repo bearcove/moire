@@ -329,6 +329,22 @@ body {
     color: light-dark(#0f5132, #75b798);
 }
 
+.snapshot-badge--interactive {
+    border: 0;
+    font-family: inherit;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.snapshot-badge--interactive:hover {
+    filter: brightness(0.95);
+}
+
+.snapshot-badge--interactive:focus-visible {
+    outline: 1px solid light-dark(#8ec5ff, #4da6ff);
+    outline-offset: 2px;
+}
+
 .snapshot-progress {
     display: inline-flex;
     flex-direction: column;
@@ -406,6 +422,224 @@ body {
 @keyframes waitingIn {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+.snapshot-process-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    background: light-dark(rgba(1, 1, 1, 0.48), rgba(0, 0, 0, 0.56));
+    z-index: 999;
+}
+
+.snapshot-process-modal {
+    width: min(1100px, calc(100vw - 30px));
+    max-height: calc(100vh - 30px);
+    background: light-dark(#ffffff, #15171d);
+    border: 1px solid light-dark(#e5e5ea, #2a2a2e);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px light-dark(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.7));
+    padding: 10px 12px;
+    color: light-dark(#1d1d1f, #ececf2);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.snapshot-process-modal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.snapshot-process-modal__title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.snapshot-process-modal__title {
+    font-size: 13px;
+    font-weight: 700;
+    color: light-dark(#121217, #f4f5f9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.snapshot-process-modal__subtitle {
+    font-size: 10px;
+    color: light-dark(#6e6e73, #9ca0a6);
+}
+
+.snapshot-process-modal__close {
+    border: 0;
+    border-radius: 7px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: light-dark(#3a3a3c, #dbdce2);
+    background: light-dark(#f2f2f7, #262a31);
+    cursor: pointer;
+}
+
+.snapshot-process-modal__close:hover {
+    background: light-dark(#e6e6ec, #343941);
+}
+
+.snapshot-process-modal__message {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: light-dark(#0f5132, #75b798);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.snapshot-process-modal__table-wrap {
+    border: 1px solid light-dark(#e5e5ea, #2a2a2e);
+    border-radius: 8px;
+    overflow: auto;
+    max-height: 55vh;
+}
+
+.snapshot-process-modal__empty {
+    color: light-dark(#6e6e73, #9ca0a6);
+    font-size: 12px;
+    padding: 18px;
+}
+
+.snapshot-process-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 860px;
+    font-size: 11px;
+}
+
+.snapshot-process-table th {
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: light-dark(#f4f4f7, #1c1d22);
+    color: light-dark(#5f6368, #bfc1c6);
+    font-weight: 700;
+    font-size: 10px;
+    padding: 7px 8px;
+    border-bottom: 1px solid light-dark(#d2d2d7, #2a2a2e);
+}
+
+.snapshot-process-table tbody tr {
+    border-top: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.06));
+}
+
+.snapshot-process-table__row--missing {
+    background: light-dark(rgba(255, 243, 205, 0.4), rgba(67, 46, 21, 0.45));
+}
+
+.snapshot-process-table td {
+    padding: 7px 8px;
+    vertical-align: top;
+}
+
+.snapshot-process-table__mono {
+    font-family: var(--font-mono);
+}
+
+.snapshot-process-table__status {
+    display: inline-flex;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    text-transform: capitalize;
+}
+
+.snapshot-process-table__status--missing {
+    background: light-dark(#fff4ce, #4a3411);
+    color: light-dark(#7c5600, #ffd37a);
+}
+
+.snapshot-process-table__status--responded {
+    background: light-dark(rgba(198, 246, 213, 0.85), rgba(28, 66, 48, 0.5));
+    color: light-dark(#0f5132, #8ada9f);
+}
+
+.snapshot-process-table__status--normal {
+    background: light-dark(rgba(246, 247, 251, 0.9), rgba(45, 46, 51, 0.65));
+    color: light-dark(#5f6368, #b3b8bf);
+}
+
+.snapshot-process-table__command {
+    max-width: 360px;
+    font-family: var(--font-mono);
+    color: light-dark(#4f5f7a, #9fb2d1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.snapshot-process-table__actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+}
+
+.snapshot-process-btn {
+    border: 1px solid light-dark(#cfd4dc, #404048);
+    background: light-dark(#f3f4f8, #26262d);
+    color: light-dark(#45454c, #d8dbe0);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.snapshot-process-btn:hover {
+    background: light-dark(#e2e6f0, #303038);
+}
+
+.snapshot-process-btn--loading {
+    cursor: default;
+    pointer-events: none;
+}
+
+.snapshot-process-btn__spinner {
+    animation: spin 1s linear infinite;
+}
+
+.snapshot-process-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+@media (max-width: 760px) {
+    .snapshot-process-modal {
+        width: min(1020px, calc(100vw - 12px));
+        max-height: calc(100vh - 12px);
+        padding: 8px;
+    }
+
+    .snapshot-process-table {
+        min-width: 760px;
+    }
+
+    .snapshot-process-table__command {
+        max-width: 300px;
+    }
 }
 
 .main-content {
@@ -1331,11 +1565,24 @@ body {
     padding: 2px 4px;
     font-size: 9px;
     line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
     cursor: pointer;
 }
 
 .resources-debug-btn:hover {
     background: light-dark(#e2e6f0, #303038);
+}
+
+.resources-debug-btn--loading {
+    cursor: default;
+    pointer-events: none;
+}
+
+.resources-debug-btn__spinner {
+    animation: spin 1s linear infinite;
 }
 
 .resources-pending-btn {

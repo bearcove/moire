@@ -7,6 +7,7 @@ import {
   fetchSnapshotProgress,
   fetchTimelineProcessOptions,
   fetchSnapshotProcesses,
+  requestProcessDebug,
   jumpNow,
 } from "./api";
 import { Header } from "./components/Header";
@@ -25,6 +26,7 @@ import type {
   SnapshotProcessInfo,
   TimelineEvent,
   TimelineProcessOption,
+  ProcessDebugResponse,
 } from "./types";
 
 function useSessionState(key: string, initial: boolean): [boolean, () => void] {
@@ -42,6 +44,8 @@ function useSessionState(key: string, initial: boolean): [boolean, () => void] {
 }
 
 const MIN_ELAPSED_NS = 5_000_000_000; // 5 seconds
+const SNAPSHOT_POLL_INTERVAL_MS = 250;
+const SNAPSHOT_FINALIZATION_WAIT_BUDGET_MS = 6_000;
 type DetailLevel = "info" | "debug" | "trace";
 const DETAIL_LEVELS: DetailLevel[] = ["info", "debug", "trace"];
 type InvestigationMode = "graph" | "timeline";
@@ -79,6 +83,12 @@ function defaultDetailLevelForKind(kind: string): DetailLevel {
     return "debug";
   }
   return "info";
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function nodeDetailLevel(node: SnapshotNode): DetailLevel {
@@ -493,6 +503,7 @@ export function App() {
   const [connectedProcessNames, setConnectedProcessNames] = useState<string[]>([]);
   const [snapshotProcesses, setSnapshotProcesses] = useState<SnapshotProcessInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [processDebugMessage, setProcessDebugMessage] = useState<string | null>(null);
   const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(() => {
     return sessionStorage.getItem("peeps-investigation-mode") === "timeline" ? "timeline" : "graph";
   });
@@ -562,6 +573,33 @@ export function App() {
     sessionStorage.setItem("peeps-investigation-mode", mode);
   }, []);
 
+  const waitForSnapshotFinalization = useCallback(
+    async (snapshotId: number, requested: number): Promise<SnapshotProcessInfo[]> => {
+      const deadline = Date.now() + SNAPSHOT_FINALIZATION_WAIT_BUDGET_MS;
+      let processes: SnapshotProcessInfo[] = [];
+
+      while (Date.now() < deadline) {
+        try {
+          const processData = await fetchSnapshotProcesses(snapshotId);
+          processes = processData.processes;
+          const hasPending = processData.processes.some((proc) => proc.status === "pending");
+          if (processData.processes.length >= requested && !hasPending) {
+            return processData.processes;
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            console.error("fetching snapshot process states failed", error);
+          }
+        }
+
+        await sleepMs(SNAPSHOT_POLL_INTERVAL_MS);
+      }
+
+      return processes;
+    },
+    [],
+  );
+
   const handleTakeSnapshot = useCallback(async () => {
     if (connectedProcessCount === 0) return;
     setLoading(true);
@@ -571,15 +609,10 @@ export function App() {
     try {
       const snap = await jumpNow();
       setSnapshot(snap);
-      const [graphData, processData] = await Promise.all([
-        fetchGraph(snap.snapshot_id),
-        fetchSnapshotProcesses(snap.snapshot_id).catch((error) => {
-          console.error("fetch snapshot process metadata failed", error);
-          return { snapshot_id: snap.snapshot_id, processes: [] };
-        }),
-      ]);
+      const processData = await waitForSnapshotFinalization(snap.snapshot_id, snap.requested);
+      const graphData = await fetchGraph(snap.snapshot_id);
       setGraph(graphData);
-      setSnapshotProcesses(processData.processes);
+      setSnapshotProcesses(processData);
       setSelectedNode(null);
       setSelectedNodeId(null);
       setSelectedEdge(null);
@@ -772,6 +805,37 @@ export function App() {
     setSelectedEdge(null);
     setFilteredNodeId(null);
   }, []);
+
+  const clearProcessDebugMessage = useCallback(() => {
+    setProcessDebugMessage(null);
+  }, []);
+
+  const handleProcessDebugAction = useCallback(
+    async (
+      proc: SnapshotProcessInfo,
+      action: "sample" | "spindump",
+    ): Promise<ProcessDebugResponse> => {
+      if (snapshot == null) {
+        throw new Error("No active snapshot to run debug for");
+      }
+      if (!proc.proc_key) {
+        throw new Error(`Missing process key for ${proc.process || "unknown process"}`);
+      }
+      if (proc.pid == null) {
+        throw new Error(`No PID available for ${proc.process || proc.proc_key}`);
+      }
+
+      const response = await requestProcessDebug(snapshot.snapshot_id, proc.proc_key, action, true);
+      setProcessDebugMessage(
+        response.result_url
+          ? `${action} output ready for ${proc.process || proc.proc_key}`
+          : `${action} did not produce output for ${proc.process || proc.proc_key}: ${response.status}`,
+      );
+      window.setTimeout(clearProcessDebugMessage, 2200);
+      return response;
+    },
+    [clearProcessDebugMessage, snapshot],
+  );
 
   // Collect all unique node kinds present in the graph (excluding ghosts).
   const allKinds = useMemo(() => {
@@ -983,8 +1047,11 @@ export function App() {
         snapshot={snapshot}
         loading={loading}
         progress={snapshotProgress}
+        snapshotProcesses={snapshotProcesses}
         canTakeSnapshot={connectedProcessCount > 0}
         onTakeSnapshot={handleTakeSnapshot}
+        onProcessDebugAction={handleProcessDebugAction}
+        processDebugMessage={processDebugMessage}
       />
       {error && (
         <div className="status-bar">

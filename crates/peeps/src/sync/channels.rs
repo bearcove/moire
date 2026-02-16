@@ -602,6 +602,10 @@ impl<T> OneshotSender<T> {
     pub fn is_closed(&self) -> bool {
         self.inner.as_ref().unwrap().is_closed()
     }
+
+    pub fn node_id(&self) -> &str {
+        &self.info.tx_node_id
+    }
 }
 
 pub struct OneshotReceiver<T> {
@@ -658,6 +662,10 @@ impl<T> OneshotReceiver<T> {
         };
         record_channel_event(&self.info.rx_node_id, "channel.v1.oneshot.try_recv", attrs);
         result
+    }
+
+    pub fn node_id(&self) -> &str {
+        &self.info.rx_node_id
     }
 }
 

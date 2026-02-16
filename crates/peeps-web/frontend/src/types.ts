@@ -4,6 +4,7 @@ export interface JumpNowResponse {
   requested: number;
   responded: number;
   timed_out: number;
+  error: number;
 }
 
 export interface SnapshotProgressResponse {
@@ -68,6 +69,7 @@ export interface ProcessDebugResponse {
   status_message: string | null;
   command_output: string | null;
   command_exit_code: number | null;
+  result_url: string | null;
 }
 
 export interface StuckRequest {

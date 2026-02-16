@@ -22,6 +22,10 @@ use tracing::{debug, error, info, warn};
 pub(crate) struct AppState {
     pub(crate) db_path: Arc<PathBuf>,
     pub(crate) snapshot_ctl: Arc<SnapshotController>,
+    pub(crate) snapshot_timeout_ms: i64,
+    pub(crate) process_debug_results: std::sync::Arc<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    >,
 }
 
 pub(crate) struct SnapshotController {
@@ -37,6 +41,7 @@ pub(crate) struct SnapshotControllerInner {
 pub(crate) struct ConnectedProcess {
     pub(crate) proc_key: String,
     pub(crate) process_name: String,
+    pub(crate) pid: Option<u32>,
     pub(crate) closed_at_ns: Option<i64>,
     pub(crate) last_frame_recv_at_ns: Option<i64>,
     pub(crate) last_frame_sent_at_ns: Option<i64>,
@@ -53,6 +58,21 @@ pub(crate) struct InFlightSnapshot {
 use peeps_types::GraphSnapshot;
 
 pub(crate) const DEFAULT_TIMEOUT_MS: i64 = 5000;
+const SNAPSHOT_TIMEOUT_ENV: &str = "PEEPS_SNAPSHOT_TIMEOUT_MS";
+const MIN_SNAPSHOT_TIMEOUT_MS: i64 = 500;
+const MAX_SNAPSHOT_TIMEOUT_MS: i64 = 120_000;
+
+fn snapshot_timeout_ms() -> i64 {
+    let requested_ms = std::env::var(SNAPSHOT_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok());
+
+    requested_ms
+        .filter(|ms| *ms > 0)
+        .unwrap_or(DEFAULT_TIMEOUT_MS)
+        .clamp(MIN_SNAPSHOT_TIMEOUT_MS, MAX_SNAPSHOT_TIMEOUT_MS)
+}
+
 const MAX_SNAPSHOTS: i64 = 500;
 const INGEST_EVENTS_RETENTION_DAYS: i64 = 7;
 const EVENTS_RETENTION_DAYS: i64 = 7;
@@ -113,11 +133,13 @@ async fn main() {
     let tcp_addr = std::env::var("PEEPS_LISTEN").unwrap_or_else(|_| "127.0.0.1:9119".into());
     let http_addr = std::env::var("PEEPS_HTTP").unwrap_or_else(|_| "127.0.0.1:9130".into());
     let db_path = std::env::var("PEEPS_DB").unwrap_or_else(|_| "./peeps-web.sqlite".into());
+    let snapshot_timeout_ms = snapshot_timeout_ms();
 
     init_db(&db_path).expect("init sqlite schema");
 
     let state = AppState {
         db_path: Arc::new(PathBuf::from(&db_path)),
+        snapshot_timeout_ms,
         snapshot_ctl: Arc::new(SnapshotController {
             inner: Mutex::new(SnapshotControllerInner {
                 connections: HashMap::new(),
@@ -125,6 +147,7 @@ async fn main() {
                 in_flight: None,
             }),
         }),
+        process_debug_results: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
     };
 
     let tcp_listener = TcpListener::bind(&tcp_addr)
@@ -150,6 +173,10 @@ async fn main() {
             get(api::api_snapshot_processes),
         )
         .route("/api/process-debug", post(api::api_process_debug))
+        .route(
+            "/api/process-debug-result/{result_id}",
+            get(api::api_process_debug_result),
+        )
         .route("/api/sql", post(api::api_sql))
         .with_state(state.clone());
 
@@ -201,7 +228,8 @@ pub(crate) fn allocate_snapshot_id(
 }
 
 pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), String> {
-    let (snapshot_id, completion_rx, processes_requested) = {
+    let timeout_ms = state.snapshot_timeout_ms;
+    let (snapshot_id, completion_rx, processes_requested, placeholder_rows) = {
         let mut ctl = state.snapshot_ctl.inner.lock().await;
 
         if ctl.in_flight.is_some() {
@@ -213,13 +241,21 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
         }
 
         let now_ns = now_nanos();
-        let snapshot_id = allocate_snapshot_id(&state.db_path, now_ns, DEFAULT_TIMEOUT_MS)?;
+        let snapshot_id = allocate_snapshot_id(&state.db_path, now_ns, timeout_ms)?;
 
-        let pending: BTreeSet<String> = ctl
-            .connections
-            .values()
-            .map(|c| c.proc_key.clone())
-            .collect();
+        let mut pending = BTreeSet::new();
+        let mut placeholder_rows = Vec::new();
+        for conn in ctl.connections.values() {
+            let proc_key = conn.proc_key.clone();
+            if pending.insert(proc_key.clone()) {
+                let process_name = if conn.process_name.is_empty() {
+                    proc_key.clone()
+                } else {
+                    conn.process_name.clone()
+                };
+                placeholder_rows.push((proc_key, process_name, conn.pid.map(|p| p as i64)));
+            }
+        }
         let processes_requested = pending.len();
 
         let (completion_tx, completion_rx) = oneshot::channel();
@@ -241,7 +277,7 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
         let req = SnapshotRequest {
             r#type: "snapshot_request".to_string(),
             snapshot_id,
-            timeout_ms: DEFAULT_TIMEOUT_MS,
+            timeout_ms,
         };
         let req_json = facet_json::to_vec(&req).map_err(|e| e.to_string())?;
 
@@ -253,10 +289,27 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
             }
         }
 
-        (snapshot_id, completion_rx, processes_requested)
+        (snapshot_id, completion_rx, processes_requested, placeholder_rows)
     };
 
-    let timeout = tokio::time::Duration::from_millis(DEFAULT_TIMEOUT_MS as u64 + 500);
+    if !placeholder_rows.is_empty() {
+        let mut conn = open_db(&state.db_path);
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("begin snapshot placeholder tx: {e}"))?;
+        for (proc_key, process, pid) in placeholder_rows {
+            tx.execute(
+                "INSERT OR IGNORE INTO snapshot_processes (snapshot_id, process, pid, proc_key, status, error_text)
+                 VALUES (?1, ?2, ?3, ?4, 'pending', NULL)",
+                params![snapshot_id, process, pid, proc_key],
+            )
+            .map_err(|e| format!("insert snapshot placeholder: {e}"))?;
+        }
+        tx.commit()
+            .map_err(|e| format!("commit snapshot placeholder tx: {e}"))?;
+    }
+
+    let timeout = tokio::time::Duration::from_millis(timeout_ms as u64 + 500);
     let _ = tokio::time::timeout(timeout, completion_rx).await;
 
     finalize_snapshot(&state.db_path, &state.snapshot_ctl, snapshot_id).await?;
@@ -299,8 +352,12 @@ async fn finalize_snapshot(
         warn!(snapshot_id, %proc_key, %status, "process did not respond");
 
         conn.execute(
-            "INSERT OR IGNORE INTO snapshot_processes (snapshot_id, process, pid, proc_key, status, error_text)
-             VALUES (?1, '', NULL, ?2, ?3, NULL)",
+            "INSERT INTO snapshot_processes (snapshot_id, process, pid, proc_key, status, error_text)
+             VALUES (?1, '', NULL, ?2, ?3, NULL)
+             ON CONFLICT(snapshot_id, proc_key)
+             DO UPDATE SET status = excluded.status, error_text = excluded.error_text,
+                           process = CASE WHEN snapshot_processes.process = '' THEN excluded.process ELSE snapshot_processes.process END,
+                           pid = CASE WHEN snapshot_processes.pid IS NULL THEN excluded.pid ELSE snapshot_processes.pid END",
             params![snapshot_id, proc_key, status],
         )
         .map_err(|e| e.to_string())?;
@@ -349,6 +406,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
             ConnectedProcess {
                 proc_key: format!("unknown-{id}"),
                 process_name: String::new(),
+                pid: None,
                 closed_at_ns: None,
                 last_frame_recv_at_ns: None,
                 last_frame_sent_at_ns: None,
@@ -464,7 +522,14 @@ async fn read_replies(
                         "handshake proc_key mismatch; using canonical value"
                     );
                 }
-                apply_connection_identity(state, conn_id, proc_key, hello.process).await;
+                apply_connection_identity(
+                    state,
+                    conn_id,
+                    proc_key,
+                    hello.process,
+                    Some(hello.pid),
+                )
+                .await;
             }
             DashboardFrame::GraphReply => {
                 let reply: GraphReply = match facet_json::from_slice(&frame) {
@@ -485,8 +550,14 @@ async fn read_replies(
                 };
 
                 let proc_key = peeps_types::make_proc_key(&reply.process, reply.pid);
-                apply_connection_identity(state, conn_id, proc_key.clone(), reply.process.clone())
-                    .await;
+                apply_connection_identity(
+                    state,
+                    conn_id,
+                    proc_key.clone(),
+                    reply.process.clone(),
+                    Some(reply.pid),
+                )
+                .await;
                 process_reply(state, &reply, &proc_key).await;
             }
             DashboardFrame::ClientError => {
@@ -512,6 +583,7 @@ async fn read_replies(
                     conn_id,
                     peeps_types::make_proc_key(&msg.process, msg.pid),
                     msg.process.clone(),
+                    Some(msg.pid),
                 )
                 .await;
 
@@ -559,13 +631,18 @@ async fn apply_connection_identity(
     conn_id: u64,
     proc_key: String,
     process_name: String,
+    pid: Option<u32>,
 ) {
     let mut ctl = state.snapshot_ctl.inner.lock().await;
     let mut previous_proc_key: Option<String> = None;
+    let process_name_for_db = process_name.clone();
     if let Some(conn) = ctl.connections.get_mut(&conn_id) {
         previous_proc_key = Some(conn.proc_key.clone());
         conn.proc_key = proc_key.clone();
         conn.process_name = process_name;
+        if pid.is_some() {
+            conn.pid = pid;
+        }
     }
 
     // If a snapshot started before this connection reported identity,
@@ -578,6 +655,24 @@ async fn apply_connection_identity(
             }
             if in_flight.pending.remove(&prev) {
                 in_flight.pending.insert(proc_key.clone());
+            }
+
+            let snapshot_id = in_flight.snapshot_id;
+            let conn = open_db(&state.db_path);
+            if let Err(e) = conn.execute(
+                "UPDATE snapshot_processes
+                 SET proc_key = ?1, process = ?2,
+                     pid = CASE WHEN pid IS NULL THEN ?3 ELSE pid END
+                 WHERE snapshot_id = ?4 AND proc_key = ?5",
+                params![proc_key, process_name_for_db, pid, snapshot_id, prev],
+            ) {
+                warn!(
+                    snapshot_id,
+                    %prev,
+                    %proc_key,
+                    %e,
+                    "failed to migrate snapshot process key placeholder"
+                );
             }
         }
     }
@@ -661,15 +756,33 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
         now_ns,
         graph,
     ) {
+        let persist_error = format!("persist failed: {e}");
         error!(
             snapshot_id,
             process = %reply.process,
             %proc_key,
             node_count = graph.map(|g| g.nodes.len()).unwrap_or(0),
             edge_count = graph.map(|g| g.edges.len()).unwrap_or(0),
-            %e,
+            %persist_error,
             "failed to persist snapshot reply"
         );
+        if let Err(mark_err) = mark_snapshot_process_error(
+            &state.db_path,
+            snapshot_id,
+            &reply.process,
+            reply.pid,
+            proc_key,
+            now_ns,
+            &persist_error,
+        ) {
+            warn!(
+                snapshot_id,
+                process = %reply.process,
+                %proc_key,
+                mark_error = %mark_err,
+                "failed to mark snapshot process as error"
+            );
+        }
         record_ingest_event(
             &state.db_path,
             Some(snapshot_id),
@@ -677,7 +790,7 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
             Some(reply.pid),
             Some(proc_key),
             "other",
-            &format!("persist failed: {e}"),
+            &persist_error,
         );
     } else {
         let (node_count, edge_count) = graph
@@ -693,8 +806,7 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
         );
     }
 
-    // Always mark the process as responded, even if persist failed —
-    // the process DID reply, we just couldn't store it.
+    // Always stop waiting for this process, even if persist failed.
     let mut ctl = state.snapshot_ctl.inner.lock().await;
     if let Some(ref mut in_flight) = ctl.in_flight {
         if in_flight.snapshot_id == snapshot_id {
@@ -706,6 +818,31 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
             }
         }
     }
+}
+
+fn mark_snapshot_process_error(
+    db_path: &PathBuf,
+    snapshot_id: i64,
+    process: &str,
+    pid: u32,
+    proc_key: &str,
+    recv_at_ns: i64,
+    error_text: &str,
+) -> Result<(), String> {
+    let conn = open_db(db_path);
+    conn.execute(
+        "INSERT INTO snapshot_processes (snapshot_id, process, pid, proc_key, status, recv_at_ns, error_text)
+         VALUES (?1, ?2, ?3, ?4, 'error', ?5, ?6)
+         ON CONFLICT(snapshot_id, proc_key) DO UPDATE SET
+           status = 'error',
+           recv_at_ns = excluded.recv_at_ns,
+           error_text = excluded.error_text,
+           process = CASE WHEN snapshot_processes.process = '' THEN excluded.process ELSE snapshot_processes.process END,
+           pid = CASE WHEN snapshot_processes.pid IS NULL THEN excluded.pid ELSE snapshot_processes.pid END",
+        params![snapshot_id, process, pid, proc_key, recv_at_ns, error_text],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ── Reply persistence ────────────────────────────────────────────

@@ -1,14 +1,20 @@
 //! HTTP API endpoints: POST /api/jump-now, GET /api/snapshot-progress,
-//! GET /api/connections, POST /api/process-debug, POST /api/sql
+//! GET /api/connections, POST /api/process-debug, GET /api/process-debug-result/{result_id},
+//! POST /api/sql
 //!
 //! SQL enforcement: authorizer, progress handler, hard caps.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::time::Instant;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path as AxumPath, State};
+use axum::response::IntoResponse;
 use axum::http::StatusCode;
+use axum::http::header;
 use axum::Json;
 use rusqlite::types::Value;
 use rusqlite::OptionalExtension;
@@ -26,6 +32,9 @@ const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024; // 4 MiB
 const MAX_EXECUTION_MS: u64 = 750;
 /// Progress handler callback interval (in SQLite virtual-machine ops).
 const PROGRESS_HANDLER_OPS: i32 = 1000;
+const PROCESS_DEBUG_OUTPUT_PREFIX: &str = "process-debug-result";
+
+static PROCESS_DEBUG_OUTPUT_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 // ── Scoped TEMP VIEW tables ──────────────────────────────────────
 
@@ -49,6 +58,7 @@ pub struct JumpNowResponse {
     pub requested: usize,
     pub responded: usize,
     pub timed_out: usize,
+    pub error: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -114,6 +124,7 @@ pub struct ProcessDebugResponse {
     pub status_message: Option<String>,
     pub command_output: Option<String>,
     pub command_exit_code: Option<i32>,
+    pub result_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,6 +173,7 @@ pub async fn api_jump_now(
 
         let mut responded = 0usize;
         let mut timed_out = 0usize;
+        let mut error = 0usize;
         let captured_at_ns: i64 = conn
             .query_row(
                 "SELECT COALESCE(completed_at_ns, requested_at_ns) FROM snapshots WHERE snapshot_id = ?1",
@@ -192,6 +204,7 @@ pub async fn api_jump_now(
             match status.as_str() {
                 "responded" => responded += count,
                 "timeout" => timed_out += count,
+                "error" => error += count,
                 _ => {}
             }
         }
@@ -201,6 +214,7 @@ pub async fn api_jump_now(
             requested = processes_requested,
             responded,
             timed_out,
+            error,
             captured_at_ns,
             "api jump-now completed"
         );
@@ -210,6 +224,7 @@ pub async fn api_jump_now(
             requested: processes_requested,
             responded,
             timed_out,
+            error,
         }))
     })
     .await
@@ -304,7 +319,7 @@ pub async fn api_connections(
 
 pub async fn api_snapshot_processes(
     State(state): State<AppState>,
-    Path(snapshot_id): Path<i64>,
+    AxumPath(snapshot_id): AxumPath<i64>,
 ) -> Result<Json<SnapshotProcessesResponse>, (StatusCode, Json<ApiError>)> {
     let db_path = state.db_path.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -387,6 +402,7 @@ pub async fn api_process_debug(
     let db_path = state.db_path.clone();
     let snapshot_id = req.snapshot_id;
     let run = req.run;
+    let output_store = state.process_debug_results.clone();
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = Connection::open(&*db_path)
@@ -421,79 +437,69 @@ pub async fn api_process_debug(
                 status_message: Some("No pid available for this snapshot process".to_string()),
                 command_output: None,
                 command_exit_code: None,
+                result_url: None,
             });
         };
 
-        let (command, status, status_message, output, exit_code) = match action.as_str() {
-            "sample" => {
-                let command = if cfg!(target_os = "macos") {
-                    format!("sample {pid} 1")
-                } else {
-                    "sample (unsupported on this OS)".to_string()
-                };
-                let status = if cfg!(target_os = "macos") && run {
-                    match run_sample_command(pid) {
+        let command = run_debug_command_text(action.as_str(), pid);
+        let (status, status_message, output, exit_code) = if cfg!(target_os = "macos") {
+            if run {
+                match action.as_str() {
+                    "sample" => match run_sample_command(pid) {
                         Ok((command_output, exit_code)) => {
-                            let s = if exit_code == 0 { "executed" } else { "execution_failed" };
-                            (command, s.to_string(), None, Some(command_output), Some(exit_code))
+                            let status = if exit_code == 0 { "executed" } else { "execution_failed" };
+                            (status.to_string(), None, Some(command_output), Some(exit_code))
                         }
-                        Err(err) => (command, "execution_error".to_string(), Some(err), None, None),
-                    }
-                } else if !cfg!(target_os = "macos") {
-                    (
-                        command,
-                        "unsupported".to_string(),
-                        Some("sample is available on macOS only".to_string()),
-                        None,
-                        None,
-                    )
-                } else {
-                    (
-                        command,
-                        "prepared".to_string(),
-                        Some("sample command prepared, not executed".to_string()),
-                        None,
-                        None,
-                    )
-                };
-                status
-            }
-            "spindump" => {
-                let command = if cfg!(target_os = "macos") {
-                    format!("spindump -pid {pid}")
-                } else {
-                    "spindump (unsupported on this OS)".to_string()
-                };
-                let status = if cfg!(target_os = "macos") && run {
-                    match run_spindump_command(pid) {
+                        Err(err) => (
+                            "execution_error".to_string(),
+                            Some(err),
+                            None,
+                            None,
+                        ),
+                    },
+                    "spindump" => match run_spindump_command(pid) {
                         Ok((command_output, exit_code)) => {
-                            let s = if exit_code == 0 { "executed" } else { "execution_failed" };
-                            (command, s.to_string(), None, Some(command_output), Some(exit_code))
+                            let status = if exit_code == 0 { "executed" } else { "execution_failed" };
+                            (status.to_string(), None, Some(command_output), Some(exit_code))
                         }
-                        Err(err) => (command, "execution_error".to_string(), Some(err), None, None),
+                        Err(err) => (
+                            "execution_error".to_string(),
+                            Some(err),
+                            None,
+                            None,
+                        ),
+                    },
+                    _ => {
+                        return Err(api_error(
+                            StatusCode::BAD_REQUEST,
+                            format!("unsupported action: {action}"),
+                        ));
                     }
-                } else if !cfg!(target_os = "macos") {
-                    (
-                        command,
-                        "unsupported".to_string(),
-                        Some("spindump is available on macOS only".to_string()),
-                        None,
-                        None,
-                    )
-                } else {
-                    (
-                        command,
-                        "prepared".to_string(),
-                        Some("spindump command prepared, not executed".to_string()),
-                        None,
-                        None,
-                    )
-                };
-                status
+                }
+            } else {
+                (
+                    "prepared".to_string(),
+                    Some(format!("{action} command prepared, not executed")),
+                    None,
+                    None,
+                )
             }
-            _ => {
-                return Err(api_error(StatusCode::BAD_REQUEST, format!("unsupported action: {action}")));
-            }
+        } else {
+            (
+                "unsupported".to_string(),
+                Some(format!("{action} is available on macOS only")),
+                None,
+                None,
+            )
+        };
+
+        let result_url = if run {
+            output
+                .as_ref()
+                .map(|output| cache_process_debug_output(&output_store, output))
+                .transpose()?
+        } else {
+            None
         };
 
         Ok(ProcessDebugResponse {
@@ -507,6 +513,7 @@ pub async fn api_process_debug(
             status_message,
             command_output: output,
             command_exit_code: exit_code,
+            result_url,
         })
     })
     .await
@@ -518,18 +525,51 @@ pub async fn api_process_debug(
     Ok(Json(result))
 }
 
+pub async fn api_process_debug_result(
+    State(state): State<AppState>,
+    AxumPath(result_id): AxumPath<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    let output = state
+        .process_debug_results
+        .lock()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "debug output cache unavailable"))?
+        .get(&result_id)
+        .cloned()
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "process debug result not found"))?;
+
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                "text/plain; charset=utf-8",
+            ),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        output,
+    ))
+}
+
 fn run_sample_command(pid: i64) -> Result<(String, i32), String> {
-    run_debug_command(&["sample", &pid.to_string(), "1"])
+    let pid = pid.to_string();
+    run_debug_command("sample", &[pid.as_str(), "1"])
 }
 
 fn run_spindump_command(pid: i64) -> Result<(String, i32), String> {
-    run_debug_command(&["spindump", "-pid", &pid.to_string()])
+    let pid = pid.to_string();
+    run_debug_command("sudo", &["-n", "spindump", pid.as_str()])
 }
 
-fn run_debug_command(args: &[&str]) -> Result<(String, i32), String> {
-    let mut command = Command::new(args[0]);
-    command.args(args.iter().skip(1));
-    let output = command
+fn run_debug_command_text(action: &str, pid: i64) -> String {
+    match action {
+        "sample" => format!("sample {pid} 1"),
+        "spindump" => format!("sudo -n spindump {pid}"),
+        _ => action.to_string(),
+    }
+}
+
+fn run_debug_command(binary: &str, args: &[&str]) -> Result<(String, i32), String> {
+    let output = Command::new(binary)
+        .args(args)
         .output()
         .map_err(|err| format!("failed to execute command: {err}"))?;
 
@@ -549,6 +589,31 @@ fn run_debug_command(args: &[&str]) -> Result<(String, i32), String> {
         result.truncate(65_536);
     }
     Ok((result, status_code))
+}
+
+fn next_debug_output_suffix() -> String {
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let sequence = PROCESS_DEBUG_OUTPUT_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("{suffix}-{sequence}")
+}
+
+fn next_debug_result_id() -> String {
+    format!("{PROCESS_DEBUG_OUTPUT_PREFIX}-{}", next_debug_output_suffix())
+}
+
+fn cache_process_debug_output(
+    output_store: &std::sync::Arc<std::sync::Mutex<HashMap<String, String>>>,
+    output: &str,
+) -> Result<String, (StatusCode, Json<ApiError>)> {
+    let result_id = next_debug_result_id();
+    output_store
+        .lock()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "debug output cache unavailable"))?
+        .insert(result_id.clone(), output.to_string());
+    Ok(format!("/api/process-debug-result/{result_id}"))
 }
 
 // ── POST /api/sql ────────────────────────────────────────────────

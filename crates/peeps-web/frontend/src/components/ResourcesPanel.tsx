@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
-import { Check, CopySimple, CaretDown, CaretLeft, CaretRight, Plugs } from "@phosphor-icons/react";
+import {
+  Check,
+  CircleNotch,
+  CopySimple,
+  CaretDown,
+  CaretLeft,
+  CaretRight,
+  Plugs,
+} from "@phosphor-icons/react";
 import { isResourceKind } from "../resourceKinds";
-import type { SnapshotGraph, SnapshotProcessInfo } from "../types";
+import type { SnapshotGraph, SnapshotProcessInfo, ProcessDebugResponse } from "../types";
 import { requestProcessDebug } from "../api";
 
 type SortKey = "health" | "connection" | "pending" | "last_recv" | "last_sent";
@@ -360,6 +368,8 @@ export function ResourcesPanel({
   const [copiedResources, setCopiedResources] = useState(false);
   const [debugMessage, setDebugMessage] = useState<string | null>(null);
   const [pendingCursor, setPendingCursor] = useState<Record<string, number>>({});
+  const [runningDebugActions, setRunningDebugActions] = useState<Set<string>>(new Set());
+  const [debugResultUrls, setDebugResultUrls] = useState<Record<string, string>>({});
 
   const pendingNodeRefs = useMemo(() => collectPendingNodeRefs(graph), [graph]);
   const processLookup = useMemo(() => buildProcessLookup(snapshotProcesses), [snapshotProcesses]);
@@ -611,28 +621,64 @@ export function ResourcesPanel({
   async function onProcessDebugClick(
     action: "sample" | "spindump",
     leg: DuplexLegRow,
-  ) {
+  ): Promise<ProcessDebugResponse | null> {
+    const actionKey = `${leg.procKey}:${action}`;
+    setRunningDebugActions((prev) => {
+      const next = new Set(prev);
+      next.add(actionKey);
+      return next;
+    });
     if (snapshotId == null) {
+      setRunningDebugActions((prev) => {
+        const next = new Set(prev);
+        next.delete(actionKey);
+        return next;
+      });
       setDebugMessage("No active snapshot to run debug for");
-      return;
+      return null;
     }
     if (!leg.procKey) {
+      setRunningDebugActions((prev) => {
+        const next = new Set(prev);
+        next.delete(actionKey);
+        return next;
+      });
       setDebugMessage(`Missing process key for ${leg.process || "unknown process"}`);
-      return;
+      return null;
     }
     if (leg.pid == null) {
+      setRunningDebugActions((prev) => {
+        const next = new Set(prev);
+        next.delete(actionKey);
+        return next;
+      });
       setDebugMessage(`No PID available for ${leg.process || leg.procKey}`);
-      return;
+      return null;
     }
     try {
-      const response = await requestProcessDebug(snapshotId, leg.procKey, action, false);
-      const copied = navigator.clipboard?.writeText(response.command);
-      if (copied && typeof copied.then === "function") {
-        await copied;
+      const response = await requestProcessDebug(snapshotId, leg.procKey, action, true);
+      if (response.result_url) {
+        setDebugResultUrls((prev) => ({ ...prev, [actionKey]: response.result_url! }));
+        setDebugMessage(`${action} output ready for ${response.process}`);
+      } else {
+        setDebugResultUrls((prev) => {
+          if (!(actionKey in prev)) return prev;
+          const next = { ...prev };
+          delete next[actionKey];
+          return next;
+        });
+        setDebugMessage(`${action} did not run for ${response.process}: ${response.status}`);
       }
-      setDebugMessage(`${action} command copied for ${response.process}`);
+      return response;
     } catch (err) {
       setDebugMessage(err instanceof Error ? `Debug command error: ${err.message}` : "Debug command failed");
+      return null;
+    } finally {
+      setRunningDebugActions((prev) => {
+        const next = new Set(prev);
+        next.delete(actionKey);
+        return next;
+      });
     }
   }
 
@@ -771,7 +817,7 @@ export function ResourcesPanel({
                     <div className="resources-cell-mono resources-duplex-summary">
                       {problematicLegs.length > 0 ? (
                         <div className="resources-topbar-processes">
-                          {problematicLegs.map((leg) => {
+                              {problematicLegs.map((leg) => {
                               const isProblematic =
                                 leg.isMissing ||
                                 (leg.snapshotStatus !== "responded" &&
@@ -781,6 +827,12 @@ export function ResourcesPanel({
                                 !leg.isMissing && leg.nodeId.startsWith("connection:");
                               const processLabel = leg.process || "unknown";
                               const chipLabel = `${leg.legLabel}${leg.isMissing ? " (missing)" : ""}`;
+                              const sampleActionKey = `${leg.procKey}:sample`;
+                              const spindumpActionKey = `${leg.procKey}:spindump`;
+                              const sampleResultUrl = debugResultUrls[sampleActionKey];
+                              const spindumpResultUrl = debugResultUrls[spindumpActionKey];
+                              const sampleRunning = runningDebugActions.has(sampleActionKey);
+                              const spindumpRunning = runningDebugActions.has(spindumpActionKey);
                               return (
                                 <div
                                   key={`missing:${duplexRow.key}:${leg.nodeId}`}
@@ -820,32 +872,72 @@ export function ResourcesPanel({
                                   )}
                                   {leg.pid != null && (leg.snapshotStatus !== "responded" || leg.isMissing) ? (
                                     <div className="resources-topbar-chip-actions">
-                                      <button
-                                        type="button"
-                                        className="resources-debug-btn"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void onProcessDebugClick("sample", leg).then(() => {
-                                            clearDebugMessage();
-                                          });
-                                        }}
-                                        title="Copy sample command"
-                                      >
-                                        sample
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="resources-debug-btn"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void onProcessDebugClick("spindump", leg).then(() => {
-                                            clearDebugMessage();
-                                          });
-                                        }}
-                                        title="Copy spindump command"
-                                      >
-                                        spindump
-                                      </button>
+                                      {sampleRunning ? (
+                                        <button
+                                          type="button"
+                                          className="resources-debug-btn resources-debug-btn--loading"
+                                          disabled
+                                        >
+                                          <CircleNotch size={10} weight="bold" className="resources-debug-btn__spinner" />
+                                          sample running
+                                        </button>
+                                      ) : sampleResultUrl ? (
+                                        <a
+                                          href={sampleResultUrl}
+                                          className="resources-debug-btn"
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
+                                          Open sample txt
+                                        </a>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="resources-debug-btn"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void onProcessDebugClick("sample", leg).then(() => {
+                                              clearDebugMessage();
+                                            });
+                                          }}
+                                          title="Run sample command"
+                                        >
+                                          sample
+                                        </button>
+                                      )}
+                                      {spindumpRunning ? (
+                                        <button
+                                          type="button"
+                                          className="resources-debug-btn resources-debug-btn--loading"
+                                          disabled
+                                        >
+                                          <CircleNotch size={10} weight="bold" className="resources-debug-btn__spinner" />
+                                          spindump running
+                                        </button>
+                                      ) : spindumpResultUrl ? (
+                                        <a
+                                          href={spindumpResultUrl}
+                                          className="resources-debug-btn"
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
+                                          Open spindump txt
+                                        </a>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="resources-debug-btn"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void onProcessDebugClick("spindump", leg).then(() => {
+                                              clearDebugMessage();
+                                            });
+                                          }}
+                                          title="Run spindump command"
+                                        >
+                                          spindump
+                                        </button>
+                                      )}
                                     </div>
                                   ) : null}
                                 </div>
@@ -917,6 +1009,12 @@ export function ResourcesPanel({
                           : leg.snapshotStatus === "responded"
                             ? "ok"
                             : "warn";
+                      const sampleActionKey = `${leg.procKey}:sample`;
+                      const spindumpActionKey = `${leg.procKey}:spindump`;
+                      const sampleResultUrl = debugResultUrls[sampleActionKey];
+                      const spindumpResultUrl = debugResultUrls[spindumpActionKey];
+                      const sampleRunning = runningDebugActions.has(sampleActionKey);
+                      const spindumpRunning = runningDebugActions.has(spindumpActionKey);
                       const processLabel = leg.process || "unknown";
                       return (
                         <div
@@ -958,8 +1056,27 @@ export function ResourcesPanel({
                                 {leg.cmdArgsPreview ? ` ${leg.cmdArgsPreview}` : ""}
                               </span>
                             )}
-                            {leg.pid != null && (leg.snapshotStatus !== "responded" || leg.isMissing) ? (
-                              <div className="resources-process-debug-actions">
+                          {leg.pid != null && (leg.snapshotStatus !== "responded" || leg.isMissing) ? (
+                            <div className="resources-process-debug-actions">
+                              {sampleRunning ? (
+                                <button
+                                  type="button"
+                                  className="resources-debug-btn resources-debug-btn--loading"
+                                  disabled
+                                >
+                                  <CircleNotch size={10} weight="bold" className="resources-debug-btn__spinner" />
+                                  sample running
+                                </button>
+                              ) : sampleResultUrl ? (
+                                <a
+                                  href={sampleResultUrl}
+                                  className="resources-debug-btn"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Open sample txt
+                                </a>
+                              ) : (
                                 <button
                                   type="button"
                                   className="resources-debug-btn"
@@ -969,10 +1086,30 @@ export function ResourcesPanel({
                                       clearDebugMessage();
                                     });
                                   }}
-                                  title="Copy sample command"
+                                  title="Run sample command"
                                 >
                                   sample
                                 </button>
+                              )}
+                              {spindumpRunning ? (
+                                <button
+                                  type="button"
+                                  className="resources-debug-btn resources-debug-btn--loading"
+                                  disabled
+                                >
+                                  <CircleNotch size={10} weight="bold" className="resources-debug-btn__spinner" />
+                                  spindump running
+                                </button>
+                              ) : spindumpResultUrl ? (
+                                <a
+                                  href={spindumpResultUrl}
+                                  className="resources-debug-btn"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Open spindump txt
+                                </a>
+                              ) : (
                                 <button
                                   type="button"
                                   className="resources-debug-btn"
@@ -982,12 +1119,13 @@ export function ResourcesPanel({
                                       clearDebugMessage();
                                     });
                                   }}
-                                  title="Copy spindump command"
+                                  title="Run spindump command"
                                 >
                                   spindump
                                 </button>
-                              </div>
-                            ) : null}
+                              )}
+                            </div>
+                          ) : null}
                           </span>
                           <div className="resources-pending-cell">
                             <button
