@@ -13,6 +13,7 @@ use rusqlite::types::Value;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use tracing::{debug, error, info, warn};
 
 use crate::AppState;
 
@@ -103,9 +104,13 @@ fn api_error(status: StatusCode, msg: impl Into<String>) -> (StatusCode, Json<Ap
 pub async fn api_jump_now(
     State(state): State<AppState>,
 ) -> Result<Json<JumpNowResponse>, (StatusCode, Json<ApiError>)> {
+    info!("api jump-now requested");
     let (snapshot_id, processes_requested) = crate::trigger_snapshot(&state)
         .await
-        .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        .map_err(|e| {
+            error!(%e, "api jump-now failed to trigger snapshot");
+            api_error(StatusCode::INTERNAL_SERVER_ERROR, e)
+        })?;
 
     // Read back process statuses for the response
     let db_path = state.db_path.clone();
@@ -149,6 +154,14 @@ pub async fn api_jump_now(
             }
         }
 
+        info!(
+            snapshot_id,
+            requested = processes_requested,
+            responded,
+            timed_out,
+            captured_at_ns,
+            "api jump-now completed"
+        );
         Ok(Json(JumpNowResponse {
             snapshot_id,
             captured_at_ns,
@@ -158,7 +171,10 @@ pub async fn api_jump_now(
         }))
     })
     .await
-    .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}")))?
+    .map_err(|e| {
+        error!(%e, "api jump-now response join error");
+        api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}"))
+    })?
 }
 
 // ── GET /api/snapshot-progress ───────────────────────────────────
@@ -175,6 +191,13 @@ pub async fn api_snapshot_progress(
             .difference(&in_flight.pending)
             .cloned()
             .collect();
+        debug!(
+            snapshot_id = in_flight.snapshot_id,
+            requested = in_flight.requested.len(),
+            responded = responded_processes.len(),
+            pending = pending_processes.len(),
+            "api snapshot-progress active"
+        );
 
         return Ok(Json(SnapshotProgressResponse {
             active: true,
@@ -187,6 +210,7 @@ pub async fn api_snapshot_progress(
         }));
     }
 
+    debug!("api snapshot-progress inactive");
     Ok(Json(SnapshotProgressResponse {
         active: false,
         snapshot_id: None,
@@ -224,6 +248,11 @@ pub async fn api_connections(
     });
     processes.dedup_by(|a, b| a.proc_key == b.proc_key);
 
+    debug!(
+        connected_processes,
+        in_flight = ctl.in_flight.is_some(),
+        "api connections"
+    );
     Ok(Json(ConnectionsResponse {
         connected_processes,
         can_take_snapshot: connected_processes > 0 && ctl.in_flight.is_none(),
@@ -237,16 +266,55 @@ pub async fn api_sql(
     State(state): State<AppState>,
     Json(req): Json<SqlRequest>,
 ) -> Result<Json<SqlResponse>, (StatusCode, Json<ApiError>)> {
+    let snapshot_id = req.snapshot_id;
+    let sql_preview = preview_sql(&req.sql);
+    let param_count = req.params.len();
+    debug!(
+        snapshot_id,
+        %sql_preview,
+        param_count,
+        "api sql request"
+    );
     let db_path = state.db_path.clone();
     let result = tokio::task::spawn_blocking(move || sql_blocking(&db_path, req))
         .await
         .map_err(|e| {
+            error!(snapshot_id, %e, "api sql join error");
             api_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("join error: {e}"),
             )
         })?;
-    result
+    match result {
+        Ok(resp) => {
+            debug!(
+                snapshot_id,
+                row_count = resp.row_count,
+                truncated = resp.truncated,
+                column_count = resp.columns.len(),
+                "api sql response"
+            );
+            Ok(resp)
+        }
+        Err(err) => {
+            warn!(
+                snapshot_id,
+                %sql_preview,
+                "api sql request rejected or failed"
+            );
+            Err(err)
+        }
+    }
+}
+
+fn preview_sql(sql: &str) -> String {
+    const LIMIT: usize = 160;
+    if sql.len() <= LIMIT {
+        return sql.to_string();
+    }
+    let mut out = sql[..LIMIT].to_string();
+    out.push_str("...");
+    out
 }
 
 fn sql_blocking(

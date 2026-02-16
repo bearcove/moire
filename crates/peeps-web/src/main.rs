@@ -656,6 +656,15 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
         now_ns,
         graph,
     ) {
+        error!(
+            snapshot_id,
+            process = %reply.process,
+            %proc_key,
+            node_count = graph.map(|g| g.nodes.len()).unwrap_or(0),
+            edge_count = graph.map(|g| g.edges.len()).unwrap_or(0),
+            %e,
+            "failed to persist snapshot reply"
+        );
         record_ingest_event(
             &state.db_path,
             Some(snapshot_id),

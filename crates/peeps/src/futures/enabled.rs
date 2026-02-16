@@ -437,36 +437,15 @@ pub fn sleep(
     duration: std::time::Duration,
     label: impl Into<String>,
 ) -> PeepableFuture<tokio::time::Sleep> {
-    let label = format!("sleep:{}", label.into());
-    let node_id = peeps_types::new_node_id("future");
-    let caller = std::panic::Location::caller();
-    let location = crate::caller_location(caller);
-
-    let user_meta = SleepUserMeta {
-        sleep_duration_ms: format!("{}", duration.as_millis()),
-    };
-    let user_meta_json = facet_json::to_string(&user_meta).unwrap();
-
-    register_future(
-        node_id.clone(),
-        NodeKind::Future,
-        label.clone(),
-        location,
-        user_meta_json,
-    );
-
-    let child_id = node_id.clone();
-    crate::stack::with_top(|parent_node_id| {
-        crate::registry::spawn_edge(parent_node_id, &child_id);
-    });
-
-    PeepableFuture {
-        node_id,
-        resource: label,
-        inner: tokio::time::sleep(duration),
-        pending_since: None,
-        await_edge_src: None,
-    }
+    crate::peep!(
+        tokio::time::sleep(duration),
+        format!("sleep:{}", label.into()),
+        level = peeps_types::InstrumentationLevel::Debug,
+        kind = peeps_types::NodeKind::Future,
+        {
+            "sleep_duration_ms" => duration.as_millis().to_string().as_str(),
+        }
+    )
 }
 
 // ── Attrs structs ────────────────────────────────────────

@@ -175,58 +175,58 @@ macro_rules! peepable_with_meta {
 #[cfg(feature = "diagnostics")]
 #[macro_export]
 macro_rules! peep {
-    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, level = $level:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::<{
             0 $(+ $crate::peep!(@count $k))*
         }>::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
         $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
-    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr) => {{
+    ($future:expr, $label:expr, level = $level:expr, kind = $kind:expr) => {{
         let mb = $crate::MetaBuilder::<0>::new();
         $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
-    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, kind = $kind:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::<{
             0 $(+ $crate::peep!(@count $k))*
         }>::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
         $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
-    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr) => {{
+    ($future:expr, $label:expr, kind = $kind:expr, level = $level:expr) => {{
         let mb = $crate::MetaBuilder::<0>::new();
         $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
-    ($future:expr, $label:literal, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::<{
             0 $(+ $crate::peep!(@count $k))*
         }>::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
         $crate::peepable_with_meta_kind($future, $kind, $label, mb)
     }};
-    ($future:expr, $label:literal, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::<{
             0 $(+ $crate::peep!(@count $k))*
         }>::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
         $crate::peepable_with_meta_kind_level($future, $crate::types::NodeKind::Future, $label, $level, mb)
     }};
-    ($future:expr, $label:literal, level = $level:expr) => {{
+    ($future:expr, $label:expr, level = $level:expr) => {{
         let mb = $crate::MetaBuilder::<0>::new();
         $crate::peepable_with_meta_kind_level($future, $crate::types::NodeKind::Future, $label, $level, mb)
     }};
-    ($future:expr, $label:literal, kind = $kind:expr) => {{
+    ($future:expr, $label:expr, kind = $kind:expr) => {{
         let mb = $crate::MetaBuilder::<0>::new();
         $crate::peepable_with_meta_kind($future, $kind, $label, mb)
     }};
-    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::<{
             0 $(+ $crate::peep!(@count $k))*
         }>::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
         $crate::peepable_with_meta($future, $label, mb)
     }};
-    ($future:expr, $label:literal) => {{
+    ($future:expr, $label:expr) => {{
         let mb = $crate::MetaBuilder::<0>::new();
         $crate::peepable_with_meta($future, $label, mb)
     }};
@@ -236,34 +236,34 @@ macro_rules! peep {
 #[cfg(not(feature = "diagnostics"))]
 #[macro_export]
 macro_rules! peep {
-    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, level = $level:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         $future
     }};
-    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr) => {{
+    ($future:expr, $label:expr, level = $level:expr, kind = $kind:expr) => {{
         $future
     }};
-    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, kind = $kind:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         $future
     }};
-    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr) => {{
+    ($future:expr, $label:expr, kind = $kind:expr, level = $level:expr) => {{
         $future
     }};
-    ($future:expr, $label:literal, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         $future
     }};
-    ($future:expr, $label:literal, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         $future
     }};
-    ($future:expr, $label:literal, level = $level:expr) => {{
+    ($future:expr, $label:expr, level = $level:expr) => {{
         $future
     }};
-    ($future:expr, $label:literal, kind = $kind:expr) => {{
+    ($future:expr, $label:expr, kind = $kind:expr) => {{
         $future
     }};
-    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
+    ($future:expr, $label:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         $future
     }};
-    ($future:expr, $label:literal) => {{
+    ($future:expr, $label:expr) => {{
         $future
     }};
 }
