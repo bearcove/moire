@@ -5,7 +5,7 @@ import { Header } from "./components/Header";
 import { RequestsTable } from "./components/RequestsTable";
 import { GraphView } from "./components/GraphView";
 import { Inspector } from "./components/Inspector";
-import type { JumpNowResponse, StuckRequest, SnapshotGraph, SnapshotNode } from "./types";
+import type { JumpNowResponse, StuckRequest, SnapshotGraph, SnapshotNode, SnapshotEdge } from "./types";
 
 function useSessionState(key: string, initial: boolean): [boolean, () => void] {
   const [value, setValue] = useState(() => {
@@ -74,6 +74,7 @@ export function App() {
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
   const [graphSearchQuery, setGraphSearchQuery] = useState("");
   const [selectedNode, setSelectedNode] = useState<SnapshotNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<SnapshotEdge | null>(null);
 
   // Keep graph/inspector focus-first: left and right panels are collapsed by default,
   // but users can expand them and the state is sticky for the current browser session.
@@ -95,6 +96,7 @@ export function App() {
       setSelectedRequest(null);
       setSelectedNode(null);
       setSelectedNodeId(null);
+      setSelectedEdge(null);
       setFilteredNodeId(null);
       setGraphSearchQuery("");
     } catch (e) {
@@ -113,6 +115,7 @@ export function App() {
       const node = graph?.nodes.find((n) => n.id === req.id) ?? null;
       setSelectedNodeId(req.id);
       setFilteredNodeId(req.id);
+      setSelectedEdge(null);
       // Prefer full graph node metadata in inspector when available.
       if (node) {
         setSelectedNode(node);
@@ -129,16 +132,28 @@ export function App() {
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
       setSelectedRequest(null);
+      setSelectedEdge(null);
       const node = graph?.nodes.find((n) => n.id === nodeId) ?? null;
       setSelectedNode(node);
     },
     [graph],
   );
 
+  const handleSelectEdge = useCallback(
+    (edge: SnapshotEdge) => {
+      setSelectedEdge(edge);
+      setSelectedRequest(null);
+      setSelectedNode(null);
+      setSelectedNodeId(null);
+    },
+    [],
+  );
+
   const handleClearSelection = useCallback(() => {
     setSelectedRequest(null);
     setSelectedNode(null);
     setSelectedNodeId(null);
+    setSelectedEdge(null);
     setFilteredNodeId(null);
   }, []);
 
@@ -196,19 +211,23 @@ export function App() {
           fullGraph={graph}
           filteredNodeId={filteredNodeId}
           selectedNodeId={selectedNodeId}
+          selectedEdge={selectedEdge}
           searchQuery={graphSearchQuery}
           searchResults={searchResults}
           onSearchQueryChange={setGraphSearchQuery}
           onSelectSearchResult={handleSelectSearchResult}
           onSelectNode={handleSelectGraphNode}
+          onSelectEdge={handleSelectEdge}
           onClearSelection={handleClearSelection}
         />
         <Inspector
           selectedRequest={selectedRequest}
           selectedNode={selectedNode}
+          selectedEdge={selectedEdge}
           graph={graph}
           filteredNodeId={filteredNodeId}
           onFocusNode={setFilteredNodeId}
+          onSelectNode={handleSelectGraphNode}
           collapsed={rightCollapsed}
           onToggleCollapse={toggleRight}
         />

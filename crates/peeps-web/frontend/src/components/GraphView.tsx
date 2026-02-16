@@ -16,7 +16,7 @@ import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import { Graph as GraphIcon, MagnifyingGlass, X } from "@phosphor-icons/react";
-import type { SnapshotGraph } from "../types";
+import type { SnapshotGraph, SnapshotEdge } from "../types";
 import { PeepsNode, processColor, estimateNodeHeight, type NodeData } from "./NodeCards";
 
 const elkOptions = {
@@ -100,19 +100,31 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
     .filter((e) => nodeIds.has(e.src_id) && nodeIds.has(e.dst_id))
     .map((e) => {
       const isTouches = e.kind === "touches";
+      const isSpawned = e.kind === "spawned";
       const involvesGhost = ghostIds.has(e.src_id) || ghostIds.has(e.dst_id);
       return {
         id: `${e.src_id}->${e.dst_id}:${e.kind}`,
         source: e.src_id,
         target: e.dst_id,
-        markerEnd: { type: MarkerType.ArrowClosed, width: isTouches ? 8 : 12, height: isTouches ? 8 : 12 },
+        data: { kind: e.kind, srcId: e.src_id, dstId: e.dst_id },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: isTouches || isSpawned ? 8 : 12,
+          height: isTouches || isSpawned ? 8 : 12,
+        },
         style: involvesGhost
           ? { stroke: "light-dark(#b0b0b6, #505056)", strokeWidth: 1, strokeDasharray: "6 4", opacity: 0.5 }
+          : isSpawned
+            ? { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3", opacity: 0.7 }
+            : isTouches
+              ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
+              : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
+        label: isSpawned ? "spawned" : isTouches ? "touches" : undefined,
+        labelStyle: isSpawned
+          ? { fontSize: 9, fill: "light-dark(#8e7cc3, #b4a7d6)" }
           : isTouches
-            ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
-            : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
-        label: isTouches ? "touches" : undefined,
-        labelStyle: isTouches ? { fontSize: 9, fill: "light-dark(#a1a1a6, #636366)" } : undefined,
+            ? { fontSize: 9, fill: "light-dark(#a1a1a6, #636366)" }
+            : undefined,
       };
     });
 
@@ -153,22 +165,28 @@ interface GraphViewProps {
   fullGraph: SnapshotGraph | null;
   filteredNodeId: string | null;
   selectedNodeId: string | null;
+  selectedEdge: SnapshotEdge | null;
   searchQuery: string;
   searchResults: SnapshotGraph["nodes"];
   onSearchQueryChange: (value: string) => void;
   onSelectSearchResult: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
+  onSelectEdge: (edge: SnapshotEdge) => void;
   onClearSelection: () => void;
 }
 
 function GraphFlow({
   graph,
   selectedNodeId,
+  selectedEdge,
   onSelectNode,
+  onSelectEdge,
 }: {
   graph: SnapshotGraph;
   selectedNodeId: string | null;
+  selectedEdge: SnapshotEdge | null;
   onSelectNode: (id: string) => void;
+  onSelectEdge: (edge: SnapshotEdge) => void;
 }) {
   const { nodes: initNodes, edges: initEdges } = useMemo(() => graphToFlowElements(graph), [graph]);
 
@@ -191,13 +209,19 @@ function GraphFlow({
   }, [graph, setNodes, setEdges, fitView]);
 
   useEffect(() => {
+    const highlightIds = new Set<string>();
+    if (selectedNodeId) highlightIds.add(selectedNodeId);
+    if (selectedEdge) {
+      highlightIds.add(selectedEdge.src_id);
+      highlightIds.add(selectedEdge.dst_id);
+    }
     setNodes((curr) =>
       curr.map((node) => ({
         ...node,
-        selected: selectedNodeId != null && node.id === selectedNodeId,
+        selected: highlightIds.has(node.id),
       })),
     );
-  }, [selectedNodeId, setNodes]);
+  }, [selectedNodeId, selectedEdge, setNodes]);
 
   useEffect(() => {
     if (!selectedNodeId) return;
@@ -215,6 +239,21 @@ function GraphFlow({
     [onSelectNode],
   );
 
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      const data = edge.data as { kind: string; srcId: string; dstId: string } | undefined;
+      if (data) {
+        onSelectEdge({
+          src_id: data.srcId,
+          dst_id: data.dstId,
+          kind: data.kind,
+          attrs: {},
+        });
+      }
+    },
+    [onSelectEdge],
+  );
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -222,6 +261,7 @@ function GraphFlow({
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeClick={onNodeClick}
+      onEdgeClick={onEdgeClick}
       nodeTypes={nodeTypes}
       fitView
       proOptions={{ hideAttribution: true }}
@@ -241,11 +281,13 @@ export function GraphView({
   fullGraph,
   filteredNodeId,
   selectedNodeId,
+  selectedEdge,
   searchQuery,
   searchResults,
   onSearchQueryChange,
   onSelectSearchResult,
   onSelectNode,
+  onSelectEdge,
   onClearSelection,
 }: GraphViewProps) {
   const ghostCount = graph?.ghostNodes?.length ?? 0;
@@ -310,7 +352,7 @@ export function GraphView({
       <div className="react-flow-wrapper">
         {graph && graph.nodes.length > 0 ? (
           <ReactFlowProvider>
-            <GraphFlow graph={graph} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} />
+            <GraphFlow graph={graph} selectedNodeId={selectedNodeId} selectedEdge={selectedEdge} onSelectNode={onSelectNode} onSelectEdge={onSelectEdge} />
           </ReactFlowProvider>
         ) : (
           <div style={{ padding: 16, color: "light-dark(#6e6e73, #98989d)", fontSize: 12 }}>

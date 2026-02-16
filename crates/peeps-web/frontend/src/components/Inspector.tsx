@@ -29,15 +29,19 @@ import {
   Check,
   ArrowSquareOut,
   Ghost,
+  ArrowRight,
+  GitFork,
 } from "@phosphor-icons/react";
-import type { StuckRequest, SnapshotNode, SnapshotGraph } from "../types";
+import type { StuckRequest, SnapshotNode, SnapshotEdge, SnapshotGraph } from "../types";
 
 interface InspectorProps {
   selectedRequest: StuckRequest | null;
   selectedNode: SnapshotNode | null;
+  selectedEdge: SnapshotEdge | null;
   graph: SnapshotGraph | null;
   filteredNodeId: string | null;
   onFocusNode: (nodeId: string | null) => void;
+  onSelectNode: (nodeId: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -125,9 +129,11 @@ const kindIcons: Record<string, React.ReactNode> = {
 export function Inspector({
   selectedRequest,
   selectedNode,
+  selectedEdge,
   graph,
   filteredNodeId,
   onFocusNode,
+  onSelectNode,
   collapsed,
   onToggleCollapse,
 }: InspectorProps) {
@@ -153,6 +159,8 @@ export function Inspector({
       <div className="inspector">
         {selectedRequest ? (
           <RequestDetail req={selectedRequest} />
+        ) : selectedEdge ? (
+          <EdgeDetail edge={selectedEdge} graph={graph} onSelectNode={onSelectNode} />
         ) : selectedNode ? (
           selectedNode.kind === "ghost" ? (
             <GhostDetail node={selectedNode} graph={graph} />
@@ -165,7 +173,7 @@ export function Inspector({
           )
         ) : (
           <div className="inspector-empty">
-            Select a request or graph node to inspect.
+            Select a request, graph node, or edge to inspect.
             <br />
             <br />
             Keyboard: arrows to navigate, enter to select, esc to deselect.
@@ -188,6 +196,96 @@ function RequestDetail({ req }: { req: StuckRequest }) {
       <dt>Connection</dt>
       <dd>{req.connection ?? "—"}</dd>
     </dl>
+  );
+}
+
+function nodeLabel(graph: SnapshotGraph | null, nodeId: string): string {
+  if (!graph) return nodeId;
+  const node = graph.nodes.find((n) => n.id === nodeId);
+  if (!node) return nodeId;
+  return (
+    firstAttr(node.attrs, ["label", "method", "request.method", "name"]) ?? nodeId
+  );
+}
+
+function EdgeDetail({
+  edge,
+  graph,
+  onSelectNode,
+}: {
+  edge: SnapshotEdge;
+  graph: SnapshotGraph | null;
+  onSelectNode: (nodeId: string) => void;
+}) {
+  const srcLabel = nodeLabel(graph, edge.src_id);
+  const dstLabel = nodeLabel(graph, edge.dst_id);
+  const srcNode = graph?.nodes.find((n) => n.id === edge.src_id);
+  const dstNode = graph?.nodes.find((n) => n.id === edge.dst_id);
+
+  const kindVariant =
+    edge.kind === "needs" ? "crit" : edge.kind === "spawned" ? "ok" : "neutral";
+
+  return (
+    <div className="inspect-node">
+      <div className="inspect-node-header">
+        <span className="inspect-node-icon">
+          {edge.kind === "spawned" ? (
+            <GitFork size={16} weight="bold" />
+          ) : (
+            <ArrowRight size={16} weight="bold" />
+          )}
+        </span>
+        <div>
+          <div className="inspect-node-kind">edge</div>
+          <div className="inspect-node-label">{edge.kind}</div>
+        </div>
+      </div>
+
+      <div className="inspect-section">
+        <div className="inspect-row">
+          <span className="inspect-key">Kind</span>
+          <span className={`inspect-pill inspect-pill--${kindVariant}`}>
+            {edge.kind.toUpperCase()}
+          </span>
+        </div>
+      </div>
+
+      <div className="inspect-section">
+        <div className="inspect-edge-endpoint">
+          <span className="inspect-edge-label">Source</span>
+          <button
+            className="inspect-edge-node-btn"
+            onClick={() => onSelectNode(edge.src_id)}
+            title={edge.src_id}
+          >
+            {srcNode && (
+              <span className="inspect-edge-node-kind">{srcNode.kind}</span>
+            )}
+            <span className="inspect-edge-node-name">{srcLabel}</span>
+          </button>
+          <span className="inspect-edge-id">{edge.src_id}</span>
+        </div>
+
+        <div className="inspect-edge-arrow">
+          <ArrowRight size={14} weight="bold" />
+        </div>
+
+        <div className="inspect-edge-endpoint">
+          <span className="inspect-edge-label">Target</span>
+          <button
+            className="inspect-edge-node-btn"
+            onClick={() => onSelectNode(edge.dst_id)}
+            title={edge.dst_id}
+          >
+            {dstNode && (
+              <span className="inspect-edge-node-kind">{dstNode.kind}</span>
+            )}
+            <span className="inspect-edge-node-name">{dstLabel}</span>
+          </button>
+          <span className="inspect-edge-id">{edge.dst_id}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 

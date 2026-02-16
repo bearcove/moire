@@ -1132,6 +1132,76 @@ body {
     color: light-dark(#8e8e93, #636366);
 }
 
+/* ── Inspector edge detail ──────────────────────────────── */
+
+.inspect-edge-endpoint {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid light-dark(#ebebf0, #2a2a2e);
+    border-radius: 6px;
+    background: light-dark(#f8f8fb, #1a1a1e);
+}
+
+.inspect-edge-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: light-dark(#8e8e93, #636366);
+}
+
+.inspect-edge-node-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 4px;
+    background: light-dark(#fff, #222226);
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    text-align: left;
+}
+
+.inspect-edge-node-btn:hover {
+    background: light-dark(#f0f0f5, #2a2a2e);
+    border-color: light-dark(#0071e3, #0a84ff);
+}
+
+.inspect-edge-node-kind {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: light-dark(#6e6e73, #9a9aa1);
+    flex-shrink: 0;
+}
+
+.inspect-edge-node-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.inspect-edge-id {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: light-dark(#8e8e93, #636366);
+    word-break: break-all;
+}
+
+.inspect-edge-arrow {
+    display: flex;
+    justify-content: center;
+    color: light-dark(#8e8e93, #636366);
+    padding: 2px 0;
+}
+
 /* ── Inspector raw attrs ─────────────────────────────────── */
 
 .inspect-raw {
