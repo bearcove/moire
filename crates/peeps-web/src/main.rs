@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::Router;
 use peeps_types::{GraphReply, SnapshotRequest};
@@ -53,6 +53,14 @@ pub(crate) const DEFAULT_TIMEOUT_MS: i64 = 5000;
 const MAX_SNAPSHOTS: i64 = 500;
 const INGEST_EVENTS_RETENTION_DAYS: i64 = 7;
 const EVENTS_RETENTION_DAYS: i64 = 7;
+const FAVICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <style>
+    path { fill: #111827; }
+    @media (prefers-color-scheme: dark) { path { fill: #f9fafb; } }
+  </style>
+  <path d="M201.54,54.46A104,104,0,0,0,54.46,201.54,104,104,0,0,0,201.54,54.46ZM190.23,65.78a88.18,88.18,0,0,1,11,13.48L167.55,119,139.63,40.78A87.34,87.34,0,0,1,190.23,65.78ZM155.59,133l-18.16,21.37-27.59-5L100.41,123l18.16-21.37,27.59,5ZM65.77,65.78a87.34,87.34,0,0,1,56.66-25.59l17.51,49L58.3,74.32A88,88,0,0,1,65.77,65.78ZM46.65,161.54a88.41,88.41,0,0,1,2.53-72.62l51.21,9.35Zm19.12,28.68a88.18,88.18,0,0,1-11-13.48L88.45,137l27.92,78.18A87.34,87.34,0,0,1,65.77,190.22Zm124.46,0a87.34,87.34,0,0,1-56.66,25.59l-17.51-49,81.64,14.91A88,88,0,0,1,190.23,190.22Zm-34.62-32.49,53.74-63.27a88.41,88.41,0,0,1-2.53,72.62Z"/>
+</svg>
+"##;
 
 // ── Main ─────────────────────────────────────────────────────────
 
@@ -95,6 +103,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/favicon.svg", get(favicon_svg))
+        .route("/favicon.ico", get(favicon_ico))
         .route("/api/jump-now", post(api::api_jump_now))
         .route("/api/sql", post(api::api_sql))
         .with_state(state.clone());
@@ -111,6 +121,20 @@ async fn main() {
 
 async fn health() -> impl IntoResponse {
     "ok"
+}
+
+async fn favicon_svg() -> impl IntoResponse {
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "image/svg+xml; charset=utf-8"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        FAVICON_SVG,
+    )
+}
+
+async fn favicon_ico() -> Redirect {
+    Redirect::permanent("/favicon.svg")
 }
 
 // ── Snapshot orchestration (used by api module) ──────────────────

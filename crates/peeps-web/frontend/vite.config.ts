@@ -12,6 +12,12 @@ export default defineConfig({
       "/health": {
         target: "http://127.0.0.1:9130",
       },
+      "/favicon.svg": {
+        target: "http://127.0.0.1:9130",
+      },
+      "/favicon.ico": {
+        target: "http://127.0.0.1:9130",
+      },
     },
   },
   build: {
