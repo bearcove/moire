@@ -653,6 +653,15 @@ pub struct SnapshotRequest {
     pub timeout_ms: i64,
 }
 
+/// Client-to-server: identify a connected process before snapshot requests.
+#[derive(Debug, Clone, Facet)]
+pub struct DashboardHandshake {
+    pub r#type: String,
+    pub process: String,
+    pub pid: u32,
+    pub proc_key: String,
+}
+
 /// Client-to-server: lightweight reply carrying only the canonical graph.
 #[derive(Debug, Clone, Facet)]
 pub struct GraphReply {

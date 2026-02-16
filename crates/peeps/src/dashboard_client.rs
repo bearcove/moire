@@ -4,7 +4,7 @@
 //! and waits for snapshot requests. On receiving a request, collects a local
 //! dump and sends it back as a snapshot reply.
 
-use peeps_types::{GraphReply, SnapshotRequest};
+use peeps_types::{DashboardHandshake, GraphReply, SnapshotRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, info, warn};
@@ -32,6 +32,20 @@ pub fn start_pull_loop(process_name: String, addr: String) {
 /// Read snapshot_request frames, collect dump, send snapshot_reply frames.
 async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()> {
     let (mut reader, mut writer) = stream.into_split();
+    let pid = std::process::id();
+    let proc_key = peeps_types::make_proc_key(process_name, pid);
+
+    let handshake = DashboardHandshake {
+        r#type: "handshake".to_string(),
+        process: process_name.to_string(),
+        pid,
+        proc_key,
+    };
+    let handshake_bytes = facet_json::to_vec(&handshake).map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::Other, format!("serialize handshake: {e}"))
+    })?;
+    send_frame_bytes(&mut writer, &handshake_bytes).await?;
+    info!(process = %process_name, pid, "sent dashboard handshake");
 
     loop {
         // Read length-prefixed frame
@@ -71,29 +85,36 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
             r#type: "graph_reply".to_string(),
             snapshot_id: req.snapshot_id,
             process: process_name.to_string(),
-            pid: std::process::id(),
+            pid,
             graph,
         };
 
         let reply_bytes = facet_json::to_vec(&reply).map_err(|e| {
             std::io::Error::new(std::io::ErrorKind::Other, format!("serialize reply: {e}"))
         })?;
-
-        let frame_len = u32::try_from(reply_bytes.len()).map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "reply frame exceeds u32 length prefix",
-            )
-        })?;
-
-        writer.write_all(&frame_len.to_be_bytes()).await?;
-        writer.write_all(&reply_bytes).await?;
-        writer.flush().await?;
+        let reply_bytes_len = send_frame_bytes(&mut writer, &reply_bytes).await?;
 
         info!(
             snapshot_id = req.snapshot_id,
-            reply_bytes = reply_bytes.len(),
+            reply_bytes = reply_bytes_len,
             "sent snapshot reply"
         );
     }
+}
+
+async fn send_frame_bytes(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    bytes: &[u8],
+) -> std::io::Result<usize> {
+    let frame_len = u32::try_from(bytes.len()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "frame exceeds u32 length prefix",
+        )
+    })?;
+
+    writer.write_all(&frame_len.to_be_bytes()).await?;
+    writer.write_all(&bytes).await?;
+    writer.flush().await?;
+    Ok(bytes.len())
 }

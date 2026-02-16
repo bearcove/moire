@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::Router;
 use facet::Facet;
-use peeps_types::{GraphReply, SnapshotRequest};
+use peeps_types::{DashboardHandshake, GraphReply, SnapshotRequest};
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -57,6 +57,8 @@ struct LiveConnectionState {
 
 #[derive(Facet)]
 struct ConnectionNodeAttrs<'a> {
+    created_at: i64,
+    source: &'a str,
     #[facet(rename = "rpc.connection")]
     rpc_connection: &'a str,
     #[facet(rename = "connection.id")]
@@ -77,8 +79,6 @@ struct ConnectionNodeAttrs<'a> {
 
 pub(crate) struct InFlightSnapshot {
     pub(crate) snapshot_id: i64,
-    pub(crate) requested_at_ns: i64,
-    pub(crate) timeout_ms: i64,
     pub(crate) requested: BTreeSet<String>,
     pub(crate) pending: BTreeSet<String>,
     completion_tx: Option<oneshot::Sender<()>>,
@@ -221,8 +221,6 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
 
         ctl.in_flight = Some(InFlightSnapshot {
             snapshot_id,
-            requested_at_ns: now_ns,
-            timeout_ms: DEFAULT_TIMEOUT_MS,
             requested: pending.clone(),
             pending: pending.clone(),
             completion_tx: Some(completion_tx),
@@ -416,18 +414,14 @@ async fn read_replies(
             }
         }
 
-        debug!(
-            conn_id,
-            frame_len = len,
-            "received full frame, deserializing"
-        );
-        let reply: GraphReply = match facet_json::from_slice(&frame) {
-            Ok(r) => {
-                debug!(conn_id, "deserialized graph reply OK");
-                r
-            }
-            Err(e) => {
-                warn!(conn_id, %e, "failed to deserialize graph reply");
+        debug!(conn_id, frame_len = len, "received full frame");
+        let msg_type = match serde_json::from_slice::<serde_json::Value>(&frame)
+            .ok()
+            .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(|s| s.to_string()))
+        {
+            Some(t) => t,
+            None => {
+                warn!(conn_id, "failed to read message type");
                 record_ingest_event(
                     &state.db_path,
                     None,
@@ -435,53 +429,107 @@ async fn read_replies(
                     None,
                     None,
                     "decode_error",
-                    &format!("JSON decode failed: {e}"),
+                    "JSON decode failed or missing type field",
                 );
                 continue;
             }
         };
 
-        if reply.r#type != "graph_reply" {
-            warn!(conn_id, msg_type = %reply.r#type, "unexpected message type");
-            record_ingest_event(
-                &state.db_path,
-                None,
-                Some(&reply.process),
-                Some(reply.pid),
-                None,
-                "other",
-                &format!("unexpected message type: {}", reply.r#type),
-            );
-            continue;
-        }
-
-        let proc_key = peeps_types::make_proc_key(&reply.process, reply.pid);
-
-        {
-            let mut ctl = state.snapshot_ctl.inner.lock().await;
-            let mut previous_proc_key: Option<String> = None;
-            if let Some(conn) = ctl.connections.get_mut(&conn_id) {
-                previous_proc_key = Some(conn.proc_key.clone());
-                conn.proc_key = proc_key.clone();
-                conn.process_name = reply.process.clone();
-            }
-
-            // If a snapshot started before this connection reported identity,
-            // it may be tracked as "unknown-<id>". Swap to the real proc_key
-            // so pending bookkeeping can complete without waiting for timeout.
-            if let (Some(prev), Some(in_flight)) = (previous_proc_key, ctl.in_flight.as_mut()) {
-                if prev != proc_key {
-                    if in_flight.requested.remove(&prev) {
-                        in_flight.requested.insert(proc_key.clone());
+        match msg_type.as_str() {
+            "handshake" => {
+                let hello: DashboardHandshake = match facet_json::from_slice(&frame) {
+                    Ok(h) => h,
+                    Err(e) => {
+                        warn!(conn_id, %e, "failed to deserialize handshake");
+                        record_ingest_event(
+                            &state.db_path,
+                            None,
+                            None,
+                            None,
+                            None,
+                            "decode_error",
+                            &format!("handshake decode failed: {e}"),
+                        );
+                        continue;
                     }
-                    if in_flight.pending.remove(&prev) {
-                        in_flight.pending.insert(proc_key.clone());
-                    }
+                };
+
+                let proc_key = peeps_types::make_proc_key(&hello.process, hello.pid);
+                if hello.proc_key != proc_key {
+                    warn!(
+                        conn_id,
+                        advertised_proc_key = %hello.proc_key,
+                        canonical_proc_key = %proc_key,
+                        "handshake proc_key mismatch; using canonical value"
+                    );
                 }
+                apply_connection_identity(state, conn_id, proc_key, hello.process).await;
+            }
+            "graph_reply" => {
+                let reply: GraphReply = match facet_json::from_slice(&frame) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        warn!(conn_id, %e, "failed to deserialize graph reply");
+                        record_ingest_event(
+                            &state.db_path,
+                            None,
+                            None,
+                            None,
+                            None,
+                            "decode_error",
+                            &format!("graph reply decode failed: {e}"),
+                        );
+                        continue;
+                    }
+                };
+
+                let proc_key = peeps_types::make_proc_key(&reply.process, reply.pid);
+                apply_connection_identity(state, conn_id, proc_key.clone(), reply.process.clone())
+                    .await;
+                process_reply(state, &reply, &proc_key).await;
+            }
+            _ => {
+                warn!(conn_id, %msg_type, "unexpected message type");
+                record_ingest_event(
+                    &state.db_path,
+                    None,
+                    None,
+                    None,
+                    None,
+                    "other",
+                    &format!("unexpected message type: {msg_type}"),
+                );
             }
         }
+    }
+}
 
-        process_reply(state, &reply, &proc_key).await;
+async fn apply_connection_identity(
+    state: &AppState,
+    conn_id: u64,
+    proc_key: String,
+    process_name: String,
+) {
+    let mut ctl = state.snapshot_ctl.inner.lock().await;
+    let mut previous_proc_key: Option<String> = None;
+    if let Some(conn) = ctl.connections.get_mut(&conn_id) {
+        previous_proc_key = Some(conn.proc_key.clone());
+        conn.proc_key = proc_key.clone();
+        conn.process_name = process_name;
+    }
+
+    // If a snapshot started before this connection reported identity,
+    // it may be tracked as "unknown-<id>". Swap to the real proc_key
+    // so pending bookkeeping can complete without waiting for timeout.
+    if let (Some(prev), Some(in_flight)) = (previous_proc_key, ctl.in_flight.as_mut()) {
+        if prev != proc_key {
+            if in_flight.requested.remove(&prev) {
+                in_flight.requested.insert(proc_key.clone());
+            }
+            if in_flight.pending.remove(&prev) {
+                in_flight.pending.insert(proc_key.clone());
+            }
+        }
     }
 }
 
@@ -637,10 +685,19 @@ fn persist_reply(
             } else {
                 node.attrs_json.as_str()
             };
+            let canonical_attrs_json = canonicalize_inspector_attrs(attrs_json)
+                .map_err(|e| format!("node {} ({}) attrs contract: {e}", node.id, node.kind.as_str()))?;
             tx.execute(
                 "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![snapshot_id, node.id, node.kind.as_str(), process, proc_key, attrs_json],
+                params![
+                    snapshot_id,
+                    node.id,
+                    node.kind.as_str(),
+                    process,
+                    proc_key,
+                    canonical_attrs_json
+                ],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -650,6 +707,8 @@ fn persist_reply(
             live_connection_attrs_json.as_deref(),
         ) {
             if !saw_live_connection_node {
+                let canonical_attrs_json = canonicalize_inspector_attrs(attrs_json)
+                    .map_err(|e| format!("live connection attrs contract: {e}"))?;
                 tx.execute(
                     "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -659,7 +718,7 @@ fn persist_reply(
                         peeps_types::NodeKind::Connection.as_str(),
                         process,
                         proc_key,
-                        attrs_json
+                        canonical_attrs_json
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -715,6 +774,8 @@ fn connection_node_id(connection: &LiveConnectionState) -> String {
 
 fn connection_attrs_json(connection: &LiveConnectionState) -> String {
     let attrs = ConnectionNodeAttrs {
+        created_at: connection.opened_at_ns,
+        source: "peeps-web/live-connection",
         rpc_connection: &connection.connection_id,
         connection_id: &connection.connection_id,
         connection_state: if connection.closed_at_ns.is_some() {
@@ -729,6 +790,62 @@ fn connection_attrs_json(connection: &LiveConnectionState) -> String {
         connection_pending_requests: connection.pending_requests,
     };
     facet_json::to_string(&attrs).unwrap()
+}
+
+const FORBIDDEN_INSPECTOR_ALIAS_KEYS: [&str; 10] = [
+    "request.method",
+    "response.method",
+    "request.started_at_ns",
+    "request.delivered_at_ns",
+    "response.started_at_ns",
+    "response.created_at_ns",
+    "started_at_ns",
+    "ctx.location",
+    "correlation_key",
+    "created_at_ns",
+];
+
+fn canonicalize_inspector_attrs(attrs_json: &str) -> Result<String, String> {
+    let mut value: serde_json::Value =
+        serde_json::from_str(attrs_json).map_err(|e| format!("invalid JSON attrs: {e}"))?;
+    let obj = value
+        .as_object_mut()
+        .ok_or_else(|| "attrs must be a JSON object".to_string())?;
+
+    for key in FORBIDDEN_INSPECTOR_ALIAS_KEYS {
+        if obj.contains_key(key) {
+            return Err(format!("forbidden alias key `{key}` present"));
+        }
+    }
+
+    let created_at = obj
+        .get("created_at")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| "missing required `created_at` i64".to_string())?;
+    if created_at <= 0 {
+        return Err("`created_at` must be > 0".to_string());
+    }
+
+    let source = obj
+        .get("source")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "missing required `source` string".to_string())?;
+    if source.trim().is_empty() {
+        return Err("`source` must be non-empty".to_string());
+    }
+
+    if let Some(method) = obj.get("method") {
+        if !method.is_string() {
+            return Err("`method` must be a string when present".to_string());
+        }
+    }
+    if let Some(correlation) = obj.get("correlation") {
+        if !correlation.is_string() {
+            return Err("`correlation` must be a string when present".to_string());
+        }
+    }
+
+    serde_json::to_string(&value).map_err(|e| format!("serialize attrs: {e}"))
 }
 
 // ── Ingest events ────────────────────────────────────────────────
@@ -927,4 +1044,149 @@ pub(crate) fn now_nanos() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use peeps_types::{GraphSnapshot, Node, NodeKind};
+
+    fn temp_db_path(test_name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("peeps-web-{test_name}-{suffix}.sqlite"))
+    }
+
+    fn all_node_kinds() -> [NodeKind; 23] {
+        [
+            NodeKind::Future,
+            NodeKind::Lock,
+            NodeKind::Tx,
+            NodeKind::Rx,
+            NodeKind::RemoteTx,
+            NodeKind::RemoteRx,
+            NodeKind::Request,
+            NodeKind::Response,
+            NodeKind::Connection,
+            NodeKind::JoinSet,
+            NodeKind::Semaphore,
+            NodeKind::OnceCell,
+            NodeKind::Command,
+            NodeKind::FileOp,
+            NodeKind::Notify,
+            NodeKind::Sleep,
+            NodeKind::Interval,
+            NodeKind::Timeout,
+            NodeKind::NetConnect,
+            NodeKind::NetAccept,
+            NodeKind::NetReadable,
+            NodeKind::NetWritable,
+            NodeKind::Syscall,
+        ]
+    }
+
+    fn canonical_attrs(source: &str) -> String {
+        format!(
+            r#"{{"created_at":1700000000000000000,"source":"{source}","method":"M","correlation":"C"}}"#
+        )
+    }
+
+    #[test]
+    fn persist_reply_enforces_canonical_attrs_for_all_node_kinds() {
+        let db_path = temp_db_path("canonical-all-kinds");
+        init_db(db_path.to_str().unwrap()).expect("init db");
+
+        let nodes: Vec<Node> = all_node_kinds()
+            .iter()
+            .map(|kind| Node {
+                id: format!("{}:test", kind.as_str()),
+                kind: *kind,
+                label: Some(kind.as_str().to_string()),
+                attrs_json: canonical_attrs("/src/file.rs:1"),
+            })
+            .collect();
+
+        let graph = GraphSnapshot {
+            process_name: "test-proc".to_string(),
+            proc_key: "test-proc-1".to_string(),
+            nodes,
+            edges: vec![],
+            events: None,
+        };
+
+        persist_reply(
+            &db_path,
+            1,
+            "test-proc",
+            1,
+            "test-proc-1",
+            now_nanos(),
+            Some(&graph),
+            None,
+        )
+        .expect("persist reply");
+
+        let conn = open_db(&db_path);
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM nodes WHERE snapshot_id = 1", [], |row| row.get(0))
+            .expect("count rows");
+        assert_eq!(count as usize, all_node_kinds().len());
+
+        let mut stmt = conn
+            .prepare("SELECT attrs_json FROM nodes WHERE snapshot_id = 1")
+            .expect("prepare");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect");
+        for attrs_json in rows {
+            let value: serde_json::Value = serde_json::from_str(&attrs_json).expect("valid attrs json");
+            assert!(value.get("created_at").and_then(|v| v.as_i64()).unwrap_or_default() > 0);
+            assert!(!value.get("source").and_then(|v| v.as_str()).unwrap_or("").is_empty());
+        }
+    }
+
+    #[test]
+    fn persist_reply_rejects_alias_keys_for_inspector_nodes() {
+        let db_path = temp_db_path("reject-alias");
+        init_db(db_path.to_str().unwrap()).expect("init db");
+
+        let graph = GraphSnapshot {
+            process_name: "test-proc".to_string(),
+            proc_key: "test-proc-1".to_string(),
+            nodes: vec![Node {
+                id: "request:alias".to_string(),
+                kind: NodeKind::Request,
+                label: Some("request".to_string()),
+                attrs_json: r#"{"created_at":1700000000000000000,"source":"/src/file.rs:1","request.method":"GetUser"}"#.to_string(),
+            }],
+            edges: vec![],
+            events: None,
+        };
+
+        let err = persist_reply(
+            &db_path,
+            1,
+            "test-proc",
+            1,
+            "test-proc-1",
+            now_nanos(),
+            Some(&graph),
+            None,
+        )
+        .expect_err("alias keys must fail");
+        assert!(err.contains("forbidden alias key `request.method`"));
+    }
+
+    #[test]
+    fn canonicalize_inspector_attrs_rejects_missing_required_fields() {
+        let missing_created = r#"{"source":"/src/file.rs:1"}"#;
+        let missing_source = r#"{"created_at":1700000000000000000}"#;
+
+        assert!(canonicalize_inspector_attrs(missing_created).is_err());
+        assert!(canonicalize_inspector_attrs(missing_source).is_err());
+    }
 }

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install frontend deps
+        working-directory: crates/peeps-web/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend tests
+        working-directory: crates/peeps-web/frontend
+        run: pnpm test
+
+      - name: Frontend build
+        working-directory: crates/peeps-web/frontend
+        run: pnpm build
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-nextest
+        run: cargo install cargo-nextest --locked
+
+      - name: Cargo check
+        run: cargo check --workspace --all-features
+
+      - name: Cargo nextest
+        run: cargo nextest run --workspace --all-features
+
+      - name: Cargo clippy
+        run: cargo clippy --workspace --all-features --all-targets

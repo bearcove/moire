@@ -76,3 +76,33 @@ scripts/run-example channel-full-stall
 - `peeps`: Main API — futures, locks, sync, live snapshot collection, optional dashboard push client
 - `peeps-types`: Shared types (graph nodes, snapshot requests/replies)
 - `peeps-web`: SQLite-backed ingest + query server and investigation UI
+
+## Testing
+
+Use `pnpm` for frontend workflows:
+
+```bash
+cd crates/peeps-web/frontend
+pnpm install
+pnpm test
+pnpm build
+```
+
+Run Rust checks from repo root:
+
+```bash
+cargo check --workspace --all-features
+cargo nextest run --workspace --all-features
+cargo clippy --workspace --all-features --all-targets
+```
+
+### Canonical Inspector Contract
+
+Inspector path node attrs must use canonical keys only:
+
+- `created_at` (required, epoch ns i64)
+- `source` (required, non-empty string)
+- `method` (optional)
+- `correlation` (optional)
+
+Legacy alias keys are rejected at the `peeps-web` persistence boundary and covered by CI tests.

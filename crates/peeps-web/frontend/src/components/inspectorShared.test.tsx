@@ -35,7 +35,7 @@ describe("CommonInspectorFields", () => {
     expect(processPos).toBeGreaterThan(idPos);
     expect(methodPos).toBeGreaterThan(processPos);
     expect(corrPos).toBeGreaterThan(methodPos);
-    expect(sourcePos).toBeGreaterThan(processPos);
+    expect(sourcePos).toBeGreaterThan(corrPos);
   });
 });
 
@@ -82,9 +82,130 @@ describe("timeline origin resolver", () => {
   it("formats relative timestamps from canonical origin", () => {
     expect(formatRelativeTimestampFromOrigin(2_000_000_000, 1_000_000_000)).toBe("+1.000s");
   });
+
+  it("uses canonical created_at as timeline origin for relative output", () => {
+    const attrs = { created_at: 1_700_000_000_000_000_000 };
+    const firstEvent = 1_700_000_000_500_000_000;
+    const origin = resolveTimelineOriginNs(attrs, firstEvent);
+    expect(origin).toBe(1_700_000_000_000_000_000);
+    expect(formatRelativeTimestampFromOrigin(firstEvent, origin)).toBe("+500ms");
+  });
 });
 
 describe("inspector integration", () => {
+  it("renders one shared common-fields block for representative non-ghost kinds", () => {
+    const sampleNodes: SnapshotNode[] = [
+      {
+        id: "request:1",
+        kind: "request",
+        process: "api",
+        proc_key: "api-1",
+        attrs: {
+          created_at: 1_700_000_000_000_000_000,
+          source: "/srv/api/request.rs:10",
+          method: "GetUser",
+          correlation: "corr-1",
+        },
+      },
+      {
+        id: "response:1",
+        kind: "response",
+        process: "api",
+        proc_key: "api-1",
+        attrs: {
+          created_at: 1_700_000_000_100_000_000,
+          source: "/srv/api/response.rs:44",
+          method: "GetUser",
+          correlation: "corr-1",
+        },
+      },
+      {
+        id: "tx:1",
+        kind: "tx",
+        process: "api",
+        proc_key: "api-1",
+        attrs: {
+          created_at: 1_700_000_000_200_000_000,
+          source: "/srv/api/channel.rs:21",
+        },
+      },
+    ];
+
+    for (const node of sampleNodes) {
+      const html = renderToStaticMarkup(
+        <Inspector
+          snapshotId={1}
+          snapshotCapturedAtNs={1_700_000_000_000_100_000}
+          selectedRequest={null}
+          selectedNode={node}
+          selectedEdge={null}
+          graph={{ nodes: [node], edges: [], ghostNodes: [] }}
+          filteredNodeId={null}
+          onFocusNode={() => {}}
+          onSelectNode={() => {}}
+          collapsed={false}
+          onToggleCollapse={() => {}}
+        />,
+      );
+      expect(html.match(/data-testid=\"common-fields\"/g)?.length ?? 0).toBe(1);
+      const idPos = html.indexOf(">ID<");
+      const processPos = html.indexOf(">Process<");
+      const methodPos = html.indexOf(">Method<");
+      const corrPos = html.indexOf(">Correlation<");
+      const sourcePos = html.indexOf(">Source<");
+      expect(idPos).toBeGreaterThan(-1);
+      expect(processPos).toBeGreaterThan(idPos);
+      if (methodPos !== -1) expect(methodPos).toBeGreaterThan(processPos);
+      if (corrPos !== -1) {
+        expect(corrPos).toBeGreaterThan(methodPos !== -1 ? methodPos : processPos);
+      }
+      const latestCommonPos =
+        corrPos !== -1 ? corrPos : methodPos !== -1 ? methodPos : processPos;
+      expect(sourcePos).toBeGreaterThan(latestCommonPos);
+    }
+  });
+
+  it("fails inspector path when canonical created_at or source is missing", () => {
+    const missingCreatedAt: SnapshotNode = {
+      id: "response:no-created-at",
+      kind: "response",
+      process: "api",
+      proc_key: "api-1",
+      attrs: {
+        source: "/srv/api/resp.rs:42",
+      },
+    };
+    const missingSource: SnapshotNode = {
+      id: "response:no-source",
+      kind: "response",
+      process: "api",
+      proc_key: "api-1",
+      attrs: {
+        created_at: 1_700_000_000_000_000_000,
+      },
+    };
+
+    const render = (node: SnapshotNode) =>
+      renderToStaticMarkup(
+        <Inspector
+          snapshotId={1}
+          snapshotCapturedAtNs={1_700_000_000_000_100_000}
+          selectedRequest={null}
+          selectedNode={node}
+          selectedEdge={null}
+          graph={{ nodes: [node], edges: [], ghostNodes: [] }}
+          filteredNodeId={null}
+          onFocusNode={() => {}}
+          onSelectNode={() => {}}
+          collapsed={false}
+          onToggleCollapse={() => {}}
+        />,
+      );
+
+    expect(() => render(missingCreatedAt)).toThrow(/requires created_at and source/);
+    expect(() => render(missingSource)).toThrow(/requires created_at and source/);
+  });
+
   it("ignores legacy method keys in shared common block", () => {
     const node: SnapshotNode = {
       id: "request:legacy",
@@ -94,6 +215,7 @@ describe("inspector integration", () => {
       attrs: {
         "request.method": "LegacyMethod",
         created_at: 1_700_000_000_000_000_000,
+        source: "/srv/api/req.rs:12",
       },
     };
 

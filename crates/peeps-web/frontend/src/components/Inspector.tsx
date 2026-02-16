@@ -39,9 +39,11 @@ import {
   getCorrelation,
   getCreatedAtNs,
   getMethod,
+  getSource,
   resolveTimelineOriginNs,
 } from "./inspectorShared";
 import type {
+  InspectorSnapshotNode,
   StuckRequest,
   SnapshotNode,
   SnapshotEdge,
@@ -244,7 +246,7 @@ export function Inspector({
             <NodeDetail
               snapshotId={snapshotId}
               snapshotCapturedAtNs={snapshotCapturedAtNs}
-              node={selectedNode}
+              node={toInspectorSnapshotNode(selectedNode)}
               graph={graph}
               filteredNodeId={filteredNodeId}
               onFocusNode={onFocusNode}
@@ -262,6 +264,17 @@ export function Inspector({
       </div>
     </div>
   );
+}
+
+function toInspectorSnapshotNode(node: SnapshotNode): InspectorSnapshotNode {
+  const createdAtNs = getCreatedAtNs(node.attrs);
+  const source = getSource(node.attrs);
+  if (createdAtNs == null || source == null) {
+    throw new Error(
+      `Inspector canonical attrs missing for node ${node.id}: requires created_at and source`,
+    );
+  }
+  return node as InspectorSnapshotNode;
 }
 
 function RequestDetail({
@@ -512,7 +525,7 @@ function NodeDetail({
 }: {
   snapshotId: number | null;
   snapshotCapturedAtNs: number | null;
-  node: SnapshotNode;
+  node: InspectorSnapshotNode;
   graph: SnapshotGraph | null;
   filteredNodeId: string | null;
   onFocusNode: (nodeId: string | null) => void;
@@ -928,7 +941,6 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
     // Heuristic mapping by convention (keys are stable, values vary).
     const k = key.toLowerCase();
     if (k.endsWith(".id") || k === "request.id") return <Hash size={12} weight="bold" />;
-    if (k.includes("correlation_key")) return <Key size={12} weight="bold" />;
     if (k.includes("connection")) return <LinkSimple size={12} weight="bold" />;
 
     if (k.includes("created_at") || k.includes("age") || k.includes("duration"))
