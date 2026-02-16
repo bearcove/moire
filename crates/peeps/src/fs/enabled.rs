@@ -1,5 +1,5 @@
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use facet::Facet;
@@ -278,6 +278,214 @@ pub async fn try_exists(path: impl AsRef<Path>) -> io::Result<bool> {
         error.as_deref(),
     );
     end_op(&node_id, "try_exists", &path_str, attrs);
+
+    result
+}
+
+pub async fn read(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+    let path_buf = path.as_ref().to_path_buf();
+    let path_str = path_buf.to_string_lossy().into_owned();
+    let node_id = begin_op("read", &path_str);
+    let start = Instant::now();
+
+    let result = tokio::fs::read(&path_buf).await;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let (result_str, read_bytes, error) = match &result {
+        Ok(bytes) => ("ok", Some(bytes.len() as u64), None),
+        Err(e) => ("error", None, Some(e.to_string())),
+    };
+
+    let attrs = build_attrs_json(
+        "read",
+        &path_str,
+        None,
+        read_bytes,
+        elapsed_ns,
+        result_str,
+        error.as_deref(),
+    );
+    end_op(&node_id, "read", &path_str, attrs);
+
+    result
+}
+
+pub async fn remove_file(path: impl AsRef<Path>) -> io::Result<()> {
+    let path_buf = path.as_ref().to_path_buf();
+    let path_str = path_buf.to_string_lossy().into_owned();
+    let node_id = begin_op("remove_file", &path_str);
+    let start = Instant::now();
+
+    let result = tokio::fs::remove_file(&path_buf).await;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let (result_str, error) = match &result {
+        Ok(()) => ("ok", None),
+        Err(e) => ("error", Some(e.to_string())),
+    };
+
+    let attrs = build_attrs_json(
+        "remove_file",
+        &path_str,
+        None,
+        None,
+        elapsed_ns,
+        result_str,
+        error.as_deref(),
+    );
+    end_op(&node_id, "remove_file", &path_str, attrs);
+
+    result
+}
+
+pub async fn remove_dir(path: impl AsRef<Path>) -> io::Result<()> {
+    let path_buf = path.as_ref().to_path_buf();
+    let path_str = path_buf.to_string_lossy().into_owned();
+    let node_id = begin_op("remove_dir", &path_str);
+    let start = Instant::now();
+
+    let result = tokio::fs::remove_dir(&path_buf).await;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let (result_str, error) = match &result {
+        Ok(()) => ("ok", None),
+        Err(e) => ("error", Some(e.to_string())),
+    };
+
+    let attrs = build_attrs_json(
+        "remove_dir",
+        &path_str,
+        None,
+        None,
+        elapsed_ns,
+        result_str,
+        error.as_deref(),
+    );
+    end_op(&node_id, "remove_dir", &path_str, attrs);
+
+    result
+}
+
+pub async fn remove_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
+    let path_buf = path.as_ref().to_path_buf();
+    let path_str = path_buf.to_string_lossy().into_owned();
+    let node_id = begin_op("remove_dir_all", &path_str);
+    let start = Instant::now();
+
+    let result = tokio::fs::remove_dir_all(&path_buf).await;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let (result_str, error) = match &result {
+        Ok(()) => ("ok", None),
+        Err(e) => ("error", Some(e.to_string())),
+    };
+
+    let attrs = build_attrs_json(
+        "remove_dir_all",
+        &path_str,
+        None,
+        None,
+        elapsed_ns,
+        result_str,
+        error.as_deref(),
+    );
+    end_op(&node_id, "remove_dir_all", &path_str, attrs);
+
+    result
+}
+
+pub async fn canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
+    let path_buf = path.as_ref().to_path_buf();
+    let path_str = path_buf.to_string_lossy().into_owned();
+    let node_id = begin_op("canonicalize", &path_str);
+    let start = Instant::now();
+
+    let result = tokio::fs::canonicalize(&path_buf).await;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let (result_str, error) = match &result {
+        Ok(_) => ("ok", None),
+        Err(e) => ("error", Some(e.to_string())),
+    };
+
+    let attrs = build_attrs_json(
+        "canonicalize",
+        &path_str,
+        None,
+        None,
+        elapsed_ns,
+        result_str,
+        error.as_deref(),
+    );
+    end_op(&node_id, "canonicalize", &path_str, attrs);
+
+    result
+}
+
+#[cfg(unix)]
+pub async fn symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> io::Result<()> {
+    let original_buf = original.as_ref().to_path_buf();
+    let link_buf = link.as_ref().to_path_buf();
+    let label = format!(
+        "{} -> {}",
+        original_buf.to_string_lossy(),
+        link_buf.to_string_lossy()
+    );
+    let node_id = begin_op("symlink", &label);
+    let start = Instant::now();
+
+    let result = tokio::fs::symlink(&original_buf, &link_buf).await;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let (result_str, error) = match &result {
+        Ok(()) => ("ok", None),
+        Err(e) => ("error", Some(e.to_string())),
+    };
+
+    let attrs = build_attrs_json(
+        "symlink",
+        &label,
+        None,
+        None,
+        elapsed_ns,
+        result_str,
+        error.as_deref(),
+    );
+    end_op(&node_id, "symlink", &label, attrs);
+
+    result
+}
+
+#[cfg(windows)]
+pub async fn symlink_file(original: impl AsRef<Path>, link: impl AsRef<Path>) -> io::Result<()> {
+    let original_buf = original.as_ref().to_path_buf();
+    let link_buf = link.as_ref().to_path_buf();
+    let label = format!(
+        "{} -> {}",
+        original_buf.to_string_lossy(),
+        link_buf.to_string_lossy()
+    );
+    let node_id = begin_op("symlink_file", &label);
+    let start = Instant::now();
+
+    let result = tokio::fs::symlink_file(&original_buf, &link_buf).await;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let (result_str, error) = match &result {
+        Ok(()) => ("ok", None),
+        Err(e) => ("error", Some(e.to_string())),
+    };
+
+    let attrs = build_attrs_json(
+        "symlink_file",
+        &label,
+        None,
+        None,
+        elapsed_ns,
+        result_str,
+        error.as_deref(),
+    );
+    end_op(&node_id, "symlink_file", &label, attrs);
 
     result
 }
