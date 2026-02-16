@@ -269,10 +269,11 @@ where
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
 
-    let meta_json = inject_location_meta_json(
-        "{\"blocking\":\"true\"}".to_string(),
-        &location,
-    );
+    let meta = BlockingMeta {
+        ctx_location: location,
+        blocking: "true".to_string(),
+    };
+    let meta_json = facet_json::to_string(&meta).unwrap();
 
     register_future(node_id.clone(), name, meta_json);
 
@@ -315,15 +316,11 @@ pub fn timeout<F: Future>(
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
 
-    let dur_ms = duration.as_millis();
-    let dur_str = format!("{dur_ms}");
-    let mut meta = peeps_types::MetaBuilder::<2>::new();
-    meta.push(
-        peeps_types::meta_key::CTX_LOCATION,
-        peeps_types::MetaValue::Str(&location),
-    );
-    meta.push("timeout.duration_ms", peeps_types::MetaValue::Str(&dur_str));
-    let meta_json = meta.to_json_object();
+    let meta = TimeoutMeta {
+        ctx_location: location,
+        timeout_duration_ms: format!("{}", duration.as_millis()),
+    };
+    let meta_json = facet_json::to_string(&meta).unwrap();
 
     register_future(node_id.clone(), label.clone(), meta_json);
 
@@ -359,15 +356,11 @@ pub fn sleep(
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
 
-    let dur_ms = duration.as_millis();
-    let dur_str = format!("{dur_ms}");
-    let mut meta = peeps_types::MetaBuilder::<2>::new();
-    meta.push(
-        peeps_types::meta_key::CTX_LOCATION,
-        peeps_types::MetaValue::Str(&location),
-    );
-    meta.push("sleep.duration_ms", peeps_types::MetaValue::Str(&dur_str));
-    let meta_json = meta.to_json_object();
+    let meta = SleepMeta {
+        ctx_location: location,
+        sleep_duration_ms: format!("{}", duration.as_millis()),
+    };
+    let meta_json = facet_json::to_string(&meta).unwrap();
 
     register_future(node_id.clone(), label.clone(), meta_json);
 
@@ -395,6 +388,29 @@ struct FutureAttrs<'a> {
     #[facet(skip_unless_truthy)]
     total_pending_ns: Option<u64>,
     meta: RawJson<'a>,
+}
+
+#[derive(Facet)]
+struct TimeoutMeta {
+    #[facet(rename = "ctx.location")]
+    ctx_location: String,
+    #[facet(rename = "timeout.duration_ms")]
+    timeout_duration_ms: String,
+}
+
+#[derive(Facet)]
+struct SleepMeta {
+    #[facet(rename = "ctx.location")]
+    ctx_location: String,
+    #[facet(rename = "sleep.duration_ms")]
+    sleep_duration_ms: String,
+}
+
+#[derive(Facet)]
+struct BlockingMeta {
+    #[facet(rename = "ctx.location")]
+    ctx_location: String,
+    blocking: String,
 }
 
 // ── Graph emission ───────────────────────────────────────
