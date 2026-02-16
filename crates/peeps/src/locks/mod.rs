@@ -7,18 +7,18 @@
 //! When disabled, these are zero-cost wrappers that compile down to
 //! plain locks.
 
-#[cfg(feature = "diagnostics")]
-mod enabled;
 #[cfg(not(feature = "diagnostics"))]
 mod disabled;
-
 #[cfg(feature = "diagnostics")]
-pub use enabled::*;
+mod enabled;
+
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::*;
+#[cfg(feature = "diagnostics")]
+pub use enabled::*;
 
 // emit_into_graph is crate-internal only
-#[cfg(feature = "diagnostics")]
-pub(crate) use enabled::emit_into_graph;
 #[cfg(not(feature = "diagnostics"))]
 pub(crate) use disabled::emit_into_graph;
+#[cfg(feature = "diagnostics")]
+pub(crate) use enabled::emit_into_graph;

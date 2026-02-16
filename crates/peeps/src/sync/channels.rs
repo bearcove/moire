@@ -93,12 +93,8 @@ pub(super) struct MpscInfo {
 fn update_atomic_max(target: &AtomicU64, observed: u64) {
     let mut current = target.load(Ordering::Relaxed);
     while observed > current {
-        match target.compare_exchange_weak(
-            current,
-            observed,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ) {
+        match target.compare_exchange_weak(current, observed, Ordering::Relaxed, Ordering::Relaxed)
+        {
             Ok(_) => break,
             Err(next) => current = next,
         }
@@ -213,10 +209,7 @@ impl<T> Drop for Sender<T> {
 }
 
 impl<T> Sender<T> {
-    pub async fn send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+    pub async fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
         let _waiter = WaiterGuard::new(&self.info.send_waiters);
         let result = WaitEdge::new(&self.info.tx_node_id, self.inner.send(value)).await;
         if result.is_ok() {
@@ -226,10 +219,7 @@ impl<T> Sender<T> {
         result
     }
 
-    pub fn try_send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
+    pub fn try_send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
         let result = self.inner.try_send(value);
         if result.is_ok() {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
@@ -353,10 +343,7 @@ impl<T> Drop for UnboundedSender<T> {
 }
 
 impl<T> UnboundedSender<T> {
-    pub fn send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+    pub fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
         let result = self.inner.send(value);
         if result.is_ok() {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
@@ -411,9 +398,7 @@ impl<T> UnboundedReceiver<T> {
 }
 
 #[track_caller]
-pub fn unbounded_channel<T>(
-    name: impl Into<String>,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let name = name.into();
     let caller = std::panic::Location::caller();
@@ -505,9 +490,7 @@ impl<T> Drop for OneshotReceiver<T> {
 }
 
 impl<T> OneshotReceiver<T> {
-    pub async fn recv(
-        mut self,
-    ) -> Result<T, tokio::sync::oneshot::error::RecvError> {
+    pub async fn recv(mut self) -> Result<T, tokio::sync::oneshot::error::RecvError> {
         let result = WaitEdge::new(&self.info.rx_node_id, &mut self.inner).await;
         if result.is_ok() {
             self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
@@ -515,9 +498,7 @@ impl<T> OneshotReceiver<T> {
         result
     }
 
-    pub fn try_recv(
-        &mut self,
-    ) -> Result<T, tokio::sync::oneshot::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<T, tokio::sync::oneshot::error::TryRecvError> {
         let result = self.inner.try_recv();
         if result.is_ok() {
             self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
@@ -527,9 +508,7 @@ impl<T> OneshotReceiver<T> {
 }
 
 #[track_caller]
-pub fn oneshot_channel<T>(
-    name: impl Into<String>,
-) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let name = name.into();
     let caller = std::panic::Location::caller();
@@ -568,10 +547,7 @@ impl<T> Drop for WatchSender<T> {
 }
 
 impl<T> WatchSender<T> {
-    pub fn send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::watch::error::SendError<T>> {
+    pub fn send(&self, value: T) -> Result<(), tokio::sync::watch::error::SendError<T>> {
         let result = self.inner.send(value);
         if result.is_ok() {
             self.info.changes.fetch_add(1, Ordering::Relaxed);
@@ -627,12 +603,9 @@ impl<T> Clone for WatchReceiver<T> {
 }
 
 impl<T> WatchReceiver<T> {
-    pub async fn changed(
-        &mut self,
-    ) -> Result<(), tokio::sync::watch::error::RecvError> {
+    pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
         let result = WaitEdge::new(&self._info.rx_node_id, self.inner.changed()).await;
-        if result.is_ok() {
-        }
+        if result.is_ok() {}
         result
     }
 
@@ -910,7 +883,8 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 ONESHOT_RECEIVER_DROPPED => "receiver_dropped",
                 _ => "pending",
             };
-            let sender_closed = state_val == ONESHOT_SENDER_DROPPED || state_val == ONESHOT_RECEIVED;
+            let sender_closed =
+                state_val == ONESHOT_SENDER_DROPPED || state_val == ONESHOT_RECEIVED;
             let receiver_closed =
                 state_val == ONESHOT_RECEIVER_DROPPED || state_val == ONESHOT_RECEIVED;
 

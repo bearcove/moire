@@ -83,9 +83,7 @@ impl<T> DiagnosticAsyncMutex<T> {
     }
 
     #[inline]
-    pub fn try_lock(
-        &self,
-    ) -> Result<tokio::sync::MutexGuard<'_, T>, tokio::sync::TryLockError> {
+    pub fn try_lock(&self) -> Result<tokio::sync::MutexGuard<'_, T>, tokio::sync::TryLockError> {
         self.0.try_lock()
     }
 }

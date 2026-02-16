@@ -16,7 +16,7 @@ pub use disabled::*;
 pub use enabled::*;
 
 // emit_into_graph is crate-internal only
-#[cfg(feature = "diagnostics")]
-pub(crate) use enabled::emit_into_graph;
 #[cfg(not(feature = "diagnostics"))]
 pub(crate) use disabled::emit_into_graph;
+#[cfg(feature = "diagnostics")]
+pub(crate) use enabled::emit_into_graph;

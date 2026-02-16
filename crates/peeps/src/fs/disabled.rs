@@ -53,10 +53,7 @@ impl OpenOptions {
     #[inline]
     pub async fn open(&self, path: impl AsRef<Path>) -> io::Result<File> {
         let inner = self.inner.open(path).await?;
-        Ok(File {
-            inner,
-            path: None,
-        })
+        Ok(File { inner, path: None })
     }
 
     #[inline]
@@ -80,19 +77,13 @@ impl File {
     #[inline]
     pub async fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let inner = tokio::fs::File::open(path).await?;
-        Ok(Self {
-            inner,
-            path: None,
-        })
+        Ok(Self { inner, path: None })
     }
 
     #[inline]
     pub async fn create(path: impl AsRef<Path>) -> io::Result<Self> {
         let inner = tokio::fs::File::create(path).await?;
-        Ok(Self {
-            inner,
-            path: None,
-        })
+        Ok(Self { inner, path: None })
     }
 
     #[inline]
@@ -204,10 +195,7 @@ pub async fn metadata(path: impl AsRef<Path>) -> io::Result<std::fs::Metadata> {
 }
 
 #[inline]
-pub async fn set_permissions(
-    path: impl AsRef<Path>,
-    perm: std::fs::Permissions,
-) -> io::Result<()> {
+pub async fn set_permissions(path: impl AsRef<Path>, perm: std::fs::Permissions) -> io::Result<()> {
     tokio::fs::set_permissions(path, perm).await
 }
 

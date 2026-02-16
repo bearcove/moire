@@ -217,7 +217,7 @@ function filterByDetailWithNeedsContext(graph: SnapshotGraph, detailLevel: Detai
   return filterHiddenNodes(graph, (n) => hidden.has(n.id));
 }
 
-function enrichGraph(graph: SnapshotGraph): SnapshotGraph {
+function enrichGraph(graph: SnapshotGraph, capturedAtNs: number | null): SnapshotGraph {
   const nodeIds = new Set(graph.nodes.map((n) => n.id));
   const needsEdges = graph.edges.filter((e) => e.kind === "needs");
 
@@ -297,6 +297,9 @@ function enrichGraph(graph: SnapshotGraph): SnapshotGraph {
       _ui_wait_blocker_count: blockers.length,
       _ui_wait_dependent_count: dependents.length,
     };
+    if (capturedAtNs != null) {
+      attrs._ui_snapshot_captured_at_ns = capturedAtNs;
+    }
 
     if (cycle) {
       attrs._ui_cycle_id = cycle.cycleId;
@@ -371,7 +374,18 @@ function enrichGraph(graph: SnapshotGraph): SnapshotGraph {
   return {
     nodes: enrichedNodes,
     edges: enrichedEdges,
-    ghostNodes: graph.ghostNodes.map((n) => enrichedById.get(n.id) ?? n),
+    ghostNodes: graph.ghostNodes.map((n) => {
+      const enriched = enrichedById.get(n.id);
+      if (enriched) return enriched;
+      if (capturedAtNs == null) return n;
+      return {
+        ...n,
+        attrs: {
+          ...n.attrs,
+          _ui_snapshot_captured_at_ns: capturedAtNs,
+        },
+      };
+    }),
   };
 }
 
@@ -498,8 +512,8 @@ export function App() {
 
   const enrichedGraph = useMemo(() => {
     if (!graph) return null;
-    return enrichGraph(graph);
-  }, [graph]);
+    return enrichGraph(graph, snapshot?.captured_at_ns ?? null);
+  }, [graph, snapshot?.captured_at_ns]);
 
   const suspects = useMemo<SuspectItem[]>(() => {
     if (!enrichedGraph) return [];

@@ -1,5 +1,6 @@
 export interface JumpNowResponse {
   snapshot_id: number;
+  captured_at_ns: number;
   requested: number;
   responded: number;
   timed_out: number;

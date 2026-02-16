@@ -103,6 +103,57 @@ function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | 
   return undefined;
 }
 
+function elapsedBetween(startNs?: number, endNs?: number): number | undefined {
+  if (startNs == null || endNs == null) return undefined;
+  if (!Number.isFinite(startNs) || !Number.isFinite(endNs)) return undefined;
+  if (endNs < startNs) return undefined;
+  return endNs - startNs;
+}
+
+function requestElapsedNs(attrs: Record<string, unknown>, status: string): number | undefined {
+  const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
+  const queuedAtNs = firstNumAttr(attrs, ["request.queued_at_ns", "queued_at_ns"]);
+  const startedAtNs = firstNumAttr(attrs, ["request.started_at_ns", "request.delivered_at_ns", "started_at_ns"]);
+  const completedAtNs = firstNumAttr(attrs, ["request.completed_at_ns", "completed_at_ns"]);
+  const legacyElapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
+
+  const startNs = status === "queued" ? (queuedAtNs ?? startedAtNs) : (startedAtNs ?? queuedAtNs);
+  const completedElapsed = elapsedBetween(startNs, completedAtNs);
+  if (status === "completed" && completedElapsed != null) return completedElapsed;
+
+  const inFlightElapsed = elapsedBetween(startNs, snapshotAtNs);
+  if (inFlightElapsed != null) return inFlightElapsed;
+
+  return legacyElapsedNs;
+}
+
+function responseTiming(attrs: Record<string, unknown>, status: string): {
+  elapsedNs?: number;
+  handledElapsedNs?: number;
+  queueWaitNs?: number;
+} {
+  const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
+  const startedAtNs = firstNumAttr(attrs, ["response.started_at_ns", "response.created_at_ns", "started_at_ns"]);
+  const handledAtNs = firstNumAttr(attrs, ["response.handled_at_ns", "handled_at_ns"]);
+  const deliveredAtNs = firstNumAttr(attrs, ["response.delivered_at_ns", "delivered_at_ns"]);
+  const cancelledAtNs = firstNumAttr(attrs, ["response.cancelled_at_ns", "cancelled_at_ns"]);
+  const legacyElapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
+  const legacyHandledElapsedNs = firstNumAttr(attrs, ["response.handled_elapsed_ns", "handled_elapsed_ns"]);
+
+  let endAtNs = deliveredAtNs;
+  if (endAtNs == null && status === "cancelled") {
+    endAtNs = cancelledAtNs;
+  }
+  if (endAtNs == null) {
+    endAtNs = snapshotAtNs;
+  }
+
+  const elapsedNs = elapsedBetween(startedAtNs, endAtNs) ?? legacyElapsedNs;
+  const handledElapsedNs = elapsedBetween(startedAtNs, handledAtNs) ?? legacyHandledElapsedNs;
+  const queueWaitNs = elapsedBetween(handledAtNs, deliveredAtNs ?? snapshotAtNs);
+  return { elapsedNs, handledElapsedNs, queueWaitNs };
+}
+
 const kindIcons: Record<string, React.ReactNode> = {
   future: <Timer size={16} weight="bold" />,
   task: <Timer size={16} weight="bold" />,
@@ -1155,8 +1206,8 @@ function OnceCellDetail({ attrs }: DetailProps) {
 
 function RpcRequestDetail({ attrs }: DetailProps) {
   const method = firstAttr(attrs, ["method", "request.method"]);
-  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
   const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
+  const elapsedNs = requestElapsedNs(attrs, status);
   const process = firstAttr(attrs, ["process", "request.process"]);
   const connection = firstAttr(attrs, ["connection", "rpc.connection"]);
   const correlationKey = firstAttr(attrs, ["correlation_key", "request.correlation_key"]);
@@ -1210,8 +1261,8 @@ function RpcRequestDetail({ attrs }: DetailProps) {
 }
 
 function RpcResponseDetail({ attrs }: DetailProps) {
-  const status = firstAttr(attrs, ["status", "response.status"]) ?? "in_flight";
-  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
+  const status = firstAttr(attrs, ["response.state", "status", "response.status"]) ?? "handling";
+  const { elapsedNs, handledElapsedNs, queueWaitNs } = responseTiming(attrs, status);
   const correlationKey = firstAttr(attrs, [
     "correlation_key",
     "response.correlation_key",
@@ -1222,7 +1273,9 @@ function RpcResponseDetail({ attrs }: DetailProps) {
     <>
       <div className="inspect-row">
         <span className="inspect-key">Status</span>
-        <span className={`inspect-pill inspect-pill--${status === "completed" ? "ok" : "neutral"}`}>
+        <span
+          className={`inspect-pill inspect-pill--${status === "delivered" || status === "completed" ? "ok" : status === "cancelled" ? "crit" : "warn"}`}
+        >
           {status.toUpperCase()}
         </span>
       </div>
@@ -1239,6 +1292,22 @@ function RpcResponseDetail({ attrs }: DetailProps) {
             className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 10_000_000_000)}`}
           >
             {formatElapsedFull(elapsedNs)}
+          </span>
+        </div>
+      )}
+      {handledElapsedNs != null && (
+        <div className="inspect-row">
+          <span className="inspect-key">Handled</span>
+          <span className={`inspect-val ${durationClass(handledElapsedNs, 500_000_000, 5_000_000_000)}`}>
+            {formatElapsedFull(handledElapsedNs)}
+          </span>
+        </div>
+      )}
+      {queueWaitNs != null && (
+        <div className="inspect-row">
+          <span className="inspect-key">Queue wait</span>
+          <span className={`inspect-val ${durationClass(queueWaitNs, 250_000_000, 2_000_000_000)}`}>
+            {formatElapsedFull(queueWaitNs)}
           </span>
         </div>
       )}

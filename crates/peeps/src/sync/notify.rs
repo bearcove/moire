@@ -59,12 +59,8 @@ fn prune_and_register_notify(info: &Arc<NotifyInfo>) {
 fn update_max(target: &AtomicU64, observed: u64) {
     let mut current = target.load(Ordering::Relaxed);
     while observed > current {
-        match target.compare_exchange_weak(
-            current,
-            observed,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ) {
+        match target.compare_exchange_weak(current, observed, Ordering::Relaxed, Ordering::Relaxed)
+        {
             Ok(_) => break,
             Err(next) => current = next,
         }
@@ -117,11 +113,7 @@ impl DiagnosticNotify {
         let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
         update_max(&self.info.high_waiters_watermark, new_waiters);
         let start = Instant::now();
-        self.info
-            .active_waiter_starts
-            .lock()
-            .unwrap()
-            .push(start);
+        self.info.active_waiter_starts.lock().unwrap().push(start);
         let mut edge_src: Option<String> = None;
         crate::stack::with_top(|src| {
             edge_src = Some(src.to_string());
@@ -183,8 +175,10 @@ pub(super) fn emit_notify_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 .unwrap_or(0)
         };
 
-        let elapsed_ns =
-            (now.duration_since(info.created_at).as_nanos().min(u64::MAX as u128)) as u64;
+        let elapsed_ns = (now
+            .duration_since(info.created_at)
+            .as_nanos()
+            .min(u64::MAX as u128)) as u64;
 
         let attrs = NotifyAttrs {
             name,

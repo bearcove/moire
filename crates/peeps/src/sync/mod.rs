@@ -16,21 +16,14 @@ pub(crate) mod semaphore;
 #[cfg(feature = "diagnostics")]
 pub(crate) mod timers;
 
-#[cfg(feature = "diagnostics")]
-mod enabled;
 #[cfg(not(feature = "diagnostics"))]
 mod disabled;
+#[cfg(feature = "diagnostics")]
+mod enabled;
 
 // Public types are re-exported so the crate root can `pub use` them.
 // The module itself is `pub(crate)`, so `peeps::sync::Sender` is not
 // accessible externally — only `peeps::Sender` (via lib.rs re-export).
-#[cfg(feature = "diagnostics")]
-pub use enabled::{
-    channel, interval, interval_at, oneshot_channel, unbounded_channel, watch_channel,
-    DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, OnceCell, OneshotReceiver,
-    OneshotSender, Receiver, Sender, UnboundedReceiver, UnboundedSender, WatchReceiver,
-    WatchSender,
-};
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::{
     channel, interval, interval_at, oneshot_channel, unbounded_channel, watch_channel,
@@ -38,9 +31,16 @@ pub use disabled::{
     OneshotSender, Receiver, Sender, UnboundedReceiver, UnboundedSender, WatchReceiver,
     WatchSender,
 };
+#[cfg(feature = "diagnostics")]
+pub use enabled::{
+    channel, interval, interval_at, oneshot_channel, unbounded_channel, watch_channel,
+    DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, OnceCell, OneshotReceiver,
+    OneshotSender, Receiver, Sender, UnboundedReceiver, UnboundedSender, WatchReceiver,
+    WatchSender,
+};
 
 // emit_into_graph is crate-internal only
-#[cfg(feature = "diagnostics")]
-pub(crate) use enabled::emit_into_graph;
 #[cfg(not(feature = "diagnostics"))]
 pub(crate) use disabled::emit_into_graph;
+#[cfg(feature = "diagnostics")]
+pub(crate) use enabled::emit_into_graph;

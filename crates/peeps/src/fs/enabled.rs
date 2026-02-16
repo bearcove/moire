@@ -391,10 +391,7 @@ pub async fn metadata(path: impl AsRef<Path>) -> io::Result<std::fs::Metadata> {
     .await
 }
 
-pub async fn set_permissions(
-    path: impl AsRef<Path>,
-    perm: std::fs::Permissions,
-) -> io::Result<()> {
+pub async fn set_permissions(path: impl AsRef<Path>, perm: std::fs::Permissions) -> io::Result<()> {
     let path_buf = path.as_ref().to_path_buf();
     let path_str = path_string(&path_buf);
     crate::peep!(

@@ -240,13 +240,7 @@ pub fn peepable_with_meta_kind<F, const N: usize>(
 where
     F: IntoFuture,
 {
-    peepable_with_meta_kind_level(
-        future,
-        kind,
-        resource,
-        InstrumentationLevel::Info,
-        meta,
-    )
+    peepable_with_meta_kind_level(future, kind, resource, InstrumentationLevel::Info, meta)
 }
 
 #[track_caller]
@@ -339,10 +333,7 @@ where
 /// Unlike `spawn_tracked`, the blocking closure cannot participate in the
 /// async task-local stack — this only provides lineage tracking.
 #[track_caller]
-pub fn spawn_blocking_tracked<F, T>(
-    name: impl Into<String>,
-    f: F,
-) -> tokio::task::JoinHandle<T>
+pub fn spawn_blocking_tracked<F, T>(name: impl Into<String>, f: F) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
@@ -357,7 +348,13 @@ where
     };
     let user_meta_json = facet_json::to_string(&user_meta).unwrap();
 
-    register_future(node_id.clone(), NodeKind::Future, name, location, user_meta_json);
+    register_future(
+        node_id.clone(),
+        NodeKind::Future,
+        name,
+        location,
+        user_meta_json,
+    );
 
     // Emit edges from parent context.
     let child_id = node_id.clone();

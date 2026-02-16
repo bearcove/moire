@@ -22,48 +22,60 @@ struct NetAttrs {
 ///
 /// Registers a `NetConnect` node visible in the graph while the connect
 /// is pending. Automatically attaches endpoint and transport metadata.
-pub async fn connect<F: IntoFuture>(
-    future: F,
-    endpoint: &str,
-    transport: &str,
-) -> F::Output {
-    net_wait(future, endpoint, transport, NodeKind::NetConnect, "net_connect").await
+pub async fn connect<F: IntoFuture>(future: F, endpoint: &str, transport: &str) -> F::Output {
+    net_wait(
+        future,
+        endpoint,
+        transport,
+        NodeKind::NetConnect,
+        "net_connect",
+    )
+    .await
 }
 
 /// Wrap an accept future with network readiness instrumentation.
 ///
 /// Registers a `NetAccept` node visible in the graph while the accept
 /// is pending.
-pub async fn accept<F: IntoFuture>(
-    future: F,
-    endpoint: &str,
-    transport: &str,
-) -> F::Output {
-    net_wait(future, endpoint, transport, NodeKind::NetAccept, "net_accept").await
+pub async fn accept<F: IntoFuture>(future: F, endpoint: &str, transport: &str) -> F::Output {
+    net_wait(
+        future,
+        endpoint,
+        transport,
+        NodeKind::NetAccept,
+        "net_accept",
+    )
+    .await
 }
 
 /// Wrap a readable readiness wait with network instrumentation.
 ///
 /// Registers a `NetReadable` node visible in the graph while waiting
 /// for the socket to become readable.
-pub async fn readable<F: IntoFuture>(
-    future: F,
-    endpoint: &str,
-    transport: &str,
-) -> F::Output {
-    net_wait(future, endpoint, transport, NodeKind::NetReadable, "net_readable").await
+pub async fn readable<F: IntoFuture>(future: F, endpoint: &str, transport: &str) -> F::Output {
+    net_wait(
+        future,
+        endpoint,
+        transport,
+        NodeKind::NetReadable,
+        "net_readable",
+    )
+    .await
 }
 
 /// Wrap a writable readiness wait with network instrumentation.
 ///
 /// Registers a `NetWritable` node visible in the graph while waiting
 /// for the socket to become writable.
-pub async fn writable<F: IntoFuture>(
-    future: F,
-    endpoint: &str,
-    transport: &str,
-) -> F::Output {
-    net_wait(future, endpoint, transport, NodeKind::NetWritable, "net_writable").await
+pub async fn writable<F: IntoFuture>(future: F, endpoint: &str, transport: &str) -> F::Output {
+    net_wait(
+        future,
+        endpoint,
+        transport,
+        NodeKind::NetWritable,
+        "net_writable",
+    )
+    .await
 }
 
 async fn net_wait<F: IntoFuture>(

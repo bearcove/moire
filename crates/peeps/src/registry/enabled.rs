@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex, OnceLock};
-use std::time::Instant;
 
 use peeps_types::{Edge, EdgeKind, GraphSnapshot, Node};
 
@@ -44,7 +43,6 @@ static SPAWNED_EDGES: LazyLock<Mutex<HashSet<(String, String)>>> =
 
 struct ExternalNodeEntry {
     node: Node,
-    created_at: Instant,
 }
 
 static EXTERNAL_NODES: LazyLock<Mutex<HashMap<String, ExternalNodeEntry>>> =
@@ -174,10 +172,7 @@ pub fn register_node(node: Node) {
     nodes
         .entry(node.id.clone())
         .and_modify(|entry| entry.node = node.clone())
-        .or_insert_with(|| ExternalNodeEntry {
-            node,
-            created_at: Instant::now(),
-        });
+        .or_insert_with(|| ExternalNodeEntry { node });
 }
 
 /// Remove a node from the global registry.
@@ -196,35 +191,6 @@ pub fn remove_node(id: &str) {
         .retain(|(s, d)| s != id && d != id);
 }
 
-fn inject_elapsed_ns(attrs_json: &str, elapsed_ns: u64) -> String {
-    if attrs_json.contains("\"elapsed_ns\"") {
-        return attrs_json.to_string();
-    }
-
-    let trimmed = attrs_json.trim();
-    if trimmed == "{}" {
-        return format!("{{\"elapsed_ns\":{elapsed_ns}}}");
-    }
-    if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
-        return attrs_json.to_string();
-    }
-
-    // Insert before trailing `}`.
-    // Assumes attrs_json is valid JSON object (as required by Node.attrs_json).
-    let insert_at = attrs_json.rfind('}').unwrap_or(attrs_json.len());
-    let (head, tail) = attrs_json.split_at(insert_at);
-    let needs_comma = head
-        .chars()
-        .rev()
-        .find(|c| !c.is_whitespace())
-        .is_some_and(|c| c != '{');
-    if needs_comma {
-        format!("{head},\"elapsed_ns\":{elapsed_ns}{tail}")
-    } else {
-        format!("{head}\"elapsed_ns\":{elapsed_ns}{tail}")
-    }
-}
-
 // ── Graph emission ───────────────────────────────────────
 
 /// Emit the canonical graph snapshot for all tracked resources.
@@ -238,8 +204,6 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     let Some(info) = PROCESS_INFO.get() else {
         return GraphSnapshot::default();
     };
-
-    let now = Instant::now();
 
     let mut canonical_edges: Vec<Edge> = EDGES
         .lock()
@@ -271,16 +235,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         .lock()
         .unwrap()
         .values()
-        .map(|entry| {
-            let mut node = entry.node.clone();
-            if matches!(node.kind, peeps_types::NodeKind::Request | peeps_types::NodeKind::Response)
-            {
-                let elapsed_ns =
-                    (now.duration_since(entry.created_at).as_nanos().min(u64::MAX as u128)) as u64;
-                node.attrs_json = inject_elapsed_ns(&node.attrs_json, elapsed_ns);
-            }
-            node
-        })
+        .map(|entry| entry.node.clone())
         .collect();
 
     let mut graph = GraphSnapshot {
@@ -294,8 +249,6 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     crate::futures::emit_into_graph(&mut graph);
     crate::locks::emit_into_graph(&mut graph);
     crate::sync::emit_into_graph(&mut graph);
-
-    let elapsed = now.elapsed();
 
     let mut needs = 0u32;
     let mut touches = 0u32;
@@ -388,46 +341,8 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         syscalls,
         nodes = graph.nodes.len(),
         edges = graph.edges.len(),
-        elapsed_us = elapsed.as_micros() as u64,
         "emit_graph completed"
     );
 
     graph
-}
-
-#[cfg(test)]
-mod tests {
-    use super::inject_elapsed_ns;
-
-    #[test]
-    fn inject_elapsed_ns_empty_object() {
-        assert_eq!(inject_elapsed_ns("{}", 123), "{\"elapsed_ns\":123}");
-    }
-
-    #[test]
-    fn inject_elapsed_ns_inserts_with_comma() {
-        assert_eq!(inject_elapsed_ns("{\"a\":1}", 9), "{\"a\":1,\"elapsed_ns\":9}");
-    }
-
-    #[test]
-    fn inject_elapsed_ns_inserts_without_comma_when_whitespace() {
-        assert_eq!(
-            inject_elapsed_ns("{  }", 42),
-            "{  \"elapsed_ns\":42}"
-        );
-    }
-
-    #[test]
-    fn inject_elapsed_ns_noop_if_present() {
-        assert_eq!(
-            inject_elapsed_ns("{\"elapsed_ns\":1,\"a\":2}", 9),
-            "{\"elapsed_ns\":1,\"a\":2}"
-        );
-    }
-
-    #[test]
-    fn inject_elapsed_ns_noop_if_not_object() {
-        assert_eq!(inject_elapsed_ns("[]", 9), "[]");
-        assert_eq!(inject_elapsed_ns("nope", 9), "nope");
-    }
 }

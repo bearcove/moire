@@ -133,8 +133,10 @@ pub(super) fn emit_interval_nodes(graph: &mut peeps_types::GraphSnapshot) {
     let reg = INTERVAL_REGISTRY.lock().unwrap();
 
     for info in reg.iter().filter_map(|w| w.upgrade()) {
-        let elapsed_ns =
-            (now.duration_since(info.created_at).as_nanos().min(u64::MAX as u128)) as u64;
+        let elapsed_ns = (now
+            .duration_since(info.created_at)
+            .as_nanos()
+            .min(u64::MAX as u128)) as u64;
         let tick_count = info.tick_count.load(Ordering::Relaxed);
 
         let attrs = IntervalAttrs {

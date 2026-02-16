@@ -4,12 +4,12 @@
 //! register graph nodes with operation type, path, byte counts, and timing.
 //! When disabled, all wrappers are zero-cost pass-throughs.
 
-#[cfg(feature = "diagnostics")]
-mod enabled;
 #[cfg(not(feature = "diagnostics"))]
 mod disabled;
-
 #[cfg(feature = "diagnostics")]
-pub use enabled::*;
+mod enabled;
+
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::*;
+#[cfg(feature = "diagnostics")]
+pub use enabled::*;

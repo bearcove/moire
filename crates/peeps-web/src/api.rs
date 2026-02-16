@@ -41,6 +41,7 @@ const SCOPED_TABLES: &[(&str, &str)] = &[
 #[derive(Debug, Serialize)]
 pub struct JumpNowResponse {
     pub snapshot_id: i64,
+    pub captured_at_ns: i64,
     pub requested: usize,
     pub responded: usize,
     pub timed_out: usize,
@@ -89,6 +90,18 @@ pub async fn api_jump_now(
 
         let mut responded = 0usize;
         let mut timed_out = 0usize;
+        let captured_at_ns: i64 = conn
+            .query_row(
+                "SELECT COALESCE(completed_at_ns, requested_at_ns) FROM snapshots WHERE snapshot_id = ?1",
+                params![snapshot_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("snapshot time query: {e}"),
+                )
+            })?;
 
         let mut stmt = conn
             .prepare("SELECT status, COUNT(*) FROM snapshot_processes WHERE snapshot_id = ?1 GROUP BY status")
@@ -113,6 +126,7 @@ pub async fn api_jump_now(
 
         Ok(Json(JumpNowResponse {
             snapshot_id,
+            captured_at_ns,
             requested: processes_requested,
             responded,
             timed_out,

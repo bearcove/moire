@@ -55,12 +55,8 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
                 Some(AcquireKind::Mutex) => "mutex",
                 Some(AcquireKind::Write) => "rwlock_write",
                 Some(AcquireKind::Read) => {
-                    if holders
-                        .iter()
-                        .any(|h| matches!(h.kind, AcquireKind::Write))
-                        || waiters
-                            .iter()
-                            .any(|w| matches!(w.kind, AcquireKind::Write))
+                    if holders.iter().any(|h| matches!(h.kind, AcquireKind::Write))
+                        || waiters.iter().any(|w| matches!(w.kind, AcquireKind::Write))
                     {
                         "rwlock_write"
                     } else {
@@ -547,9 +543,7 @@ impl<T> DiagnosticAsyncMutex<T> {
         }
     }
 
-    pub fn try_lock(
-        &self,
-    ) -> Result<DiagnosticAsyncMutexGuard<'_, T>, tokio::sync::TryLockError> {
+    pub fn try_lock(&self) -> Result<DiagnosticAsyncMutexGuard<'_, T>, tokio::sync::TryLockError> {
         match self.inner.try_lock() {
             Ok(guard) => {
                 let holder_id = self.info.add_holder(AcquireKind::Mutex);

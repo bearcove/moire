@@ -13,18 +13,12 @@ impl<T> Clone for Sender<T> {
 
 impl<T> Sender<T> {
     #[inline]
-    pub async fn send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+    pub async fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
         self.0.send(value).await
     }
 
     #[inline]
-    pub fn try_send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
+    pub fn try_send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
         self.0.try_send(value)
     }
 
@@ -82,10 +76,7 @@ impl<T> Clone for UnboundedSender<T> {
 
 impl<T> UnboundedSender<T> {
     #[inline]
-    pub fn send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+    pub fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
         self.0.send(value)
     }
 
@@ -153,9 +144,7 @@ impl<T> OneshotReceiver<T> {
 }
 
 #[inline]
-pub fn oneshot_channel<T>(
-    _name: impl Into<String>,
-) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot_channel<T>(_name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let (tx, rx) = tokio::sync::oneshot::channel();
     (OneshotSender(tx), OneshotReceiver(rx))
 }
@@ -166,10 +155,7 @@ pub struct WatchSender<T>(tokio::sync::watch::Sender<T>);
 
 impl<T> WatchSender<T> {
     #[inline]
-    pub fn send(
-        &self,
-        value: T,
-    ) -> Result<(), tokio::sync::watch::error::SendError<T>> {
+    pub fn send(&self, value: T) -> Result<(), tokio::sync::watch::error::SendError<T>> {
         self.0.send(value)
     }
 
@@ -215,9 +201,7 @@ impl<T> Clone for WatchReceiver<T> {
 
 impl<T> WatchReceiver<T> {
     #[inline]
-    pub async fn changed(
-        &mut self,
-    ) -> Result<(), tokio::sync::watch::error::RecvError> {
+    pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
         self.0.changed().await
     }
 
@@ -238,10 +222,7 @@ impl<T> WatchReceiver<T> {
 }
 
 #[inline]
-pub fn watch_channel<T>(
-    _name: impl Into<String>,
-    init: T,
-) -> (WatchSender<T>, WatchReceiver<T>) {
+pub fn watch_channel<T>(_name: impl Into<String>, init: T) -> (WatchSender<T>, WatchReceiver<T>) {
     let (tx, rx) = tokio::sync::watch::channel(init);
     (WatchSender(tx), WatchReceiver(rx))
 }
@@ -434,7 +415,10 @@ pub fn interval(period: std::time::Duration) -> tokio::time::Interval {
 }
 
 #[inline]
-pub fn interval_at(start: tokio::time::Instant, period: std::time::Duration) -> tokio::time::Interval {
+pub fn interval_at(
+    start: tokio::time::Instant,
+    period: std::time::Duration,
+) -> tokio::time::Interval {
     tokio::time::interval_at(start, period)
 }
 

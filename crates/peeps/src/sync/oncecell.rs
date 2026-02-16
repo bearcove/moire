@@ -208,9 +208,7 @@ impl<T> OnceCell<T> {
             .ok();
         match self.inner.set(value) {
             Ok(()) => {
-                self.info
-                    .state
-                    .store(ONCE_INITIALIZED, Ordering::Relaxed);
+                self.info.state.store(ONCE_INITIALIZED, Ordering::Relaxed);
                 *self.info.init_duration.lock().unwrap() = Some(start.elapsed());
                 Ok(())
             }

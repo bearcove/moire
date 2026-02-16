@@ -524,7 +524,13 @@ fn persist_reply(
             tx.execute(
                 "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![snapshot_id, edge.src, edge.dst, edge.kind.as_str(), edge.attrs_json],
+                params![
+                    snapshot_id,
+                    edge.src,
+                    edge.dst,
+                    edge.kind.as_str(),
+                    edge.attrs_json
+                ],
             )
             .map_err(|e| e.to_string())?;
         }

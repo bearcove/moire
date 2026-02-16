@@ -23,15 +23,15 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 mod collect;
+pub mod command;
+pub mod fs;
 pub(crate) mod futures;
+mod joinset;
 pub(crate) mod locks;
+pub mod net;
 pub mod registry;
 pub mod stack;
 pub(crate) mod sync;
-pub mod command;
-pub mod fs;
-pub mod net;
-mod joinset;
 
 #[cfg(feature = "dashboard")]
 mod dashboard_client;
@@ -69,10 +69,8 @@ pub type AsyncRwLock<T> = locks::DiagnosticAsyncRwLock<T>;
 pub use locks::{
     DiagnosticAsyncMutexGuard as AsyncMutexGuard,
     DiagnosticAsyncRwLockReadGuard as AsyncRwLockReadGuard,
-    DiagnosticAsyncRwLockWriteGuard as AsyncRwLockWriteGuard,
-    DiagnosticMutexGuard as MutexGuard,
-    DiagnosticRwLockReadGuard as RwLockReadGuard,
-    DiagnosticRwLockWriteGuard as RwLockWriteGuard,
+    DiagnosticAsyncRwLockWriteGuard as AsyncRwLockWriteGuard, DiagnosticMutexGuard as MutexGuard,
+    DiagnosticRwLockReadGuard as RwLockReadGuard, DiagnosticRwLockWriteGuard as RwLockWriteGuard,
 };
 
 // ── channels ────────────────────────────────────────────
@@ -89,8 +87,8 @@ pub use sync::OnceCell;
 
 // ── timers ─────────────────────────────────────────────
 
-pub use sync::{interval, interval_at};
 pub use sync::DiagnosticInterval as Interval;
+pub use sync::{interval, interval_at};
 
 // ── command ────────────────────────────────────────────
 
@@ -237,16 +235,36 @@ macro_rules! peep {
 #[cfg(not(feature = "diagnostics"))]
 #[macro_export]
 macro_rules! peep {
-    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{ $future }};
-    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr) => {{ $future }};
-    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{ $future }};
-    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr) => {{ $future }};
-    ($future:expr, $label:literal, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{ $future }};
-    ($future:expr, $label:literal, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{ $future }};
-    ($future:expr, $label:literal, level = $level:expr) => {{ $future }};
-    ($future:expr, $label:literal, kind = $kind:expr) => {{ $future }};
-    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{ $future }};
-    ($future:expr, $label:literal) => {{ $future }};
+    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, level = $level:expr, kind = $kind:expr) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, kind = $kind:expr, level = $level:expr) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, level = $level:expr) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, kind = $kind:expr) => {{
+        $future
+    }};
+    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
+        $future
+    }};
+    ($future:expr, $label:literal) => {{
+        $future
+    }};
 }
 
 // ── Initialization ──────────────────────────────────────

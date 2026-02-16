@@ -115,8 +115,7 @@ impl Command {
     }
 
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
-        self.args
-            .push(arg.as_ref().to_string_lossy().to_string());
+        self.args.push(arg.as_ref().to_string_lossy().to_string());
         self.inner.arg(arg);
         self
     }
@@ -318,11 +317,7 @@ impl Command {
         let elapsed_ns = start.elapsed().as_nanos() as u64;
 
         let (exit_code, exit_signal, error) = match &result {
-            Ok(output) => (
-                output.status.code(),
-                exit_signal_str(&output.status),
-                None,
-            ),
+            Ok(output) => (output.status.code(), exit_signal_str(&output.status), None),
             Err(e) => (None, None, Some(e.to_string())),
         };
 
@@ -467,11 +462,7 @@ impl Child {
         let elapsed_ns = self.start.elapsed().as_nanos() as u64;
 
         let (exit_code, exit_signal, error) = match &result {
-            Ok(output) => (
-                output.status.code(),
-                exit_signal_str(&output.status),
-                None,
-            ),
+            Ok(output) => (output.status.code(), exit_signal_str(&output.status), None),
             Err(e) => (None, None, Some(e.to_string())),
         };
 

@@ -133,11 +133,7 @@ impl DiagnosticSemaphore {
         let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
         update_max_wait(&self.info.high_waiters_watermark, new_waiters);
         let start = Instant::now();
-        self.info
-            .active_waiter_starts
-            .lock()
-            .unwrap()
-            .push(start);
+        self.info.active_waiter_starts.lock().unwrap().push(start);
         let mut edge_src: Option<String> = None;
         crate::stack::with_top(|src| {
             edge_src = Some(src.to_string());
@@ -172,11 +168,7 @@ impl DiagnosticSemaphore {
         let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
         update_max_wait(&self.info.high_waiters_watermark, new_waiters);
         let start = Instant::now();
-        self.info
-            .active_waiter_starts
-            .lock()
-            .unwrap()
-            .push(start);
+        self.info.active_waiter_starts.lock().unwrap().push(start);
         let mut edge_src: Option<String> = None;
         crate::stack::with_top(|src| {
             edge_src = Some(src.to_string());
@@ -210,11 +202,7 @@ impl DiagnosticSemaphore {
         let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
         update_max_wait(&self.info.high_waiters_watermark, new_waiters);
         let start = Instant::now();
-        self.info
-            .active_waiter_starts
-            .lock()
-            .unwrap()
-            .push(start);
+        self.info.active_waiter_starts.lock().unwrap().push(start);
         let mut edge_src: Option<String> = None;
         crate::stack::with_top(|src| {
             edge_src = Some(src.to_string());
@@ -249,11 +237,7 @@ impl DiagnosticSemaphore {
         let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
         update_max_wait(&self.info.high_waiters_watermark, new_waiters);
         let start = Instant::now();
-        self.info
-            .active_waiter_starts
-            .lock()
-            .unwrap()
-            .push(start);
+        self.info.active_waiter_starts.lock().unwrap().push(start);
         let mut edge_src: Option<String> = None;
         crate::stack::with_top(|src| {
             edge_src = Some(src.to_string());
