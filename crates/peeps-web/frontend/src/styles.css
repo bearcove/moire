@@ -509,6 +509,21 @@ body {
     border-left-color: light-dark(#d30000, #ff6b6b);
 }
 
+.card--ghost {
+    border: 1px dashed light-dark(#b0b0b6, #505056);
+    border-left: 3px dashed light-dark(#b0b0b6, #505056);
+    background: light-dark(#f8f8fb, #1a1a1e);
+    opacity: 0.7;
+}
+
+.card--ghost .card-head {
+    color: light-dark(#8e8e93, #636366);
+}
+
+.card--ghost .card-body {
+    border-top-color: light-dark(#dcdce2, #2a2a2e);
+}
+
 .card--dropped {
     border-color: light-dark(#d30000, #ff6b6b);
     border-left-color: light-dark(#d30000, #ff6b6b);
@@ -1104,6 +1119,17 @@ body {
     background: light-dark(#f8d7da, #3a1a1a);
     color: light-dark(#721c24, #ff6b6b);
     border-left: 3px solid light-dark(#d30000, #ff6b6b);
+}
+
+.inspect-alert--ghost {
+    background: light-dark(#f0f0f5, #1e1e22);
+    color: light-dark(#6e6e73, #98989d);
+    border-left: 3px dashed light-dark(#b0b0b6, #505056);
+}
+
+.inspect-node-icon--ghost {
+    background: light-dark(#e8e8ed, #2a2a2e);
+    color: light-dark(#8e8e93, #636366);
 }
 
 /* ── Inspector raw attrs ─────────────────────────────────── */

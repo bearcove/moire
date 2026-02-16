@@ -28,12 +28,14 @@ import {
   CopySimple,
   Check,
   ArrowSquareOut,
+  Ghost,
 } from "@phosphor-icons/react";
-import type { StuckRequest, SnapshotNode } from "../types";
+import type { StuckRequest, SnapshotNode, SnapshotGraph } from "../types";
 
 interface InspectorProps {
   selectedRequest: StuckRequest | null;
   selectedNode: SnapshotNode | null;
+  graph: SnapshotGraph | null;
   filteredNodeId: string | null;
   onFocusNode: (nodeId: string | null) => void;
   collapsed: boolean;
@@ -117,11 +119,13 @@ const kindIcons: Record<string, React.ReactNode> = {
   once_cell: <ToggleRight size={16} weight="bold" />,
   request: <PaperPlaneTilt size={16} weight="bold" />,
   response: <ArrowBendDownLeft size={16} weight="bold" />,
+  ghost: <Ghost size={16} weight="bold" />,
 };
 
 export function Inspector({
   selectedRequest,
   selectedNode,
+  graph,
   filteredNodeId,
   onFocusNode,
   collapsed,
@@ -150,11 +154,15 @@ export function Inspector({
         {selectedRequest ? (
           <RequestDetail req={selectedRequest} />
         ) : selectedNode ? (
-          <NodeDetail
-            node={selectedNode}
-            filteredNodeId={filteredNodeId}
-            onFocusNode={onFocusNode}
-          />
+          selectedNode.kind === "ghost" ? (
+            <GhostDetail node={selectedNode} graph={graph} />
+          ) : (
+            <NodeDetail
+              node={selectedNode}
+              filteredNodeId={filteredNodeId}
+              onFocusNode={onFocusNode}
+            />
+          )
         ) : (
           <div className="inspector-empty">
             Select a request or graph node to inspect.
@@ -180,6 +188,68 @@ function RequestDetail({ req }: { req: StuckRequest }) {
       <dt>Connection</dt>
       <dd>{req.connection ?? "—"}</dd>
     </dl>
+  );
+}
+
+function GhostDetail({ node, graph }: { node: SnapshotNode; graph: SnapshotGraph | null }) {
+  const reason = attr(node.attrs, "reason") ?? "unresolved";
+  const refProcKey = attr(node.attrs, "referenced_proc_key");
+
+  // Count incoming/outgoing edges
+  let incoming = 0;
+  let outgoing = 0;
+  if (graph) {
+    for (const e of graph.edges) {
+      if (e.dst_id === node.id) incoming++;
+      if (e.src_id === node.id) outgoing++;
+    }
+  }
+
+  return (
+    <div className="inspect-node">
+      <div className="inspect-node-header">
+        <span className="inspect-node-icon inspect-node-icon--ghost">
+          <Ghost size={16} weight="bold" />
+        </span>
+        <div>
+          <div className="inspect-node-kind">ghost (unresolved)</div>
+          <div className="inspect-node-label">{node.id}</div>
+        </div>
+      </div>
+
+      <div className="inspect-alert inspect-alert--ghost">
+        This node does not exist in the current snapshot. It appears as an endpoint
+        of an unresolved edge.
+      </div>
+
+      <div className="inspect-section">
+        <div className="inspect-row">
+          <span className="inspect-key">ID</span>
+          <span className="inspect-val inspect-val--copyable">
+            {node.id}
+            <CopyIdButton id={node.id} />
+          </span>
+        </div>
+        <div className="inspect-row">
+          <span className="inspect-key">Reason</span>
+          <span className="inspect-pill inspect-pill--neutral">{reason}</span>
+        </div>
+        {refProcKey && (
+          <div className="inspect-row">
+            <span className="inspect-key">Proc Key</span>
+            <span className="inspect-val inspect-val--mono">{refProcKey}</span>
+          </div>
+        )}
+        <div className="inspect-row">
+          <span className="inspect-key">Incoming</span>
+          <span className="inspect-val">{incoming}</span>
+        </div>
+        <div className="inspect-row">
+          <span className="inspect-key">Outgoing</span>
+          <span className="inspect-val">{outgoing}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 

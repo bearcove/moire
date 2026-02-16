@@ -44,6 +44,8 @@ function firstString(
 }
 
 function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; edges: Edge[] } {
+  const ghostIds = new Set((graph.ghostNodes ?? []).map((n) => n.id));
+
   const methodByCorrelationKey = new Map<string, string>();
   for (const n of graph.nodes) {
     if (n.kind !== "request") continue;
@@ -57,6 +59,12 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
     type: "peeps",
     data: {
       label: (() => {
+        if (n.kind === "ghost") {
+          // Show a truncated version of the raw ID
+          const id = n.id;
+          return id.length > 24 ? id.slice(0, 24) + "\u2026" : id;
+        }
+
         if (n.kind === "request") {
           return (
             firstString(n.attrs, ["method", "request.method"]) ??
@@ -92,14 +100,17 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
     .filter((e) => nodeIds.has(e.src_id) && nodeIds.has(e.dst_id))
     .map((e) => {
       const isTouches = e.kind === "touches";
+      const involvesGhost = ghostIds.has(e.src_id) || ghostIds.has(e.dst_id);
       return {
         id: `${e.src_id}->${e.dst_id}:${e.kind}`,
         source: e.src_id,
         target: e.dst_id,
         markerEnd: { type: MarkerType.ArrowClosed, width: isTouches ? 8 : 12, height: isTouches ? 8 : 12 },
-        style: isTouches
-          ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
-          : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
+        style: involvesGhost
+          ? { stroke: "light-dark(#b0b0b6, #505056)", strokeWidth: 1, strokeDasharray: "6 4", opacity: 0.5 }
+          : isTouches
+            ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
+            : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
         label: isTouches ? "touches" : undefined,
         labelStyle: isTouches ? { fontSize: 9, fill: "light-dark(#a1a1a6, #636366)" } : undefined,
       };
@@ -237,7 +248,8 @@ export function GraphView({
   onSelectNode,
   onClearSelection,
 }: GraphViewProps) {
-  const nodeCount = graph?.nodes.length ?? 0;
+  const ghostCount = graph?.ghostNodes?.length ?? 0;
+  const nodeCount = (graph?.nodes.length ?? 0) - ghostCount;
   const edgeCount = graph?.edges.length ?? 0;
   const isFiltered = filteredNodeId != null && fullGraph != null && graph !== fullGraph;
   const hasSearch = searchQuery.trim().length > 0;
@@ -246,7 +258,9 @@ export function GraphView({
     <div className="panel panel--graph">
       <div className="panel-header">
         <GraphIcon size={14} weight="bold" />
-        {graph ? `Graph (${nodeCount} nodes, ${edgeCount} edges)` : "Graph"}
+        {graph
+          ? `Graph (${nodeCount} nodes, ${edgeCount} edges${ghostCount > 0 ? `, ${ghostCount} ghost` : ""})`
+          : "Graph"}
         {isFiltered && (
           <button
             className="filter-clear-btn"

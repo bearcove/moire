@@ -52,6 +52,7 @@ function connectedSubgraph(graph: SnapshotGraph, seedId: string): SnapshotGraph 
   return {
     nodes: graph.nodes.filter((n) => visited.has(n.id)),
     edges: graph.edges.filter((e) => visited.has(e.src_id) && visited.has(e.dst_id)),
+    ghostNodes: graph.ghostNodes.filter((n) => visited.has(n.id)),
   };
 }
 
@@ -205,6 +206,7 @@ export function App() {
         <Inspector
           selectedRequest={selectedRequest}
           selectedNode={selectedNode}
+          graph={graph}
           filteredNodeId={filteredNodeId}
           onFocusNode={setFilteredNodeId}
           collapsed={rightCollapsed}

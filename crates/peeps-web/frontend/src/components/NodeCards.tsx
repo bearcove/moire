@@ -14,6 +14,7 @@ import {
   Check,
   X as XIcon,
   Warning,
+  Ghost,
 } from "@phosphor-icons/react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 
@@ -563,6 +564,38 @@ function ResponseCard({ data }: NodeProps<Node<NodeData>>) {
   );
 }
 
+function GhostCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, attrs } = data;
+  const reason = attr(attrs, "reason") ?? "unresolved";
+  const refProcKey = attr(attrs, "referenced_proc_key");
+
+  return (
+    <div className="card card--ghost">
+      <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
+      <div className="card-head">
+        <span className="card-icon"><Ghost size={14} weight="bold" /></span>
+        <span className="card-label" title={label}>{label}</span>
+      </div>
+      <div className="card-body">
+        <div className="card-row">
+          <StatePill state="GHOST" variant="neutral" />
+        </div>
+        <div className="card-row">
+          <span className="card-dim">reason</span>
+          <span className="card-val-truncate">{reason}</span>
+        </div>
+        {refProcKey && (
+          <div className="card-row">
+            <span className="card-dim">proc</span>
+            <span className="card-val-truncate">{refProcKey}</span>
+          </div>
+        )}
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ visibility: "hidden" }} />
+    </div>
+  );
+}
+
 /** Fallback for unknown node kinds */
 function GenericCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, kind, process, attrs } = data;
@@ -611,6 +644,7 @@ const cardByKind: Record<string, (props: NodeProps<Node<NodeData>>) => React.Rea
   once_cell: OnceCellCard,
   request: RequestCard,
   response: ResponseCard,
+  ghost: GhostCard,
 };
 
 export const PeepsNode = memo((props: NodeProps<Node<NodeData>>) => {
@@ -646,6 +680,8 @@ export function estimateNodeHeight(kind: string): number {
     case "oncecell":
     case "once_cell":
       return 90;
+    case "ghost":
+      return 100;
     default:
       return 100;
   }
