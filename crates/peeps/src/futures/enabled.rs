@@ -21,12 +21,13 @@ struct FutureWaitInfo {
     ready_count: u64,
     total_pending: Duration,
     last_seen: Instant,
-    meta_json: String,
+    location: String,
+    user_meta_json: String,
 }
 
 // ── Registration ─────────────────────────────────────────
 
-fn register_future(node_id: String, resource: String, meta_json: String) {
+fn register_future(node_id: String, resource: String, location: String, user_meta_json: String) {
     FUTURE_WAIT_REGISTRY.lock().unwrap().insert(
         node_id,
         FutureWaitInfo {
@@ -36,7 +37,8 @@ fn register_future(node_id: String, resource: String, meta_json: String) {
             ready_count: 0,
             total_pending: Duration::ZERO,
             last_seen: Instant::now(),
-            meta_json,
+            location,
+            user_meta_json,
         },
     );
 }
@@ -159,25 +161,6 @@ where
     peepable_with_meta(future, resource, peeps_types::MetaBuilder::<0>::new())
 }
 
-fn inject_location_meta_json(meta_json: String, location: &str) -> String {
-    let mut out = String::with_capacity(meta_json.len() + location.len() + 24);
-    out.push('{');
-    out.push('"');
-    peeps_types::json_escape_into(&mut out, peeps_types::meta_key::CTX_LOCATION);
-    out.push_str("\":\"");
-    peeps_types::json_escape_into(&mut out, location);
-    out.push('"');
-    if !meta_json.is_empty() {
-        // meta_json is a JSON object string like {"k":"v"}; splice its contents after our entry.
-        if meta_json.starts_with('{') && meta_json.ends_with('}') && meta_json.len() > 2 {
-            out.push(',');
-            out.push_str(&meta_json[1..meta_json.len() - 1]);
-        }
-    }
-    out.push('}');
-    out
-}
-
 #[track_caller]
 pub fn peepable_with_meta<F, const N: usize>(
     future: F,
@@ -191,9 +174,9 @@ where
     let resource = resource.into();
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
-    let meta_json = inject_location_meta_json(meta.to_json_object(), &location);
+    let user_meta_json = meta.to_json_object();
 
-    register_future(node_id.clone(), resource.clone(), meta_json);
+    register_future(node_id.clone(), resource.clone(), location, user_meta_json);
 
     // If created during another PeepableFuture's poll, record a spawned edge.
     let child_id = node_id.clone();
@@ -269,13 +252,12 @@ where
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
 
-    let meta = BlockingMeta {
-        ctx_location: location,
+    let user_meta = BlockingUserMeta {
         blocking: "true".to_string(),
     };
-    let meta_json = facet_json::to_string(&meta).unwrap();
+    let user_meta_json = facet_json::to_string(&user_meta).unwrap();
 
-    register_future(node_id.clone(), name, meta_json);
+    register_future(node_id.clone(), name, location, user_meta_json);
 
     // Emit edges from parent context.
     let child_id = node_id.clone();
@@ -316,13 +298,12 @@ pub fn timeout<F: Future>(
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
 
-    let meta = TimeoutMeta {
-        ctx_location: location,
+    let user_meta = TimeoutUserMeta {
         timeout_duration_ms: format!("{}", duration.as_millis()),
     };
-    let meta_json = facet_json::to_string(&meta).unwrap();
+    let user_meta_json = facet_json::to_string(&user_meta).unwrap();
 
-    register_future(node_id.clone(), label.clone(), meta_json);
+    register_future(node_id.clone(), label.clone(), location, user_meta_json);
 
     let child_id = node_id.clone();
     crate::stack::with_top(|parent_node_id| {
@@ -356,13 +337,12 @@ pub fn sleep(
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
 
-    let meta = SleepMeta {
-        ctx_location: location,
+    let user_meta = SleepUserMeta {
         sleep_duration_ms: format!("{}", duration.as_millis()),
     };
-    let meta_json = facet_json::to_string(&meta).unwrap();
+    let user_meta_json = facet_json::to_string(&user_meta).unwrap();
 
-    register_future(node_id.clone(), label.clone(), meta_json);
+    register_future(node_id.clone(), label.clone(), location, user_meta_json);
 
     let child_id = node_id.clone();
     crate::stack::with_top(|parent_node_id| {
@@ -387,29 +367,25 @@ struct FutureAttrs<'a> {
     ready_count: u64,
     #[facet(skip_unless_truthy)]
     total_pending_ns: Option<u64>,
+    #[facet(rename = "ctx.location")]
+    ctx_location: &'a str,
     meta: RawJson<'a>,
 }
 
 #[derive(Facet)]
-struct TimeoutMeta {
-    #[facet(rename = "ctx.location")]
-    ctx_location: String,
+struct TimeoutUserMeta {
     #[facet(rename = "timeout.duration_ms")]
     timeout_duration_ms: String,
 }
 
 #[derive(Facet)]
-struct SleepMeta {
-    #[facet(rename = "ctx.location")]
-    ctx_location: String,
+struct SleepUserMeta {
     #[facet(rename = "sleep.duration_ms")]
     sleep_duration_ms: String,
 }
 
 #[derive(Facet)]
-struct BlockingMeta {
-    #[facet(rename = "ctx.location")]
-    ctx_location: String,
+struct BlockingUserMeta {
     blocking: String,
 }
 
@@ -424,10 +400,10 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
     for (node_id, info) in registry.iter() {
         let total_pending_ns = info.total_pending.as_nanos() as u64;
 
-        let meta_str = if info.meta_json.is_empty() {
+        let meta_str = if info.user_meta_json.is_empty() {
             "{}"
         } else {
-            &info.meta_json
+            &info.user_meta_json
         };
 
         let attrs = FutureAttrs {
@@ -439,6 +415,7 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             } else {
                 None
             },
+            ctx_location: &info.location,
             meta: RawJson::new(meta_str),
         };
 
