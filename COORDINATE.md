@@ -35,3 +35,4 @@
 ## Notes For Other Agents
 - The spike is isolated to timeline-prefixed helpers/state/components and a single mode toggle branch in `App.tsx`.
 - Graph mode path remains the existing `GraphView` render branch unchanged.
+- Follow-up still needed: model internal roam queue hop (`call_raw_with_channels` -> runtime channel) as explicit edge(s) so queued backpressure is visible in graph.

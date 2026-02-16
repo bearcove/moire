@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { CaretRight, ClockCounterClockwise, FunnelSimple } from "@phosphor-icons/react";
+import { ClockCounterClockwise, FunnelSimple } from "@phosphor-icons/react";
 import type { TimelineEvent, TimelineProcessOption } from "../types";
 
 const WINDOW_OPTIONS_SECONDS = [30, 60, 300, 900, 1800] as const;
@@ -25,6 +25,7 @@ type TimelineGroup = {
   kind: "correlation" | "entity";
   events: TimelineEvent[];
   latestTsNs: number;
+  earliestTsNs: number;
 };
 
 function formatRelativeNs(tsNs: number, snapshotCapturedAtNs: number | null): string {
@@ -38,6 +39,52 @@ function formatRelativeNs(tsNs: number, snapshotCapturedAtNs: number | null): st
     return `${sign}${(absNs / 1_000_000_000).toFixed(3)}s`;
   }
   return `${sign}${Math.round(absNs / 1_000_000)}ms`;
+}
+
+function clamp01(value: number): number {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+function timelinePositionPct(tsNs: number, startNs: number, endNs: number): number {
+  if (endNs <= startNs) return 100;
+  return clamp01((tsNs - startNs) / (endNs - startNs)) * 100;
+}
+
+function formatAbsoluteTs(tsNs: number): string {
+  if (!Number.isFinite(tsNs)) return "—";
+  const date = new Date(Math.floor(tsNs / 1_000_000));
+  const micros = Math.floor((tsNs % 1_000_000) / 1_000);
+  return `${date.toLocaleTimeString()}.${String(micros).padStart(3, "0")}`;
+}
+
+function eventTone(name: string): "ok" | "warn" | "crit" | "neutral" {
+  if (
+    name.includes(".err") ||
+    name.includes(".failed") ||
+    name.includes(".cancelled") ||
+    name.includes(".dropped")
+  ) {
+    return "crit";
+  }
+  if (
+    name.includes(".try_") ||
+    name.includes(".empty") ||
+    name.includes(".blocked") ||
+    name.includes(".waiting")
+  ) {
+    return "warn";
+  }
+  if (
+    name.includes(".ok") ||
+    name.includes(".send") ||
+    name.includes(".recv") ||
+    name.includes(".completed")
+  ) {
+    return "ok";
+  }
+  return "neutral";
 }
 
 function formatGroupLabel(event: TimelineEvent): { key: string; label: string; kind: "correlation" | "entity" } {
@@ -80,6 +127,9 @@ export function TimelineView({
         if (event.ts_ns > existing.latestTsNs) {
           existing.latestTsNs = event.ts_ns;
         }
+        if (event.ts_ns < existing.earliestTsNs) {
+          existing.earliestTsNs = event.ts_ns;
+        }
         continue;
       }
 
@@ -89,6 +139,7 @@ export function TimelineView({
         kind: grouping.kind,
         events: [event],
         latestTsNs: event.ts_ns,
+        earliestTsNs: event.ts_ns,
       });
     }
 
@@ -99,6 +150,10 @@ export function TimelineView({
     grouped.sort((a, b) => b.latestTsNs - a.latestTsNs || b.events.length - a.events.length);
     return grouped;
   }, [events]);
+
+  const endNs = snapshotCapturedAtNs ?? Date.now() * 1_000_000;
+  const windowNs = Math.max(1, Math.round(windowSeconds * 1_000_000_000));
+  const startNs = Math.max(0, endNs - windowNs);
 
   return (
     <div className="panel panel--timeline">
@@ -144,6 +199,11 @@ export function TimelineView({
       {error && <div className="timeline-error">{error}</div>}
 
       <div className="timeline-body">
+        <div className="timeline-axis">
+          <span>{`-${windowSeconds >= 60 ? `${Math.round(windowSeconds / 60)}m` : `${windowSeconds}s`}`}</span>
+          <span>-mid</span>
+          <span>now</span>
+        </div>
         {loading ? (
           <div className="timeline-empty">Loading timeline events...</div>
         ) : groups.length === 0 ? (
@@ -156,20 +216,39 @@ export function TimelineView({
                 <span className="timeline-group-label" title={group.label}>{group.label}</span>
                 <span className="timeline-group-count">{group.events.length}</span>
               </header>
-              <div className="timeline-events">
+              <div className="timeline-lane">
+                <div className="timeline-lane-track" />
+                <div
+                  className="timeline-lane-span"
+                  style={{
+                    left: `${timelinePositionPct(group.earliestTsNs, startNs, endNs)}%`,
+                    right: `${100 - timelinePositionPct(group.latestTsNs, startNs, endNs)}%`,
+                  }}
+                />
                 {group.events.map((event) => (
                   <button
                     key={event.id}
-                    className={`timeline-event${selectedEventId === event.id ? " timeline-event--active" : ""}`}
+                    className={`timeline-event-dot timeline-event-dot--${eventTone(event.name)}${
+                      selectedEventId === event.id ? " timeline-event-dot--active" : ""
+                    }`}
                     onClick={() => onSelectEvent(event)}
-                    title={`Entity: ${event.entity_id}`}
+                    title={`${event.name}
+${formatRelativeNs(event.ts_ns, snapshotCapturedAtNs)} from now
+${formatAbsoluteTs(event.ts_ns)}
+entity=${event.entity_id}`}
+                    style={{
+                      left: `${timelinePositionPct(event.ts_ns, startNs, endNs)}%`,
+                    }}
                   >
-                    <span className="timeline-event-ts">{formatRelativeNs(event.ts_ns, snapshotCapturedAtNs)}</span>
-                    <span className="timeline-event-name">{event.name}</span>
-                    <span className="timeline-event-entity">{event.entity_id}</span>
-                    <CaretRight size={12} weight="bold" />
+                    <span className="timeline-event-dot-core" />
                   </button>
                 ))}
+              </div>
+              <div className="timeline-group-meta">
+                <span className="timeline-group-last">{group.events[0]?.name ?? "—"}</span>
+                <span className="timeline-group-when">
+                  {formatRelativeNs(group.latestTsNs, snapshotCapturedAtNs)}
+                </span>
               </div>
             </section>
           ))

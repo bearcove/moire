@@ -456,6 +456,38 @@ function formatTimelineTimestamp(tsNs: number): string {
   }`;
 }
 
+function formatShortDurationNs(deltaNs: number): string {
+  const abs = Math.abs(deltaNs);
+  const sign = deltaNs >= 0 ? "+" : "-";
+  if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(3)}s`;
+  if (abs >= 1_000_000) return `${sign}${Math.round(abs / 1_000_000)}ms`;
+  return `${sign}${Math.round(abs / 1_000)}us`;
+}
+
+function nodeTimelineOriginNs(
+  kind: string,
+  attrs: Record<string, unknown>,
+  fallbackFirstEventTsNs: number | null,
+): number | null {
+  const requestStart = firstNumAttr(attrs, [
+    "request.queued_at_ns",
+    "request.started_at_ns",
+    "request.delivered_at_ns",
+    "started_at_ns",
+  ]);
+  const responseStart = firstNumAttr(attrs, [
+    "response.started_at_ns",
+    "response.created_at_ns",
+    "started_at_ns",
+  ]);
+  const genericCreated = firstNumAttr(attrs, ["created_at_ns", "opened_at_ns", "ts_ns"]);
+
+  if (kind === "request" && requestStart != null) return requestStart;
+  if (kind === "response" && responseStart != null) return responseStart;
+  if (genericCreated != null) return genericCreated;
+  return fallbackFirstEventTsNs;
+}
+
 function compactPreviewValue(val: unknown): string {
   if (val == null) return "null";
   if (typeof val === "string") return val.length > 48 ? `${val.slice(0, 48)}…` : val;
@@ -617,6 +649,10 @@ function NodeDetail({
     }
   }
 
+  const timelineFirstEventTsNs =
+    timelineRows.length > 0 ? Math.min(...timelineRows.map((row) => row.ts_ns)) : null;
+  const timelineOriginNs = nodeTimelineOriginNs(node.kind, node.attrs, timelineFirstEventTsNs);
+
   return (
     <div className="inspect-node">
       <div className="inspect-node-header">
@@ -756,7 +792,16 @@ function NodeDetail({
               {timelineRows.map((row) => (
                 <div className="inspect-timeline-item" key={`${row.ts_ns}:${row.id}`}>
                   <div className="inspect-timeline-top">
-                    <span className="inspect-timeline-ts">{formatTimelineTimestamp(row.ts_ns)}</span>
+                    <span
+                      className="inspect-timeline-ts"
+                      title={`at ${formatTimelineTimestamp(row.ts_ns)}${
+                        timelineOriginNs != null ? `\nfrom node start: ${formatShortDurationNs(row.ts_ns - timelineOriginNs)}` : ""
+                      }`}
+                    >
+                      {timelineOriginNs != null
+                        ? formatShortDurationNs(row.ts_ns - timelineOriginNs)
+                        : formatTimelineTimestamp(row.ts_ns)}
+                    </span>
                     <span
                       className={`inspect-pill inspect-pill--${
                         row.relation === "self"
@@ -770,6 +815,7 @@ function NodeDetail({
                     </span>
                   </div>
                   <div className="inspect-timeline-name">{row.name}</div>
+                  <div className="inspect-timeline-abs">{formatTimelineTimestamp(row.ts_ns)}</div>
                   <div className="inspect-timeline-attrs">{compactAttrsPreview(row.attrs)}</div>
                 </div>
               ))}
