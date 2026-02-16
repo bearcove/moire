@@ -319,6 +319,12 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     let mut join_sets = 0u32;
     let mut semaphores = 0u32;
     let mut once_cells = 0u32;
+    let mut commands = 0u32;
+    let mut file_ops = 0u32;
+    let mut notifies = 0u32;
+    let mut sleeps = 0u32;
+    let mut intervals = 0u32;
+    let mut timeouts = 0u32;
     for n in &graph.nodes {
         match n.kind {
             peeps_types::NodeKind::Future => futures += 1,
@@ -332,6 +338,16 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
             peeps_types::NodeKind::JoinSet => join_sets += 1,
             peeps_types::NodeKind::Semaphore => semaphores += 1,
             peeps_types::NodeKind::OnceCell => once_cells += 1,
+            peeps_types::NodeKind::Command => commands += 1,
+            peeps_types::NodeKind::FileOp => file_ops += 1,
+            peeps_types::NodeKind::Notify => notifies += 1,
+            peeps_types::NodeKind::Sleep => sleeps += 1,
+            peeps_types::NodeKind::Interval => intervals += 1,
+            peeps_types::NodeKind::Timeout => timeouts += 1,
+            peeps_types::NodeKind::NetConnect
+            | peeps_types::NodeKind::NetAccept
+            | peeps_types::NodeKind::NetReadable
+            | peeps_types::NodeKind::NetWritable => {}
         }
     }
 
@@ -350,6 +366,12 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         join_sets,
         semaphores,
         once_cells,
+        commands,
+        file_ops,
+        notifies,
+        sleeps,
+        intervals,
+        timeouts,
         nodes = graph.nodes.len(),
         edges = graph.edges.len(),
         elapsed_us = elapsed.as_micros() as u64,

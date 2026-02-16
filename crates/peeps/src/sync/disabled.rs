@@ -391,6 +391,74 @@ impl<T> OnceCell<T> {
     }
 }
 
+// ── Notify ───────────────────────────────────────────────
+
+pub struct DiagnosticNotify(tokio::sync::Notify);
+
+impl Clone for DiagnosticNotify {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self(tokio::sync::Notify::new())
+    }
+}
+
+impl DiagnosticNotify {
+    #[inline]
+    pub fn new(_name: impl Into<String>) -> Self {
+        Self(tokio::sync::Notify::new())
+    }
+
+    #[inline]
+    pub async fn notified(&self) {
+        self.0.notified().await
+    }
+
+    #[inline]
+    pub fn notify_one(&self) {
+        self.0.notify_one()
+    }
+
+    #[inline]
+    pub fn notify_waiters(&self) {
+        self.0.notify_waiters()
+    }
+}
+
+// ── Sleep ────────────────────────────────────────────────
+
+pub type DiagnosticSleep = tokio::time::Sleep;
+
+#[inline]
+pub fn sleep(duration: std::time::Duration) -> tokio::time::Sleep {
+    tokio::time::sleep(duration)
+}
+
+// ── Interval ─────────────────────────────────────────────
+
+pub type DiagnosticInterval = tokio::time::Interval;
+
+#[inline]
+pub fn interval(period: std::time::Duration) -> tokio::time::Interval {
+    tokio::time::interval(period)
+}
+
+#[inline]
+pub fn interval_at(start: tokio::time::Instant, period: std::time::Duration) -> tokio::time::Interval {
+    tokio::time::interval_at(start, period)
+}
+
+// ── Timeout ──────────────────────────────────────────────
+
+pub type DiagnosticTimeout<F> = tokio::time::Timeout<F>;
+
+#[inline]
+pub fn timeout<F: std::future::Future>(
+    duration: std::time::Duration,
+    future: F,
+) -> tokio::time::Timeout<F> {
+    tokio::time::timeout(duration, future)
+}
+
 // ── Graph emission (no-op) ──────────────────────────────
 
 #[inline(always)]

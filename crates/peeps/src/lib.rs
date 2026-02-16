@@ -29,6 +29,8 @@ pub(crate) mod locks;
 pub mod registry;
 pub mod stack;
 pub(crate) mod sync;
+pub mod command;
+pub mod fs;
 mod joinset;
 
 #[cfg(feature = "dashboard")]
@@ -78,7 +80,17 @@ pub use sync::{UnboundedReceiver, UnboundedSender, WatchReceiver, WatchSender};
 // ── sync primitives ─────────────────────────────────────
 
 pub type Semaphore = sync::DiagnosticSemaphore;
+pub type Notify = sync::DiagnosticNotify;
 pub use sync::OnceCell;
+
+// ── timers ─────────────────────────────────────────────
+
+pub use sync::{interval, interval_at, sleep, timeout};
+pub use sync::{DiagnosticInterval as Interval, DiagnosticSleep as Sleep, DiagnosticTimeout as Timeout};
+
+// ── command ────────────────────────────────────────────
+
+pub use command::{Child, Command};
 
 #[cfg(feature = "diagnostics")]
 static START_CWD: LazyLock<PathBuf> =

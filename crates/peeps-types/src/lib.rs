@@ -123,6 +123,26 @@ pub enum NodeKind {
     Semaphore,
     /// Canonical ID format: `oncecell:{ulid}`
     OnceCell,
+    /// Canonical ID format: `command:{ulid}`
+    Command,
+    /// Canonical ID format: `file_op:{ulid}`
+    FileOp,
+    /// Canonical ID format: `notify:{ulid}`
+    Notify,
+    /// Canonical ID format: `sleep:{ulid}`
+    Sleep,
+    /// Canonical ID format: `interval:{ulid}`
+    Interval,
+    /// Canonical ID format: `timeout:{ulid}`
+    Timeout,
+    /// Canonical ID format: `net_connect:{ulid}`
+    NetConnect,
+    /// Canonical ID format: `net_accept:{ulid}`
+    NetAccept,
+    /// Canonical ID format: `net_readable:{ulid}`
+    NetReadable,
+    /// Canonical ID format: `net_writable:{ulid}`
+    NetWritable,
 }
 
 impl NodeKind {
@@ -140,6 +160,16 @@ impl NodeKind {
             NodeKind::JoinSet => "joinset",
             NodeKind::Semaphore => "semaphore",
             NodeKind::OnceCell => "oncecell",
+            NodeKind::Command => "command",
+            NodeKind::FileOp => "file_op",
+            NodeKind::Notify => "notify",
+            NodeKind::Sleep => "sleep",
+            NodeKind::Interval => "interval",
+            NodeKind::Timeout => "timeout",
+            NodeKind::NetConnect => "net_connect",
+            NodeKind::NetAccept => "net_accept",
+            NodeKind::NetReadable => "net_readable",
+            NodeKind::NetWritable => "net_writable",
         }
     }
 }
@@ -550,6 +580,10 @@ pub mod meta_key {
     pub const CTX_CRATE_NAME: &str = "ctx.crate_name";
     pub const CTX_CRATE_VERSION: &str = "ctx.crate_version";
     pub const CTX_CALLSITE: &str = "ctx.callsite";
+    pub const NET_TRANSPORT: &str = "net.transport";
+    pub const NET_ENDPOINT: &str = "net.endpoint";
+    pub const NET_LOCAL: &str = "net.local";
+    pub const NET_PEER: &str = "net.peer";
 }
 
 // ── Snapshot protocol types ──────────────────────────────────────

@@ -1,15 +1,20 @@
-//! Diagnostic wrappers for tokio channels, semaphores, and `OnceCell`.
+//! Diagnostic wrappers for tokio channels, semaphores, `OnceCell`, `Notify`, and timers.
 //!
 //! When the `diagnostics` feature is enabled, wraps tokio sync primitives
-//! to track message counts, channel state, semaphore contention, and OnceCell
-//! initialization timing. When disabled, all wrappers are zero-cost.
+//! to track message counts, channel state, semaphore contention, OnceCell
+//! initialization timing, Notify wait/wake patterns, and timer waits.
+//! When disabled, all wrappers are zero-cost.
 
 #[cfg(feature = "diagnostics")]
 pub(crate) mod channels;
 #[cfg(feature = "diagnostics")]
+pub(crate) mod notify;
+#[cfg(feature = "diagnostics")]
 pub(crate) mod oncecell;
 #[cfg(feature = "diagnostics")]
 pub(crate) mod semaphore;
+#[cfg(feature = "diagnostics")]
+pub(crate) mod timers;
 
 #[cfg(feature = "diagnostics")]
 mod enabled;
@@ -21,15 +26,17 @@ mod disabled;
 // accessible externally — only `peeps::Sender` (via lib.rs re-export).
 #[cfg(feature = "diagnostics")]
 pub use enabled::{
-    channel, oneshot_channel, unbounded_channel, watch_channel, DiagnosticSemaphore, OnceCell,
-    OneshotReceiver, OneshotSender, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-    WatchReceiver, WatchSender,
+    channel, interval, interval_at, oneshot_channel, sleep, timeout, unbounded_channel,
+    watch_channel, DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, DiagnosticSleep,
+    DiagnosticTimeout, OnceCell, OneshotReceiver, OneshotSender, Receiver, Sender,
+    UnboundedReceiver, UnboundedSender, WatchReceiver, WatchSender,
 };
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::{
-    channel, oneshot_channel, unbounded_channel, watch_channel, DiagnosticSemaphore, OnceCell,
-    OneshotReceiver, OneshotSender, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-    WatchReceiver, WatchSender,
+    channel, interval, interval_at, oneshot_channel, sleep, timeout, unbounded_channel,
+    watch_channel, DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, DiagnosticSleep,
+    DiagnosticTimeout, OnceCell, OneshotReceiver, OneshotSender, Receiver, Sender,
+    UnboundedReceiver, UnboundedSender, WatchReceiver, WatchSender,
 };
 
 // emit_into_graph is crate-internal only
