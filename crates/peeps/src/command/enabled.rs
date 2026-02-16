@@ -261,6 +261,10 @@ impl Command {
         let node_id = peeps_types::new_node_id("command");
         let start = Instant::now();
         self.register_node(&node_id, None);
+        crate::stack::with_top(|src| {
+            crate::registry::touch_edge(src, &node_id);
+            crate::registry::edge(src, &node_id);
+        });
 
         let result = self.inner.status().await;
         let elapsed_ns = start.elapsed().as_nanos() as u64;
@@ -296,6 +300,10 @@ impl Command {
         let node_id = peeps_types::new_node_id("command");
         let start = Instant::now();
         self.register_node(&node_id, None);
+        crate::stack::with_top(|src| {
+            crate::registry::touch_edge(src, &node_id);
+            crate::registry::edge(src, &node_id);
+        });
 
         let result = self.inner.output().await;
         let elapsed_ns = start.elapsed().as_nanos() as u64;
@@ -468,6 +476,10 @@ impl Child {
 
     pub fn start_kill(&mut self) -> io::Result<()> {
         self.inner_mut().start_kill()
+    }
+
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.start_kill()
     }
 
     pub fn stdin(&mut self) -> &mut Option<tokio::process::ChildStdin> {

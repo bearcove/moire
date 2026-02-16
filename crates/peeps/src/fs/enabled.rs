@@ -65,7 +65,7 @@ fn begin_op(op: &str, path: &str) -> String {
     node_id
 }
 
-/// Update the file_op node with final attrs and then remove it.
+/// Update the file_op node with final attrs and keep it as a historical node.
 fn end_op(node_id: &str, op: &str, path: &str, attrs: String) {
     crate::registry::register_node(Node {
         id: node_id.to_string(),
@@ -73,7 +73,6 @@ fn end_op(node_id: &str, op: &str, path: &str, attrs: String) {
         label: Some(format!("{op}: {path}")),
         attrs_json: attrs,
     });
-    crate::registry::remove_node(node_id);
 }
 
 pub async fn create_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
@@ -489,4 +488,3 @@ pub async fn symlink_file(original: impl AsRef<Path>, link: impl AsRef<Path>) ->
 
     result
 }
-

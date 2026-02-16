@@ -148,6 +148,11 @@ impl Child {
     }
 
     #[inline]
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.start_kill()
+    }
+
+    #[inline]
     pub fn stdin(&mut self) -> &mut Option<tokio::process::ChildStdin> {
         &mut self.0.stdin
     }
