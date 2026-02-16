@@ -26,15 +26,15 @@ mod disabled;
 // accessible externally — only `peeps::Sender` (via lib.rs re-export).
 #[cfg(feature = "diagnostics")]
 pub use enabled::{
-    channel, interval, interval_at, oneshot_channel, sleep, timeout, unbounded_channel,
-    watch_channel, DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, DiagnosticSleep,
+    channel, interval, interval_at, oneshot_channel, unbounded_channel, watch_channel,
+    DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, DiagnosticSleep,
     DiagnosticTimeout, OnceCell, OneshotReceiver, OneshotSender, Receiver, Sender,
     UnboundedReceiver, UnboundedSender, WatchReceiver, WatchSender,
 };
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::{
-    channel, interval, interval_at, oneshot_channel, sleep, timeout, unbounded_channel,
-    watch_channel, DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, DiagnosticSleep,
+    channel, interval, interval_at, oneshot_channel, unbounded_channel, watch_channel,
+    DiagnosticInterval, DiagnosticNotify, DiagnosticSemaphore, DiagnosticSleep,
     DiagnosticTimeout, OnceCell, OneshotReceiver, OneshotSender, Receiver, Sender,
     UnboundedReceiver, UnboundedSender, WatchReceiver, WatchSender,
 };

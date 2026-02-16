@@ -52,7 +52,7 @@ pub use stack::ensure as ensure_stack;
 
 // ── futures ─────────────────────────────────────────────
 
-pub use futures::{peepable, peepable_with_meta, spawn_blocking_tracked, spawn_tracked, PeepableFuture};
+pub use futures::{peepable, peepable_with_meta, sleep, spawn_blocking_tracked, spawn_tracked, timeout, PeepableFuture};
 pub use joinset::JoinSet;
 
 // ── locks ───────────────────────────────────────────────
@@ -86,7 +86,7 @@ pub use sync::OnceCell;
 
 // ── timers ─────────────────────────────────────────────
 
-pub use sync::{interval, interval_at, sleep, timeout};
+pub use sync::{interval, interval_at};
 pub use sync::{DiagnosticInterval as Interval, DiagnosticSleep as Sleep, DiagnosticTimeout as Timeout};
 
 // ── command ────────────────────────────────────────────
