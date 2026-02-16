@@ -27,14 +27,14 @@ describe("CommonInspectorFields", () => {
     );
 
     const idPos = html.indexOf(">ID<");
+    const processPos = html.indexOf(">Process<");
     const methodPos = html.indexOf(">Method<");
     const corrPos = html.indexOf(">Correlation<");
-    const processPos = html.indexOf(">Process<");
     const sourcePos = html.indexOf(">Source<");
     expect(idPos).toBeGreaterThan(-1);
-    expect(methodPos).toBeGreaterThan(idPos);
+    expect(processPos).toBeGreaterThan(idPos);
+    expect(methodPos).toBeGreaterThan(processPos);
     expect(corrPos).toBeGreaterThan(methodPos);
-    expect(processPos).toBeGreaterThan(corrPos);
     expect(sourcePos).toBeGreaterThan(processPos);
   });
 });
@@ -54,6 +54,7 @@ describe("canonical extractors", () => {
     expect(getMethod({ "request.method": "LegacyOnly" })).toBeUndefined();
     expect(getCorrelation({ correlation_key: "legacy-only" })).toBeUndefined();
     expect(getSource({ "ctx.location": "/legacy/path.rs:2" })).toBeUndefined();
+    expect(getCreatedAtNs({ created_at_ns: 123 })).toBeUndefined();
   });
 
   it("normalizes created_at units to ns", () => {
@@ -84,6 +85,38 @@ describe("timeline origin resolver", () => {
 });
 
 describe("inspector integration", () => {
+  it("ignores legacy method keys in shared common block", () => {
+    const node: SnapshotNode = {
+      id: "request:legacy",
+      kind: "request",
+      process: "api",
+      proc_key: "api-1",
+      attrs: {
+        "request.method": "LegacyMethod",
+        created_at: 1_700_000_000_000_000_000,
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      <Inspector
+        snapshotId={1}
+        snapshotCapturedAtNs={1_700_000_000_000_100_000}
+        selectedRequest={null}
+        selectedNode={node}
+        selectedEdge={null}
+        graph={{ nodes: [node], edges: [], ghostNodes: [] }}
+        filteredNodeId={null}
+        onFocusNode={() => {}}
+        onSelectNode={() => {}}
+        collapsed={false}
+        onToggleCollapse={() => {}}
+      />,
+    );
+
+    expect(html.includes(">Method<")).toBe(false);
+    expect(html.includes("LegacyMethod")).toBe(false);
+  });
+
   it("renders exactly one Source row for response/rx canonical source", () => {
     const responseNode: SnapshotNode = {
       id: "response:1",

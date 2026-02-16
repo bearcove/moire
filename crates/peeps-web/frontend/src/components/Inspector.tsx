@@ -4,7 +4,6 @@ import {
   CaretLeft,
   CaretRight,
   Tag,
-  BracketsCurly,
   Hash,
   LinkSimple,
   Key,
@@ -122,21 +121,8 @@ function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | 
   return undefined;
 }
 
-function attrFromMeta(attrs: Record<string, unknown>, key: string): string | undefined {
-  const meta = attrs["meta"];
-  if (meta && typeof meta === "object" && !Array.isArray(meta)) {
-    const v = (meta as Record<string, unknown>)[key];
-    if (v != null && v !== "") return String(v);
-  }
-  return undefined;
-}
-
 function rpcConnectionAttr(attrs: Record<string, unknown>): string | undefined {
-  return (
-    firstAttr(attrs, ["connection", "rpc.connection"]) ??
-    attrFromMeta(attrs, "rpc.connection") ??
-    attrFromMeta(attrs, "connection")
-  );
+  return firstAttr(attrs, ["connection", "rpc.connection"]);
 }
 
 function elapsedBetween(startNs?: number, endNs?: number): number | undefined {
@@ -149,7 +135,7 @@ function elapsedBetween(startNs?: number, endNs?: number): number | undefined {
 function requestElapsedNs(attrs: Record<string, unknown>, status: string): number | undefined {
   const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
   const queuedAtNs = firstNumAttr(attrs, ["request.queued_at_ns", "queued_at_ns"]);
-  const startedAtNs = firstNumAttr(attrs, ["request.started_at_ns", "request.delivered_at_ns", "started_at_ns"]);
+  const startedAtNs = getCreatedAtNs(attrs);
   const completedAtNs = firstNumAttr(attrs, ["request.completed_at_ns", "completed_at_ns"]);
   const legacyElapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
 
@@ -169,7 +155,7 @@ function responseTiming(attrs: Record<string, unknown>, status: string): {
   queueWaitNs?: number;
 } {
   const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
-  const startedAtNs = firstNumAttr(attrs, ["response.started_at_ns", "response.created_at_ns", "started_at_ns"]);
+  const startedAtNs = getCreatedAtNs(attrs);
   const handledAtNs = firstNumAttr(attrs, ["response.handled_at_ns", "handled_at_ns"]);
   const deliveredAtNs = firstNumAttr(attrs, ["response.delivered_at_ns", "delivered_at_ns"]);
   const cancelledAtNs = firstNumAttr(attrs, ["response.cancelled_at_ns", "cancelled_at_ns"]);
@@ -315,9 +301,7 @@ function nodeLabel(graph: SnapshotGraph | null, nodeId: string): string {
   if (!graph) return nodeId;
   const node = graph.nodes.find((n) => n.id === nodeId);
   if (!node) return nodeId;
-  return (
-    firstAttr(node.attrs, ["label", "method", "request.method", "name"]) ?? nodeId
-  );
+  return firstAttr(node.attrs, ["label", "method", "name"]) ?? nodeId;
 }
 
 function resourceNodeLabel(node: SnapshotNode): string {
@@ -898,77 +882,6 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   const entries = Object.entries(attrs).filter(([k, v]) => v != null && !k.startsWith("_ui_"));
   if (entries.length === 0) return null;
 
-  function parseJsonObject(s: string): Record<string, unknown> | null {
-    const t = s.trim();
-    if (!t.startsWith("{") || !t.endsWith("}")) return null;
-    try {
-      const v = JSON.parse(t) as unknown;
-      if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  function asObject(val: unknown): Record<string, unknown> | null {
-    if (val && typeof val === "object" && !Array.isArray(val))
-      return val as Record<string, unknown>;
-    if (typeof val === "string") return parseJsonObject(val);
-    return null;
-  }
-
-  function metaLocation(meta: Record<string, unknown>): string | null {
-    let loc: string | null = null;
-    if (meta["ctx.location"] != null) loc = String(meta["ctx.location"]);
-    if (!loc) return null;
-
-    return loc;
-  }
-
-  function MetaView({ meta }: { meta: Record<string, unknown> }) {
-    const loc = metaLocation(meta);
-    if (!loc) return <span className="inspect-val inspect-val--mono">—</span>;
-
-    function displayLocation(location: string): string {
-      if (!location.startsWith("/")) return location;
-
-      const roots = [
-        "/crates/",
-        "/apps/",
-        "/docs/",
-        "/internal/",
-        "/scripts/",
-        "/tests/",
-        "/xtask/",
-      ];
-      for (const root of roots) {
-        const idx = location.indexOf(root);
-        if (idx >= 0) return location.slice(idx + 1);
-      }
-      return location;
-    }
-
-    const href = `zed://file/${encodeURIComponent(loc)}`;
-    const display = displayLocation(loc);
-    return (
-      <div className="inspect-meta">
-        <div className="inspect-meta-row">
-          <span className="inspect-meta-key inspect-meta-key--icon" title="Rust source location">
-            rs
-          </span>
-          <a
-            className="inspect-meta-val inspect-val--mono inspect-link"
-            href={href}
-            title="Open in Zed"
-          >
-            <ArrowSquareOut size={12} weight="bold" className="inspect-link-icon" />
-            {display}
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   function asFiniteNumber(v: unknown): number | null {
     if (typeof v === "number" && Number.isFinite(v)) return v;
     if (typeof v === "string" && /^[0-9]+$/.test(v) && v.length <= 15) {
@@ -988,14 +901,6 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
     }
 
     const k = key.toLowerCase();
-    if (k === "ctx.location" && typeof val === "string") {
-      return <MetaView meta={{ "ctx.location": val }} />;
-    }
-    if (k === "meta" || k.endsWith(".meta")) {
-      const obj = asObject(val);
-      if (obj) return <MetaView meta={obj} />;
-    }
-
     const maybeNs = asFiniteNumber(val);
     if (maybeNs != null && (k.endsWith("_ns") || k.includes("duration") || k.includes("age"))) {
       return formatDuration(maybeNs);
@@ -1018,8 +923,6 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
       case "name":
       case "label":
         return <Tag size={12} weight="bold" />;
-      case "meta":
-        return <BracketsCurly size={12} weight="bold" />;
     }
 
     // Heuristic mapping by convention (keys are stable, values vary).

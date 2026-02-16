@@ -117,6 +117,10 @@ export function CommonInspectorFields({
           </span>
         </span>
       </div>
+      <div className="inspect-row" data-testid="common-field-process">
+        <span className="inspect-key">Process</span>
+        <span className="inspect-val">{process}</span>
+      </div>
       {method && (
         <div className="inspect-row" data-testid="common-field-method">
           <span className="inspect-key">Method</span>
@@ -129,10 +133,6 @@ export function CommonInspectorFields({
           <span className="inspect-val inspect-val--mono">{correlation}</span>
         </div>
       )}
-      <div className="inspect-row" data-testid="common-field-process">
-        <span className="inspect-key">Process</span>
-        <span className="inspect-val">{process}</span>
-      </div>
       {source && (
         <div className="inspect-row" data-testid="common-field-source">
           <span className="inspect-key">Source</span>
