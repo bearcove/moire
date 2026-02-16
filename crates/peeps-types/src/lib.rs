@@ -153,6 +153,9 @@ pub enum EdgeKind {
     /// Historical interaction: src has interacted with dst at least once
     /// during its lifetime. Retained until either endpoint disappears.
     Touches,
+    /// Spawn lineage: src spawned dst. Permanent historical fact,
+    /// retained for the lifetime of the child node.
+    Spawned,
 }
 
 impl EdgeKind {
@@ -161,6 +164,7 @@ impl EdgeKind {
         match self {
             EdgeKind::Needs => "needs",
             EdgeKind::Touches => "touches",
+            EdgeKind::Spawned => "spawned",
         }
     }
 }

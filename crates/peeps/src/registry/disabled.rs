@@ -38,6 +38,12 @@ pub fn remove_touch_edges_from(_src: &str) {}
 pub fn remove_touch_edges_to(_dst: &str) {}
 
 #[inline(always)]
+pub fn spawn_edge(_src: &str, _dst: &str) {}
+
+#[inline(always)]
+pub fn remove_spawn_edges_to(_dst: &str) {}
+
+#[inline(always)]
 pub fn register_node(_node: Node) {}
 
 #[inline(always)]

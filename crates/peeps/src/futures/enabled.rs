@@ -12,9 +12,6 @@ use peeps_types::{GraphSnapshot, Node, NodeKind};
 static FUTURE_WAIT_REGISTRY: LazyLock<Mutex<HashMap<String, FutureWaitInfo>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-static FUTURE_SPAWN_EDGE_REGISTRY: LazyLock<Mutex<Vec<FutureSpawnEdge>>> =
-    LazyLock::new(|| Mutex::new(Vec::new()));
-
 struct FutureWaitInfo {
     resource: String,
     created_at: Instant,
@@ -23,12 +20,6 @@ struct FutureWaitInfo {
     total_pending: Duration,
     last_seen: Instant,
     meta_json: String,
-}
-
-struct FutureSpawnEdge {
-    parent_node_id: String,
-    child_node_id: String,
-    created_at: Instant,
 }
 
 // ── Registration ─────────────────────────────────────────
@@ -65,17 +56,6 @@ fn record_ready(node_id: &str, pending_duration: Duration) {
         info.total_pending += pending_duration;
         info.last_seen = Instant::now();
     }
-}
-
-fn record_spawn_edge(parent_node_id: &str, child_node_id: &str) {
-    FUTURE_SPAWN_EDGE_REGISTRY
-        .lock()
-        .unwrap()
-        .push(FutureSpawnEdge {
-            parent_node_id: parent_node_id.to_string(),
-            child_node_id: child_node_id.to_string(),
-            created_at: Instant::now(),
-        });
 }
 
 // ── PeepableFuture ───────────────────────────────────────
@@ -163,10 +143,7 @@ impl<F> Drop for PeepableFuture<F> {
             crate::registry::remove_edge(&prev, &self.node_id);
         }
         // Clean up spawn edges referencing this future as child.
-        FUTURE_SPAWN_EDGE_REGISTRY
-            .lock()
-            .unwrap()
-            .retain(|e| e.child_node_id != self.node_id);
+        crate::registry::remove_spawn_edges_to(&self.node_id);
     }
 }
 
@@ -216,10 +193,10 @@ where
 
     register_future(node_id.clone(), resource.clone(), meta_json);
 
-    // If created during another PeepableFuture's poll, record a spawn edge.
+    // If created during another PeepableFuture's poll, record a spawned edge.
     let child_id = node_id.clone();
     crate::stack::with_top(|parent_node_id| {
-        record_spawn_edge(parent_node_id, &child_id);
+        crate::registry::spawn_edge(parent_node_id, &child_id);
     });
 
     PeepableFuture {

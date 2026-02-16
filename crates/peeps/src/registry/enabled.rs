@@ -29,6 +29,14 @@ static EDGES: LazyLock<Mutex<HashSet<(String, String)>>> =
 static TOUCH_EDGES: LazyLock<Mutex<HashSet<(String, String)>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
+// ── Spawn lineage edge storage ───────────────────────────
+//
+// Stores `spawned` edges: "src spawned dst". Permanent historical fact,
+// retained for the lifetime of the child node.
+
+static SPAWNED_EDGES: LazyLock<Mutex<HashSet<(String, String)>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
 // ── External node storage ────────────────────────────────
 //
 // Stores nodes registered by external crates (e.g. roam registering
@@ -135,6 +143,26 @@ pub fn remove_touch_edges_to(dst: &str) {
     TOUCH_EDGES.lock().unwrap().retain(|(_, d)| d != dst);
 }
 
+// ── Spawn edge tracking ─────────────────────────────────
+
+/// Record a `spawned` edge from `src` to `dst`.
+///
+/// Indicates that `src` spawned `dst`. This is a permanent historical fact
+/// retained for the lifetime of the child node.
+pub fn spawn_edge(src: &str, dst: &str) {
+    SPAWNED_EDGES
+        .lock()
+        .unwrap()
+        .insert((src.to_string(), dst.to_string()));
+}
+
+/// Remove all spawn edges pointing to `dst`.
+///
+/// Called when the child node is dropped.
+pub fn remove_spawn_edges_to(dst: &str) {
+    SPAWNED_EDGES.lock().unwrap().retain(|(_, d)| d != dst);
+}
+
 // ── External node registration ──────────────────────────
 
 /// Register a node in the global registry.
@@ -159,6 +187,10 @@ pub fn remove_node(id: &str) {
     EXTERNAL_NODES.lock().unwrap().remove(id);
     EDGES.lock().unwrap().retain(|(s, d)| s != id && d != id);
     TOUCH_EDGES
+        .lock()
+        .unwrap()
+        .retain(|(s, d)| s != id && d != id);
+    SPAWNED_EDGES
         .lock()
         .unwrap()
         .retain(|(s, d)| s != id && d != id);
@@ -225,6 +257,13 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         src: src.clone(),
         dst: dst.clone(),
         kind: EdgeKind::Touches,
+        attrs_json: "{}".to_string(),
+    }));
+
+    canonical_edges.extend(SPAWNED_EDGES.lock().unwrap().iter().map(|(src, dst)| Edge {
+        src: src.clone(),
+        dst: dst.clone(),
+        kind: EdgeKind::Spawned,
         attrs_json: "{}".to_string(),
     }));
 
