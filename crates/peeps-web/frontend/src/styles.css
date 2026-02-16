@@ -1249,6 +1249,33 @@ body {
     flex-wrap: wrap;
 }
 
+.resources-topbar-summary {
+    color: light-dark(#6e6e73, #a8a8ad);
+    font-size: 9px;
+    white-space: nowrap;
+}
+
+.resources-topbar-summary-badges {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    margin-top: 3px;
+}
+
+.resources-topbar-summary-btn {
+    border: 1px solid light-dark(#cfd4dc, #404048);
+    background: transparent;
+    color: inherit;
+    border-radius: 4px;
+    padding: 2px 5px;
+    font: inherit;
+    font-size: 9px;
+    min-width: 0;
+    width: auto;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
 .resources-leg-label {
     padding-left: 32px;
 }

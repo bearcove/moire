@@ -740,6 +740,14 @@ export function ResourcesPanel({
                   if (!a.isMissing && b.isMissing) return 1;
                   return a.process.localeCompare(b.process);
                 });
+              const summaryPendingRequestIds = Array.from(
+                new Set(duplexRow.legs.flatMap((leg) => leg.pendingRequestIds)),
+              );
+              const summaryPendingResponseIds = Array.from(
+                new Set(duplexRow.legs.flatMap((leg) => leg.pendingResponseIds)),
+              );
+              const requestSummaryKey = `${duplexRow.key}:summary:request`;
+              const responseSummaryKey = `${duplexRow.key}:summary:response`;
               return (
                 <div
                   key={`${duplexRow.key}:duplex`}
@@ -810,9 +818,7 @@ export function ResourcesPanel({
                                       {`${leg.command ?? ""}${leg.command && leg.cmdArgsPreview ? " " : ""}${leg.cmdArgsPreview ?? ""}`.trim()}
                                     </div>
                                   )}
-                                  {leg.pid != null &&
-                                  leg.snapshotStatus !== "responded" &&
-                                  leg.snapshotStatus !== PROCESS_STATUS_UNKNOWN ? (
+                                  {leg.pid != null && (leg.snapshotStatus !== "responded" || leg.isMissing) ? (
                                     <div className="resources-topbar-chip-actions">
                                       <button
                                         type="button"
@@ -847,8 +853,54 @@ export function ResourcesPanel({
                             })}
                         </div>
                       ) : (
-                        "Both directions responded"
+                        <span className="resources-topbar-summary">
+                          Both directions responded
+                        </span>
                       )}
+                      <div className="resources-topbar-summary-badges">
+                        <button
+                          type="button"
+                          className={`resources-topbar-summary-btn ${summaryPendingRequestIds.length === 0 ? "resources-pending-btn--empty" : ""}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onPendingCellClick(
+                              requestSummaryKey,
+                              summaryPendingRequestIds,
+                              summaryPendingResponseIds,
+                              "request",
+                            );
+                          }}
+                          title={
+                            summaryPendingRequestIds.length === 0
+                              ? "No pending request nodes for this link"
+                              : "Click to highlight pending request nodes"
+                          }
+                          disabled={summaryPendingRequestIds.length === 0}
+                        >
+                          {`Req ${duplexRow.pendingRequests}`}
+                        </button>
+                        <button
+                          type="button"
+                          className={`resources-topbar-summary-btn ${summaryPendingResponseIds.length === 0 ? "resources-pending-btn--empty" : ""}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onPendingCellClick(
+                              responseSummaryKey,
+                              summaryPendingRequestIds,
+                              summaryPendingResponseIds,
+                              "response",
+                            );
+                          }}
+                          title={
+                            summaryPendingResponseIds.length === 0
+                              ? "No pending response nodes for this link"
+                              : "Click to highlight pending response nodes"
+                          }
+                          disabled={summaryPendingResponseIds.length === 0}
+                        >
+                          {`Resp ${duplexRow.pendingResponses}`}
+                        </button>
+                      </div>
                     </div>
                     <span className="resources-cell-mono resources-mini-value">{duplexRow.pendingRequests}</span>
                     <span className="resources-cell-mono resources-mini-value">{duplexRow.pendingResponses}</span>
@@ -896,6 +948,7 @@ export function ResourcesPanel({
                             </span>
                             <span className="resources-process-metadata">
                               {`status: ${leg.snapshotStatus}`}
+                              {` • proc: ${leg.procKey || "—"}`}
                               {leg.pid == null ? " • pid: —" : ` • pid: ${leg.pid}`}
                               {leg.errorText && ` • ${leg.errorText}`}
                             </span>
@@ -905,9 +958,7 @@ export function ResourcesPanel({
                                 {leg.cmdArgsPreview ? ` ${leg.cmdArgsPreview}` : ""}
                               </span>
                             )}
-                            {leg.pid != null &&
-                            leg.snapshotStatus !== "responded" &&
-                            leg.snapshotStatus !== PROCESS_STATUS_UNKNOWN ? (
+                            {leg.pid != null && (leg.snapshotStatus !== "responded" || leg.isMissing) ? (
                               <div className="resources-process-debug-actions">
                                 <button
                                   type="button"
