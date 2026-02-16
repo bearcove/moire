@@ -624,6 +624,100 @@ body {
     min-height: 0;
 }
 
+.graph-mode-panels {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.panel--resources {
+    max-height: 38vh;
+    border-top: 1px solid light-dark(#d2d2d7, #2a2a2e);
+    border-right: 1px solid light-dark(#d2d2d7, #2a2a2e);
+}
+
+.panel--resources-collapsed {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-top: 1px solid light-dark(#d2d2d7, #2a2a2e);
+    border-right: 1px solid light-dark(#d2d2d7, #2a2a2e);
+}
+
+.resources-collapsed-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.resources-empty {
+    padding: 10px 12px;
+    color: light-dark(#6e6e73, #98989d);
+    font-size: 11px;
+}
+
+.resources-table-wrap {
+    overflow: auto;
+    max-height: calc(38vh - 34px);
+}
+
+.resources-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.resources-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: light-dark(#f6f6f8, #1c1c20);
+    border-bottom: 1px solid light-dark(#d2d2d7, #2a2a2e);
+    text-align: left;
+    padding: 4px 8px;
+    white-space: nowrap;
+}
+
+.resources-sort {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+}
+
+.resources-row {
+    cursor: pointer;
+}
+
+.resources-row td {
+    padding: 4px 8px;
+    border-bottom: 1px solid light-dark(#ececf1, #2a2a2e);
+}
+
+.resources-row:hover {
+    background: light-dark(#f7f7fa, #202025);
+}
+
+.resources-row--selected {
+    background: light-dark(#d6e4ff, #1c2d4d);
+}
+
+.resources-cell-mono {
+    font-family: var(--font-mono);
+}
+
+.resources-sort-hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 6px;
+    color: light-dark(#8e8e93, #7a7a80);
+    font-size: 10px;
+}
+
 .graph-filter-row {
     padding: 6px 10px 8px;
     border-bottom: 1px solid light-dark(#ebebf0, #2a2a2e);

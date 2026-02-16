@@ -4,8 +4,10 @@ import { fetchGraph, fetchRecentTimelineEvents, fetchSnapshotProgress, fetchTime
 import { Header } from "./components/Header";
 import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
 import { GraphView } from "./components/GraphView";
+import { ResourcesPanel } from "./components/ResourcesPanel";
 import { Inspector } from "./components/Inspector";
 import { TimelineView } from "./components/TimelineView";
+import { isResourceKind } from "./resourceKinds";
 import type {
   JumpNowResponse,
   SnapshotProgressResponse,
@@ -68,13 +70,6 @@ function defaultDetailLevelForKind(kind: string): DetailLevel {
     return "debug";
   }
   return "info";
-}
-
-const RESOURCE_KINDS = new Set<string>(["connection", "joinset", "task"]);
-
-function isResourceKind(kind: string): boolean {
-  // Add future resource kinds here explicitly as they are introduced.
-  return RESOURCE_KINDS.has(kind);
 }
 
 function nodeDetailLevel(node: SnapshotNode): DetailLevel {
@@ -547,6 +542,10 @@ export function App() {
   const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", false);
   const [deadlockFocus, toggleDeadlockFocus] = useSessionState("peeps-deadlock-focus", true);
   const [showResources, toggleShowResources] = useSessionState("peeps-show-resources", false);
+  const [resourcesCollapsed, toggleResourcesCollapsed] = useSessionState(
+    "peeps-resources-collapsed",
+    false,
+  );
 
   const handleSetMode = useCallback((mode: InvestigationMode) => {
     setInvestigationMode(mode);
@@ -1002,36 +1001,46 @@ export function App() {
               onToggleCollapse={toggleLeft}
             />
             {investigationMode === "graph" ? (
-              <GraphView
-                graph={displayGraph}
-                fullGraph={enrichedGraph}
-                filteredNodeId={filteredNodeId}
-                selectedNodeId={selectedNodeId}
-                selectedEdge={selectedEdge}
-                searchQuery={graphSearchQuery}
-                searchResults={searchResults}
-                allKinds={allKinds}
-                hiddenKinds={hiddenKinds}
-                onToggleKind={toggleKind}
-                onSoloKind={soloKind}
-                allProcesses={allProcesses}
-                hiddenProcesses={hiddenProcesses}
-                onToggleProcess={toggleProcess}
-                onSoloProcess={soloProcess}
-                deadlockFocus={deadlockFocus}
-                onToggleDeadlockFocus={toggleDeadlockFocus}
-                showResources={showResources}
-                onToggleShowResources={toggleShowResources}
-                detailLevel={detailLevel}
-                onDetailLevelChange={handleDetailLevelChange}
-                hasActiveFilters={hasActiveFilters}
-                onResetFilters={handleResetFilters}
-                onSearchQueryChange={setGraphSearchQuery}
-                onSelectSearchResult={handleSelectSearchResult}
-                onSelectNode={handleSelectGraphNode}
-                onSelectEdge={handleSelectEdge}
-                onClearSelection={handleClearSelection}
-              />
+              <div className="graph-mode-panels">
+                <GraphView
+                  graph={displayGraph}
+                  fullGraph={enrichedGraph}
+                  filteredNodeId={filteredNodeId}
+                  selectedNodeId={selectedNodeId}
+                  selectedEdge={selectedEdge}
+                  searchQuery={graphSearchQuery}
+                  searchResults={searchResults}
+                  allKinds={allKinds}
+                  hiddenKinds={hiddenKinds}
+                  onToggleKind={toggleKind}
+                  onSoloKind={soloKind}
+                  allProcesses={allProcesses}
+                  hiddenProcesses={hiddenProcesses}
+                  onToggleProcess={toggleProcess}
+                  onSoloProcess={soloProcess}
+                  deadlockFocus={deadlockFocus}
+                  onToggleDeadlockFocus={toggleDeadlockFocus}
+                  showResources={showResources}
+                  onToggleShowResources={toggleShowResources}
+                  detailLevel={detailLevel}
+                  onDetailLevelChange={handleDetailLevelChange}
+                  hasActiveFilters={hasActiveFilters}
+                  onResetFilters={handleResetFilters}
+                  onSearchQueryChange={setGraphSearchQuery}
+                  onSelectSearchResult={handleSelectSearchResult}
+                  onSelectNode={handleSelectGraphNode}
+                  onSelectEdge={handleSelectEdge}
+                  onClearSelection={handleClearSelection}
+                />
+                <ResourcesPanel
+                  graph={enrichedGraph}
+                  snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={handleSelectGraphNode}
+                  collapsed={resourcesCollapsed}
+                  onToggleCollapse={toggleResourcesCollapsed}
+                />
+              </div>
             ) : (
               <TimelineView
                 events={timelineEvents}

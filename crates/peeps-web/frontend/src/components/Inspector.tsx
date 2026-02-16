@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MagnifyingGlass,
   CaretLeft,
@@ -33,6 +33,7 @@ import {
   GitFork,
 } from "@phosphor-icons/react";
 import { fetchTimelinePage } from "../api";
+import { isResourceKind } from "../resourceKinds";
 import type {
   StuckRequest,
   SnapshotNode,
@@ -337,6 +338,12 @@ function nodeLabel(graph: SnapshotGraph | null, nodeId: string): string {
   );
 }
 
+function resourceNodeLabel(node: SnapshotNode): string {
+  return (
+    firstAttr(node.attrs, ["label", "name", "connection.id", "rpc.connection", "method"]) ?? node.id
+  );
+}
+
 function EdgeDetail({
   edge,
   graph,
@@ -637,6 +644,32 @@ function NodeDetail({
   const uniqueBlockers = Array.from(new Set(blockers));
   const uniqueDependents = Array.from(new Set(dependents));
   const supportsTimeline = TIMELINE_NODE_KINDS.has(node.kind);
+  const relatedResources = useMemo(() => {
+    if (isResourceKind(node.kind) || !graph) return [] as SnapshotNode[];
+
+    const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
+    const relatedIds = new Set<string>();
+    for (const edge of graph.edges) {
+      if (edge.kind !== "touches") continue;
+      let otherId: string | null = null;
+      if (edge.src_id === node.id) otherId = edge.dst_id;
+      else if (edge.dst_id === node.id) otherId = edge.src_id;
+      if (!otherId) continue;
+
+      const other = nodeById.get(otherId);
+      if (!other || !isResourceKind(other.kind)) continue;
+      relatedIds.add(otherId);
+    }
+
+    return Array.from(relatedIds)
+      .map((id) => nodeById.get(id))
+      .filter((n): n is SnapshotNode => n != null)
+      .sort((a, b) => {
+        const byKind = a.kind.localeCompare(b.kind);
+        if (byKind !== 0) return byKind;
+        return a.id.localeCompare(b.id);
+      });
+  }, [graph, node.id, node.kind]);
   const [timelineRows, setTimelineRows] = useState<TimelineRow[]>([]);
   const [timelineCursor, setTimelineCursor] = useState<TimelineCursor | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
@@ -871,6 +904,33 @@ function NodeDetail({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {!isResourceKind(node.kind) && (
+        <div className="inspect-section">
+          <div className="inspect-row">
+            <span className="inspect-key">Related resources</span>
+            <span className={`inspect-val ${relatedResources.length > 0 ? "inspect-val--ok" : ""}`}>
+              {relatedResources.length}
+            </span>
+          </div>
+          {relatedResources.length === 0 ? (
+            <div className="inspect-alert inspect-alert--ghost">No related resources.</div>
+          ) : (
+            relatedResources.map((resource) => (
+              <div className="inspect-row" key={`res:${resource.id}`}>
+                <span className="inspect-key">{resource.kind}</span>
+                <button
+                  className="inspect-edge-node-btn"
+                  onClick={() => onSelectNode(resource.id)}
+                  title={resource.id}
+                >
+                  {resource.kind} · {resourceNodeLabel(resource)}
+                </button>
+              </div>
+            ))
+          )}
         </div>
       )}
 
