@@ -267,6 +267,10 @@ impl<T> Sender<T> {
     pub fn max_capacity(&self) -> usize {
         self.inner.max_capacity()
     }
+
+    pub fn endpoint_id(&self) -> &str {
+        &self.info.tx_node_id
+    }
 }
 
 pub struct Receiver<T> {
@@ -430,6 +434,10 @@ impl<T> UnboundedSender<T> {
 
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
+    }
+
+    pub fn endpoint_id(&self) -> &str {
+        &self.info.tx_node_id
     }
 }
 

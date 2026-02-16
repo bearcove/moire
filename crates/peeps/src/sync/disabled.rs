@@ -36,6 +36,11 @@ impl<T> Sender<T> {
     pub fn max_capacity(&self) -> usize {
         self.0.max_capacity()
     }
+
+    #[inline]
+    pub fn endpoint_id(&self) -> &str {
+        ""
+    }
 }
 
 pub struct Receiver<T>(tokio::sync::mpsc::Receiver<T>);
@@ -83,6 +88,11 @@ impl<T> UnboundedSender<T> {
     #[inline]
     pub fn is_closed(&self) -> bool {
         self.0.is_closed()
+    }
+
+    #[inline]
+    pub fn endpoint_id(&self) -> &str {
+        ""
     }
 }
 
