@@ -2,7 +2,7 @@
 ///
 /// Returns `None` if the graph is empty (no live resources).
 ///
-/// Currently emits: futures, locks, sync primitives, and canonical edges.
+/// Currently emits: futures, locks, sync primitives, canonical edges, and buffered events.
 /// Roam RPC nodes/edges will be re-added once roam migrates to the registry.
 pub fn collect_graph(process_name: &str) -> Option<peeps_types::GraphSnapshot> {
     let pid = std::process::id();
@@ -13,7 +13,12 @@ pub fn collect_graph(process_name: &str) -> Option<peeps_types::GraphSnapshot> {
 
     let graph = crate::registry::emit_graph();
 
-    if graph.nodes.is_empty() && graph.edges.is_empty() {
+    let has_events = graph
+        .events
+        .as_ref()
+        .is_some_and(|events| !events.is_empty());
+
+    if graph.nodes.is_empty() && graph.edges.is_empty() && !has_events {
         None
     } else {
         Some(graph)

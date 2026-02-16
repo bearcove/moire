@@ -28,6 +28,23 @@ export interface StuckRequest {
   connection: string | null;
 }
 
+export interface TimelineProcessOption {
+  proc_key: string;
+  process: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  ts_ns: number;
+  process: string;
+  proc_key: string;
+  entity_id: string;
+  parent_entity_id: string | null;
+  name: string;
+  correlation_key: string | null;
+  attrs: Record<string, unknown>;
+}
+
 // Raw graph data from the snapshot SQLite tables
 export interface SnapshotNode {
   id: string;
@@ -48,4 +65,26 @@ export interface SnapshotGraph {
   nodes: SnapshotNode[];
   edges: SnapshotEdge[];
   ghostNodes: SnapshotNode[];
+}
+
+export type TimelineRelation = "self" | "child" | "parent";
+
+export interface TimelineCursor {
+  ts_ns: number;
+  id: string;
+}
+
+export interface TimelineRow {
+  id: string;
+  ts_ns: number;
+  name: string;
+  entity_id: string;
+  parent_entity_id: string | null;
+  relation: TimelineRelation;
+  attrs: Record<string, unknown>;
+}
+
+export interface TimelinePage {
+  rows: TimelineRow[];
+  nextCursor: TimelineCursor | null;
 }

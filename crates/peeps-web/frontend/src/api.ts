@@ -6,6 +6,12 @@ import type {
   SnapshotGraph,
   SnapshotNode,
   SnapshotEdge,
+  TimelineCursor,
+  TimelineEvent,
+  TimelinePage,
+  TimelineProcessOption,
+  TimelineRelation,
+  TimelineRow,
 } from "./types";
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -69,6 +75,192 @@ export async function fetchStuckRequests(
 
 const NODES_SQL = `SELECT id, kind, process, proc_key, attrs_json FROM nodes ORDER BY id`;
 const EDGES_SQL = `SELECT src_id, dst_id, kind, attrs_json FROM edges ORDER BY src_id, dst_id`;
+
+const TIMELINE_SQL = `SELECT
+  id,
+  ts_ns,
+  name,
+  entity_id,
+  parent_entity_id,
+  attrs_json
+FROM events
+WHERE proc_key = ?1
+  AND (entity_id = ?2 OR parent_entity_id = ?2)
+  AND ts_ns <= ?3
+  AND (
+    ?4 IS NULL
+    OR ts_ns < ?4
+    OR (ts_ns = ?4 AND id < ?5)
+  )
+ORDER BY ts_ns DESC, id DESC
+LIMIT ?6`;
+
+function timelineRelationForRow(
+  selectedEntityId: string,
+  entityId: string,
+  parentEntityId: string | null,
+): TimelineRelation {
+  if (entityId === selectedEntityId && parentEntityId && parentEntityId !== selectedEntityId) {
+    return "parent";
+  }
+  if (entityId === selectedEntityId) return "self";
+  return "child";
+}
+
+export async function fetchTimelinePage(
+  snapshotId: number,
+  params: {
+    procKey: string;
+    entityId: string;
+    capturedAtNs: number;
+    limit: number;
+    cursor: TimelineCursor | null;
+  },
+): Promise<TimelinePage> {
+  const resp = await querySql(snapshotId, TIMELINE_SQL, [
+    params.procKey,
+    params.entityId,
+    params.capturedAtNs,
+    params.cursor?.ts_ns ?? null,
+    params.cursor?.id ?? null,
+    params.limit,
+  ]);
+
+  const rows: TimelineRow[] = resp.rows.map((row) => {
+    const entityId = row[3] as string;
+    const parentEntityId = row[4] as string | null;
+    const attrsRaw = row[5];
+    let attrs: Record<string, unknown> = {};
+    if (typeof attrsRaw === "string" && attrsRaw.length > 0) {
+      try {
+        const parsed = JSON.parse(attrsRaw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          attrs = parsed as Record<string, unknown>;
+        }
+      } catch {
+        attrs = {};
+      }
+    }
+    return {
+      id: row[0] as string,
+      ts_ns: Number(row[1]),
+      name: row[2] as string,
+      entity_id: entityId,
+      parent_entity_id: parentEntityId,
+      relation: timelineRelationForRow(params.entityId, entityId, parentEntityId),
+      attrs,
+    };
+  });
+
+  const nextCursor =
+    rows.length === params.limit
+      ? {
+          ts_ns: rows[rows.length - 1].ts_ns,
+          id: rows[rows.length - 1].id,
+        }
+      : null;
+
+  return { rows, nextCursor };
+}
+
+const TIMELINE_PROCESS_OPTIONS_SQL = `
+SELECT DISTINCT proc_key, process
+FROM snapshot_processes
+ORDER BY process, proc_key;`;
+
+const RECENT_TIMELINE_EVENTS_SQL = `WITH proc_scope AS (
+  SELECT proc_key, process
+  FROM snapshot_processes
+),
+event_base AS (
+  SELECT
+    e.id,
+    e.ts_ns,
+    p.process,
+    e.proc_key,
+    e.entity_id,
+    e.parent_entity_id,
+    e.name,
+    e.attrs_json,
+    COALESCE(
+      json_extract(e.attrs_json, '$."request.id"'),
+      json_extract(e.attrs_json, '$.request_id'),
+      json_extract(e.attrs_json, '$."peeps.span_id"'),
+      json_extract(e.attrs_json, '$.trace_id'),
+      json_extract(e.attrs_json, '$.correlation_id'),
+      json_extract(e.attrs_json, '$.meta."request.id"'),
+      json_extract(e.attrs_json, '$.meta."peeps.span_id"')
+    ) AS correlation_key
+  FROM events e
+  INNER JOIN proc_scope p ON p.proc_key = e.proc_key
+  WHERE e.ts_ns >= ?1
+    AND (?2 IS NULL OR e.proc_key = ?2)
+  ORDER BY e.ts_ns DESC
+  LIMIT ?3
+)
+SELECT
+  id,
+  ts_ns,
+  process,
+  proc_key,
+  entity_id,
+  parent_entity_id,
+  name,
+  correlation_key,
+  attrs_json
+FROM event_base
+ORDER BY ts_ns DESC, id DESC;`;
+
+function asNumber(value: string | number | null, fallback = 0): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+export async function fetchTimelineProcessOptions(snapshotId: number): Promise<TimelineProcessOption[]> {
+  const resp = await querySql(snapshotId, TIMELINE_PROCESS_OPTIONS_SQL);
+  return resp.rows.map((row) => ({
+    proc_key: String(row[0] ?? ""),
+    process: String(row[1] ?? ""),
+  }));
+}
+
+export async function fetchRecentTimelineEvents(
+  snapshotId: number,
+  fromTsNs: number,
+  procKey: string | null,
+  limit = 1000,
+): Promise<TimelineEvent[]> {
+  const resp = await querySql(snapshotId, RECENT_TIMELINE_EVENTS_SQL, [fromTsNs, procKey, limit]);
+  return resp.rows.map((row) => {
+    const attrsRaw = row[8];
+    let attrs: Record<string, unknown> = {};
+    if (typeof attrsRaw === "string" && attrsRaw.length > 0) {
+      try {
+        const parsed = JSON.parse(attrsRaw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          attrs = parsed as Record<string, unknown>;
+        }
+      } catch {
+        attrs = {};
+      }
+    }
+    return {
+      id: String(row[0] ?? ""),
+      ts_ns: asNumber(row[1]),
+      process: String(row[2] ?? ""),
+      proc_key: String(row[3] ?? ""),
+      entity_id: String(row[4] ?? ""),
+      parent_entity_id: row[5] != null ? String(row[5]) : null,
+      name: String(row[6] ?? ""),
+      correlation_key: row[7] != null ? String(row[7]) : null,
+      attrs,
+    };
+  });
+}
 
 export async function fetchGraph(snapshotId: number): Promise<SnapshotGraph> {
   const [nodesResp, edgesResp] = await Promise.all([

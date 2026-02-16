@@ -1,7 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{LazyLock, Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use peeps_types::{Edge, EdgeKind, GraphSnapshot, Node};
+use peeps_types::{Edge, EdgeKind, Event, GraphSnapshot, Node};
 
 // ── Process metadata ─────────────────────────────────────
 
@@ -48,6 +49,21 @@ struct ExternalNodeEntry {
 static EXTERNAL_NODES: LazyLock<Mutex<HashMap<String, ExternalNodeEntry>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+// ── Event storage ───────────────────────────────────────
+//
+// Runtime event retention is bounded with deterministic FIFO eviction.
+// When capacity is reached, we always evict exactly one oldest event
+// (`pop_front`) before appending the newest (`push_back`).
+//
+// This guarantees:
+// - Memory is bounded (no unbounded growth).
+// - Eviction order is deterministic.
+// - Emission order in snapshots is oldest → newest.
+
+const EVENT_BUFFER_CAPACITY: usize = 4096;
+
+static EVENTS: LazyLock<Mutex<VecDeque<Event>>> = LazyLock::new(|| Mutex::new(VecDeque::new()));
+
 // ── Initialization ───────────────────────────────────────
 
 /// Initialize process metadata for the registry.
@@ -68,6 +84,43 @@ pub(crate) fn process_name() -> Option<&'static str> {
 
 pub(crate) fn proc_key() -> Option<&'static str> {
     PROCESS_INFO.get().map(|p| p.proc_key.as_str())
+}
+
+fn now_unix_ns() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64
+}
+
+pub fn record_event(entity_id: &str, name: &str, attrs_json: impl Into<String>) {
+    let Some(info) = PROCESS_INFO.get() else {
+        return;
+    };
+
+    let event = Event {
+        id: peeps_types::new_node_id("event"),
+        ts_ns: now_unix_ns(),
+        proc_key: info.proc_key.clone(),
+        entity_id: entity_id.to_string(),
+        name: name.to_string(),
+        parent_entity_id: crate::stack::capture_top(),
+        attrs_json: attrs_json.into(),
+    };
+
+    let mut events = EVENTS.lock().unwrap();
+    if events.len() == EVENT_BUFFER_CAPACITY {
+        events.pop_front();
+    }
+    events.push_back(event);
+}
+
+fn take_events() -> Option<Vec<Event>> {
+    let mut events = EVENTS.lock().unwrap();
+    if events.is_empty() {
+        return None;
+    }
+    Some(events.drain(..).collect())
 }
 
 // ── Edge tracking ────────────────────────────────────────
@@ -243,6 +296,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         proc_key: info.proc_key.clone(),
         nodes: external_nodes,
         edges: canonical_edges,
+        events: take_events(),
     };
 
     // Collect nodes and edges from each resource module.
@@ -339,6 +393,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         net_readables,
         net_writables,
         syscalls,
+        events = graph.events.as_ref().map(|v| v.len()).unwrap_or(0),
         nodes = graph.nodes.len(),
         edges = graph.edges.len(),
         "emit_graph completed"

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MagnifyingGlass,
   CaretLeft,
@@ -32,9 +32,19 @@ import {
   ArrowRight,
   GitFork,
 } from "@phosphor-icons/react";
-import type { StuckRequest, SnapshotNode, SnapshotEdge, SnapshotGraph } from "../types";
+import { fetchTimelinePage } from "../api";
+import type {
+  StuckRequest,
+  SnapshotNode,
+  SnapshotEdge,
+  SnapshotGraph,
+  TimelineCursor,
+  TimelineRow,
+} from "../types";
 
 interface InspectorProps {
+  snapshotId: number | null;
+  snapshotCapturedAtNs: number | null;
   selectedRequest: StuckRequest | null;
   selectedNode: SnapshotNode | null;
   selectedEdge: SnapshotEdge | null;
@@ -178,6 +188,8 @@ const kindIcons: Record<string, React.ReactNode> = {
 };
 
 export function Inspector({
+  snapshotId,
+  snapshotCapturedAtNs,
   selectedRequest,
   selectedNode,
   selectedEdge,
@@ -217,6 +229,8 @@ export function Inspector({
             <GhostDetail node={selectedNode} graph={graph} />
           ) : (
             <NodeDetail
+              snapshotId={snapshotId}
+              snapshotCapturedAtNs={snapshotCapturedAtNs}
               node={selectedNode}
               graph={graph}
               filteredNodeId={filteredNodeId}
@@ -430,13 +444,44 @@ function CopyIdButton({ id }: { id: string }) {
   );
 }
 
+const TIMELINE_NODE_KINDS = new Set(["request", "response", "tx", "rx", "remote_tx", "remote_rx"]);
+const TIMELINE_PAGE_SIZE = 25;
+
+function formatTimelineTimestamp(tsNs: number): string {
+  if (!Number.isFinite(tsNs)) return "—";
+  const date = new Date(Math.floor(tsNs / 1_000_000));
+  const micros = Math.floor((tsNs % 1_000_000) / 1_000);
+  return `${date.toLocaleTimeString()}.${
+    String(micros).padStart(3, "0")
+  }`;
+}
+
+function compactPreviewValue(val: unknown): string {
+  if (val == null) return "null";
+  if (typeof val === "string") return val.length > 48 ? `${val.slice(0, 48)}…` : val;
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  const serialized = JSON.stringify(val);
+  if (!serialized) return "null";
+  return serialized.length > 48 ? `${serialized.slice(0, 48)}…` : serialized;
+}
+
+function compactAttrsPreview(attrs: Record<string, unknown>): string {
+  const entries = Object.entries(attrs).filter(([, val]) => val != null).slice(0, 3);
+  if (entries.length === 0) return "—";
+  return entries.map(([key, val]) => `${key}=${compactPreviewValue(val)}`).join("  ");
+}
+
 function NodeDetail({
+  snapshotId,
+  snapshotCapturedAtNs,
   node,
   graph,
   filteredNodeId,
   onFocusNode,
   onSelectNode,
 }: {
+  snapshotId: number | null;
+  snapshotCapturedAtNs: number | null;
   node: SnapshotNode;
   graph: SnapshotGraph | null;
   filteredNodeId: string | null;
@@ -491,6 +536,86 @@ function NodeDetail({
       .map((e) => e.src_id) ?? [];
   const uniqueBlockers = Array.from(new Set(blockers));
   const uniqueDependents = Array.from(new Set(dependents));
+  const supportsTimeline = TIMELINE_NODE_KINDS.has(node.kind);
+  const [timelineRows, setTimelineRows] = useState<TimelineRow[]>([]);
+  const [timelineCursor, setTimelineCursor] = useState<TimelineCursor | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineLoadingOlder, setTimelineLoadingOlder] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!supportsTimeline || snapshotId == null || snapshotCapturedAtNs == null) {
+      setTimelineRows([]);
+      setTimelineCursor(null);
+      setTimelineLoading(false);
+      setTimelineLoadingOlder(false);
+      setTimelineError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setTimelineLoading(true);
+    setTimelineLoadingOlder(false);
+    setTimelineError(null);
+    setTimelineRows([]);
+    setTimelineCursor(null);
+
+    fetchTimelinePage(snapshotId, {
+      procKey: node.proc_key,
+      entityId: node.id,
+      capturedAtNs: snapshotCapturedAtNs,
+      limit: TIMELINE_PAGE_SIZE,
+      cursor: null,
+    })
+      .then((page) => {
+        if (cancelled) return;
+        setTimelineRows(page.rows);
+        setTimelineCursor(page.nextCursor);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setTimelineError(err instanceof Error ? err.message : "Failed to load timeline");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setTimelineLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [node.id, node.proc_key, snapshotCapturedAtNs, snapshotId, supportsTimeline]);
+
+  async function loadOlderTimeline() {
+    if (
+      !supportsTimeline ||
+      timelineLoading ||
+      timelineLoadingOlder ||
+      snapshotId == null ||
+      snapshotCapturedAtNs == null ||
+      timelineCursor == null
+    ) {
+      return;
+    }
+
+    setTimelineLoadingOlder(true);
+    setTimelineError(null);
+    try {
+      const page = await fetchTimelinePage(snapshotId, {
+        procKey: node.proc_key,
+        entityId: node.id,
+        capturedAtNs: snapshotCapturedAtNs,
+        limit: TIMELINE_PAGE_SIZE,
+        cursor: timelineCursor,
+      });
+      setTimelineRows((prev) => [...prev, ...page.rows]);
+      setTimelineCursor(page.nextCursor);
+    } catch (err) {
+      setTimelineError(err instanceof Error ? err.message : "Failed to load older timeline rows");
+    } finally {
+      setTimelineLoadingOlder(false);
+    }
+  }
 
   return (
     <div className="inspect-node">
@@ -607,6 +732,59 @@ function NodeDetail({
       {DetailComponent && (
         <div className="inspect-section">
           <DetailComponent attrs={node.attrs} />
+        </div>
+      )}
+
+      {supportsTimeline && (
+        <div className="inspect-section inspect-timeline">
+          <div className="inspect-raw-head">
+            <div className="inspect-raw-title">Timeline</div>
+          </div>
+          {timelineLoading && timelineRows.length === 0 && (
+            <div className="inspect-alert inspect-alert--ghost">Loading timeline…</div>
+          )}
+          {!timelineLoading && timelineRows.length === 0 && !timelineError && (
+            <div className="inspect-alert inspect-alert--ghost">No timeline rows for this node.</div>
+          )}
+          {timelineError && (
+            <div className="inspect-alert inspect-alert--crit">
+              Timeline query failed: <code>{timelineError}</code>
+            </div>
+          )}
+          {timelineRows.length > 0 && (
+            <div className="inspect-timeline-list">
+              {timelineRows.map((row) => (
+                <div className="inspect-timeline-item" key={`${row.ts_ns}:${row.id}`}>
+                  <div className="inspect-timeline-top">
+                    <span className="inspect-timeline-ts">{formatTimelineTimestamp(row.ts_ns)}</span>
+                    <span
+                      className={`inspect-pill inspect-pill--${
+                        row.relation === "self"
+                          ? "ok"
+                          : row.relation === "parent"
+                            ? "warn"
+                            : "neutral"
+                      }`}
+                    >
+                      {row.relation}
+                    </span>
+                  </div>
+                  <div className="inspect-timeline-name">{row.name}</div>
+                  <div className="inspect-timeline-attrs">{compactAttrsPreview(row.attrs)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {timelineCursor && (
+            <button
+              type="button"
+              className="inspect-timeline-more"
+              onClick={loadOlderTimeline}
+              disabled={timelineLoading || timelineLoadingOlder}
+            >
+              {timelineLoadingOlder ? "Loading…" : "Load older"}
+            </button>
+          )}
         </div>
       )}
 

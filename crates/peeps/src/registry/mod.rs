@@ -15,15 +15,15 @@ mod enabled;
 // Re-export public API items for external crates
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::{
-    edge, register_node, remove_edge, remove_edges_from, remove_edges_to, remove_node,
-    remove_spawn_edges_to, remove_touch_edge, remove_touch_edges_from, remove_touch_edges_to,
-    spawn_edge, touch_edge,
+    edge, record_event, register_node, remove_edge, remove_edges_from, remove_edges_to,
+    remove_node, remove_spawn_edges_to, remove_touch_edge, remove_touch_edges_from,
+    remove_touch_edges_to, spawn_edge, touch_edge,
 };
 #[cfg(feature = "diagnostics")]
 pub use enabled::{
-    edge, register_node, remove_edge, remove_edges_from, remove_edges_to, remove_node,
-    remove_spawn_edges_to, remove_touch_edge, remove_touch_edges_from, remove_touch_edges_to,
-    spawn_edge, touch_edge,
+    edge, record_event, register_node, remove_edge, remove_edges_from, remove_edges_to,
+    remove_node, remove_spawn_edges_to, remove_touch_edge, remove_touch_edges_from,
+    remove_touch_edges_to, spawn_edge, touch_edge,
 };
 
 // Re-export crate-internal items

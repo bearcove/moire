@@ -234,6 +234,25 @@ pub struct Edge {
     pub attrs_json: String,
 }
 
+/// Runtime event row emitted alongside graph snapshots.
+#[derive(Debug, Clone, Facet)]
+pub struct Event {
+    /// Event ID unique within a snapshot payload.
+    pub id: String,
+    /// Monotonic timestamp in nanoseconds.
+    pub ts_ns: u64,
+    /// Process key of the emitting process.
+    pub proc_key: String,
+    /// Entity/node this event belongs to.
+    pub entity_id: String,
+    /// Event name/kind.
+    pub name: String,
+    /// Optional parent entity/node ID.
+    pub parent_entity_id: Option<String>,
+    /// JSON-encoded event attributes.
+    pub attrs_json: String,
+}
+
 /// Per-process canonical graph snapshot envelope.
 #[derive(Debug, Clone, Default, Facet)]
 pub struct GraphSnapshot {
@@ -241,6 +260,7 @@ pub struct GraphSnapshot {
     pub proc_key: String,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    pub events: Option<Vec<Event>>,
 }
 
 /// Shared helper used by wrapper crates to emit canonical rows.
@@ -270,6 +290,10 @@ impl GraphSnapshotBuilder {
 
     pub fn push_edge(&mut self, edge: Edge) {
         self.graph.edges.push(edge);
+    }
+
+    pub fn push_event(&mut self, event: Event) {
+        self.graph.events.get_or_insert_with(Vec::new).push(event);
     }
 
     pub fn finish(self) -> GraphSnapshot {

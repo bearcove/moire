@@ -30,6 +30,7 @@ mod joinset;
 pub(crate) mod locks;
 pub mod net;
 pub mod registry;
+pub mod rpc;
 pub mod stack;
 pub(crate) mod sync;
 
@@ -265,6 +266,58 @@ macro_rules! peep {
     ($future:expr, $label:literal) => {{
         $future
     }};
+}
+
+/// Record an RPC request entity with metadata key/value pairs.
+///
+/// Prefer this macro from wrapper crates when you want diagnostics-off builds
+/// to compile to a true no-op (including metadata construction).
+#[cfg(feature = "diagnostics")]
+#[macro_export]
+macro_rules! rpc_request_event {
+    ($entity_id:expr, $name:expr, parent = $parent:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        let mut mb = $crate::MetaBuilder::<16>::new();
+        $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
+        $crate::rpc::record_request_with_meta($entity_id, $name, mb, Some($parent));
+    }};
+    ($entity_id:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        let mut mb = $crate::MetaBuilder::<16>::new();
+        $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
+        $crate::rpc::record_request_with_meta($entity_id, $name, mb, None);
+    }};
+}
+
+#[cfg(not(feature = "diagnostics"))]
+#[macro_export]
+macro_rules! rpc_request_event {
+    ($entity_id:expr, $name:expr, parent = $parent:expr, {$($k:literal => $v:expr),* $(,)?}) => {{}};
+    ($entity_id:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?}) => {{}};
+}
+
+/// Record an RPC response entity with metadata key/value pairs.
+///
+/// Prefer this macro from wrapper crates when you want diagnostics-off builds
+/// to compile to a true no-op (including metadata construction).
+#[cfg(feature = "diagnostics")]
+#[macro_export]
+macro_rules! rpc_response_event {
+    ($entity_id:expr, $name:expr, parent = $parent:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        let mut mb = $crate::MetaBuilder::<16>::new();
+        $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
+        $crate::rpc::record_response_with_meta($entity_id, $name, mb, Some($parent));
+    }};
+    ($entity_id:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
+        let mut mb = $crate::MetaBuilder::<16>::new();
+        $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
+        $crate::rpc::record_response_with_meta($entity_id, $name, mb, None);
+    }};
+}
+
+#[cfg(not(feature = "diagnostics"))]
+#[macro_export]
+macro_rules! rpc_response_event {
+    ($entity_id:expr, $name:expr, parent = $parent:expr, {$($k:literal => $v:expr),* $(,)?}) => {{}};
+    ($entity_id:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?}) => {{}};
 }
 
 // ── Initialization ──────────────────────────────────────

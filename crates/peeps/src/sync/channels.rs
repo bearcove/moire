@@ -182,6 +182,11 @@ impl Drop for WaiterGuard<'_> {
     }
 }
 
+#[inline]
+fn record_channel_event(entity_id: &str, name: &str, attrs_json: impl Into<String>) {
+    crate::registry::record_event(entity_id, name, attrs_json);
+}
+
 // ── mpsc bounded ────────────────────────────────────────
 
 pub struct Sender<T> {
@@ -192,6 +197,7 @@ pub struct Sender<T> {
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         self.info.sender_count.fetch_add(1, Ordering::Relaxed);
+        record_channel_event(&self.info.tx_node_id, "channel.v1.mpsc.sender_cloned", "{}");
         Self {
             inner: self.inner.clone(),
             info: Arc::clone(&self.info),
@@ -202,6 +208,13 @@ impl<T> Clone for Sender<T> {
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         let prev = self.info.sender_count.fetch_sub(1, Ordering::Relaxed);
+        let remaining = prev.saturating_sub(1);
+        let was_last = prev == 1;
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.mpsc.sender_dropped",
+            format!(r#"{{"remaining_senders":{remaining},"was_last":{was_last}}}"#),
+        );
         if prev == 1 {
             self.info.sender_closed.store(1, Ordering::Relaxed);
         }
@@ -216,6 +229,11 @@ impl<T> Sender<T> {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
             self.info.track_send_watermark();
         }
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.mpsc.send",
+            format!(r#"{{"ok":{}}}"#, result.is_ok()),
+        );
         result
     }
 
@@ -225,6 +243,16 @@ impl<T> Sender<T> {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
             self.info.track_send_watermark();
         }
+        let attrs = match &result {
+            Ok(_) => r#"{"ok":true}"#.to_string(),
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                r#"{"ok":false,"error":"full"}"#.to_string()
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                r#"{"ok":false,"error":"closed"}"#.to_string()
+            }
+        };
+        record_channel_event(&self.info.tx_node_id, "channel.v1.mpsc.try_send", attrs);
         result
     }
 
@@ -253,6 +281,11 @@ impl<T> Drop for Receiver<T> {
             .receiver_closed
             .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
             .ok();
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.mpsc.receiver_dropped",
+            "{}",
+        );
     }
 }
 
@@ -263,6 +296,11 @@ impl<T> Receiver<T> {
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
         }
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.mpsc.recv",
+            format!(r#"{{"ok":{}}}"#, result.is_some()),
+        );
         result
     }
 
@@ -271,6 +309,16 @@ impl<T> Receiver<T> {
         if result.is_ok() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
         }
+        let attrs = match &result {
+            Ok(_) => r#"{"ok":true}"#.to_string(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                r#"{"ok":false,"error":"empty"}"#.to_string()
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                r#"{"ok":false,"error":"disconnected"}"#.to_string()
+            }
+        };
+        record_channel_event(&self.info.rx_node_id, "channel.v1.mpsc.try_recv", attrs);
         result
     }
 
@@ -278,6 +326,11 @@ impl<T> Receiver<T> {
         self.inner.close();
         // 2 = explicitly closed (distinct from 1 = dropped)
         self.info.receiver_closed.store(2, Ordering::Relaxed);
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.mpsc.receiver_closed",
+            "{}",
+        );
     }
 }
 
@@ -307,6 +360,16 @@ pub fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receive
         created_at: Instant::now(),
     });
     prune_and_register_mpsc(&info);
+    record_channel_event(
+        &info.tx_node_id,
+        "channel.v1.mpsc.created",
+        format!(r#"{{"bounded":true,"capacity":{buffer},"endpoint":"tx"}}"#),
+    );
+    record_channel_event(
+        &info.rx_node_id,
+        "channel.v1.mpsc.created",
+        format!(r#"{{"bounded":true,"capacity":{buffer},"endpoint":"rx"}}"#),
+    );
     (
         Sender {
             inner: tx,
@@ -326,6 +389,7 @@ pub struct UnboundedSender<T> {
 impl<T> Clone for UnboundedSender<T> {
     fn clone(&self) -> Self {
         self.info.sender_count.fetch_add(1, Ordering::Relaxed);
+        record_channel_event(&self.info.tx_node_id, "channel.v1.mpsc.sender_cloned", "{}");
         Self {
             inner: self.inner.clone(),
             info: Arc::clone(&self.info),
@@ -336,6 +400,13 @@ impl<T> Clone for UnboundedSender<T> {
 impl<T> Drop for UnboundedSender<T> {
     fn drop(&mut self) {
         let prev = self.info.sender_count.fetch_sub(1, Ordering::Relaxed);
+        let remaining = prev.saturating_sub(1);
+        let was_last = prev == 1;
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.mpsc.sender_dropped",
+            format!(r#"{{"remaining_senders":{remaining},"was_last":{was_last}}}"#),
+        );
         if prev == 1 {
             self.info.sender_closed.store(1, Ordering::Relaxed);
         }
@@ -349,6 +420,11 @@ impl<T> UnboundedSender<T> {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
             self.info.track_send_watermark();
         }
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.mpsc.send",
+            format!(r#"{{"ok":{},"bounded":false}}"#, result.is_ok()),
+        );
         result
     }
 
@@ -369,6 +445,11 @@ impl<T> Drop for UnboundedReceiver<T> {
             .receiver_closed
             .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
             .ok();
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.mpsc.receiver_dropped",
+            "{}",
+        );
     }
 }
 
@@ -379,6 +460,11 @@ impl<T> UnboundedReceiver<T> {
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
         }
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.mpsc.recv",
+            format!(r#"{{"ok":{},"bounded":false}}"#, result.is_some()),
+        );
         result
     }
 
@@ -387,6 +473,16 @@ impl<T> UnboundedReceiver<T> {
         if result.is_ok() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
         }
+        let attrs = match &result {
+            Ok(_) => r#"{"ok":true,"bounded":false}"#.to_string(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                r#"{"ok":false,"error":"empty","bounded":false}"#.to_string()
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                r#"{"ok":false,"error":"disconnected","bounded":false}"#.to_string()
+            }
+        };
+        record_channel_event(&self.info.rx_node_id, "channel.v1.mpsc.try_recv", attrs);
         result
     }
 
@@ -394,6 +490,11 @@ impl<T> UnboundedReceiver<T> {
         self.inner.close();
         // 2 = explicitly closed (distinct from 1 = dropped)
         self.info.receiver_closed.store(2, Ordering::Relaxed);
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.mpsc.receiver_closed",
+            "{}",
+        );
     }
 }
 
@@ -423,6 +524,16 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
         created_at: Instant::now(),
     });
     prune_and_register_mpsc(&info);
+    record_channel_event(
+        &info.tx_node_id,
+        "channel.v1.mpsc.created",
+        r#"{"bounded":false,"endpoint":"tx"}"#,
+    );
+    record_channel_event(
+        &info.rx_node_id,
+        "channel.v1.mpsc.created",
+        r#"{"bounded":false,"endpoint":"rx"}"#,
+    );
     (
         UnboundedSender {
             inner: tx,
@@ -451,6 +562,11 @@ impl<T> Drop for OneshotSender<T> {
                     Ordering::Relaxed,
                 )
                 .ok();
+            record_channel_event(
+                &self.info.tx_node_id,
+                "channel.v1.oneshot.sender_dropped",
+                "{}",
+            );
         }
     }
 }
@@ -462,6 +578,11 @@ impl<T> OneshotSender<T> {
         if result.is_ok() {
             self.info.state.store(ONESHOT_SENT, Ordering::Relaxed);
         }
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.oneshot.send",
+            format!(r#"{{"ok":{}}}"#, result.is_ok()),
+        );
         result
     }
 
@@ -486,6 +607,11 @@ impl<T> Drop for OneshotReceiver<T> {
                 Ordering::Relaxed,
             )
             .ok();
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.oneshot.receiver_dropped",
+            "{}",
+        );
     }
 }
 
@@ -495,6 +621,11 @@ impl<T> OneshotReceiver<T> {
         if result.is_ok() {
             self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
         }
+        record_channel_event(
+            &self.info.rx_node_id,
+            "channel.v1.oneshot.recv",
+            format!(r#"{{"ok":{}}}"#, result.is_ok()),
+        );
         result
     }
 
@@ -503,6 +634,16 @@ impl<T> OneshotReceiver<T> {
         if result.is_ok() {
             self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
         }
+        let attrs = match &result {
+            Ok(_) => r#"{"ok":true}"#.to_string(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                r#"{"ok":false,"error":"empty"}"#.to_string()
+            }
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+                r#"{"ok":false,"error":"closed"}"#.to_string()
+            }
+        };
+        record_channel_event(&self.info.rx_node_id, "channel.v1.oneshot.try_recv", attrs);
         result
     }
 }
@@ -524,6 +665,16 @@ pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, Oneshot
         created_at: Instant::now(),
     });
     prune_and_register_oneshot(&info);
+    record_channel_event(
+        &info.tx_node_id,
+        "channel.v1.oneshot.created",
+        r#"{"endpoint":"tx"}"#,
+    );
+    record_channel_event(
+        &info.rx_node_id,
+        "channel.v1.oneshot.created",
+        r#"{"endpoint":"rx"}"#,
+    );
     (
         OneshotSender {
             inner: Some(tx),
@@ -543,6 +694,11 @@ pub struct WatchSender<T> {
 impl<T> Drop for WatchSender<T> {
     fn drop(&mut self) {
         self.info.sender_closed.store(1, Ordering::Relaxed);
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.watch.sender_dropped",
+            "{}",
+        );
     }
 }
 
@@ -552,12 +708,18 @@ impl<T> WatchSender<T> {
         if result.is_ok() {
             self.info.changes.fetch_add(1, Ordering::Relaxed);
         }
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.watch.send",
+            format!(r#"{{"ok":{}}}"#, result.is_ok()),
+        );
         result
     }
 
     pub fn send_modify<F: FnOnce(&mut T)>(&self, modify: F) {
         self.inner.send_modify(modify);
         self.info.changes.fetch_add(1, Ordering::Relaxed);
+        record_channel_event(&self.info.tx_node_id, "channel.v1.watch.send_modify", "{}");
     }
 
     pub fn send_if_modified<F: FnOnce(&mut T) -> bool>(&self, modify: F) -> bool {
@@ -565,6 +727,11 @@ impl<T> WatchSender<T> {
         if modified {
             self.info.changes.fetch_add(1, Ordering::Relaxed);
         }
+        record_channel_event(
+            &self.info.tx_node_id,
+            "channel.v1.watch.send_if_modified",
+            format!(r#"{{"modified":{modified}}}"#),
+        );
         modified
     }
 
@@ -577,6 +744,7 @@ impl<T> WatchSender<T> {
     }
 
     pub fn subscribe(&self) -> WatchReceiver<T> {
+        record_channel_event(&self.info.tx_node_id, "channel.v1.watch.subscribe", "{}");
         WatchReceiver {
             inner: self.inner.subscribe(),
             _info: Arc::clone(&self.info),
@@ -595,6 +763,11 @@ pub struct WatchReceiver<T> {
 
 impl<T> Clone for WatchReceiver<T> {
     fn clone(&self) -> Self {
+        record_channel_event(
+            &self._info.rx_node_id,
+            "channel.v1.watch.receiver_cloned",
+            "{}",
+        );
         Self {
             inner: self.inner.clone(),
             _info: Arc::clone(&self._info),
@@ -602,10 +775,24 @@ impl<T> Clone for WatchReceiver<T> {
     }
 }
 
+impl<T> Drop for WatchReceiver<T> {
+    fn drop(&mut self) {
+        record_channel_event(
+            &self._info.rx_node_id,
+            "channel.v1.watch.receiver_dropped",
+            "{}",
+        );
+    }
+}
+
 impl<T> WatchReceiver<T> {
     pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
         let result = WaitEdge::new(&self._info.rx_node_id, self.inner.changed()).await;
-        if result.is_ok() {}
+        record_channel_event(
+            &self._info.rx_node_id,
+            "channel.v1.watch.changed",
+            format!(r#"{{"ok":{}}}"#, result.is_ok()),
+        );
         result
     }
 
@@ -618,7 +805,17 @@ impl<T> WatchReceiver<T> {
     }
 
     pub fn has_changed(&self) -> Result<bool, tokio::sync::watch::error::RecvError> {
-        self.inner.has_changed()
+        let result = self.inner.has_changed();
+        let attrs = match &result {
+            Ok(changed) => format!(r#"{{"ok":true,"changed":{changed}}}"#),
+            Err(_) => r#"{"ok":false,"error":"closed"}"#.to_string(),
+        };
+        record_channel_event(
+            &self._info.rx_node_id,
+            "channel.v1.watch.has_changed",
+            attrs,
+        );
+        result
     }
 }
 
@@ -645,6 +842,16 @@ pub fn watch_channel<T: Send + Sync + 'static>(
         receiver_count: Box::new(move || tx_clone.receiver_count()),
     });
     prune_and_register_watch(&info);
+    record_channel_event(
+        &info.tx_node_id,
+        "channel.v1.watch.created",
+        r#"{"endpoint":"tx"}"#,
+    );
+    record_channel_event(
+        &info.rx_node_id,
+        "channel.v1.watch.created",
+        r#"{"endpoint":"rx"}"#,
+    );
     (
         WatchSender {
             inner: tx,

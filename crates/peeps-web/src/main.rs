@@ -52,6 +52,7 @@ use peeps_types::GraphSnapshot;
 pub(crate) const DEFAULT_TIMEOUT_MS: i64 = 5000;
 const MAX_SNAPSHOTS: i64 = 500;
 const INGEST_EVENTS_RETENTION_DAYS: i64 = 7;
+const EVENTS_RETENTION_DAYS: i64 = 7;
 
 // ── Main ─────────────────────────────────────────────────────────
 
@@ -534,6 +535,30 @@ fn persist_reply(
             )
             .map_err(|e| e.to_string())?;
         }
+
+        if let Some(events) = &graph.events {
+            for event in events {
+                let ts_ns = if event.ts_ns > i64::MAX as u64 {
+                    i64::MAX
+                } else {
+                    event.ts_ns as i64
+                };
+                tx.execute(
+                    "INSERT OR REPLACE INTO events (id, ts_ns, proc_key, entity_id, name, parent_entity_id, attrs_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        &event.id,
+                        ts_ns,
+                        &event.proc_key,
+                        &event.entity_id,
+                        &event.name,
+                        event.parent_entity_id.as_deref(),
+                        &event.attrs_json
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
     }
 
     tx.commit().map_err(|e| e.to_string())
@@ -591,6 +616,13 @@ pub(crate) fn run_retention(db_path: &PathBuf) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
+    let events_cutoff_ns = now_nanos() - (EVENTS_RETENTION_DAYS * 24 * 60 * 60 * 1_000_000_000);
+    conn.execute(
+        "DELETE FROM events WHERE ts_ns < ?1",
+        params![events_cutoff_ns],
+    )
+    .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -614,6 +646,28 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
         });
     if needs_migration {
         conn.execute_batch("DROP TABLE IF EXISTS edges;")?;
+    }
+
+    // Migrate: drop the events table if it has an outdated schema.
+    // This is safe because runtime event diagnostics are ephemeral.
+    let events_needs_migration: bool = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='events'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .is_some_and(|sql| {
+            !sql.contains("id TEXT PRIMARY KEY")
+                || !sql.contains("ts_ns INTEGER NOT NULL")
+                || !sql.contains("proc_key TEXT NOT NULL")
+                || !sql.contains("entity_id TEXT NOT NULL")
+                || !sql.contains("name TEXT NOT NULL")
+                || !sql.contains("parent_entity_id TEXT")
+                || !sql.contains("attrs_json TEXT NOT NULL")
+        });
+    if events_needs_migration {
+        conn.execute_batch("DROP TABLE IF EXISTS events;")?;
     }
 
     // Legacy table from an abandoned unresolved-edge pipeline.
@@ -673,10 +727,23 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
             detail TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS events (
+            id TEXT PRIMARY KEY,
+            ts_ns INTEGER NOT NULL,
+            proc_key TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            parent_entity_id TEXT,
+            attrs_json TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_nodes_snapshot_kind ON nodes(snapshot_id, kind);
         CREATE INDEX IF NOT EXISTS idx_nodes_snapshot_proc_key ON nodes(snapshot_id, proc_key);
         CREATE INDEX IF NOT EXISTS idx_edges_snapshot_src ON edges(snapshot_id, src_id);
         CREATE INDEX IF NOT EXISTS idx_edges_snapshot_dst ON edges(snapshot_id, dst_id);
+        CREATE INDEX IF NOT EXISTS idx_events_proc_entity_ts ON events(proc_key, entity_id, ts_ns DESC);
+        CREATE INDEX IF NOT EXISTS idx_events_proc_parent_ts ON events(proc_key, parent_entity_id, ts_ns DESC);
+        CREATE INDEX IF NOT EXISTS idx_events_ts_id ON events(ts_ns DESC, id DESC);
         ",
     )?;
     Ok(())

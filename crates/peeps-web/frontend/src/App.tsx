@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WarningCircle } from "@phosphor-icons/react";
-import { jumpNow, fetchGraph } from "./api";
+import { fetchGraph, fetchRecentTimelineEvents, fetchTimelineProcessOptions, jumpNow } from "./api";
 import { Header } from "./components/Header";
 import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
 import { GraphView } from "./components/GraphView";
 import { Inspector } from "./components/Inspector";
-import type { JumpNowResponse, SnapshotGraph, SnapshotNode, SnapshotEdge } from "./types";
+import { TimelineView } from "./components/TimelineView";
+import type {
+  JumpNowResponse,
+  SnapshotEdge,
+  SnapshotGraph,
+  SnapshotNode,
+  TimelineEvent,
+  TimelineProcessOption,
+} from "./types";
 
 function useSessionState(key: string, initial: boolean): [boolean, () => void] {
   const [value, setValue] = useState(() => {
@@ -24,6 +32,7 @@ function useSessionState(key: string, initial: boolean): [boolean, () => void] {
 const MIN_ELAPSED_NS = 5_000_000_000; // 5 seconds
 type DetailLevel = "info" | "debug" | "trace";
 const DETAIL_LEVELS: DetailLevel[] = ["info", "debug", "trace"];
+type InvestigationMode = "graph" | "timeline";
 
 function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | undefined {
   for (const k of keys) {
@@ -468,6 +477,9 @@ export function App() {
   const [graph, setGraph] = useState<SnapshotGraph | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(() => {
+    return sessionStorage.getItem("peeps-investigation-mode") === "timeline" ? "timeline" : "graph";
+  });
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
@@ -476,6 +488,18 @@ export function App() {
   const [selectedEdge, setSelectedEdge] = useState<SnapshotEdge | null>(null);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [timelineProcessOptions, setTimelineProcessOptions] = useState<TimelineProcessOption[]>([]);
+  const [timelineSelectedProcKey, setTimelineSelectedProcKey] = useState<string | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [selectedTimelineEventId, setSelectedTimelineEventId] = useState<string | null>(null);
+  const [timelineRefreshTick, setTimelineRefreshTick] = useState(0);
+  const [timelineWindowSeconds, setTimelineWindowSeconds] = useState<number>(() => {
+    const raw = sessionStorage.getItem("peeps-timeline-window-seconds");
+    const parsed = raw ? Number(raw) : 300;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
+  });
   const [detailLevel, setDetailLevel] = useState<DetailLevel>(() => {
     return parseDetailLevel(sessionStorage.getItem("peeps-detail-level"));
   });
@@ -485,6 +509,11 @@ export function App() {
   const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", true);
   const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", true);
   const [deadlockFocus, toggleDeadlockFocus] = useSessionState("peeps-deadlock-focus", true);
+
+  const handleSetMode = useCallback((mode: InvestigationMode) => {
+    setInvestigationMode(mode);
+    sessionStorage.setItem("peeps-investigation-mode", mode);
+  }, []);
 
   const handleJumpNow = useCallback(async () => {
     setLoading(true);
@@ -499,6 +528,7 @@ export function App() {
       setSelectedEdge(null);
       setFilteredNodeId(null);
       setGraphSearchQuery("");
+      setSelectedTimelineEventId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -509,6 +539,55 @@ export function App() {
   useEffect(() => {
     handleJumpNow();
   }, [handleJumpNow]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    let cancelled = false;
+    fetchTimelineProcessOptions(snapshot.snapshot_id)
+      .then((options) => {
+        if (cancelled) return;
+        setTimelineProcessOptions(options);
+        if (timelineSelectedProcKey && !options.some((opt) => opt.proc_key === timelineSelectedProcKey)) {
+          setTimelineSelectedProcKey(null);
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setTimelineError(e instanceof Error ? e.message : String(e));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot, timelineSelectedProcKey]);
+
+  useEffect(() => {
+    if (investigationMode !== "timeline" || !snapshot) return;
+    let cancelled = false;
+    const windowNs = Math.round(timelineWindowSeconds * 1_000_000_000);
+    const endTsNs = snapshot.captured_at_ns ?? Date.now() * 1_000_000;
+    const fromTsNs = Math.max(0, endTsNs - windowNs);
+    setTimelineLoading(true);
+    setTimelineError(null);
+
+    fetchRecentTimelineEvents(snapshot.snapshot_id, fromTsNs, timelineSelectedProcKey, 1200)
+      .then((rows) => {
+        if (cancelled) return;
+        setTimelineEvents(rows);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setTimelineError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setTimelineLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [investigationMode, snapshot, timelineSelectedProcKey, timelineWindowSeconds, timelineRefreshTick]);
 
   const enrichedGraph = useMemo(() => {
     if (!graph) return null;
@@ -697,6 +776,34 @@ export function App() {
     [handleSelectGraphNode],
   );
 
+  const handleTimelineWindowChange = useCallback((seconds: number) => {
+    setTimelineWindowSeconds(seconds);
+    sessionStorage.setItem("peeps-timeline-window-seconds", String(seconds));
+  }, []);
+
+  const handleRefreshTimeline = useCallback(() => {
+    setTimelineRefreshTick((v) => v + 1);
+  }, []);
+
+  const handleSelectTimelineEvent = useCallback(
+    (event: TimelineEvent) => {
+      setSelectedTimelineEventId(event.id);
+      setFilteredNodeId(null);
+      setSelectedEdge(null);
+
+      const matchedNode = enrichedGraph?.nodes.find((n) => n.id === event.entity_id) ?? null;
+      if (!matchedNode) {
+        setSelectedNode(null);
+        setSelectedNodeId(null);
+        return;
+      }
+
+      handleSelectGraphNode(matchedNode.id);
+      handleSetMode("graph");
+    },
+    [enrichedGraph, handleSelectGraphNode, handleSetMode],
+  );
+
   return (
     <div className="app">
       <Header snapshot={snapshot} loading={loading} onJumpNow={handleJumpNow} />
@@ -710,6 +817,23 @@ export function App() {
           <span className="error-text">{error}</span>
         </div>
       )}
+      <div className="mode-toggle-row">
+        <span className="mode-toggle-label">Investigation mode</span>
+        <button
+          className={`btn ${investigationMode === "graph" ? "btn--primary" : ""}`}
+          type="button"
+          onClick={() => handleSetMode("graph")}
+        >
+          Graph
+        </button>
+        <button
+          className={`btn ${investigationMode === "timeline" ? "btn--primary" : ""}`}
+          type="button"
+          onClick={() => handleSetMode("timeline")}
+        >
+          Timeline (spike)
+        </button>
+      </div>
       <div
         className={[
           "main-content",
@@ -724,35 +848,54 @@ export function App() {
           collapsed={leftCollapsed}
           onToggleCollapse={toggleLeft}
         />
-        <GraphView
-          graph={displayGraph}
-          fullGraph={enrichedGraph}
-          filteredNodeId={filteredNodeId}
-          selectedNodeId={selectedNodeId}
-          selectedEdge={selectedEdge}
-          searchQuery={graphSearchQuery}
-          searchResults={searchResults}
-          allKinds={allKinds}
-          hiddenKinds={hiddenKinds}
-          onToggleKind={toggleKind}
-          onSoloKind={soloKind}
-          allProcesses={allProcesses}
-          hiddenProcesses={hiddenProcesses}
-          onToggleProcess={toggleProcess}
-          onSoloProcess={soloProcess}
-          deadlockFocus={deadlockFocus}
-          onToggleDeadlockFocus={toggleDeadlockFocus}
-          detailLevel={detailLevel}
-          onDetailLevelChange={handleDetailLevelChange}
-          hasActiveFilters={hasActiveFilters}
-          onResetFilters={handleResetFilters}
-          onSearchQueryChange={setGraphSearchQuery}
-          onSelectSearchResult={handleSelectSearchResult}
-          onSelectNode={handleSelectGraphNode}
-          onSelectEdge={handleSelectEdge}
-          onClearSelection={handleClearSelection}
-        />
+        {investigationMode === "graph" ? (
+          <GraphView
+            graph={displayGraph}
+            fullGraph={enrichedGraph}
+            filteredNodeId={filteredNodeId}
+            selectedNodeId={selectedNodeId}
+            selectedEdge={selectedEdge}
+            searchQuery={graphSearchQuery}
+            searchResults={searchResults}
+            allKinds={allKinds}
+            hiddenKinds={hiddenKinds}
+            onToggleKind={toggleKind}
+            onSoloKind={soloKind}
+            allProcesses={allProcesses}
+            hiddenProcesses={hiddenProcesses}
+            onToggleProcess={toggleProcess}
+            onSoloProcess={soloProcess}
+            deadlockFocus={deadlockFocus}
+            onToggleDeadlockFocus={toggleDeadlockFocus}
+            detailLevel={detailLevel}
+            onDetailLevelChange={handleDetailLevelChange}
+            hasActiveFilters={hasActiveFilters}
+            onResetFilters={handleResetFilters}
+            onSearchQueryChange={setGraphSearchQuery}
+            onSelectSearchResult={handleSelectSearchResult}
+            onSelectNode={handleSelectGraphNode}
+            onSelectEdge={handleSelectEdge}
+            onClearSelection={handleClearSelection}
+          />
+        ) : (
+          <TimelineView
+            events={timelineEvents}
+            loading={timelineLoading}
+            error={timelineError}
+            selectedEventId={selectedTimelineEventId}
+            selectedProcKey={timelineSelectedProcKey}
+            processOptions={timelineProcessOptions}
+            windowSeconds={timelineWindowSeconds}
+            snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
+            onSelectProcKey={setTimelineSelectedProcKey}
+            onWindowSecondsChange={handleTimelineWindowChange}
+            onRefresh={handleRefreshTimeline}
+            onSelectEvent={handleSelectTimelineEvent}
+          />
+        )}
         <Inspector
+          snapshotId={snapshot?.snapshot_id ?? null}
+          snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
           selectedRequest={null}
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}

@@ -712,6 +712,7 @@ name = "peeps-types"
 version = "0.1.0"
 dependencies = [
  "facet",
+ "facet-json",
  "inventory",
  "ulid",
 ]

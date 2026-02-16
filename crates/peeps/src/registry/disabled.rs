@@ -50,6 +50,9 @@ pub fn register_node(_node: Node) {}
 pub fn remove_node(_id: &str) {}
 
 #[inline(always)]
+pub fn record_event(_entity_id: &str, _name: &str, _attrs_json: impl Into<String>) {}
+
+#[inline(always)]
 pub(crate) fn emit_graph() -> GraphSnapshot {
     GraphSnapshot::default()
 }
