@@ -20,7 +20,7 @@ pub fn capture_top() -> Option<String> {
 }
 
 #[inline(always)]
-pub async fn with_stack<F: Future>(future: F) -> F::Output {
+pub async fn ensure<F: Future>(future: F) -> F::Output {
     future.await
 }
 

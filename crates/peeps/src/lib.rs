@@ -45,12 +45,12 @@ pub use collect::collect_graph;
 
 // ── stack ───────────────────────────────────────────────
 
-pub use stack::with_stack;
+pub use stack::ensure as ensure_stack;
 
 // ── futures ─────────────────────────────────────────────
 
 pub use futures::{peepable, peepable_with_meta, spawn_tracked, PeepableFuture};
-pub use joinset::JoinSetExt;
+pub use joinset::JoinSet;
 
 // ── locks ───────────────────────────────────────────────
 

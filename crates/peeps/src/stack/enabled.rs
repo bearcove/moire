@@ -55,12 +55,19 @@ pub fn with_top(f: impl FnOnce(&str)) {
     });
 }
 
-/// Run `future` with a fresh task-local stack scope.
-///
-/// Use this at async entrypoints where we want canonical edge emission
-/// to work even if the caller wasn't spawned via `spawn_tracked`.
-pub async fn with_stack<F: Future>(future: F) -> F::Output {
+async fn with_fresh_stack<F: Future>(future: F) -> F::Output {
     STACK.scope(RefCell::new(Vec::new()), future).await
+}
+
+/// Ensure `future` runs with a task-local stack, preserving parent context when present.
+///
+/// Unlike the removed `with_stack`, this never wipes an active stack.
+pub async fn ensure<F: Future>(future: F) -> F::Output {
+    if is_active() {
+        future.await
+    } else {
+        with_fresh_stack(future).await
+    }
 }
 
 /// A small future wrapper that pushes a stable node id onto the stack

@@ -43,16 +43,10 @@ export async function querySql(
 
 const STUCK_REQUEST_SQL = `SELECT
   r.id,
-  COALESCE(
-    json_extract(r.attrs_json, '$.request.method'),
-    json_extract(r.attrs_json, '$.method')
-  ) AS method,
+  json_extract(r.attrs_json, '$."request.method"') AS method,
   r.process,
   CAST(json_extract(r.attrs_json, '$.elapsed_ns') AS INTEGER) AS elapsed_ns,
-  COALESCE(
-    json_extract(r.attrs_json, '$.rpc.connection'),
-    json_extract(r.attrs_json, '$.connection')
-  ) AS connection
+  json_extract(r.attrs_json, '$."rpc.connection"') AS connection
 FROM nodes r
 WHERE r.kind = 'request'
   AND CAST(json_extract(r.attrs_json, '$.elapsed_ns') AS INTEGER) >= ?1

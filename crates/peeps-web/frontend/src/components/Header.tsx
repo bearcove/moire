@@ -1,4 +1,4 @@
-import { Aperture, Camera, CheckCircle, Clock, Warning } from "@phosphor-icons/react";
+import { Aperture, Camera, CheckCircle, CircleNotch, Clock, Warning } from "@phosphor-icons/react";
 import type { JumpNowResponse } from "../types";
 
 interface HeaderProps {
@@ -34,6 +34,15 @@ export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
               {snapshot.timed_out} timed out
             </>
           )}
+        </span>
+      )}
+      {loading && (
+        <span className="snapshot-progress" role="status" aria-live="polite">
+          <span className="snapshot-progress__label">
+            <CircleNotch size={12} weight="bold" className="snapshot-progress__spinner" />
+            Taking snapshot…
+          </span>
+          <span className="snapshot-progress__bar" />
         </span>
       )}
       <span className="header-spacer" />

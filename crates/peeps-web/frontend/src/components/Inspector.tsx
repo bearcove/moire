@@ -300,16 +300,14 @@ function NodeDetail({
       </div>
 
       <div className="inspect-section">
-        {node.kind !== "request" && node.kind !== "response" && (
-          <div className="inspect-row">
-            <span className="inspect-key">ID</span>
-            <span className="inspect-val inspect-val--copyable">
-              {node.id}
-              <CopyIdButton id={node.id} />
-            </span>
-          </div>
-        )}
-        {method && node.kind !== "request" && node.kind !== "response" && (
+        <div className="inspect-row">
+          <span className="inspect-key">ID</span>
+          <span className="inspect-val inspect-val--copyable">
+            {node.id}
+            <CopyIdButton id={node.id} />
+          </span>
+        </div>
+        {method && (
           <div className="inspect-row">
             <span className="inspect-key">Method</span>
             <span className="inspect-val inspect-val--mono">{method}</span>

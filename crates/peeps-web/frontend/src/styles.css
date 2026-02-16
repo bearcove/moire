@@ -69,6 +69,59 @@ body {
     color: light-dark(#0f5132, #75b798);
 }
 
+.snapshot-progress {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 132px;
+}
+
+.snapshot-progress__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: light-dark(#6e6e73, #b5b5bb);
+}
+
+.snapshot-progress__spinner {
+    animation: spin 1s linear infinite;
+}
+
+.snapshot-progress__bar {
+    position: relative;
+    height: 4px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: light-dark(#e5e5ea, #2a2a2e);
+}
+
+.snapshot-progress__bar::after {
+    content: "";
+    position: absolute;
+    left: -36%;
+    width: 36%;
+    top: 0;
+    bottom: 0;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      light-dark(#0f5132, #4caf7a),
+      light-dark(#34c759, #75b798)
+    );
+    animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes indeterminate {
+    0% { left: -36%; }
+    100% { left: 100%; }
+}
+
 .main-content {
     display: grid;
     grid-template-columns: minmax(220px, 300px) 2fr minmax(240px, 300px);

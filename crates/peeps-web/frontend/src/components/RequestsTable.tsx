@@ -23,7 +23,13 @@ function elapsedClass(ns: number): string {
   return "";
 }
 
-export function RequestsTable({ requests, selectedId, onSelect, collapsed, onToggleCollapse }: RequestsTableProps) {
+export function RequestsTable({
+  requests,
+  selectedId,
+  onSelect,
+  collapsed,
+  onToggleCollapse,
+}: RequestsTableProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const selectedIndex = requests.findIndex((r) => r.id === selectedId);
@@ -100,9 +106,7 @@ export function RequestsTable({ requests, selectedId, onSelect, collapsed, onTog
         <div className="request-list" ref={listRef}>
           {requests.map((req) => {
             const method = req.method?.trim() ? req.method : "unknown method";
-            const subtitle = req.connection?.trim()
-              ? req.connection
-              : "unknown connection";
+            const subtitle = req.connection?.trim() ? req.connection : "unknown connection";
             return (
               <button
                 key={req.id}
@@ -112,6 +116,7 @@ export function RequestsTable({ requests, selectedId, onSelect, collapsed, onTog
                 onClick={() => onSelect(req)}
               >
                 <div className="request-card-top">
+                  <pre>{JSON.stringify(req, null, 2)}</pre>
                   <span className="request-card-main" title={`${method} • ${req.process}`}>
                     {method}
                     <span className="request-card-process-inline">{req.process}</span>
@@ -121,7 +126,9 @@ export function RequestsTable({ requests, selectedId, onSelect, collapsed, onTog
                   </span>
                 </div>
                 <div className="request-card-bottom">
-                  <span className="request-card-meta" title={subtitle}>{subtitle}</span>
+                  <span className="request-card-meta" title={subtitle}>
+                    {subtitle}
+                  </span>
                 </div>
               </button>
             );
