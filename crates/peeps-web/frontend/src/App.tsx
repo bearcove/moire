@@ -56,6 +56,88 @@ function connectedSubgraph(graph: SnapshotGraph, seedId: string): SnapshotGraph 
   };
 }
 
+/** Filter out nodes of hidden kinds, bridging edges through them as pass-throughs. */
+function filterHiddenKinds(graph: SnapshotGraph, hiddenKinds: Set<string>): SnapshotGraph {
+  if (hiddenKinds.size === 0) return graph;
+
+  const hiddenIds = new Set<string>();
+  for (const n of graph.nodes) {
+    if (hiddenKinds.has(n.kind)) hiddenIds.add(n.id);
+  }
+  if (hiddenIds.size === 0) return graph;
+
+  // Build forward adjacency from edges
+  const fwd = new Map<string, Array<{ dst: string; edge: SnapshotEdge }>>();
+  for (const e of graph.edges) {
+    let list = fwd.get(e.src_id);
+    if (!list) { list = []; fwd.set(e.src_id, list); }
+    list.push({ dst: e.dst_id, edge: e });
+  }
+
+  // Edge kind priority for bridging: needs > spawned > touches
+  function strongerKind(a: string, b: string): string {
+    if (a === "needs" || b === "needs") return "needs";
+    if (a === "spawned" || b === "spawned") return "spawned";
+    return "touches";
+  }
+
+  // From a hidden node, BFS through hidden nodes to find all reachable visible destinations.
+  // Returns array of { dst, kind } where kind is the strongest along the path.
+  function reachableVisible(startId: string, initialKind: string): Array<{ dst: string; kind: string }> {
+    const result: Array<{ dst: string; kind: string }> = [];
+    const visited = new Set<string>();
+    const queue: Array<{ id: string; kind: string }> = [{ id: startId, kind: initialKind }];
+
+    while (queue.length > 0) {
+      const { id, kind } = queue.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+
+      const outgoing = fwd.get(id);
+      if (!outgoing) continue;
+      for (const { dst, edge } of outgoing) {
+        const combinedKind = strongerKind(kind, edge.kind);
+        if (hiddenIds.has(dst)) {
+          if (!visited.has(dst)) queue.push({ id: dst, kind: combinedKind });
+        } else {
+          result.push({ dst, kind: combinedKind });
+        }
+      }
+    }
+    return result;
+  }
+
+  // Build new edge list: keep direct visible→visible edges, bridge through hidden nodes
+  const newEdges: SnapshotEdge[] = [];
+  const seenBridges = new Set<string>();
+
+  for (const e of graph.edges) {
+    const srcHidden = hiddenIds.has(e.src_id);
+    const dstHidden = hiddenIds.has(e.dst_id);
+
+    if (!srcHidden && !dstHidden) {
+      // Both visible: keep as-is
+      newEdges.push(e);
+    } else if (!srcHidden && dstHidden) {
+      // Source visible, dest hidden: bridge through hidden chain
+      for (const { dst, kind } of reachableVisible(e.dst_id, e.kind)) {
+        const key = `${e.src_id}->${dst}:${kind}`;
+        if (!seenBridges.has(key)) {
+          seenBridges.add(key);
+          newEdges.push({ src_id: e.src_id, dst_id: dst, kind, attrs: {} });
+        }
+      }
+    }
+    // srcHidden edges are handled when we encounter their visible predecessors
+  }
+
+  return {
+    nodes: graph.nodes.filter((n) => !hiddenIds.has(n.id)),
+    edges: newEdges,
+    ghostNodes: graph.ghostNodes.filter((n) => !hiddenIds.has(n.id)),
+  };
+}
+
 function searchGraphNodes(graph: SnapshotGraph, needle: string): SnapshotNode[] {
   const q = needle.trim().toLowerCase();
   if (!q) return [];
@@ -75,6 +157,7 @@ export function App() {
   const [graphSearchQuery, setGraphSearchQuery] = useState("");
   const [selectedNode, setSelectedNode] = useState<SnapshotNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<SnapshotEdge | null>(null);
+  const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
 
   // Keep graph/inspector focus-first: left and right panels are collapsed by default,
   // but users can expand them and the state is sticky for the current browser session.
@@ -157,14 +240,36 @@ export function App() {
     setFilteredNodeId(null);
   }, []);
 
+  // Collect all unique node kinds present in the graph (excluding ghosts).
+  const allKinds = useMemo(() => {
+    if (!graph) return [];
+    const kinds = new Set<string>();
+    for (const n of graph.nodes) {
+      if (n.kind !== "ghost") kinds.add(n.kind);
+    }
+    return Array.from(kinds).sort();
+  }, [graph]);
+
+  const toggleKind = useCallback((kind: string) => {
+    setHiddenKinds((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  }, []);
+
   // Compute the displayed graph: full graph normally,
   // connected subgraph only when filtering via stuck request click.
+  // Then apply node-kind hiding with pass-through edges.
   const displayGraph = useMemo(() => {
     if (!graph) return null;
-    if (!filteredNodeId) return graph;
-    if (!graph.nodes.some((n) => n.id === filteredNodeId)) return graph;
-    return connectedSubgraph(graph, filteredNodeId);
-  }, [graph, filteredNodeId]);
+    let g: SnapshotGraph = graph;
+    if (filteredNodeId && graph.nodes.some((n) => n.id === filteredNodeId)) {
+      g = connectedSubgraph(g, filteredNodeId);
+    }
+    return filterHiddenKinds(g, hiddenKinds);
+  }, [graph, filteredNodeId, hiddenKinds]);
 
   const searchResults = useMemo(() => {
     if (!graph) return [];
@@ -214,6 +319,9 @@ export function App() {
           selectedEdge={selectedEdge}
           searchQuery={graphSearchQuery}
           searchResults={searchResults}
+          allKinds={allKinds}
+          hiddenKinds={hiddenKinds}
+          onToggleKind={toggleKind}
           onSearchQueryChange={setGraphSearchQuery}
           onSelectSearchResult={handleSelectSearchResult}
           onSelectNode={handleSelectGraphNode}

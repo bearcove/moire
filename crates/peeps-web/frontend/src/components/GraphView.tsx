@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -15,9 +15,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
-import { Graph as GraphIcon, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { Graph as GraphIcon, MagnifyingGlass, X, Funnel, CaretDown } from "@phosphor-icons/react";
 import type { SnapshotGraph, SnapshotEdge } from "../types";
-import { PeepsNode, processColor, estimateNodeHeight, type NodeData } from "./NodeCards";
+import { PeepsNode, processColor, estimateNodeHeight, kindMeta, type NodeData } from "./NodeCards";
 
 const elkOptions = {
   "elk.algorithm": "layered",
@@ -168,6 +168,9 @@ interface GraphViewProps {
   selectedEdge: SnapshotEdge | null;
   searchQuery: string;
   searchResults: SnapshotGraph["nodes"];
+  allKinds: string[];
+  hiddenKinds: Set<string>;
+  onToggleKind: (kind: string) => void;
   onSearchQueryChange: (value: string) => void;
   onSelectSearchResult: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
@@ -276,6 +279,69 @@ function GraphFlow({
   );
 }
 
+function KindFilterDropdown({
+  allKinds,
+  hiddenKinds,
+  onToggleKind,
+}: {
+  allKinds: string[];
+  hiddenKinds: Set<string>;
+  onToggleKind: (kind: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as globalThis.Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const hiddenCount = allKinds.filter((k) => hiddenKinds.has(k)).length;
+
+  return (
+    <div className="kind-filter-dropdown" ref={ref}>
+      <button
+        className={`kind-filter-trigger${hiddenCount > 0 ? " kind-filter-trigger--active" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Funnel size={12} weight="bold" />
+        <span>Node types</span>
+        {hiddenCount > 0 && (
+          <span className="kind-filter-badge">{hiddenCount} hidden</span>
+        )}
+        <CaretDown size={10} weight="bold" className={`kind-filter-caret${open ? " kind-filter-caret--open" : ""}`} />
+      </button>
+      {open && (
+        <div className="kind-filter-menu">
+          {allKinds.map((kind) => {
+            const meta = kindMeta[kind];
+            const checked = !hiddenKinds.has(kind);
+            return (
+              <label key={kind} className="kind-filter-item">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggleKind(kind)}
+                  className="kind-filter-checkbox"
+                />
+                <span className="kind-filter-icon">{meta?.icon ?? <Funnel size={14} weight="bold" />}</span>
+                <span className="kind-filter-name">{meta?.displayName ?? kind}</span>
+                <span className="kind-filter-kind">{kind}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GraphView({
   graph,
   fullGraph,
@@ -284,6 +350,9 @@ export function GraphView({
   selectedEdge,
   searchQuery,
   searchResults,
+  allKinds,
+  hiddenKinds,
+  onToggleKind,
   onSearchQueryChange,
   onSelectSearchResult,
   onSelectNode,
@@ -349,6 +418,13 @@ export function GraphView({
           </div>
         )}
       </div>
+      {allKinds.length > 0 && (
+        <KindFilterDropdown
+          allKinds={allKinds}
+          hiddenKinds={hiddenKinds}
+          onToggleKind={onToggleKind}
+        />
+      )}
       <div className="react-flow-wrapper">
         {graph && graph.nodes.length > 0 ? (
           <ReactFlowProvider>

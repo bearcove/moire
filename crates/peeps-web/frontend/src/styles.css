@@ -486,6 +486,110 @@ body {
     text-overflow: ellipsis;
 }
 
+/* ── Kind filter dropdown ─────────────────────────────────── */
+
+.kind-filter-dropdown {
+    position: relative;
+    padding: 4px 10px 6px;
+    border-bottom: 1px solid light-dark(#ebebf0, #2a2a2e);
+}
+
+.kind-filter-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 6px;
+    background: light-dark(#f0f0f5, #2a2a2e);
+    color: light-dark(#1d1d1f, #e5e5e7);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.kind-filter-trigger:hover {
+    background: light-dark(#e5e5ea, #3a3a3e);
+}
+
+.kind-filter-trigger--active {
+    border-color: light-dark(#0071e3, #0a84ff);
+    color: light-dark(#0071e3, #5ac8fa);
+}
+
+.kind-filter-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 0 5px;
+    border-radius: 3px;
+    background: light-dark(#fff3cd, #3a2f1a);
+    color: light-dark(#856404, #ffc107);
+}
+
+.kind-filter-caret {
+    transition: transform 0.15s ease;
+}
+
+.kind-filter-caret--open {
+    transform: rotate(180deg);
+}
+
+.kind-filter-menu {
+    position: absolute;
+    top: 100%;
+    left: 10px;
+    z-index: 50;
+    margin-top: 2px;
+    min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 8px;
+    background: light-dark(#fff, #1f1f22);
+    box-shadow: 0 4px 16px light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5));
+    padding: 4px 0;
+}
+
+.kind-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.kind-filter-item:hover {
+    background: light-dark(#f7f7fa, #27272c);
+}
+
+.kind-filter-checkbox {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    accent-color: light-dark(#0071e3, #0a84ff);
+    cursor: pointer;
+}
+
+.kind-filter-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.kind-filter-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.kind-filter-kind {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: light-dark(#8e8e93, #636366);
+}
+
 .react-flow__node.selected .card {
     border-color: light-dark(#0071e3, #0a84ff);
     box-shadow: 0 0 0 2px light-dark(rgba(0, 113, 227, 0.25), rgba(10, 132, 255, 0.35));
