@@ -77,6 +77,11 @@ impl DiagnosticInterval {
     pub fn period(&self) -> Duration {
         self.inner.period()
     }
+
+    /// Sets the missed tick behavior.
+    pub fn set_missed_tick_behavior(&mut self, behavior: tokio::time::MissedTickBehavior) {
+        self.inner.set_missed_tick_behavior(behavior);
+    }
 }
 
 /// Diagnostic wrapper for `tokio::time::interval`.
