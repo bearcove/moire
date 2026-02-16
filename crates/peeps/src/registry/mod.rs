@@ -16,10 +16,12 @@ mod enabled;
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::{
     edge, register_node, remove_edge, remove_edges_from, remove_edges_to, remove_node,
+    touch_edge, remove_touch_edge, remove_touch_edges_from, remove_touch_edges_to,
 };
 #[cfg(feature = "diagnostics")]
 pub use enabled::{
     edge, register_node, remove_edge, remove_edges_from, remove_edges_to, remove_node,
+    touch_edge, remove_touch_edge, remove_touch_edges_from, remove_touch_edges_to,
 };
 
 // Re-export crate-internal items

@@ -144,9 +144,28 @@ impl NodeKind {
     }
 }
 
+/// Edge kind enumeration for canonical graph edges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Facet)]
+#[repr(u8)]
+pub enum EdgeKind {
+    /// Current progress dependency: src is blocked waiting on dst.
+    Needs,
+    /// Historical interaction: src has interacted with dst at least once
+    /// during its lifetime. Retained until either endpoint disappears.
+    Touches,
+}
+
+impl EdgeKind {
+    /// Return a string representation suitable for storage.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EdgeKind::Needs => "needs",
+            EdgeKind::Touches => "touches",
+        }
+    }
+}
+
 /// Canonical edge row emitted by instrumentation wrappers.
-///
-/// All edges use kind `"needs"`. No inferred/derived/heuristic edges.
 #[derive(Debug, Clone, Facet)]
 pub struct Edge {
     /// Source node ID.
@@ -154,6 +173,9 @@ pub struct Edge {
 
     /// Destination node ID.
     pub dst: String,
+
+    /// Edge kind.
+    pub kind: EdgeKind,
 
     /// JSON-encoded edge attributes (reserved for future use).
     pub attrs_json: String,

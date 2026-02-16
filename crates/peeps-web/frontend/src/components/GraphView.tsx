@@ -90,13 +90,20 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
   const nodeIds = new Set(graph.nodes.map((n) => n.id));
   const edges: Edge[] = graph.edges
     .filter((e) => nodeIds.has(e.src_id) && nodeIds.has(e.dst_id))
-    .map((e) => ({
-      id: `${e.src_id}->${e.dst_id}`,
-      source: e.src_id,
-      target: e.dst_id,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-      style: { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
-    }));
+    .map((e) => {
+      const isTouches = e.kind === "touches";
+      return {
+        id: `${e.src_id}->${e.dst_id}:${e.kind}`,
+        source: e.src_id,
+        target: e.dst_id,
+        markerEnd: { type: MarkerType.ArrowClosed, width: isTouches ? 8 : 12, height: isTouches ? 8 : 12 },
+        style: isTouches
+          ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
+          : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
+        label: isTouches ? "touches" : undefined,
+        labelStyle: isTouches ? { fontSize: 9, fill: "light-dark(#a1a1a6, #636366)" } : undefined,
+      };
+    });
 
   return { nodes, edges };
 }

@@ -156,6 +156,8 @@ impl<F> Drop for PeepableFuture<F> {
         unregister_future(&self.node_id);
         // Clean up any canonical edges this future emitted.
         crate::registry::remove_edges_from(&self.node_id);
+        // Clean up any touch edges from this future.
+        crate::registry::remove_touch_edges_from(&self.node_id);
         // Clean up any await edge to this future.
         if let Some(prev) = self.await_edge_src.take() {
             crate::registry::remove_edge(&prev, &self.node_id);

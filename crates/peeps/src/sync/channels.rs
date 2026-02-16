@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use peeps_types::{Edge, Node, NodeKind};
+use peeps_types::{Edge, EdgeKind, Node, NodeKind};
 
 // ── WaitEdge ───────────────────────────────────────────
 //
@@ -204,6 +204,9 @@ impl<T> Sender<T> {
         if result.is_ok() {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
             self.info.track_send_watermark();
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.tx_node_id);
+            });
         }
         result
     }
@@ -216,6 +219,9 @@ impl<T> Sender<T> {
         if result.is_ok() {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
             self.info.track_send_watermark();
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.tx_node_id);
+            });
         }
         result
     }
@@ -251,6 +257,9 @@ impl<T> Receiver<T> {
         self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.rx_node_id);
+            });
         }
         result
     }
@@ -259,6 +268,9 @@ impl<T> Receiver<T> {
         let result = self.inner.try_recv();
         if result.is_ok() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.rx_node_id);
+            });
         }
         result
     }
@@ -339,6 +351,9 @@ impl<T> UnboundedSender<T> {
         if result.is_ok() {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
             self.info.track_send_watermark();
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.tx_node_id);
+            });
         }
         result
     }
@@ -366,6 +381,9 @@ impl<T> UnboundedReceiver<T> {
         self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.rx_node_id);
+            });
         }
         result
     }
@@ -374,6 +392,9 @@ impl<T> UnboundedReceiver<T> {
         let result = self.inner.try_recv();
         if result.is_ok() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.rx_node_id);
+            });
         }
         result
     }
@@ -450,6 +471,9 @@ impl<T> OneshotSender<T> {
         let result = inner.send(value);
         if result.is_ok() {
             self.info.state.store(ONESHOT_SENT, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.tx_node_id);
+            });
         }
         result
     }
@@ -485,6 +509,9 @@ impl<T> OneshotReceiver<T> {
         let result = WaitEdge::new(&self.info.rx_node_id, &mut self.inner).await;
         if result.is_ok() {
             self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.rx_node_id);
+            });
         }
         result
     }
@@ -495,6 +522,9 @@ impl<T> OneshotReceiver<T> {
         let result = self.inner.try_recv();
         if result.is_ok() {
             self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.rx_node_id);
+            });
         }
         result
     }
@@ -543,6 +573,9 @@ impl<T> WatchSender<T> {
         let result = self.inner.send(value);
         if result.is_ok() {
             self.info.changes.fetch_add(1, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.tx_node_id);
+            });
         }
         result
     }
@@ -550,12 +583,18 @@ impl<T> WatchSender<T> {
     pub fn send_modify<F: FnOnce(&mut T)>(&self, modify: F) {
         self.inner.send_modify(modify);
         self.info.changes.fetch_add(1, Ordering::Relaxed);
+        crate::stack::with_top(|src| {
+            crate::registry::touch_edge(src, &self.info.tx_node_id);
+        });
     }
 
     pub fn send_if_modified<F: FnOnce(&mut T) -> bool>(&self, modify: F) -> bool {
         let modified = self.inner.send_if_modified(modify);
         if modified {
             self.info.changes.fetch_add(1, Ordering::Relaxed);
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self.info.tx_node_id);
+            });
         }
         modified
     }
@@ -598,7 +637,13 @@ impl<T> WatchReceiver<T> {
     pub async fn changed(
         &mut self,
     ) -> Result<(), tokio::sync::watch::error::RecvError> {
-        WaitEdge::new(&self._info.rx_node_id, self.inner.changed()).await
+        let result = WaitEdge::new(&self._info.rx_node_id, self.inner.changed()).await;
+        if result.is_ok() {
+            crate::stack::with_top(|src| {
+                crate::registry::touch_edge(src, &self._info.rx_node_id);
+            });
+        }
+        result
     }
 
     pub fn borrow(&self) -> tokio::sync::watch::Ref<'_, T> {
@@ -746,6 +791,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             graph.edges.push(Edge {
                 src: info.tx_node_id.clone(),
                 dst: info.rx_node_id.clone(),
+                kind: EdgeKind::Needs,
                 attrs_json: "{}".to_string(),
             });
         }
@@ -829,6 +875,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             graph.edges.push(Edge {
                 src: info.tx_node_id.clone(),
                 dst: info.rx_node_id.clone(),
+                kind: EdgeKind::Needs,
                 attrs_json: "{}".to_string(),
             });
         }
@@ -903,6 +950,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             graph.edges.push(Edge {
                 src: info.tx_node_id.clone(),
                 dst: info.rx_node_id.clone(),
+                kind: EdgeKind::Needs,
                 attrs_json: "{}".to_string(),
             });
         }

@@ -522,8 +522,8 @@ fn persist_reply(
         for edge in &graph.edges {
             tx.execute(
                 "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
-                 VALUES (?1, ?2, ?3, 'needs', ?4)",
-                params![snapshot_id, edge.src, edge.dst, edge.attrs_json],
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![snapshot_id, edge.src, edge.dst, edge.kind.as_str(), edge.attrs_json],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -592,6 +592,21 @@ pub(crate) fn run_retention(db_path: &PathBuf) -> Result<(), String> {
 
 fn init_db(path: &str) -> rusqlite::Result<()> {
     let conn = Connection::open(path)?;
+
+    // Migrate: if the edges table exists with the old primary key (without kind),
+    // drop and recreate it. This is safe because snapshot data is ephemeral.
+    let needs_migration: bool = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='edges'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .is_some_and(|sql| !sql.contains("src_id, dst_id, kind)"));
+    if needs_migration {
+        conn.execute_batch("DROP TABLE IF EXISTS edges;")?;
+    }
+
     conn.execute_batch(
         "
         PRAGMA journal_mode=WAL;
@@ -629,9 +644,9 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
             snapshot_id INTEGER NOT NULL,
             src_id TEXT NOT NULL,
             dst_id TEXT NOT NULL,
-            kind TEXT NOT NULL CHECK (kind = 'needs'),
+            kind TEXT NOT NULL CHECK (kind IN ('needs', 'touches')),
             attrs_json TEXT NOT NULL,
-            PRIMARY KEY (snapshot_id, src_id, dst_id)
+            PRIMARY KEY (snapshot_id, src_id, dst_id, kind)
         );
 
         CREATE TABLE IF NOT EXISTS unresolved_edges (

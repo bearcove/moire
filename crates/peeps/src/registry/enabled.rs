@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Instant;
 
-use peeps_types::{Edge, GraphSnapshot, Node};
+use peeps_types::{Edge, EdgeKind, GraphSnapshot, Node};
 
 // ── Process metadata ─────────────────────────────────────
 
@@ -19,6 +19,14 @@ static PROCESS_INFO: OnceLock<ProcessInfo> = OnceLock::new();
 // These represent the current wait graph: which futures are waiting on which resources.
 
 static EDGES: LazyLock<Mutex<HashSet<(String, String)>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+// ── Historical interaction edge storage ──────────────────
+//
+// Stores `touches` edges: "src has interacted with dst at least once".
+// Retained until either endpoint disappears.
+
+static TOUCH_EDGES: LazyLock<Mutex<HashSet<(String, String)>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
 // ── External node storage ────────────────────────────────
@@ -95,6 +103,38 @@ pub fn remove_edges_to(dst: &str) {
     EDGES.lock().unwrap().retain(|(_, d)| d != dst);
 }
 
+// ── Touch edge tracking ─────────────────────────────────
+
+/// Record a `touches` edge from `src` to `dst`.
+///
+/// Indicates that `src` has interacted with `dst` at least once.
+/// The edge is retained until either endpoint disappears.
+/// Deduplicates: calling this multiple times is a no-op.
+pub fn touch_edge(src: &str, dst: &str) {
+    TOUCH_EDGES
+        .lock()
+        .unwrap()
+        .insert((src.to_string(), dst.to_string()));
+}
+
+/// Remove a previously recorded touch edge.
+pub fn remove_touch_edge(src: &str, dst: &str) {
+    TOUCH_EDGES
+        .lock()
+        .unwrap()
+        .remove(&(src.to_string(), dst.to_string()));
+}
+
+/// Remove all touch edges originating from `src`.
+pub fn remove_touch_edges_from(src: &str) {
+    TOUCH_EDGES.lock().unwrap().retain(|(s, _)| s != src);
+}
+
+/// Remove all touch edges pointing to `dst`.
+pub fn remove_touch_edges_to(dst: &str) {
+    TOUCH_EDGES.lock().unwrap().retain(|(_, d)| d != dst);
+}
+
 // ── External node registration ──────────────────────────
 
 /// Register a node in the global registry.
@@ -114,11 +154,14 @@ pub fn register_node(node: Node) {
 
 /// Remove a node from the global registry.
 ///
-/// Also removes all edges to/from this node.
+/// Also removes all edges (needs and touches) to/from this node.
 pub fn remove_node(id: &str) {
     EXTERNAL_NODES.lock().unwrap().remove(id);
-    let mut edges = EDGES.lock().unwrap();
-    edges.retain(|(s, d)| s != id && d != id);
+    EDGES.lock().unwrap().retain(|(s, d)| s != id && d != id);
+    TOUCH_EDGES
+        .lock()
+        .unwrap()
+        .retain(|(s, d)| s != id && d != id);
 }
 
 fn inject_elapsed_ns(attrs_json: &str, elapsed_ns: u64) -> String {
@@ -166,16 +209,24 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
 
     let now = Instant::now();
 
-    let canonical_edges: Vec<Edge> = EDGES
+    let mut canonical_edges: Vec<Edge> = EDGES
         .lock()
         .unwrap()
         .iter()
         .map(|(src, dst)| Edge {
             src: src.clone(),
             dst: dst.clone(),
+            kind: EdgeKind::Needs,
             attrs_json: "{}".to_string(),
         })
         .collect();
+
+    canonical_edges.extend(TOUCH_EDGES.lock().unwrap().iter().map(|(src, dst)| Edge {
+        src: src.clone(),
+        dst: dst.clone(),
+        kind: EdgeKind::Touches,
+        attrs_json: "{}".to_string(),
+    }));
 
     let external_nodes: Vec<Node> = EXTERNAL_NODES
         .lock()

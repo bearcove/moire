@@ -26,6 +26,18 @@ pub fn remove_edges_from(_src: &str) {}
 pub fn remove_edges_to(_dst: &str) {}
 
 #[inline(always)]
+pub fn touch_edge(_src: &str, _dst: &str) {}
+
+#[inline(always)]
+pub fn remove_touch_edge(_src: &str, _dst: &str) {}
+
+#[inline(always)]
+pub fn remove_touch_edges_from(_src: &str) {}
+
+#[inline(always)]
+pub fn remove_touch_edges_to(_dst: &str) {}
+
+#[inline(always)]
 pub fn register_node(_node: Node) {}
 
 #[inline(always)]
