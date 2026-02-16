@@ -295,6 +295,67 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     crate::locks::emit_into_graph(&mut graph);
     crate::sync::emit_into_graph(&mut graph);
 
+    let elapsed = now.elapsed();
+
+    let mut needs = 0u32;
+    let mut touches = 0u32;
+    let mut spawned = 0u32;
+    for e in &graph.edges {
+        match e.kind {
+            EdgeKind::Needs => needs += 1,
+            EdgeKind::Touches => touches += 1,
+            EdgeKind::Spawned => spawned += 1,
+        }
+    }
+
+    let mut futures = 0u32;
+    let mut locks = 0u32;
+    let mut tx = 0u32;
+    let mut rx = 0u32;
+    let mut remote_tx = 0u32;
+    let mut remote_rx = 0u32;
+    let mut requests = 0u32;
+    let mut responses = 0u32;
+    let mut join_sets = 0u32;
+    let mut semaphores = 0u32;
+    let mut once_cells = 0u32;
+    for n in &graph.nodes {
+        match n.kind {
+            peeps_types::NodeKind::Future => futures += 1,
+            peeps_types::NodeKind::Lock => locks += 1,
+            peeps_types::NodeKind::Tx => tx += 1,
+            peeps_types::NodeKind::Rx => rx += 1,
+            peeps_types::NodeKind::RemoteTx => remote_tx += 1,
+            peeps_types::NodeKind::RemoteRx => remote_rx += 1,
+            peeps_types::NodeKind::Request => requests += 1,
+            peeps_types::NodeKind::Response => responses += 1,
+            peeps_types::NodeKind::JoinSet => join_sets += 1,
+            peeps_types::NodeKind::Semaphore => semaphores += 1,
+            peeps_types::NodeKind::OnceCell => once_cells += 1,
+        }
+    }
+
+    tracing::warn!(
+        needs,
+        touches,
+        spawned,
+        futures,
+        locks,
+        tx,
+        rx,
+        remote_tx,
+        remote_rx,
+        requests,
+        responses,
+        join_sets,
+        semaphores,
+        once_cells,
+        nodes = graph.nodes.len(),
+        edges = graph.edges.len(),
+        elapsed_us = elapsed.as_micros() as u64,
+        "emit_graph completed"
+    );
+
     graph
 }
 
