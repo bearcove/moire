@@ -15,6 +15,10 @@ import {
   X as XIcon,
   Warning,
   Ghost,
+  Plugs,
+  WifiHigh,
+  ArrowFatLineRight,
+  ArrowFatLineLeft,
 } from "@phosphor-icons/react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 
@@ -564,6 +568,43 @@ function ResponseCard({ data }: NodeProps<Node<NodeData>>) {
   );
 }
 
+function NetWaitCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, kind, process, attrs } = data;
+  const op = attr(attrs, "net.op") ?? kind;
+  const endpoint = attr(attrs, "net.endpoint") ?? "";
+  const transport = attr(attrs, "net.transport") ?? "";
+  const elapsedNs = numAttr(attrs, "elapsed_ns");
+
+  const iconMap: Record<string, React.ReactNode> = {
+    net_connect: <Plugs size={14} weight="bold" />,
+    net_accept: <WifiHigh size={14} weight="bold" />,
+    net_readable: <ArrowFatLineLeft size={14} weight="bold" />,
+    net_writable: <ArrowFatLineRight size={14} weight="bold" />,
+  };
+
+  const displayOp = op.replace("net_", "").toUpperCase();
+
+  return (
+    <CardShell
+      kind={kind}
+      process={process}
+      label={endpoint || label}
+      icon={iconMap[kind] ?? <Plugs size={14} weight="bold" />}
+    >
+      <div className="card-row">
+        <StatePill state={displayOp} variant="neutral" />
+        <span className="badge">{transport}</span>
+      </div>
+      {elapsedNs != null && (
+        <div className="card-row">
+          <span className="card-dim">waited</span>
+          <DurationBadge ns={elapsedNs} warnNs={1_000_000_000} critNs={5_000_000_000} />
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
 function GhostCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, attrs } = data;
   const reason = attr(attrs, "reason") ?? "unresolved";
@@ -644,7 +685,43 @@ const cardByKind: Record<string, (props: NodeProps<Node<NodeData>>) => React.Rea
   once_cell: OnceCellCard,
   request: RequestCard,
   response: ResponseCard,
+  net_connect: NetWaitCard,
+  net_accept: NetWaitCard,
+  net_readable: NetWaitCard,
+  net_writable: NetWaitCard,
   ghost: GhostCard,
+};
+
+/** Icon + human-readable name for each node kind (used by the filter dropdown). */
+export const kindMeta: Record<string, { icon: React.ReactNode; displayName: string }> = {
+  future:    { icon: <Timer size={14} weight="bold" />,            displayName: "Future" },
+  lock:      { icon: <Lock size={14} weight="bold" />,             displayName: "Mutex" },
+  mutex:     { icon: <Lock size={14} weight="bold" />,             displayName: "Mutex" },
+  rwlock:    { icon: <LockOpen size={14} weight="bold" />,         displayName: "RwLock" },
+  tx:        { icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "Channel Tx" },
+  rx:        { icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "Channel Rx" },
+  channel_tx:{ icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "Channel Tx" },
+  channel_rx:{ icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "Channel Rx" },
+  mpsc_tx:   { icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "MPSC Tx" },
+  mpsc_rx:   { icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "MPSC Rx" },
+  remote_tx: { icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "Remote Tx" },
+  remote_rx: { icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "Remote Rx" },
+  oneshot:   { icon: <ToggleRight size={14} weight="bold" />,      displayName: "Oneshot" },
+  oneshot_tx:{ icon: <ToggleRight size={14} weight="bold" />,      displayName: "Oneshot Tx" },
+  oneshot_rx:{ icon: <ToggleRight size={14} weight="bold" />,      displayName: "Oneshot Rx" },
+  watch:     { icon: <Eye size={14} weight="bold" />,              displayName: "Watch" },
+  watch_tx:  { icon: <Eye size={14} weight="bold" />,              displayName: "Watch Tx" },
+  watch_rx:  { icon: <Eye size={14} weight="bold" />,              displayName: "Watch Rx" },
+  semaphore: { icon: <Gauge size={14} weight="bold" />,            displayName: "Semaphore" },
+  oncecell:  { icon: <ToggleRight size={14} weight="bold" />,      displayName: "OnceCell" },
+  once_cell: { icon: <ToggleRight size={14} weight="bold" />,      displayName: "OnceCell" },
+  request:   { icon: <PaperPlaneTilt size={14} weight="bold" />,   displayName: "Request" },
+  response:     { icon: <ArrowBendDownLeft size={14} weight="bold" />,displayName: "Response" },
+  net_connect:  { icon: <Plugs size={14} weight="bold" />,           displayName: "Connect" },
+  net_accept:   { icon: <WifiHigh size={14} weight="bold" />,        displayName: "Accept" },
+  net_readable: { icon: <ArrowFatLineLeft size={14} weight="bold" />,displayName: "Readable" },
+  net_writable: { icon: <ArrowFatLineRight size={14} weight="bold" />,displayName: "Writable" },
+  ghost:        { icon: <Ghost size={14} weight="bold" />,           displayName: "Ghost" },
 };
 
 export const PeepsNode = memo((props: NodeProps<Node<NodeData>>) => {
@@ -680,6 +757,11 @@ export function estimateNodeHeight(kind: string): number {
     case "oncecell":
     case "once_cell":
       return 90;
+    case "net_connect":
+    case "net_accept":
+    case "net_readable":
+    case "net_writable":
+      return 100;
     case "ghost":
       return 100;
     default:
