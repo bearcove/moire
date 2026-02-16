@@ -714,11 +714,11 @@ export function ResourcesPanel({
             <button type="button" className="resources-sort" onClick={() => toggleSort("connection")}>
               Link{sortArrow("connection")}
             </button>
-            <span>Process</span>
+            <span>Issues / Details</span>
             <button type="button" className="resources-sort" onClick={() => toggleSort("pending")}>
-              Pending req{sortArrow("pending")}
+              Req{sortArrow("pending")}
             </button>
-            <span>Pending resp</span>
+            <span>Resp</span>
             <button type="button" className="resources-sort" onClick={() => toggleSort("last_recv")}>
               Last recv{sortArrow("last_recv")}
             </button>
@@ -850,10 +850,10 @@ export function ResourcesPanel({
                         "Both directions responded"
                       )}
                     </div>
-                    <span />
-                    <span />
-                    <span />
-                    <span />
+                    <span className="resources-cell-mono resources-mini-value">{duplexRow.pendingRequests}</span>
+                    <span className="resources-cell-mono resources-mini-value">{duplexRow.pendingResponses}</span>
+                    <span className="resources-cell-mono resources-mini-value">{formatAge(duplexRow.lastRecvAgeNs)}</span>
+                    <span className="resources-cell-mono resources-mini-value">{formatAge(duplexRow.lastSentAgeNs)}</span>
                   </div>
                   <div className="resources-duplex-legs">
                     {duplexRow.legs.map((leg) => {
@@ -939,7 +939,6 @@ export function ResourcesPanel({
                             ) : null}
                           </span>
                           <div className="resources-pending-cell">
-                            <span className="resources-mini-label">Req</span>
                             <button
                               type="button"
                               className={`resources-pending-btn ${leg.pendingRequestIds.length === 0 ? "resources-pending-btn--empty" : ""}`}
@@ -955,11 +954,10 @@ export function ResourcesPanel({
                               aria-label={`Pending requests for ${leg.connectionToken}`}
                               disabled={leg.pendingRequestIds.length === 0}
                             >
-                              {leg.pendingRequests}
+                              Req {leg.pendingRequests}
                             </button>
                           </div>
                           <div className="resources-pending-cell">
-                            <span className="resources-mini-label">Resp</span>
                             <button
                               type="button"
                               className={`resources-pending-btn ${leg.pendingResponseIds.length === 0 ? "resources-pending-btn--empty" : ""}`}
@@ -975,7 +973,7 @@ export function ResourcesPanel({
                               aria-label={`Pending responses for ${leg.connectionToken}`}
                               disabled={leg.pendingResponseIds.length === 0}
                             >
-                              {leg.pendingResponses}
+                              Resp {leg.pendingResponses}
                             </button>
                           </div>
                           <span className="resources-cell-mono">{formatAge(leg.lastRecvAgeNs)}</span>

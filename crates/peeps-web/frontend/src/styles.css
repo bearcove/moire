@@ -1038,7 +1038,7 @@ body {
 .resources-row-grid {
     display: grid;
     align-items: center;
-    grid-template-columns: 56px 1.2fr 1.45fr 64px 66px 72px 72px;
+    grid-template-columns: 56px 1.1fr 1.55fr 58px 58px 64px 64px;
     gap: 8px;
     width: 100%;
 }
@@ -1140,16 +1140,15 @@ body {
 .resources-pending-cell {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: 2px;
 }
 
-.resources-mini-label {
-    color: light-dark(#6e6e73, #a8a8ad);
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+.resources-mini-value {
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .resources-row--leg:last-child {
@@ -1319,7 +1318,7 @@ body {
     border-radius: 4px;
     padding: 2px 5px;
     font: inherit;
-    font-size: 10px;
+    font-size: 9px;
     min-width: 0;
     width: auto;
     line-height: 1.2;
