@@ -34,6 +34,14 @@ import {
 } from "@phosphor-icons/react";
 import { fetchTimelinePage } from "../api";
 import { isResourceKind } from "../resourceKinds";
+import {
+  CommonInspectorFields,
+  formatRelativeTimestampFromOrigin,
+  getCorrelation,
+  getCreatedAtNs,
+  getMethod,
+  resolveTimelineOriginNs,
+} from "./inspectorShared";
 import type {
   StuckRequest,
   SnapshotNode,
@@ -121,43 +129,6 @@ function attrFromMeta(attrs: Record<string, unknown>, key: string): string | und
     if (v != null && v !== "") return String(v);
   }
   return undefined;
-}
-
-function sourceLocationFromAttrs(attrs: Record<string, unknown>): string | null {
-  const keys = [
-    "ctx.location",
-    "source_location",
-    "source",
-    "location",
-  ];
-
-  for (const key of keys) {
-    const direct = attrs[key];
-    if (direct != null && String(direct).trim() !== "") return String(direct);
-  }
-
-  const meta = attrs["meta"];
-  if (meta && typeof meta === "object" && !Array.isArray(meta)) {
-    for (const key of keys) {
-      const fromMeta = (meta as Record<string, unknown>)[key];
-      if (fromMeta != null && String(fromMeta).trim() !== "") return String(fromMeta);
-    }
-  }
-
-  return null;
-}
-
-function sourceDisplayName(location: string): string {
-  const trimmed = location.trim();
-  if (trimmed === "") return location;
-
-  const match = trimmed.match(/^(.*[\\/])?([^\\/]+?):(\d+)(?::\d+)?$/);
-  if (match) {
-    return `${match[2]}:${match[3]}`;
-  }
-
-  const lastSlash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-  return lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed;
 }
 
 function rpcConnectionAttr(attrs: Record<string, unknown>): string | undefined {
@@ -531,70 +502,6 @@ function formatTimelineTimestamp(tsNs: number): string {
   }`;
 }
 
-function formatShortDurationNs(deltaNs: number): string {
-  const abs = Math.abs(deltaNs);
-  const sign = deltaNs >= 0 ? "+" : "-";
-  if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(3)}s`;
-  if (abs >= 1_000_000) return `${sign}${Math.round(abs / 1_000_000)}ms`;
-  return `${sign}${Math.round(abs / 1_000)}us`;
-}
-
-function normalizeToNanos(ts: number): number {
-  if (!Number.isFinite(ts) || ts <= 0) return ts;
-  // Heuristic unit normalization for mixed timestamp sources:
-  // s  (<1e11), ms (<1e14), us (<1e17), ns (otherwise).
-  if (ts < 100_000_000_000) return ts * 1_000_000_000;
-  if (ts < 100_000_000_000_000) return ts * 1_000_000;
-  if (ts < 100_000_000_000_000_000) return ts * 1_000;
-  return ts;
-}
-
-function nodeTimelineOriginNs(
-  kind: string,
-  attrs: Record<string, unknown>,
-  fallbackFirstEventTsNs: number | null,
-): number | null {
-  const requestStart = firstNumAttr(attrs, [
-    "request.queued_at_ns",
-    "request.started_at_ns",
-    "request.delivered_at_ns",
-    "started_at_ns",
-  ]);
-  const responseStart = firstNumAttr(attrs, [
-    "response.started_at_ns",
-    "response.created_at_ns",
-    "started_at_ns",
-  ]);
-  const genericCreated = firstNumAttr(attrs, [
-    "created_at",
-    "created_at_ns",
-    "opened_at_ns",
-    "request.created_at_ns",
-    "response.created_at_ns",
-    "ts_ns",
-  ]);
-
-  const fallback = fallbackFirstEventTsNs != null ? normalizeToNanos(fallbackFirstEventTsNs) : null;
-  const candidate =
-    kind === "request" && requestStart != null
-      ? normalizeToNanos(requestStart)
-      : kind === "response" && responseStart != null
-        ? normalizeToNanos(responseStart)
-        : genericCreated != null
-          ? normalizeToNanos(genericCreated)
-          : null;
-
-  if (candidate == null) return fallback;
-  if (fallback == null) return candidate;
-
-  // If candidate is clearly bogus for this timeline window, fall back to first event.
-  const deltaNs = fallback - candidate;
-  if (deltaNs < 0 || deltaNs > 30 * 24 * 60 * 60 * 1_000_000_000) {
-    return fallback;
-  }
-  return candidate;
-}
-
 function compactPreviewValue(val: unknown): string {
   if (val == null) return "null";
   if (typeof val === "string") return val.length > 48 ? `${val.slice(0, 48)}…` : val;
@@ -652,20 +559,9 @@ function NodeDetail({
     );
   const DetailComponent = kindDetailMap[node.kind];
   const isFocused = filteredNodeId === node.id;
-  const method =
-    node.kind === "request" || node.kind === "response"
-      ? firstAttr(node.attrs, ["method", "request.method", "response.method"])
-      : undefined;
-  const correlationKey =
-    node.kind === "request" || node.kind === "response"
-      ? firstAttr(node.attrs, [
-          "correlation_key",
-          "request.correlation_key",
-          "response.correlation_key",
-        ])
-      : undefined;
+  const method = getMethod(node.attrs);
+  const correlationKey = getCorrelation(node.attrs);
   const deadlockReason = attr(node.attrs, "_ui_deadlock_reason");
-  const sourceLocation = sourceLocationFromAttrs(node.attrs);
   const blockers =
     graph?.edges
       .filter((e) => e.kind === "needs" && e.src_id === node.id)
@@ -785,7 +681,7 @@ function NodeDetail({
 
   const timelineFirstEventTsNs =
     timelineRows.length > 0 ? Math.min(...timelineRows.map((row) => row.ts_ns)) : null;
-  const timelineOriginNs = nodeTimelineOriginNs(node.kind, node.attrs, timelineFirstEventTsNs);
+  const timelineOriginNs = resolveTimelineOriginNs(node.attrs, timelineFirstEventTsNs);
 
   return (
     <div className="inspect-node">
@@ -797,24 +693,20 @@ function NodeDetail({
             {(() => {
               if (node.kind === "request") {
                 return (
-                  firstAttr(node.attrs, ["method", "request.method"]) ??
+                  method ??
                   firstAttr(node.attrs, ["label", "name"]) ??
                   node.id
                 );
               }
               if (node.kind === "response") {
                 return (
-                  firstAttr(node.attrs, ["method", "response.method", "request.method"]) ??
+                  method ??
                   firstAttr(node.attrs, ["label", "name"]) ??
-                  firstAttr(node.attrs, [
-                    "correlation_key",
-                    "response.correlation_key",
-                    "request.correlation_key",
-                  ]) ??
+                  correlationKey ??
                   node.id
                 );
               }
-              return firstAttr(node.attrs, ["label", "name", "method"]) ?? node.id;
+              return firstAttr(node.attrs, ["label", "name"]) ?? method ?? node.id;
             })()}
           </div>
         </div>
@@ -836,46 +728,7 @@ function NodeDetail({
         </div>
       )}
 
-      <div className="inspect-section">
-        <div className="inspect-row">
-          <span className="inspect-key">ID</span>
-          <span className="inspect-val inspect-val--copyable">
-            <span className="inspect-val-copy-text" title={node.id}>
-              {node.id}
-            </span>
-            <CopyIdButton id={node.id} />
-          </span>
-        </div>
-        {method && (
-          <div className="inspect-row">
-            <span className="inspect-key">Method</span>
-            <span className="inspect-val inspect-val--mono">{method}</span>
-          </div>
-        )}
-        {correlationKey && (
-          <div className="inspect-row">
-            <span className="inspect-key">Correlation</span>
-            <span className="inspect-val inspect-val--mono">{correlationKey}</span>
-          </div>
-        )}
-        <div className="inspect-row">
-          <span className="inspect-key">Process</span>
-          <span className="inspect-val">{node.process}</span>
-        </div>
-        {sourceLocation && (
-          <div className="inspect-row">
-            <span className="inspect-key">Source</span>
-            <a
-              className="inspect-val inspect-val--mono inspect-link"
-              href={`zed://file/${encodeURIComponent(sourceLocation)}`}
-              title={sourceLocation}
-            >
-              <ArrowSquareOut size={12} weight="bold" className="inspect-link-icon" />
-              {sourceDisplayName(sourceLocation)}
-            </a>
-          </div>
-        )}
-      </div>
+      <CommonInspectorFields id={node.id} process={node.process} attrs={node.attrs} />
 
       {(uniqueBlockers.length > 0 || uniqueDependents.length > 0) && (
         <div className="inspect-section">
@@ -997,12 +850,12 @@ function NodeDetail({
                     <span
                       className="inspect-timeline-ts"
                       title={`at ${formatTimelineTimestamp(row.ts_ns)}${
-                        timelineOriginNs != null ? `\nfrom node start: ${formatShortDurationNs(row.ts_ns - timelineOriginNs)}` : ""
+                        timelineOriginNs != null
+                          ? `\nfrom node start: ${formatRelativeTimestampFromOrigin(row.ts_ns, timelineOriginNs)}`
+                          : ""
                       }`}
                     >
-                      {timelineOriginNs != null
-                        ? formatShortDurationNs(row.ts_ns - timelineOriginNs)
-                        : formatTimelineTimestamp(row.ts_ns)}
+                      {formatRelativeTimestampFromOrigin(row.ts_ns, timelineOriginNs)}
                     </span>
                     <span
                       className={`inspect-pill inspect-pill--${
@@ -1660,21 +1513,12 @@ function OnceCellDetail({ attrs }: DetailProps) {
 }
 
 function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
-  const method = firstAttr(attrs, ["method", "request.method"]);
   const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
   const elapsedNs = requestElapsedNs(attrs, status);
-  const process = firstAttr(attrs, ["process", "request.process"]);
   const connection = rpcConnectionAttr(attrs);
-  const correlationKey = firstAttr(attrs, ["correlation_key", "request.correlation_key"]);
 
   return (
     <>
-      {method && (
-        <div className="inspect-row">
-          <span className="inspect-key">Method</span>
-          <span className="inspect-val inspect-val--mono">{method}</span>
-        </div>
-      )}
       <div className="inspect-row">
         <span className="inspect-key">Status</span>
         <span
@@ -1693,12 +1537,6 @@ function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
           </span>
         </div>
       )}
-      {process && (
-        <div className="inspect-row">
-          <span className="inspect-key">Process</span>
-          <span className="inspect-val">{process}</span>
-        </div>
-      )}
       {connection && (
         <div className="inspect-row">
           <span className="inspect-key">Connection</span>
@@ -1709,12 +1547,6 @@ function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
           />
         </div>
       )}
-      {correlationKey && (
-        <div className="inspect-row">
-          <span className="inspect-key">Correlation</span>
-          <span className="inspect-val inspect-val--mono">{correlationKey}</span>
-        </div>
-      )}
     </>
   );
 }
@@ -1723,11 +1555,6 @@ function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
   const status = firstAttr(attrs, ["response.state", "status", "response.status"]) ?? "handling";
   const { elapsedNs, handledElapsedNs, queueWaitNs } = responseTiming(attrs, status);
   const connection = rpcConnectionAttr(attrs);
-  const correlationKey = firstAttr(attrs, [
-    "correlation_key",
-    "response.correlation_key",
-    "request.correlation_key",
-  ]);
 
   return (
     <>
@@ -1739,12 +1566,6 @@ function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
           {status.toUpperCase()}
         </span>
       </div>
-      {correlationKey && (
-        <div className="inspect-row">
-          <span className="inspect-key">Correlation</span>
-          <span className="inspect-val inspect-val--mono">{correlationKey}</span>
-        </div>
-      )}
       {connection && (
         <div className="inspect-row">
           <span className="inspect-key">Connection</span>
@@ -1787,7 +1608,7 @@ function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
 
 function formatOptionalTimestampNs(value?: number): string {
   if (value == null) return "—";
-  return formatTimelineTimestamp(normalizeToNanos(value));
+  return formatTimelineTimestamp(getCreatedAtNs({ created_at: value }) ?? value);
 }
 
 function ConnectionDetail({ attrs }: DetailProps) {
