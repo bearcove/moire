@@ -124,13 +124,24 @@ function attrFromMeta(attrs: Record<string, unknown>, key: string): string | und
 }
 
 function sourceLocationFromAttrs(attrs: Record<string, unknown>): string | null {
-  const direct = attrs["ctx.location"];
-  if (direct != null && String(direct).trim() !== "") return String(direct);
+  const keys = [
+    "ctx.location",
+    "source_location",
+    "source",
+    "location",
+  ];
+
+  for (const key of keys) {
+    const direct = attrs[key];
+    if (direct != null && String(direct).trim() !== "") return String(direct);
+  }
 
   const meta = attrs["meta"];
   if (meta && typeof meta === "object" && !Array.isArray(meta)) {
-    const fromMeta = (meta as Record<string, unknown>)["ctx.location"];
-    if (fromMeta != null && String(fromMeta).trim() !== "") return String(fromMeta);
+    for (const key of keys) {
+      const fromMeta = (meta as Record<string, unknown>)[key];
+      if (fromMeta != null && String(fromMeta).trim() !== "") return String(fromMeta);
+    }
   }
 
   return null;
@@ -554,12 +565,34 @@ function nodeTimelineOriginNs(
     "response.created_at_ns",
     "started_at_ns",
   ]);
-  const genericCreated = firstNumAttr(attrs, ["created_at_ns", "opened_at_ns", "ts_ns"]);
+  const genericCreated = firstNumAttr(attrs, [
+    "created_at",
+    "created_at_ns",
+    "opened_at_ns",
+    "request.created_at_ns",
+    "response.created_at_ns",
+    "ts_ns",
+  ]);
 
-  if (kind === "request" && requestStart != null) return normalizeToNanos(requestStart);
-  if (kind === "response" && responseStart != null) return normalizeToNanos(responseStart);
-  if (genericCreated != null) return normalizeToNanos(genericCreated);
-  return fallbackFirstEventTsNs != null ? normalizeToNanos(fallbackFirstEventTsNs) : null;
+  const fallback = fallbackFirstEventTsNs != null ? normalizeToNanos(fallbackFirstEventTsNs) : null;
+  const candidate =
+    kind === "request" && requestStart != null
+      ? normalizeToNanos(requestStart)
+      : kind === "response" && responseStart != null
+        ? normalizeToNanos(responseStart)
+        : genericCreated != null
+          ? normalizeToNanos(genericCreated)
+          : null;
+
+  if (candidate == null) return fallback;
+  if (fallback == null) return candidate;
+
+  // If candidate is clearly bogus for this timeline window, fall back to first event.
+  const deltaNs = fallback - candidate;
+  if (deltaNs < 0 || deltaNs > 30 * 24 * 60 * 60 * 1_000_000_000) {
+    return fallback;
+  }
+  return candidate;
 }
 
 function compactPreviewValue(val: unknown): string {
@@ -1257,7 +1290,6 @@ function FutureDetail({ attrs }: DetailProps) {
   const pollCount = firstNumAttr(attrs, ["poll_count"]) ?? pendingCount + readyCount;
   const lastPolledNs = firstNumAttr(attrs, ["last_polled_ns", "idle_ns"]);
   const inPollNs = firstNumAttr(attrs, ["poll_in_flight_ns", "in_poll_ns", "current_poll_ns"]);
-  const source = attr(attrs, "source_location");
 
   return (
     <>
@@ -1296,12 +1328,6 @@ function FutureDetail({ attrs }: DetailProps) {
           <span className={`inspect-val ${durationClass(inPollNs, 1_000_000_000, 5_000_000_000)}`}>
             {formatDuration(inPollNs)}
           </span>
-        </div>
-      )}
-      {source && (
-        <div className="inspect-row">
-          <span className="inspect-key">Source</span>
-          <span className="inspect-val inspect-val--mono">{source}</span>
         </div>
       )}
     </>
