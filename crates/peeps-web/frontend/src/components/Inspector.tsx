@@ -167,8 +167,10 @@ export function Inspector({
           ) : (
             <NodeDetail
               node={selectedNode}
+              graph={graph}
               filteredNodeId={filteredNodeId}
               onFocusNode={onFocusNode}
+              onSelectNode={onSelectNode}
             />
           )
         ) : (
@@ -379,12 +381,16 @@ function CopyIdButton({ id }: { id: string }) {
 
 function NodeDetail({
   node,
+  graph,
   filteredNodeId,
   onFocusNode,
+  onSelectNode,
 }: {
   node: SnapshotNode;
+  graph: SnapshotGraph | null;
   filteredNodeId: string | null;
   onFocusNode: (nodeId: string | null) => void;
+  onSelectNode: (nodeId: string) => void;
 }) {
   const channelKind =
     node.kind === "tx" ||
@@ -423,6 +429,17 @@ function NodeDetail({
           "response.correlation_key",
         ])
       : undefined;
+  const deadlockReason = attr(node.attrs, "_ui_deadlock_reason");
+  const blockers =
+    graph?.edges
+      .filter((e) => e.kind === "needs" && e.src_id === node.id)
+      .map((e) => e.dst_id) ?? [];
+  const dependents =
+    graph?.edges
+      .filter((e) => e.kind === "needs" && e.dst_id === node.id)
+      .map((e) => e.src_id) ?? [];
+  const uniqueBlockers = Array.from(new Set(blockers));
+  const uniqueDependents = Array.from(new Set(dependents));
 
   return (
     <div className="inspect-node">
@@ -467,6 +484,12 @@ function NodeDetail({
         </button>
       </div>
 
+      {deadlockReason && (
+        <div className="inspect-alert inspect-alert--crit">
+          Suspect deadlock signal: <code>{deadlockReason}</code>
+        </div>
+      )}
+
       <div className="inspect-section">
         <div className="inspect-row">
           <span className="inspect-key">ID</span>
@@ -496,6 +519,39 @@ function NodeDetail({
           <span className="inspect-val">{node.proc_key}</span>
         </div>
       </div>
+
+      {(uniqueBlockers.length > 0 || uniqueDependents.length > 0) && (
+        <div className="inspect-section">
+          <div className="inspect-row">
+            <span className="inspect-key">Wait blockers</span>
+            <span className={`inspect-val ${uniqueBlockers.length > 0 ? "inspect-val--crit" : ""}`}>
+              {uniqueBlockers.length}
+            </span>
+          </div>
+          {uniqueBlockers.slice(0, 8).map((id) => (
+            <div className="inspect-row" key={`blk:${id}`}>
+              <span className="inspect-key">waits on</span>
+              <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
+                {nodeLabel(graph, id)}
+              </button>
+            </div>
+          ))}
+          <div className="inspect-row">
+            <span className="inspect-key">Dependents</span>
+            <span className={`inspect-val ${uniqueDependents.length > 0 ? "inspect-val--warn" : ""}`}>
+              {uniqueDependents.length}
+            </span>
+          </div>
+          {uniqueDependents.slice(0, 8).map((id) => (
+            <div className="inspect-row" key={`dep:${id}`}>
+              <span className="inspect-key">blocking</span>
+              <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
+                {nodeLabel(graph, id)}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {DetailComponent && (
         <div className="inspect-section">
@@ -699,9 +755,16 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
 type DetailProps = { attrs: Record<string, unknown> };
 
 function FutureDetail({ attrs }: DetailProps) {
-  const state = attr(attrs, "state");
-  const pollCount = numAttr(attrs, "poll_count");
-  const lastPolledNs = numAttr(attrs, "last_polled_ns");
+  const state =
+    attr(attrs, "state") ??
+    ((firstNumAttr(attrs, ["poll_in_flight_ns", "in_poll_ns", "current_poll_ns"]) ?? 0) > 0
+      ? "polling"
+      : "waiting");
+  const pendingCount = numAttr(attrs, "pending_count") ?? 0;
+  const readyCount = numAttr(attrs, "ready_count") ?? 0;
+  const pollCount = firstNumAttr(attrs, ["poll_count"]) ?? pendingCount + readyCount;
+  const lastPolledNs = firstNumAttr(attrs, ["last_polled_ns", "idle_ns"]);
+  const inPollNs = firstNumAttr(attrs, ["poll_in_flight_ns", "in_poll_ns", "current_poll_ns"]);
   const source = attr(attrs, "source_location");
 
   return (
@@ -727,11 +790,19 @@ function FutureDetail({ attrs }: DetailProps) {
       )}
       {lastPolledNs != null && (
         <div className="inspect-row">
-          <span className="inspect-key">Last polled</span>
+          <span className="inspect-key">Idle</span>
           <span
             className={`inspect-val ${durationClass(lastPolledNs, 1_000_000_000, 5_000_000_000)}`}
           >
             {formatDuration(lastPolledNs)} ago
+          </span>
+        </div>
+      )}
+      {inPollNs != null && inPollNs > 0 && (
+        <div className="inspect-row">
+          <span className="inspect-key">In poll</span>
+          <span className={`inspect-val ${durationClass(inPollNs, 1_000_000_000, 5_000_000_000)}`}>
+            {formatDuration(inPollNs)}
           </span>
         </div>
       )}
@@ -747,18 +818,25 @@ function FutureDetail({ attrs }: DetailProps) {
 
 function MutexDetail({ attrs }: DetailProps) {
   const holder = attr(attrs, "holder");
-  const waiters = numAttr(attrs, "waiters") ?? 0;
+  const holderCount = firstNumAttr(attrs, ["holder_count"]) ?? (holder ? 1 : 0);
+  const waiters = firstNumAttr(attrs, ["waiters", "waiter_count"]) ?? 0;
   const heldNs = numAttr(attrs, "held_ns");
-  const longestWaitNs = numAttr(attrs, "longest_wait_ns");
+  const longestWaitNs = firstNumAttr(attrs, ["longest_wait_ns", "oldest_wait_ns"]);
 
   return (
     <>
       <div className="inspect-row">
         <span className="inspect-key">State</span>
         <span className={`inspect-pill inspect-pill--${holder ? "crit" : "ok"}`}>
-          {holder ? "HELD" : "FREE"}
+          {holderCount > 0 ? "HELD" : "FREE"}
         </span>
       </div>
+      {!holder && holderCount > 0 && (
+        <div className="inspect-row">
+          <span className="inspect-key">Holders</span>
+          <span className="inspect-val">{holderCount}</span>
+        </div>
+      )}
       {holder && (
         <div className="inspect-row">
           <span className="inspect-key">Holder</span>

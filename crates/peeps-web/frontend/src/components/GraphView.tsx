@@ -102,6 +102,7 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
       const isTouches = e.kind === "touches";
       const isSpawned = e.kind === "spawned";
       const isClosedBy = e.kind === "closed_by";
+      const isCycleEdge = e.kind === "needs" && e.attrs?._ui_cycle_edge === true;
       const involvesGhost = ghostIds.has(e.src_id) || ghostIds.has(e.dst_id);
       return {
         id: `${e.src_id}->${e.dst_id}:${e.kind}`,
@@ -115,6 +116,8 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
         },
         style: involvesGhost
           ? { stroke: "light-dark(#b0b0b6, #505056)", strokeWidth: 1, strokeDasharray: "6 4", opacity: 0.5 }
+          : isCycleEdge
+            ? { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4, opacity: 0.95 }
           : isClosedBy
             ? { stroke: "light-dark(#e74c3c, #ff6b6b)", strokeWidth: 1.5, strokeDasharray: "4 2", opacity: 0.85 }
             : isSpawned
@@ -186,6 +189,8 @@ interface GraphViewProps {
   onSelectNode: (nodeId: string) => void;
   onSelectEdge: (edge: SnapshotEdge) => void;
   onClearSelection: () => void;
+  hasActiveFilters: boolean;
+  onResetFilters: () => void;
 }
 
 function GraphFlow({
@@ -456,10 +461,22 @@ export function GraphView({
   onSelectNode,
   onSelectEdge,
   onClearSelection,
+  hasActiveFilters,
+  onResetFilters,
 }: GraphViewProps) {
   const ghostCount = graph?.ghostNodes?.length ?? 0;
   const nodeCount = (graph?.nodes.length ?? 0) - ghostCount;
   const edgeCount = graph?.edges.length ?? 0;
+  const cycleCount = graph
+    ? new Set(
+        graph.nodes
+          .map((n) => n.attrs?._ui_cycle_id)
+          .filter((v): v is string => typeof v === "string"),
+      ).size
+    : 0;
+  const deadlockCandidateCount = graph
+    ? graph.nodes.filter((n) => n.attrs?._ui_deadlock_candidate === true).length
+    : 0;
   const isFiltered = filteredNodeId != null && fullGraph != null && graph !== fullGraph;
   const hasSearch = searchQuery.trim().length > 0;
 
@@ -470,6 +487,15 @@ export function GraphView({
         {graph
           ? `Graph (${nodeCount} nodes, ${edgeCount} edges${ghostCount > 0 ? `, ${ghostCount} ghost` : ""})`
           : "Graph"}
+        {graph && (cycleCount > 0 || deadlockCandidateCount > 0) && (
+          <span className="kind-filter-badge" style={{ marginLeft: 8 }}>
+            {cycleCount > 0 ? `${cycleCount} cycle${cycleCount === 1 ? "" : "s"}` : ""}
+            {cycleCount > 0 && deadlockCandidateCount > 0 ? " • " : ""}
+            {deadlockCandidateCount > 0
+              ? `${deadlockCandidateCount} suspect${deadlockCandidateCount === 1 ? "" : "s"}`
+              : ""}
+          </span>
+        )}
         {isFiltered && (
           <button
             className="filter-clear-btn"
@@ -543,6 +569,17 @@ export function GraphView({
               onToggleProcess={onToggleProcess}
               onSoloProcess={onSoloProcess}
             />
+          )}
+          {hasActiveFilters && (
+            <button
+              className="filter-reset-btn"
+              onClick={onResetFilters}
+              title="Clear all active filters"
+              type="button"
+            >
+              <X size={10} weight="bold" />
+              Reset filters
+            </button>
           )}
         </div>
       )}

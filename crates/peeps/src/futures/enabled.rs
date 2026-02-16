@@ -17,9 +17,14 @@ static FUTURE_WAIT_REGISTRY: LazyLock<Mutex<HashMap<String, FutureWaitInfo>>> =
 struct FutureWaitInfo {
     resource: String,
     created_at: Instant,
+    poll_count: u64,
     pending_count: u64,
     ready_count: u64,
     total_pending: Duration,
+    current_poll_started_at: Option<Instant>,
+    last_poll_ended_at: Option<Instant>,
+    last_poll_duration: Duration,
+    max_poll_duration: Duration,
     last_seen: Instant,
     location: String,
     user_meta_json: String,
@@ -33,9 +38,14 @@ fn register_future(node_id: String, resource: String, location: String, user_met
         FutureWaitInfo {
             resource,
             created_at: Instant::now(),
+            poll_count: 0,
             pending_count: 0,
             ready_count: 0,
             total_pending: Duration::ZERO,
+            current_poll_started_at: None,
+            last_poll_ended_at: None,
+            last_poll_duration: Duration::ZERO,
+            max_poll_duration: Duration::ZERO,
             last_seen: Instant::now(),
             location,
             user_meta_json,
@@ -51,6 +61,30 @@ fn record_pending(node_id: &str) {
     if let Some(info) = FUTURE_WAIT_REGISTRY.lock().unwrap().get_mut(node_id) {
         info.pending_count += 1;
         info.last_seen = Instant::now();
+    }
+}
+
+fn record_poll_start(node_id: &str) {
+    if let Some(info) = FUTURE_WAIT_REGISTRY.lock().unwrap().get_mut(node_id) {
+        info.poll_count += 1;
+        let now = Instant::now();
+        info.current_poll_started_at = Some(now);
+        info.last_seen = now;
+    }
+}
+
+fn record_poll_end(node_id: &str) {
+    if let Some(info) = FUTURE_WAIT_REGISTRY.lock().unwrap().get_mut(node_id) {
+        let now = Instant::now();
+        if let Some(started_at) = info.current_poll_started_at.take() {
+            let elapsed = now.saturating_duration_since(started_at);
+            info.last_poll_duration = elapsed;
+            if elapsed > info.max_poll_duration {
+                info.max_poll_duration = elapsed;
+            }
+        }
+        info.last_poll_ended_at = Some(now);
+        info.last_seen = now;
     }
 }
 
@@ -89,6 +123,7 @@ where
         #[allow(unsafe_code)]
         let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
 
+        record_poll_start(&this.node_id);
         // Capture parent before pushing ourselves.
         let mut parent: Option<String> = None;
         crate::stack::with_top(|p| parent = Some(p.to_string()));
@@ -100,6 +135,7 @@ where
 
         // Pop from the stack after polling.
         crate::stack::pop();
+        record_poll_end(&this.node_id);
 
         match result {
             Poll::Pending => {
@@ -363,8 +399,17 @@ pub fn sleep(
 #[derive(Facet)]
 struct FutureAttrs<'a> {
     label: &'a str,
+    poll_count: u64,
     pending_count: u64,
     ready_count: u64,
+    #[facet(skip_unless_truthy)]
+    poll_in_flight_ns: Option<u64>,
+    #[facet(skip_unless_truthy)]
+    last_poll_ns: Option<u64>,
+    #[facet(skip_unless_truthy)]
+    max_poll_ns: Option<u64>,
+    #[facet(skip_unless_truthy)]
+    last_polled_ns: Option<u64>,
     #[facet(skip_unless_truthy)]
     total_pending_ns: Option<u64>,
     /// Nanoseconds since the future was created.
@@ -406,6 +451,16 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
         let total_pending_ns = info.total_pending.as_nanos() as u64;
         let age_ns = now.duration_since(info.created_at).as_nanos() as u64;
         let idle_ns = now.duration_since(info.last_seen).as_nanos() as u64;
+        let poll_in_flight_ns = info
+            .current_poll_started_at
+            .map(|t| now.duration_since(t).as_nanos() as u64);
+        let last_poll_ns = (info.last_poll_duration > Duration::ZERO)
+            .then(|| info.last_poll_duration.as_nanos() as u64);
+        let max_poll_ns = (info.max_poll_duration > Duration::ZERO)
+            .then(|| info.max_poll_duration.as_nanos() as u64);
+        let last_polled_ns = info
+            .last_poll_ended_at
+            .map(|t| now.duration_since(t).as_nanos() as u64);
 
         let meta_str = if info.user_meta_json.is_empty() {
             "{}"
@@ -415,8 +470,13 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
 
         let attrs = FutureAttrs {
             label: &info.resource,
+            poll_count: info.poll_count,
             pending_count: info.pending_count,
             ready_count: info.ready_count,
+            poll_in_flight_ns,
+            last_poll_ns,
+            max_poll_ns,
+            last_polled_ns,
             total_pending_ns: if total_pending_ns > 0 {
                 Some(total_pending_ns)
             } else {

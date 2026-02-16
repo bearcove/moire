@@ -266,14 +266,26 @@ function WaiterBadge({ count }: { count: number }) {
 
 function FutureCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
-  const pollCount = numAttr(attrs, "poll_count");
-  const lastPolledNs = numAttr(attrs, "last_polled_ns");
+  const pendingCount = numAttr(attrs, "pending_count") ?? 0;
+  const readyCount = numAttr(attrs, "ready_count") ?? 0;
+  const pollCount = firstNumAttr(attrs, ["poll_count"]) ?? pendingCount + readyCount;
+  const pollInFlightNs = firstNumAttr(attrs, ["poll_in_flight_ns", "in_poll_ns", "current_poll_ns"]);
+  const lastPolledNs = firstNumAttr(attrs, ["last_polled_ns", "idle_ns"]);
   const ageNs = numAttr(attrs, "age_ns");
   const idleNs = numAttr(attrs, "idle_ns");
-  const state = attr(attrs, "state") ?? "waiting";
+  const explicitState = attr(attrs, "state");
+  const derivedState =
+    pollInFlightNs != null && pollInFlightNs > 0
+      ? "polling"
+      : readyCount > 0
+        ? "active"
+        : "waiting";
+  const state = explicitState ?? derivedState;
+  const isDeadlockCandidate = attrs._ui_deadlock_candidate === true;
+  const cycleSize = numAttr(attrs, "_ui_cycle_size") ?? 0;
 
   const stateVariant: "ok" | "warn" | "crit" | "neutral" =
-    state === "completed" ? "ok" : state === "polling" ? "ok" : "neutral";
+    state === "completed" ? "ok" : state === "polling" ? "warn" : isDeadlockCandidate ? "crit" : "neutral";
 
   // A future with 0 polls is suspicious
   const pollClass = pollCount === 0 ? "crit" : undefined;
@@ -284,6 +296,7 @@ function FutureCard({ data }: NodeProps<Node<NodeData>>) {
       process={process}
       label={label}
       icon={<Timer size={14} weight="bold" />}
+      stateClass={isDeadlockCandidate ? "card--danger-border" : undefined}
     >
       <div className="card-row">
         <StatePill state={state} variant={stateVariant} />
@@ -292,7 +305,14 @@ function FutureCard({ data }: NodeProps<Node<NodeData>>) {
             {pollCount} polls
           </span>
         )}
+        {cycleSize > 0 && <span className="badge badge--crit">cycle x{cycleSize}</span>}
       </div>
+      {pollInFlightNs != null && pollInFlightNs > 0 && (
+        <div className="card-row">
+          <span className="card-dim">in poll</span>
+          <DurationBadge ns={pollInFlightNs} warnNs={1_000_000_000} critNs={5_000_000_000} />
+        </div>
+      )}
       {ageNs != null && (
         <div className="card-row">
           <span className="card-dim">age</span>
@@ -318,10 +338,12 @@ function FutureCard({ data }: NodeProps<Node<NodeData>>) {
 function MutexCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
   const holder = attr(attrs, "holder");
-  const waiters = numAttr(attrs, "waiters") ?? 0;
-  const heldNs = numAttr(attrs, "held_ns");
-  const longestWaitNs = numAttr(attrs, "longest_wait_ns");
-  const isHeld = holder != null && holder !== "";
+  const holderCount = firstNumAttr(attrs, ["holder_count"]) ?? (holder ? 1 : 0);
+  const waiters = firstNumAttr(attrs, ["waiters", "waiter_count"]) ?? 0;
+  const heldNs = firstNumAttr(attrs, ["held_ns"]);
+  const longestWaitNs = firstNumAttr(attrs, ["longest_wait_ns", "oldest_wait_ns"]);
+  const cycleSize = numAttr(attrs, "_ui_cycle_size") ?? 0;
+  const isHeld = (holder != null && holder !== "") || holderCount > 0;
 
   return (
     <CardShell
@@ -334,10 +356,13 @@ function MutexCard({ data }: NodeProps<Node<NodeData>>) {
       <div className="card-row">
         <StatePill state={isHeld ? "HELD" : "FREE"} variant={isHeld ? "crit" : "ok"} />
         <WaiterBadge count={waiters} />
+        {cycleSize > 0 && <span className="badge badge--crit">cycle x{cycleSize}</span>}
       </div>
       {isHeld && (
         <div className="card-row">
-          <span className="card-dim holder-text" title={holder}>{holder}</span>
+          <span className="card-dim holder-text" title={holder ?? `${holderCount} holder(s)`}>
+            {holder ?? `${holderCount} holder(s)`}
+          </span>
           {heldNs != null && (
             <DurationBadge ns={heldNs} warnNs={100_000_000} critNs={1_000_000_000} />
           )}
@@ -355,11 +380,12 @@ function MutexCard({ data }: NodeProps<Node<NodeData>>) {
 
 function RwLockCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
-  const readers = numAttr(attrs, "readers") ?? 0;
-  const writerWaiters = numAttr(attrs, "writer_waiters") ?? 0;
-  const readerWaiters = numAttr(attrs, "reader_waiters") ?? 0;
+  const readers = firstNumAttr(attrs, ["readers", "holder_count"]) ?? 0;
+  const writerWaiters = firstNumAttr(attrs, ["writer_waiters"]) ?? 0;
+  const readerWaiters = firstNumAttr(attrs, ["reader_waiters", "waiter_count"]) ?? 0;
   const holder = attr(attrs, "holder");
-  const heldNs = numAttr(attrs, "held_ns");
+  const heldNs = firstNumAttr(attrs, ["held_ns"]);
+  const cycleSize = numAttr(attrs, "_ui_cycle_size") ?? 0;
   const isHeld = (holder != null && holder !== "") || readers > 0;
   const totalWaiters = writerWaiters + readerWaiters;
 
@@ -382,6 +408,7 @@ function RwLockCard({ data }: NodeProps<Node<NodeData>>) {
             {readerWaiters}R+{writerWaiters}W
           </span>
         )}
+        {cycleSize > 0 && <span className="badge badge--crit">cycle x{cycleSize}</span>}
       </div>
       {heldNs != null && (
         <div className="card-row">

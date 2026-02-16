@@ -23,6 +23,16 @@ function useSessionState(key: string, initial: boolean): [boolean, () => void] {
 
 const MIN_ELAPSED_NS = 5_000_000_000; // 5 seconds
 
+function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (v == null || v === "") continue;
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return undefined;
+}
+
 /** BFS from a seed node, collecting all reachable nodes (both directions). */
 function connectedSubgraph(graph: SnapshotGraph, seedId: string): SnapshotGraph {
   const adj = new Map<string, Set<string>>();
@@ -142,6 +152,164 @@ function searchGraphNodes(graph: SnapshotGraph, needle: string): SnapshotNode[] 
   return graph.nodes.filter((n) => JSON.stringify(n).toLowerCase().includes(q));
 }
 
+function enrichGraph(graph: SnapshotGraph): SnapshotGraph {
+  const nodeIds = new Set(graph.nodes.map((n) => n.id));
+  const needsEdges = graph.edges.filter((e) => e.kind === "needs");
+
+  const outgoingNeeds = new Map<string, string[]>();
+  const incomingNeeds = new Map<string, string[]>();
+  for (const id of nodeIds) {
+    outgoingNeeds.set(id, []);
+    incomingNeeds.set(id, []);
+  }
+  for (const e of needsEdges) {
+    if (!nodeIds.has(e.src_id) || !nodeIds.has(e.dst_id)) continue;
+    outgoingNeeds.get(e.src_id)!.push(e.dst_id);
+    incomingNeeds.get(e.dst_id)!.push(e.src_id);
+  }
+
+  // Tarjan SCC over directed `needs` edges to surface probable deadlock cycles.
+  const indexById = new Map<string, number>();
+  const lowlinkById = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const sccs: string[][] = [];
+  let index = 0;
+
+  function strongConnect(id: string) {
+    indexById.set(id, index);
+    lowlinkById.set(id, index);
+    index += 1;
+    stack.push(id);
+    onStack.add(id);
+
+    for (const dst of outgoingNeeds.get(id) ?? []) {
+      if (!indexById.has(dst)) {
+        strongConnect(dst);
+        lowlinkById.set(id, Math.min(lowlinkById.get(id)!, lowlinkById.get(dst)!));
+      } else if (onStack.has(dst)) {
+        lowlinkById.set(id, Math.min(lowlinkById.get(id)!, indexById.get(dst)!));
+      }
+    }
+
+    if (lowlinkById.get(id) === indexById.get(id)) {
+      const component: string[] = [];
+      while (stack.length > 0) {
+        const w = stack.pop()!;
+        onStack.delete(w);
+        component.push(w);
+        if (w === id) break;
+      }
+      sccs.push(component);
+    }
+  }
+
+  for (const id of nodeIds) {
+    if (!indexById.has(id)) strongConnect(id);
+  }
+
+  const cycleMetaById = new Map<string, { cycleId: string; cycleSize: number }>();
+  let cycleOrdinal = 1;
+  for (const scc of sccs) {
+    const isSelfLoop =
+      scc.length === 1 &&
+      (outgoingNeeds.get(scc[0]) ?? []).some((dst) => dst === scc[0]);
+    if (scc.length <= 1 && !isSelfLoop) continue;
+    const cycleId = `cycle-${cycleOrdinal++}`;
+    for (const id of scc) {
+      cycleMetaById.set(id, { cycleId, cycleSize: scc.length });
+    }
+  }
+
+  const enrichedNodes = graph.nodes.map((n) => {
+    const blockers = outgoingNeeds.get(n.id) ?? [];
+    const dependents = incomingNeeds.get(n.id) ?? [];
+    const cycle = cycleMetaById.get(n.id);
+    const attrs: Record<string, unknown> = {
+      ...n.attrs,
+      _ui_wait_blockers: blockers,
+      _ui_wait_dependents: dependents,
+      _ui_wait_blocker_count: blockers.length,
+      _ui_wait_dependent_count: dependents.length,
+    };
+
+    if (cycle) {
+      attrs._ui_cycle_id = cycle.cycleId;
+      attrs._ui_cycle_size = cycle.cycleSize;
+    }
+
+    let deadlockReason: string | undefined;
+    let deadlockAgeNs: number | undefined;
+
+    if (n.kind === "future") {
+      const pollInFlightNs = firstNumAttr(attrs, [
+        "poll_in_flight_ns",
+        "in_poll_ns",
+        "current_poll_ns",
+      ]);
+      const idleNs = firstNumAttr(attrs, ["idle_ns", "last_polled_ns"]);
+      if (pollInFlightNs != null && pollInFlightNs >= MIN_ELAPSED_NS) {
+        deadlockReason = "in_poll_stuck";
+        deadlockAgeNs = pollInFlightNs;
+      } else if (idleNs != null && blockers.length > 0 && idleNs >= MIN_ELAPSED_NS) {
+        deadlockReason = "pending_idle";
+        deadlockAgeNs = idleNs;
+      }
+    } else {
+      const waiters = firstNumAttr(attrs, [
+        "waiters",
+        "waiter_count",
+        "send_waiters",
+        "recv_waiters",
+        "writer_waiters",
+        "reader_waiters",
+      ]);
+      const oldestWaitNs = firstNumAttr(attrs, ["oldest_wait_ns", "longest_wait_ns"]);
+      if ((waiters ?? 0) > 0 && blockers.length > 0) {
+        deadlockReason = "contended_wait";
+        deadlockAgeNs = oldestWaitNs;
+      }
+    }
+
+    if (!deadlockReason && cycle) {
+      deadlockReason = "needs_cycle";
+    }
+
+    if (deadlockReason) {
+      attrs._ui_deadlock_candidate = true;
+      attrs._ui_deadlock_reason = deadlockReason;
+      if (deadlockAgeNs != null) attrs._ui_deadlock_age_ns = deadlockAgeNs;
+    }
+
+    return { ...n, attrs };
+  });
+
+  const cycleIdByNode = new Map<string, string>();
+  for (const n of enrichedNodes) {
+    const cycleId = n.attrs._ui_cycle_id;
+    if (typeof cycleId === "string") cycleIdByNode.set(n.id, cycleId);
+  }
+
+  const enrichedEdges = graph.edges.map((e) => {
+    const attrs = { ...e.attrs };
+    if (
+      e.kind === "needs" &&
+      cycleIdByNode.get(e.src_id) &&
+      cycleIdByNode.get(e.src_id) === cycleIdByNode.get(e.dst_id)
+    ) {
+      attrs._ui_cycle_edge = true;
+    }
+    return { ...e, attrs };
+  });
+
+  const enrichedById = new Map(enrichedNodes.map((n) => [n.id, n]));
+  return {
+    nodes: enrichedNodes,
+    edges: enrichedEdges,
+    ghostNodes: graph.ghostNodes.map((n) => enrichedById.get(n.id) ?? n),
+  };
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState<JumpNowResponse | null>(null);
   const [requests, setRequests] = useState<StuckRequest[]>([]);
@@ -192,9 +360,14 @@ export function App() {
     handleJumpNow();
   }, [handleJumpNow]);
 
+  const enrichedGraph = useMemo(() => {
+    if (!graph) return null;
+    return enrichGraph(graph);
+  }, [graph]);
+
   const handleSelectRequest = useCallback(
     (req: StuckRequest) => {
-      const node = graph?.nodes.find((n) => n.id === req.id) ?? null;
+      const node = enrichedGraph?.nodes.find((n) => n.id === req.id) ?? null;
       setSelectedNodeId(req.id);
       setFilteredNodeId(req.id);
       setSelectedEdge(null);
@@ -207,7 +380,7 @@ export function App() {
         setSelectedRequest(req);
       }
     },
-    [graph],
+    [enrichedGraph],
   );
 
   const handleSelectGraphNode = useCallback(
@@ -215,10 +388,10 @@ export function App() {
       setSelectedNodeId(nodeId);
       setSelectedRequest(null);
       setSelectedEdge(null);
-      const node = graph?.nodes.find((n) => n.id === nodeId) ?? null;
+      const node = enrichedGraph?.nodes.find((n) => n.id === nodeId) ?? null;
       setSelectedNode(node);
     },
-    [graph],
+    [enrichedGraph],
   );
 
   const handleSelectEdge = useCallback(
@@ -241,22 +414,22 @@ export function App() {
 
   // Collect all unique node kinds present in the graph (excluding ghosts).
   const allKinds = useMemo(() => {
-    if (!graph) return [];
+    if (!enrichedGraph) return [];
     const kinds = new Set<string>();
-    for (const n of graph.nodes) {
+    for (const n of enrichedGraph.nodes) {
       if (n.kind !== "ghost") kinds.add(n.kind);
     }
     return Array.from(kinds).sort();
-  }, [graph]);
+  }, [enrichedGraph]);
 
   const allProcesses = useMemo(() => {
-    if (!graph) return [];
+    if (!enrichedGraph) return [];
     const procs = new Set<string>();
-    for (const n of graph.nodes) {
+    for (const n of enrichedGraph.nodes) {
       if (n.kind !== "ghost") procs.add(n.process);
     }
     return Array.from(procs).sort();
-  }, [graph]);
+  }, [enrichedGraph]);
 
   const toggleKind = useCallback((kind: string) => {
     setHiddenKinds((prev) => {
@@ -300,24 +473,33 @@ export function App() {
     });
   }, [allProcesses]);
 
+  const hasActiveFilters = hiddenKinds.size > 0 || hiddenProcesses.size > 0 || filteredNodeId != null || graphSearchQuery.trim().length > 0;
+
+  const handleResetFilters = useCallback(() => {
+    setHiddenKinds(new Set());
+    setHiddenProcesses(new Set());
+    setFilteredNodeId(null);
+    setGraphSearchQuery("");
+  }, []);
+
   // Compute the displayed graph: full graph normally,
   // connected subgraph only when filtering via stuck request click.
   // Then apply node-kind hiding with pass-through edges.
   const displayGraph = useMemo(() => {
-    if (!graph) return null;
-    let g: SnapshotGraph = graph;
-    if (filteredNodeId && graph.nodes.some((n) => n.id === filteredNodeId)) {
+    if (!enrichedGraph) return null;
+    let g: SnapshotGraph = enrichedGraph;
+    if (filteredNodeId && enrichedGraph.nodes.some((n) => n.id === filteredNodeId)) {
       g = connectedSubgraph(g, filteredNodeId);
     }
     g = filterHiddenNodes(g, (n) => hiddenKinds.has(n.kind));
     g = filterHiddenNodes(g, (n) => hiddenProcesses.has(n.process));
     return g;
-  }, [graph, filteredNodeId, hiddenKinds, hiddenProcesses]);
+  }, [enrichedGraph, filteredNodeId, hiddenKinds, hiddenProcesses]);
 
   const searchResults = useMemo(() => {
-    if (!graph) return [];
-    return searchGraphNodes(graph, graphSearchQuery).slice(0, 100);
-  }, [graph, graphSearchQuery]);
+    if (!enrichedGraph) return [];
+    return searchGraphNodes(enrichedGraph, graphSearchQuery).slice(0, 100);
+  }, [enrichedGraph, graphSearchQuery]);
 
   const handleSelectSearchResult = useCallback(
     (nodeId: string) => {
@@ -356,7 +538,7 @@ export function App() {
         />
         <GraphView
           graph={displayGraph}
-          fullGraph={graph}
+          fullGraph={enrichedGraph}
           filteredNodeId={filteredNodeId}
           selectedNodeId={selectedNodeId}
           selectedEdge={selectedEdge}
@@ -370,6 +552,8 @@ export function App() {
           hiddenProcesses={hiddenProcesses}
           onToggleProcess={toggleProcess}
           onSoloProcess={soloProcess}
+          hasActiveFilters={hasActiveFilters}
+          onResetFilters={handleResetFilters}
           onSearchQueryChange={setGraphSearchQuery}
           onSelectSearchResult={handleSelectSearchResult}
           onSelectNode={handleSelectGraphNode}
@@ -380,7 +564,7 @@ export function App() {
           selectedRequest={selectedRequest}
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}
-          graph={graph}
+          graph={enrichedGraph}
           filteredNodeId={filteredNodeId}
           onFocusNode={setFilteredNodeId}
           onSelectNode={handleSelectGraphNode}
