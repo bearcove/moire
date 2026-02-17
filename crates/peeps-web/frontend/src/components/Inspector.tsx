@@ -992,7 +992,7 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
         <div className="inspect-raw-title">All attributes ({entries.length})</div>
         <CopyTextButton text={rawJson} title="Copy all attributes" />
         <button
-          className="inspect-raw-toggle"
+          className="panel-expand-btn"
           type="button"
           onClick={() => setExpanded((v) => !v)}
         >
