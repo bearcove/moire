@@ -12,8 +12,8 @@ pub struct Entity {
     /// When we first started tracking this entity
     pub birth: PTime,
 
-    /// Creation site in source code as `{absolute_path}:{line}`.
-    /// Example: `/Users/amos/bearcove/peeps/crates/peeps/src/sync/channels.rs:1043`
+    /// Creation site in source code as `{path}:{line}`.
+    /// Example: `/Users/amos/bearcove/peeps/examples/channel-full-stall/src/main.rs:9`
     // [FIXME] Note that this is a good candidate to optimize for later by just keeping a registry of all
     // the files we've ever seen. And then this becomes a tuple of numbers instead of being this
     // very long string.
@@ -36,6 +36,7 @@ impl Entity {
         EntityBuilder {
             name: name.into(),
             body,
+            source: None,
         }
     }
 
@@ -57,9 +58,15 @@ impl Entity {
 pub struct EntityBuilder {
     name: CompactString,
     body: EntityBody,
+    source: Option<CompactString>,
 }
 
 impl EntityBuilder {
+    pub fn source(mut self, source: impl Into<CompactString>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+
     /// Finalizes the entity with typed meta converted into `facet_value::Value`.
     #[track_caller]
     pub fn build<M>(self, meta: &M) -> Result<Entity, MetaSerializeError>
@@ -70,7 +77,7 @@ impl EntityBuilder {
             id: next_entity_id(),
             birth: PTime::now(),
             name: self.name,
-            source: caller_source(),
+            source: self.source.unwrap_or_else(caller_source),
             body: self.body,
             meta: facet_value::to_value(meta)?,
         })

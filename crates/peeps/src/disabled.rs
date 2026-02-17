@@ -1008,6 +1008,17 @@ pub fn instrument_future_named<F>(_name: impl Into<CompactString>, fut: F) -> F
 where
     F: core::future::Future,
 {
+    instrument_future_named_with_source(_name, fut, "")
+}
+
+pub fn instrument_future_named_with_source<F>(
+    _name: impl Into<CompactString>,
+    fut: F,
+    _source: impl Into<CompactString>,
+) -> F
+where
+    F: core::future::Future,
+{
     fut
 }
 
@@ -1015,27 +1026,65 @@ pub fn instrument_future_on<F>(_name: impl Into<CompactString>, _on: &EntityHand
 where
     F: core::future::Future,
 {
+    instrument_future_on_with_source(_name, _on, fut, "")
+}
+
+pub fn instrument_future_on_with_source<F>(
+    _name: impl Into<CompactString>,
+    _on: &EntityHandle,
+    fut: F,
+    _source: impl Into<CompactString>,
+) -> F
+where
+    F: core::future::Future,
+{
     fut
+}
+
+#[doc(hidden)]
+pub fn source_from_file_line(manifest_dir: &str, file: &str, line: u32) -> CompactString {
+    let path = std::path::Path::new(file);
+    if path.is_absolute() {
+        return CompactString::from(format!("{file}:{line}"));
+    }
+    CompactString::from(format!("{manifest_dir}/{file}:{line}"))
 }
 
 #[macro_export]
 macro_rules! peeps {
     (name = $name:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named_with_source(
+            $name,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
     (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_on($name, &$on, $fut)
+        $crate::instrument_future_on_with_source(
+            $name,
+            &$on,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
 }
 
 #[macro_export]
 macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named_with_source(
+            $name,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
     ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
         let _ = ($((&$k, &$v)),*);
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named_with_source(
+            $name,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
     ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
         compile_error!("`level=` is deprecated");

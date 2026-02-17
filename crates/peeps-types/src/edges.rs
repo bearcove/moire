@@ -61,7 +61,7 @@ pub struct Event {
     pub id: EventId,
     /// Event timestamp.
     pub at: PTime,
-    /// Event source site as `{absolute_path}:{line}`.
+    /// Event source site as `{path}:{line}`.
     pub source: CompactString,
     /// Event target (entity or scope).
     pub target: EventTarget,

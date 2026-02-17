@@ -1,4 +1,5 @@
 use compact_str::CompactString;
+use peeps_types::PTime;
 use peeps_types::{
     BufferState, Change, ChannelCloseCause, ChannelClosedEvent, ChannelDetails,
     ChannelEndpointEntity, ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome,
@@ -20,7 +21,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use peeps_types::PTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
@@ -264,10 +264,9 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    tokio::spawn(FUTURE_CAUSAL_STACK.scope(
-        RefCell::new(Vec::new()),
-        instrument_future_named(name, fut),
-    ))
+    tokio::spawn(
+        FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), instrument_future_named(name, fut)),
+    )
 }
 
 #[track_caller]
@@ -1116,6 +1115,22 @@ impl EntityHandle {
         let entity = Entity::builder(name, body)
             .build(&())
             .expect("entity construction with unit meta should be infallible");
+        Self::from_entity(entity)
+    }
+
+    pub fn new_with_source(
+        name: impl Into<CompactString>,
+        body: EntityBody,
+        source: impl Into<CompactString>,
+    ) -> Self {
+        let entity = Entity::builder(name, body)
+            .source(source)
+            .build(&())
+            .expect("entity construction with unit meta should be infallible");
+        Self::from_entity(entity)
+    }
+
+    fn from_entity(entity: Entity) -> Self {
         let id = EntityId::new(entity.id.as_str());
 
         if let Ok(mut db) = runtime_db().lock() {
@@ -1831,7 +1846,7 @@ impl<T> Sender<T> {
         self.inner.is_closed()
     }
 
-        pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         let wait_kind = self.channel.lock().ok().and_then(|state| {
             if state.is_send_full() {
                 if let Ok(event) = Event::channel_sent(
@@ -1937,7 +1952,7 @@ impl<T> Receiver<T> {
         &self.handle
     }
 
-        pub async fn recv(&mut self) -> Option<T> {
+    pub async fn recv(&mut self) -> Option<T> {
         let wait_kind = self.channel.lock().ok().and_then(|state| {
             if state.is_receive_empty() {
                 if let Ok(event) = Event::channel_received(
@@ -2121,7 +2136,7 @@ impl<T> UnboundedReceiver<T> {
         &self.handle
     }
 
-        pub async fn recv(&mut self) -> Option<T> {
+    pub async fn recv(&mut self) -> Option<T> {
         let wait_kind = self.channel.lock().ok().and_then(|state| {
             if state.is_receive_empty() {
                 if let Ok(event) = Event::channel_received(
@@ -2546,7 +2561,7 @@ impl<T> OneshotReceiver<T> {
         &self.handle
     }
 
-        pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
+    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
         let inner = self.inner.take().expect("oneshot receiver consumed");
         let result = instrument_future_on(format!("{}.recv", self.name), &self.handle, inner).await;
         match result {
@@ -2737,7 +2752,7 @@ impl<T: Clone> BroadcastReceiver<T> {
         &self.handle
     }
 
-        pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
+    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
         let result = instrument_future_on(
             format!("{}.recv", self.name),
             &self.handle,
@@ -2883,7 +2898,7 @@ impl<T: Clone> WatchReceiver<T> {
         &self.handle
     }
 
-        pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
+    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
         let result = instrument_future_on(
             format!("{}.changed", self.name),
             &self.handle,
@@ -3082,7 +3097,7 @@ impl Notify {
         }
     }
 
-        pub async fn notified(&self) {
+    pub async fn notified(&self) {
         let waiters = self
             .waiter_count
             .fetch_add(1, Ordering::Relaxed)
@@ -3140,7 +3155,7 @@ impl<T> OnceCell<T> {
         self.inner.initialized()
     }
 
-        pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
+    pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = T>,
@@ -3178,7 +3193,7 @@ impl<T> OnceCell<T> {
         result
     }
 
-        pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
+    pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, E>>,
@@ -3284,7 +3299,7 @@ impl Semaphore {
         self.sync_state(max);
     }
 
-        pub async fn acquire(
+    pub async fn acquire(
         &self,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let permit =
@@ -3293,7 +3308,7 @@ impl Semaphore {
         Ok(permit)
     }
 
-        pub async fn acquire_many(
+    pub async fn acquire_many(
         &self,
         n: u32,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
@@ -3307,7 +3322,7 @@ impl Semaphore {
         Ok(permit)
     }
 
-        pub async fn acquire_owned(
+    pub async fn acquire_owned(
         &self,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
         let permit = instrument_future_on(
@@ -3320,7 +3335,7 @@ impl Semaphore {
         Ok(permit)
     }
 
-        pub async fn acquire_many_owned(
+    pub async fn acquire_many_owned(
         &self,
         n: u32,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
@@ -3503,12 +3518,12 @@ impl Command {
         })
     }
 
-        pub async fn status(&mut self) -> io::Result<ExitStatus> {
+    pub async fn status(&mut self) -> io::Result<ExitStatus> {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future_on("command.status", &handle, self.inner.status()).await
     }
 
-        pub async fn output(&mut self) -> io::Result<Output> {
+    pub async fn output(&mut self) -> io::Result<Output> {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future_on("command.output", &handle, self.inner.output()).await
     }
@@ -3587,13 +3602,13 @@ impl Child {
         self.inner().id()
     }
 
-        pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
         instrument_future_on("command.wait", &handle, wait_fut).await
     }
 
-        pub async fn wait_with_output(mut self) -> io::Result<Output> {
+    pub async fn wait_with_output(mut self) -> io::Result<Output> {
         let child = self.inner.take().expect("child already consumed");
         instrument_future_on(
             "command.wait_with_output",
@@ -3669,10 +3684,11 @@ where
         F: Future<Output = T> + Send + 'static,
     {
         let joinset_handle = self.handle.clone();
-        self.inner.spawn(FUTURE_CAUSAL_STACK.scope(
-            RefCell::new(Vec::new()),
-            async move { instrument_future_on(label, &joinset_handle, future).await },
-        ));
+        self.inner.spawn(
+            FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
+                instrument_future_on(label, &joinset_handle, future).await
+            }),
+        );
     }
 
     #[track_caller]
@@ -3690,7 +3706,7 @@ where
         self.inner.abort_all();
     }
 
-        pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
+    pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
         let handle = self.handle.clone();
         let fut = self.inner.join_next();
         instrument_future_on("joinset.join_next", &handle, fut).await
@@ -3698,7 +3714,7 @@ where
 }
 
 impl DiagnosticInterval {
-        pub async fn tick(&mut self) -> tokio::time::Instant {
+    pub async fn tick(&mut self) -> tokio::time::Instant {
         instrument_future_on("interval.tick", &self.handle, self.inner.tick()).await
     }
 
@@ -3842,9 +3858,8 @@ impl<F> InstrumentedFuture<F> {
                 ))
             }
         });
-        let waits_on = target.map(|target| {
-            FutureEdgeRelation::new(target, FutureEdgeDirection::ChildToTarget)
-        });
+        let waits_on = target
+            .map(|target| FutureEdgeRelation::new(target, FutureEdgeDirection::ChildToTarget));
         Self {
             inner,
             future_handle,
@@ -3917,9 +3932,7 @@ where
         let future_id = EntityId::new(this.future_handle.id().as_str());
         let pushed = FUTURE_CAUSAL_STACK
             .try_with(|stack| {
-                stack
-                    .borrow_mut()
-                    .push(EntityId::new(future_id.as_str()));
+                stack.borrow_mut().push(EntityId::new(future_id.as_str()));
             })
             .is_ok();
 
@@ -3954,11 +3967,9 @@ where
                     clear_relation_edge(&future_id, relation);
                 }
 
-                if let Ok(event) = Event::new(
-                    EventTarget::Entity(future_id),
-                    EventKind::StateChanged,
-                    &(),
-                ) {
+                if let Ok(event) =
+                    Event::new(EventTarget::Entity(future_id), EventKind::StateChanged, &())
+                {
                     if let Ok(mut db) = runtime_db().lock() {
                         db.record_event(event);
                     }
@@ -3987,7 +3998,20 @@ pub fn instrument_future_named<F>(name: impl Into<CompactString>, fut: F) -> Ins
 where
     F: Future,
 {
-    let handle = EntityHandle::new(name, EntityBody::Future);
+    let location = std::panic::Location::caller();
+    let source = format!("{}:{}", location.file(), location.line());
+    instrument_future_named_with_source(name, fut, source)
+}
+
+pub fn instrument_future_named_with_source<F>(
+    name: impl Into<CompactString>,
+    fut: F,
+    source: impl Into<CompactString>,
+) -> InstrumentedFuture<F>
+where
+    F: Future,
+{
+    let handle = EntityHandle::new_with_source(name, EntityBody::Future, source);
     InstrumentedFuture::new(fut, handle, None)
 }
 
@@ -4000,28 +4024,68 @@ pub fn instrument_future_on<F>(
 where
     F: Future,
 {
-    let handle = EntityHandle::new(name, EntityBody::Future);
+    let location = std::panic::Location::caller();
+    let source = format!("{}:{}", location.file(), location.line());
+    instrument_future_on_with_source(name, on, fut, source)
+}
+
+pub fn instrument_future_on_with_source<F>(
+    name: impl Into<CompactString>,
+    on: &EntityHandle,
+    fut: F,
+    source: impl Into<CompactString>,
+) -> InstrumentedFuture<F>
+where
+    F: Future,
+{
+    let handle = EntityHandle::new_with_source(name, EntityBody::Future, source);
     InstrumentedFuture::new(fut, handle, Some(on.entity_ref()))
+}
+
+#[doc(hidden)]
+pub fn source_from_file_line(manifest_dir: &str, file: &str, line: u32) -> CompactString {
+    let path = std::path::Path::new(file);
+    if path.is_absolute() {
+        return CompactString::from(format!("{file}:{line}"));
+    }
+    CompactString::from(format!("{manifest_dir}/{file}:{line}"))
 }
 
 #[macro_export]
 macro_rules! peeps {
     (name = $name:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named_with_source(
+            $name,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
     (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_on($name, &$on, $fut)
+        $crate::instrument_future_on_with_source(
+            $name,
+            &$on,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
 }
 
 #[macro_export]
 macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named_with_source(
+            $name,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
     ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
         let _ = ($((&$k, &$v)),*);
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named_with_source(
+            $name,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+        )
     }};
     ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
         compile_error!("`level=` is deprecated");
@@ -4084,12 +4148,16 @@ mod tests {
     }
 
     fn reset_runtime_db_for_test() {
-        let mut db = runtime_db().lock().expect("runtime db lock should be available");
+        let mut db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
         *db = RuntimeDb::new(runtime_stream_id(), MAX_EVENTS);
     }
 
     fn edge_exists(src: &EntityId, dst: &EntityId, kind: EdgeKind) -> bool {
-        let db = runtime_db().lock().expect("runtime db lock should be available");
+        let db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
         db.edges.contains_key(&EdgeKey {
             src: EntityId::new(src.as_str()),
             dst: EntityId::new(dst.as_str()),
@@ -4102,12 +4170,16 @@ mod tests {
     }
 
     fn entity_exists(id: &EntityId) -> bool {
-        let db = runtime_db().lock().expect("runtime db lock should be available");
+        let db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
         db.entities.contains_key(id)
     }
 
     fn entity_id_by_name(name: &str) -> Option<EntityId> {
-        let db = runtime_db().lock().expect("runtime db lock should be available");
+        let db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
         db.entities
             .values()
             .find(|entity| entity.name.as_str() == name)
@@ -4123,7 +4195,9 @@ mod tests {
         let fut = instrument_future_named("test.future.source", std::future::ready(()));
         let fut_id = EntityId::new(fut.future_handle.id().as_str());
         let source = {
-            let db = runtime_db().lock().expect("runtime db lock should be available");
+            let db = runtime_db()
+                .lock()
+                .expect("runtime db lock should be available");
             db.entities
                 .get(&fut_id)
                 .expect("future entity should exist")
@@ -4131,6 +4205,43 @@ mod tests {
                 .clone()
         };
 
+        assert!(
+            source.ends_with(&format!(":{}", marker_line)),
+            "expected caller line {}, got source {}",
+            marker_line,
+            source
+        );
+    }
+
+    #[test]
+    fn peeps_macro_records_absolute_source() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let marker_line = line!() + 1;
+        let fut = crate::peeps!(
+            name = "test.future.macro_source",
+            fut = std::future::ready(())
+        );
+        let fut_id = EntityId::new(fut.future_handle.id().as_str());
+        let source = {
+            let db = runtime_db()
+                .lock()
+                .expect("runtime db lock should be available");
+            db.entities
+                .get(&fut_id)
+                .expect("future entity should exist")
+                .source
+                .clone()
+        };
+
+        let expected_prefix = format!("{}/", env!("CARGO_MANIFEST_DIR"));
+        assert!(
+            source.starts_with(&expected_prefix),
+            "expected absolute source starting with {}, got {}",
+            expected_prefix,
+            source
+        );
         assert!(
             source.ends_with(&format!(":{}", marker_line)),
             "expected caller line {}, got source {}",

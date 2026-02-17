@@ -460,21 +460,25 @@ async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
         });
     }
 
-    let request_frame = match encode_server_message_default(&ServerMessage::SnapshotRequest(
-        SnapshotRequest {
+    let request_frame =
+        match encode_server_message_default(&ServerMessage::SnapshotRequest(SnapshotRequest {
             snapshot_id,
             timeout_ms: SNAPSHOT_TIMEOUT_MS as i64,
-        },
-    )) {
-        Ok(frame) => frame,
-        Err(e) => {
-            state.inner.lock().await.pending_snapshots.remove(&snapshot_id);
-            return json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("encode snapshot request: {e}"),
-            );
-        }
-    };
+        })) {
+            Ok(frame) => frame,
+            Err(e) => {
+                state
+                    .inner
+                    .lock()
+                    .await
+                    .pending_snapshots
+                    .remove(&snapshot_id);
+                return json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("encode snapshot request: {e}"),
+                );
+            }
+        };
 
     for (_, tx) in &txs {
         if let Err(e) = tx.try_send(request_frame.clone()) {
@@ -483,8 +487,11 @@ async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
     }
 
     // Wait for all replies or timeout.
-    let _ =
-        tokio::time::timeout(Duration::from_millis(SNAPSHOT_TIMEOUT_MS), notify.notified()).await;
+    let _ = tokio::time::timeout(
+        Duration::from_millis(SNAPSHOT_TIMEOUT_MS),
+        notify.notified(),
+    )
+    .await;
 
     // Collect whatever arrived.
     let captured_at_unix_ms = now_ms();
@@ -939,8 +946,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
             .pending_snapshots
             .values_mut()
             .filter_map(|pending| {
-                if pending.pending_conn_ids.remove(&conn_id)
-                    && pending.pending_conn_ids.is_empty()
+                if pending.pending_conn_ids.remove(&conn_id) && pending.pending_conn_ids.is_empty()
                 {
                     Some(pending.notify.clone())
                 } else {
@@ -1028,7 +1034,11 @@ async fn read_messages(
                             None
                         }
                     } else {
-                        debug!(conn_id, snapshot_id = reply.snapshot_id, "snapshot reply for unknown id");
+                        debug!(
+                            conn_id,
+                            snapshot_id = reply.snapshot_id,
+                            "snapshot reply for unknown id"
+                        );
                         None
                     }
                 };

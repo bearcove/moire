@@ -8,13 +8,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Path as AxumPath, State};
-use axum::response::IntoResponse;
-use axum::http::StatusCode;
 use axum::http::header;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::Json;
 use rusqlite::types::Value;
 use rusqlite::OptionalExtension;
@@ -363,7 +363,9 @@ pub async fn api_snapshot_processes(
 
         let mut processes = Vec::new();
         for row in rows {
-            processes.push(row.map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?);
+            processes.push(
+                row.map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+            );
         }
 
         Ok(SnapshotProcessesResponse {
@@ -415,14 +417,21 @@ pub async fn api_process_debug(
                  WHERE sp.snapshot_id = ?1 AND sp.proc_key = ?2",
                 params![snapshot_id, proc_key],
                 |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?, r.get::<_, String>(2)?))
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, Option<i64>>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
                 },
             )
             .optional()
             .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("query: {e}")))?;
 
         let Some((process, pid_opt, proc_key)) = row else {
-            return Err(api_error(StatusCode::NOT_FOUND, "process not found in snapshot"));
+            return Err(api_error(
+                StatusCode::NOT_FOUND,
+                "process not found in snapshot",
+            ));
         };
 
         let Some(pid) = pid_opt else {
@@ -447,27 +456,35 @@ pub async fn api_process_debug(
                 match action.as_str() {
                     "sample" => match run_sample_command(pid) {
                         Ok((command_output, exit_code)) => {
-                            let status = if exit_code == 0 { "executed" } else { "execution_failed" };
-                            (status.to_string(), None, Some(command_output), Some(exit_code))
+                            let status = if exit_code == 0 {
+                                "executed"
+                            } else {
+                                "execution_failed"
+                            };
+                            (
+                                status.to_string(),
+                                None,
+                                Some(command_output),
+                                Some(exit_code),
+                            )
                         }
-                        Err(err) => (
-                            "execution_error".to_string(),
-                            Some(err),
-                            None,
-                            None,
-                        ),
+                        Err(err) => ("execution_error".to_string(), Some(err), None, None),
                     },
                     "spindump" => match run_spindump_command(pid) {
                         Ok((command_output, exit_code)) => {
-                            let status = if exit_code == 0 { "executed" } else { "execution_failed" };
-                            (status.to_string(), None, Some(command_output), Some(exit_code))
+                            let status = if exit_code == 0 {
+                                "executed"
+                            } else {
+                                "execution_failed"
+                            };
+                            (
+                                status.to_string(),
+                                None,
+                                Some(command_output),
+                                Some(exit_code),
+                            )
                         }
-                        Err(err) => (
-                            "execution_error".to_string(),
-                            Some(err),
-                            None,
-                            None,
-                        ),
+                        Err(err) => ("execution_error".to_string(), Some(err), None, None),
                     },
                     _ => {
                         return Err(api_error(
@@ -532,17 +549,19 @@ pub async fn api_process_debug_result(
     let output = state
         .process_debug_results
         .lock()
-        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "debug output cache unavailable"))?
+        .map_err(|_| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "debug output cache unavailable",
+            )
+        })?
         .get(&result_id)
         .cloned()
         .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "process debug result not found"))?;
 
     Ok((
         [
-            (
-                header::CONTENT_TYPE,
-                "text/plain; charset=utf-8",
-            ),
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
             (header::CACHE_CONTROL, "no-store"),
         ],
         output,
@@ -601,7 +620,10 @@ fn next_debug_output_suffix() -> String {
 }
 
 fn next_debug_result_id() -> String {
-    format!("{PROCESS_DEBUG_OUTPUT_PREFIX}-{}", next_debug_output_suffix())
+    format!(
+        "{PROCESS_DEBUG_OUTPUT_PREFIX}-{}",
+        next_debug_output_suffix()
+    )
 }
 
 fn cache_process_debug_output(
@@ -611,7 +633,12 @@ fn cache_process_debug_output(
     let result_id = next_debug_result_id();
     output_store
         .lock()
-        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "debug output cache unavailable"))?
+        .map_err(|_| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "debug output cache unavailable",
+            )
+        })?
         .insert(result_id.clone(), output.to_string());
     Ok(format!("/api/process-debug-result/{result_id}"))
 }

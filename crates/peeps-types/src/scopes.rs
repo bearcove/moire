@@ -12,7 +12,7 @@ pub struct Scope {
     /// When we first started tracking this scope.
     pub birth: PTime,
 
-    /// Creation/discovery site in source code as `{absolute_path}:{line}`.
+    /// Creation/discovery site in source code as `{path}:{line}`.
     pub source: CompactString,
 
     /// Human-facing name for this scope.

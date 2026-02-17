@@ -1,7 +1,6 @@
 use compact_str::{CompactString, ToCompactString};
 use facet::Facet;
 use std::fmt;
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -125,20 +124,7 @@ fn next_opaque_id() -> CompactString {
 #[track_caller]
 pub(crate) fn caller_source() -> CompactString {
     let location = std::panic::Location::caller();
-    let file = absolute_source_path(location.file());
-    CompactString::from(format!("{}:{}", file.display(), location.line()))
-}
-
-fn absolute_source_path(file: &str) -> PathBuf {
-    let path = Path::new(file);
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-    std::path::absolute(path).unwrap_or_else(|_| {
-        std::env::current_dir()
-            .map(|cwd| cwd.join(path))
-            .unwrap_or_else(|_| path.to_path_buf())
-    })
+    CompactString::from(format!("{}:{}", location.file(), location.line()))
 }
 
 /// `peeps-hex-2` formatter:
@@ -161,21 +147,18 @@ impl fmt::Display for PeepsHex {
 #[cfg(test)]
 mod tests {
     use super::caller_source;
-    use std::path::Path;
 
     #[test]
-    fn caller_source_uses_absolute_path() {
+    fn caller_source_tracks_line() {
         #[track_caller]
         fn capture() -> compact_str::CompactString {
             caller_source()
         }
         let source = capture();
-        let (path, _line) = source
+        let (_path, line) = source
             .rsplit_once(':')
             .expect("caller source should include :line");
-        assert!(
-            Path::new(path).is_absolute(),
-            "source path should be absolute: {source}"
-        );
+        let line = line.parse::<u32>().expect("line segment should parse");
+        assert!(line > 0, "line should be non-zero in source: {source}");
     }
 }

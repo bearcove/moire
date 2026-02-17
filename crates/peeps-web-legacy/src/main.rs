@@ -23,9 +23,8 @@ pub(crate) struct AppState {
     pub(crate) db_path: Arc<PathBuf>,
     pub(crate) snapshot_ctl: Arc<SnapshotController>,
     pub(crate) snapshot_timeout_ms: i64,
-    pub(crate) process_debug_results: std::sync::Arc<
-        std::sync::Mutex<std::collections::HashMap<String, String>>,
-    >,
+    pub(crate) process_debug_results:
+        std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
 }
 
 pub(crate) struct SnapshotController {
@@ -289,7 +288,12 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
             }
         }
 
-        (snapshot_id, completion_rx, processes_requested, placeholder_rows)
+        (
+            snapshot_id,
+            completion_rx,
+            processes_requested,
+            placeholder_rows,
+        )
     };
 
     if !placeholder_rows.is_empty() {
@@ -522,14 +526,8 @@ async fn read_replies(
                         "handshake proc_key mismatch; using canonical value"
                     );
                 }
-                apply_connection_identity(
-                    state,
-                    conn_id,
-                    proc_key,
-                    hello.process,
-                    Some(hello.pid),
-                )
-                .await;
+                apply_connection_identity(state, conn_id, proc_key, hello.process, Some(hello.pid))
+                    .await;
             }
             DashboardFrame::GraphReply => {
                 let reply: GraphReply = match facet_json::from_slice(&frame) {
