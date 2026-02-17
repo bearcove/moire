@@ -145,6 +145,13 @@ pub struct WatchReceiver<T> {
     handle: EntityHandle,
 }
 
+#[derive(Clone)]
+pub struct Notify {
+    inner: std::sync::Arc<tokio::sync::Notify>,
+}
+
+pub type Interval = tokio::time::Interval;
+
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         Self {
@@ -481,6 +488,37 @@ pub fn watch<T: Clone>(
             handle: rx_handle,
         },
     )
+}
+
+impl Notify {
+    pub fn new(_name: impl Into<String>) -> Self {
+        Self {
+            inner: std::sync::Arc::new(tokio::sync::Notify::new()),
+        }
+    }
+
+    pub async fn notified(&self) {
+        self.inner.notified().await;
+    }
+
+    pub fn notify_one(&self) {
+        self.inner.notify_one();
+    }
+
+    pub fn notify_waiters(&self) {
+        self.inner.notify_waiters();
+    }
+}
+
+pub fn interval(period: std::time::Duration) -> tokio::time::Interval {
+    tokio::time::interval(period)
+}
+
+pub fn interval_at(
+    start: tokio::time::Instant,
+    period: std::time::Duration,
+) -> tokio::time::Interval {
+    tokio::time::interval_at(start, period)
 }
 
 static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();

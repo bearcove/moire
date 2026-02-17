@@ -126,7 +126,7 @@ struct Cli {
 }
 
 const DB_SCHEMA_VERSION: i64 = 3;
-const DEFAULT_VITE_ADDR: &str = "127.0.0.1:9131";
+const DEFAULT_VITE_ADDR: &str = "[::]:9131";
 const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 
 #[tokio::main]
@@ -394,12 +394,20 @@ fn print_startup_hints(http_addr: &str, tcp_addr: &str, vite_addr: Option<&str>)
         "api only"
     };
     println!();
-    println!("peeps-web ready ({mode})");
-    println!("Open in browser: http://{http_addr}");
-    println!("Connect apps with: PEEPS_DASHBOARD={tcp_addr} <your-binary>");
+    println!();
+
     if let Some(vite_addr) = vite_addr {
-        println!("Vite dev server (managed): http://{vite_addr}");
+        println!("  Vite dev server (managed): http://{vite_addr}");
+        println!();
     }
+
+    println!("  peeps-web ready ({mode})");
+    println!();
+    println!("  \x1b[32mOpen in browser: http://{http_addr}\x1b[0m");
+    println!();
+    println!("  Connect apps with:");
+    println!("    \x1b[32mPEEPS_DASHBOARD={tcp_addr}\x1b[0m <your-binary>");
+    println!();
     println!();
 }
 
@@ -502,9 +510,9 @@ async fn ensure_frontend_deps(workspace_root: &PathBuf) -> Result<(), String> {
         .map(|status| status.success())
         .unwrap_or(false);
     if !vite_ready {
-        return Err(format!(
-            "pnpm install succeeded but vite is still unavailable for peeps-frontend"
-        ));
+        return Err(
+            "pnpm install succeeded but vite is still unavailable for peeps-frontend".to_string(),
+        );
     }
 
     Ok(())

@@ -4,18 +4,17 @@ use peeps_types::{
     ChannelEndpointEntity, ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome,
     ChannelSendEvent, ChannelSendOutcome, ChannelWaitEndedEvent, ChannelWaitKind,
     ChannelWaitStartedEvent, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
-    EventKind, EventTarget, MpscChannelDetails, OneshotChannelDetails, OneshotState,
+    EventKind, EventTarget, MpscChannelDetails, NotifyEntity, OneshotChannelDetails, OneshotState,
     PullChangesResponse, RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId,
     SeqNo, StampedChange, StreamCursor, StreamId, WatchChannelDetails,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
-#[cfg(feature = "dashboard")]
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 #[cfg(feature = "dashboard")]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(feature = "dashboard")]
@@ -496,6 +495,31 @@ impl RuntimeDb {
                         details.last_update_at = last_update_at;
                         changed = true;
                     }
+                }
+            }
+            _ => return,
+        }
+        if !changed {
+            return;
+        }
+        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+    }
+
+    fn update_notify_waiter_count(&mut self, id: &EntityId, waiter_count: u32) {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return;
+        };
+        let mut changed = false;
+        match &mut entity.body {
+            EntityBody::Notify(notify) => {
+                if notify.waiter_count != waiter_count {
+                    notify.waiter_count = waiter_count;
+                    changed = true;
                 }
             }
             _ => return,
@@ -1138,6 +1162,20 @@ pub struct WatchReceiver<T> {
     channel: Arc<Mutex<WatchRuntimeState>>,
     name: CompactString,
 }
+
+#[derive(Clone)]
+pub struct Notify {
+    inner: Arc<tokio::sync::Notify>,
+    handle: EntityHandle,
+    waiter_count: Arc<AtomicU32>,
+}
+
+pub struct DiagnosticInterval {
+    inner: tokio::time::Interval,
+    handle: EntityHandle,
+}
+
+pub type Interval = DiagnosticInterval;
 
 struct ChannelRuntimeState {
     tx_id: EntityId,
@@ -2532,6 +2570,80 @@ pub fn watch<T: Clone>(
             name,
         },
     )
+}
+
+impl Notify {
+    pub fn new(name: impl Into<String>) -> Self {
+        let name = name.into();
+        let handle = EntityHandle::new(name, EntityBody::Notify(NotifyEntity { waiter_count: 0 }));
+        Self {
+            inner: Arc::new(tokio::sync::Notify::new()),
+            handle,
+            waiter_count: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
+    pub async fn notified(&self) {
+        let waiters = self
+            .waiter_count
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_notify_waiter_count(self.handle.id(), waiters);
+        }
+
+        instrument_future_on("notify.notified", &self.handle, self.inner.notified()).await;
+
+        let waiters = self
+            .waiter_count
+            .fetch_sub(1, Ordering::Relaxed)
+            .saturating_sub(1);
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_notify_waiter_count(self.handle.id(), waiters);
+        }
+    }
+
+    pub fn notify_one(&self) {
+        self.inner.notify_one();
+    }
+
+    pub fn notify_waiters(&self) {
+        self.inner.notify_waiters();
+    }
+}
+
+impl DiagnosticInterval {
+    pub async fn tick(&mut self) -> tokio::time::Instant {
+        instrument_future_on("interval.tick", &self.handle, self.inner.tick()).await
+    }
+
+    pub fn reset(&mut self) {
+        self.inner.reset();
+    }
+
+    pub fn period(&self) -> Duration {
+        self.inner.period()
+    }
+
+    pub fn set_missed_tick_behavior(&mut self, behavior: tokio::time::MissedTickBehavior) {
+        self.inner.set_missed_tick_behavior(behavior);
+    }
+}
+
+pub fn interval(period: Duration) -> DiagnosticInterval {
+    let label = format!("interval({}ms)", period.as_millis());
+    DiagnosticInterval {
+        inner: tokio::time::interval(period),
+        handle: EntityHandle::new(label, EntityBody::Future),
+    }
+}
+
+pub fn interval_at(start: tokio::time::Instant, period: Duration) -> DiagnosticInterval {
+    let label = format!("interval({}ms)", period.as_millis());
+    DiagnosticInterval {
+        inner: tokio::time::interval_at(start, period),
+        handle: EntityHandle::new(label, EntityBody::Future),
+    }
 }
 
 pub trait SnapshotSink {
