@@ -8,6 +8,7 @@ use peeps_types::{
 use std::ffi::OsStr;
 use std::future::Future;
 use std::io;
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::{ExitStatus, Output, Stdio};
 use std::sync::Once;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
@@ -166,7 +167,10 @@ pub struct OnceCell<T>(tokio::sync::OnceCell<T>);
 #[derive(Clone)]
 pub struct Semaphore(std::sync::Arc<tokio::sync::Semaphore>);
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct Command(tokio::process::Command);
+#[cfg(target_arch = "wasm32")]
+pub struct Command;
 
 #[derive(Clone, Debug)]
 pub struct CommandDiagnostics {
@@ -175,7 +179,10 @@ pub struct CommandDiagnostics {
     pub env: Vec<CompactString>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct Child(tokio::process::Child);
+#[cfg(target_arch = "wasm32")]
+pub struct Child;
 
 pub struct JoinSet<T>(tokio::task::JoinSet<T>);
 
@@ -661,6 +668,7 @@ impl Semaphore {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Command {
     pub fn new(program: impl AsRef<OsStr>) -> Self {
         Self(tokio::process::Command::new(program))
@@ -772,6 +780,7 @@ impl Command {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Child {
     pub fn from_tokio_with_diagnostics(
         child: tokio::process::Child,
@@ -822,6 +831,75 @@ impl Child {
 
     pub fn take_stderr(&mut self) -> Option<tokio::process::ChildStderr> {
         self.0.stderr.take()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Command {
+    pub fn new(_program: impl AsRef<OsStr>) -> Self {
+        Self
+    }
+
+    pub fn arg(&mut self, _arg: impl AsRef<OsStr>) -> &mut Self {
+        self
+    }
+
+    pub fn args(&mut self, _args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
+        self
+    }
+
+    pub fn env(&mut self, _key: impl AsRef<OsStr>, _val: impl AsRef<OsStr>) -> &mut Self {
+        self
+    }
+
+    pub fn envs(
+        &mut self,
+        _vars: impl IntoIterator<Item = (impl AsRef<OsStr>, impl AsRef<OsStr>)>,
+    ) -> &mut Self {
+        self
+    }
+
+    pub fn env_clear(&mut self) -> &mut Self {
+        self
+    }
+
+    pub fn env_remove(&mut self, _key: impl AsRef<OsStr>) -> &mut Self {
+        self
+    }
+
+    pub fn current_dir(&mut self, _dir: impl AsRef<std::path::Path>) -> &mut Self {
+        self
+    }
+
+    pub fn kill_on_drop(&mut self, _kill_on_drop: bool) -> &mut Self {
+        self
+    }
+
+    pub fn spawn(&mut self) -> io::Result<Child> {
+        Err(io::Error::other("tokio::process is unavailable on wasm32"))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Child {
+    pub fn id(&self) -> Option<u32> {
+        None
+    }
+
+    pub async fn wait(&mut self) -> io::Result<()> {
+        Err(io::Error::other("tokio::process is unavailable on wasm32"))
+    }
+
+    pub async fn wait_with_output(self) -> io::Result<Vec<u8>> {
+        Err(io::Error::other("tokio::process is unavailable on wasm32"))
+    }
+
+    pub fn start_kill(&mut self) -> io::Result<()> {
+        Err(io::Error::other("tokio::process is unavailable on wasm32"))
+    }
+
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.start_kill()
     }
 }
 

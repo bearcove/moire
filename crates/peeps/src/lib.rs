@@ -4,8 +4,16 @@
 //! - `enabled`: real diagnostics runtime
 //! - `disabled`: zero-cost pass-through API
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod fs;
+#[cfg(target_arch = "wasm32")]
+pub mod fs {}
 pub mod net;
+
+#[cfg(all(feature = "diagnostics", target_arch = "wasm32"))]
+compile_error!(
+    "`peeps` diagnostics is not supported on wasm32; build wasm targets without `feature=\"diagnostics\"`"
+);
 
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
@@ -57,10 +65,10 @@ impl<T> RwLock<T> {
 
 #[cfg(not(feature = "diagnostics"))]
 mod disabled;
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 mod enabled;
 
 #[cfg(not(feature = "diagnostics"))]
 pub use disabled::*;
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 pub use enabled::*;

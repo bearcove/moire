@@ -1,6 +1,10 @@
+#[cfg(feature = "diagnostics")]
 use compact_str::CompactString;
+#[cfg(feature = "diagnostics")]
 use peeps_types::{EntityBody, NetEntity};
-use std::future::{Future, IntoFuture};
+#[cfg(feature = "diagnostics")]
+use std::future::Future;
+use std::future::IntoFuture;
 
 #[cfg(feature = "diagnostics")]
 fn net_wait<F>(
