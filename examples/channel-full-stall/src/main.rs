@@ -4,9 +4,9 @@ use std::time::Duration;
 async fn main() {
     peeps::init("example-channel-full-stall");
 
-    let (tx, mut rx) = peeps::channel::<u32>("demo.work_queue", 16);
+    let (tx, mut rx) = peeps::channel!("demo.work_queue", 16);
 
-    peeps::spawn_tracked("stalled_receiver", async move {
+    peeps::spawn_tracked!("stalled_receiver", async move {
         println!("receiver started but is intentionally not draining the queue");
         peeps::peeps!(
             name = "receiver.simulated_hang",
@@ -17,7 +17,7 @@ async fn main() {
         let _ = rx.recv().await;
     });
 
-    peeps::spawn_tracked("bounded_sender", async move {
+    peeps::spawn_tracked!("bounded_sender", async move {
         for i in 0_u32..16 {
             peeps::peep!(tx.send(i), "queue.send.prefill")
             .await

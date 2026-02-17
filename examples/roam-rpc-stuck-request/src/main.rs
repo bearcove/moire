@@ -146,7 +146,7 @@ async fn run_server(addr: &str) {
         .await
         .expect("server handshake should succeed");
 
-    peeps::spawn_tracked("roam.server_driver", async move {
+    peeps::spawn_tracked!("roam.server_driver", async move {
         let _ = driver.run().await;
     });
 
@@ -171,12 +171,12 @@ async fn run_client(addr: &str) {
             .await
             .expect("client handshake should succeed");
 
-    peeps::spawn_tracked("roam.client_driver", async move {
+    peeps::spawn_tracked!("roam.client_driver", async move {
         let _ = client_driver.run().await;
     });
 
     let client = DemoRpcClient::new(client_handle);
-    peeps::spawn_tracked("roam.client.request_task", async move {
+    peeps::spawn_tracked!("roam.client.request_task", async move {
         client
             .sleepy_forever()
             .await
