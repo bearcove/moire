@@ -1,5 +1,5 @@
 +++
-title = "Runtime Events (v1)"
+title = "Events"
 weight = 2
 insert_anchor_links = "heading"
 +++

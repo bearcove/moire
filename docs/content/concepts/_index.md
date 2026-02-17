@@ -5,29 +5,82 @@ sort_by = "weight"
 insert_anchor_links = "heading"
 +++
 
-peeps models runtime behavior as a graph plus a timeline. Nodes are runtime entities. Edges are causal relationships between those entities. Events are timestamped facts about lifecycle and activity.
+When a synchronous Rust application is stuck on something, chances are you
+can attach a debugger and look at backtraces of all the threads and see exactly
+what's happening.
 
-A Node is anything that exists at runtime and can participate in causality: a task, a lock, a channel endpoint, a request, a response, a process-level operation. Node identity is stable. Node attrs are observational detail. Inspector-facing attrs must keep canonical keys, with `created_at` and `source` always present.
+When an _asynchronous_ Rust application (using tokio, for example) is stuck,
+things are not so simple. What most likely happened, is that one of your futures
+polled another future, which polled another future.
 
-An Edge says one node is causally related to another. Edges are directional. Edge kind carries meaning, like dependency, interaction, lineage, or closure cause. Edges appear and disappear as runtime state changes. See [Edges](@/concepts/edges.md) for edge-kind semantics.
+And that leaf future needed some work to be done that wasn't ready just now. So
+it asked to be woken up later and then returned `Poll::Pending`. All the
+futures that were currently being pulled also returned `Poll::Pending` all the way
+to the runtime.
 
-An Event records something that happened at a point in time for a node. Events are where lifecycle and phase transitions belong. The event row shape, naming contract, and taxonomy live in [Events](@/concepts/events.md).
+And when you, the developer, attach a debugger to the app, all you see is that
+all the threads are parked waiting for something to happen. 
 
-The rest of this section explains how to read this model in practice: lifecycle behavior, timing semantics, edge semantics, and event naming.
+Well, if every feature of every library that you ever used was instrumented in
+some way, you could tell who's waiting for what.
 
-## Example: Channel
+The `peeps::peeps!` macro lets you do that — Every future becomes a node in the
+peeps graph and every `await` (or poll) becomes a 'needs' edge between the two:
 
-You create a channel, one task sends, another task receives, and eventually someone closes. In peeps terms, that shows up as channel endpoint nodes plus task nodes, with edges for who depends on what and events for send/recv/close activity over time.
+This is already interesting, but it's extremely noisy and really hard to read.
 
-```mermaid
-graph LR
-  t1["task:producer"] -->|Needs| tx["channel_tx:jobs"]
-  t2["task:consumer"] -->|Needs| rx["channel_rx:jobs"]
-  tx -->|Touches| rx
-  tx -->|Spawned/paired| ch["channel:jobs"]
-  rx -->|Spawned/paired| ch
+peeps goes one step further by instrumenting synchronization primitives: If you
+know every future that's currently waiting for a lock, and you know the future
+that's currently holding the lock, then that's extremely helpful.
 
-  e1["event: channel.send"] -.-> tx
-  e2["event: channel.recv"] -.-> rx
-  e3["event: channel.closed"] -.-> ch
-```
+And similarly for channels, you can record properties of the channel itself,
+such as how many values are currently buffered? How many subscribers are there
+to a channel? You can record events with times. When did the last few items go
+through? When did we stop getting items? 
+
+And finally, because I'm the one writing this tool and I have my own ecosystem
+including RPC via [roam](https://github.com/bearcove/roam), request and
+responses are also instrumented, which lets you join multiple processes into a
+single graph and understand cross-process deadlocks. 
+
+At least that's the idea. In practice, it's really hard to build a tool like
+this and even harder to use a tool like this to actually find real bugs. There
+are toy examples in the repository that are extremely obvious, but everything is
+still in flux. And at the time of this writing, the deadlock that I am chasing
+is still alive and well.
+
+So someone remind me to update these docs when I actually find it. 
+ 
+## What shows up as nodes
+
+- Async execution
+  - `future`: tracked futures/tasks
+  - `joinset`: task group / join set entities
+- Synchronization
+  - `lock`: lock contention points (mutex/rwlock wrappers)
+  - `semaphore`: semaphore coordination points
+  - `oncecell`: lazy initialization coordination points
+  - `notify`: notify/wait coordination points
+- Channels
+  - `tx`: local channel sender endpoints
+  - `rx`: local channel receiver endpoints
+  - `remote_tx`: cross-process sender endpoints
+  - `remote_rx`: cross-process receiver endpoints
+- RPC and transport
+  - `request`: RPC request lifecycle entities
+  - `response`: RPC response lifecycle entities
+  - `connection`: transport or RPC connection entities
+- Time
+  - `sleep`: sleep timer waits
+  - `interval`: interval timer cadence points
+  - `timeout`: timeout guard boundaries
+- System operations
+  - `command`: process execution operations
+  - `file_op`: filesystem operations
+- Network operations
+  - `net_connect`: network connect waits
+  - `net_accept`: network accept waits
+  - `net_readable`: network readability waits
+  - `net_writable`: network writability waits
+- VixenFS
+  - `syscall`: handling a filesystem syscall as a VFS
