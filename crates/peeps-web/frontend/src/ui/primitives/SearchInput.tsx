@@ -76,13 +76,12 @@ export function SearchInput({
             {filterBadge && (
               <div className="ui-search-filter">
                 {filterBadge}
-                <button
-                  type="button"
+                <Button
                   className="ui-search-filter-clear"
-                  onClick={() => onClearFilter?.()}
+                  onPress={() => onClearFilter?.()}
                 >
                   clear filter
-                </button>
+                </Button>
               </div>
             )}
             {items.length === 0 ? (

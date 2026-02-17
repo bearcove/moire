@@ -1,5 +1,6 @@
 import type React from "react";
 import { Checkbox as AriaCheckbox } from "react-aria-components";
+import { Check } from "@phosphor-icons/react";
 
 export function Checkbox({
   checked,
@@ -18,7 +19,9 @@ export function Checkbox({
       isSelected={checked}
       onChange={onChange}
     >
-      <span className="ui-checkbox-box" aria-hidden="true" />
+      <span className="ui-checkbox-box" aria-hidden="true">
+        <Check size={11} weight="bold" className="ui-checkbox-icon" />
+      </span>
       <span className="ui-checkbox-label">{label}</span>
     </AriaCheckbox>
   );

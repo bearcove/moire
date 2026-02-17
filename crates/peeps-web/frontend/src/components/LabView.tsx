@@ -14,7 +14,7 @@ import { TextInput } from "../ui/primitives/TextInput";
 import { SearchInput } from "../ui/primitives/SearchInput";
 import { Checkbox } from "../ui/primitives/Checkbox";
 import { Select } from "../ui/primitives/Select";
-import { Slider } from "../ui/primitives/Slider";
+import { LabeledSlider } from "../ui/primitives/Slider";
 import { Menu } from "../ui/primitives/Menu";
 
 export function LabView() {
@@ -188,12 +188,13 @@ export function LabView() {
               aria-label="Select"
               options={selectOptions}
             />
-            <Slider
+            <LabeledSlider
               value={sliderValue}
               min={0}
               max={2}
               step={1}
               onChange={(v) => setSliderValue(v)}
+              aria-label="Detail level"
               label="Detail"
               valueLabel={sliderValue === 0 ? "info" : sliderValue === 1 ? "debug" : "trace"}
             />
