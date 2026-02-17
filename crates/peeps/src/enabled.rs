@@ -255,6 +255,7 @@ async fn read_server_message(
     Ok(Some(message))
 }
 
+#[deprecated(note = "use the spawn_tracked! macro instead")]
 #[track_caller]
 pub fn spawn_tracked<F>(
     name: impl Into<CompactString>,
@@ -269,6 +270,35 @@ where
     )
 }
 
+pub fn spawn_tracked_with_krate<F>(
+    name: impl Into<CompactString>,
+    fut: F,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> tokio::task::JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        FUTURE_CAUSAL_STACK
+            .scope(RefCell::new(Vec::new()), instrument_future_named_with_krate(name, fut, source, krate)),
+    )
+}
+
+#[macro_export]
+macro_rules! spawn_tracked {
+    ($name:expr, $fut:expr $(,)?) => {
+        $crate::spawn_tracked_with_krate(
+            $name,
+            $fut,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
+}
+
+#[deprecated(note = "use the spawn_blocking_tracked! macro instead")]
 #[track_caller]
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<CompactString>,
@@ -285,11 +315,63 @@ where
     })
 }
 
+pub fn spawn_blocking_tracked_with_krate<F, T>(
+    name: impl Into<CompactString>,
+    f: F,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> tokio::task::JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let handle = EntityHandle::new_with_krate(name, EntityBody::Future, source, krate);
+    tokio::task::spawn_blocking(move || {
+        let _hold = handle;
+        f()
+    })
+}
+
+#[macro_export]
+macro_rules! spawn_blocking_tracked {
+    ($name:expr, $f:expr $(,)?) => {
+        $crate::spawn_blocking_tracked_with_krate(
+            $name,
+            $f,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
+}
+
+#[deprecated(note = "use the sleep! macro instead")]
 #[track_caller]
 pub fn sleep(duration: std::time::Duration, label: impl Into<String>) -> impl Future<Output = ()> {
     instrument_future_named(label.into(), tokio::time::sleep(duration))
 }
 
+pub fn sleep_with_krate(
+    duration: std::time::Duration,
+    label: impl Into<CompactString>,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> impl Future<Output = ()> {
+    instrument_future_named_with_krate(label, tokio::time::sleep(duration), source, krate)
+}
+
+#[macro_export]
+macro_rules! sleep {
+    ($duration:expr, $label:expr $(,)?) => {
+        $crate::sleep_with_krate(
+            $duration,
+            $label,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
+}
+
+#[deprecated(note = "use the timeout! macro instead")]
 pub async fn timeout<F>(
     duration: std::time::Duration,
     future: F,
@@ -299,6 +381,36 @@ where
     F: Future,
 {
     tokio::time::timeout(duration, instrument_future_named(label.into(), future)).await
+}
+
+pub async fn timeout_with_krate<F>(
+    duration: std::time::Duration,
+    future: F,
+    label: impl Into<CompactString>,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> Result<F::Output, tokio::time::error::Elapsed>
+where
+    F: Future,
+{
+    tokio::time::timeout(
+        duration,
+        instrument_future_named_with_krate(label, future, source, krate),
+    )
+    .await
+}
+
+#[macro_export]
+macro_rules! timeout {
+    ($duration:expr, $future:expr, $label:expr $(,)?) => {
+        $crate::timeout_with_krate(
+            $duration,
+            $future,
+            $label,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
 }
 
 fn runtime_db() -> &'static StdMutex<RuntimeDb> {
@@ -1284,6 +1396,7 @@ impl RpcResponseHandle {
     }
 }
 
+#[deprecated(note = "use the rpc_request! macro instead")]
 #[track_caller]
 pub fn rpc_request(
     method: impl Into<CompactString>,
@@ -1299,6 +1412,35 @@ pub fn rpc_request(
     }
 }
 
+pub fn rpc_request_with_krate(
+    method: impl Into<CompactString>,
+    args_preview: impl Into<CompactString>,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> RpcRequestHandle {
+    let method = method.into();
+    let body = EntityBody::Request(RequestEntity {
+        method: method.clone(),
+        args_preview: args_preview.into(),
+    });
+    RpcRequestHandle {
+        handle: EntityHandle::new_with_krate(format!("rpc.request.{method}"), body, source, krate),
+    }
+}
+
+#[macro_export]
+macro_rules! rpc_request {
+    ($method:expr, $args_preview:expr $(,)?) => {
+        $crate::rpc_request_with_krate(
+            $method,
+            $args_preview,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
+}
+
+#[deprecated(note = "use the rpc_response! macro instead")]
 #[track_caller]
 pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     let method = method.into();
@@ -1311,16 +1453,69 @@ pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     }
 }
 
+pub fn rpc_response_with_krate(
+    method: impl Into<CompactString>,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> RpcResponseHandle {
+    let method = method.into();
+    let body = EntityBody::Response(ResponseEntity {
+        method: method.clone(),
+        status: ResponseStatus::Pending,
+    });
+    RpcResponseHandle {
+        handle: EntityHandle::new_with_krate(format!("rpc.response.{method}"), body, source, krate),
+    }
+}
+
+#[macro_export]
+macro_rules! rpc_response {
+    ($method:expr $(,)?) => {
+        $crate::rpc_response_with_krate(
+            $method,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
+}
+
+#[deprecated(note = "use the rpc_response_for! macro instead")]
 #[track_caller]
 pub fn rpc_response_for(
     method: impl Into<CompactString>,
     request: &EntityRef,
 ) -> RpcResponseHandle {
+    #[allow(deprecated)]
     let response = rpc_response(method);
     if let Ok(mut db) = runtime_db().lock() {
         db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
     }
     response
+}
+
+pub fn rpc_response_for_with_krate(
+    method: impl Into<CompactString>,
+    request: &EntityRef,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> RpcResponseHandle {
+    let response = rpc_response_with_krate(method, source, krate);
+    if let Ok(mut db) = runtime_db().lock() {
+        db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
+    }
+    response
+}
+
+#[macro_export]
+macro_rules! rpc_response_for {
+    ($method:expr, $request:expr $(,)?) => {
+        $crate::rpc_response_for_with_krate(
+            $method,
+            $request,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
 }
 
 pub struct Sender<T> {
@@ -3231,6 +3426,7 @@ impl<T: Clone> WatchReceiver<T> {
     }
 }
 
+#[deprecated(note = "use the broadcast! macro instead")]
 #[track_caller]
 pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
@@ -3292,6 +3488,87 @@ pub fn broadcast<T: Clone>(
     )
 }
 
+pub fn broadcast_with_krate<T: Clone>(
+    name: impl Into<CompactString>,
+    capacity: usize,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    let name = name.into();
+    let source = source.into();
+    let krate = krate.into();
+    let (tx, rx) = broadcast::channel(capacity);
+    let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
+    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: Some(capacity_u32),
+        }),
+    });
+    let tx_handle = EntityHandle::new_with_krate(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+        source.clone(),
+        krate.clone(),
+    );
+    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: Some(capacity_u32),
+        }),
+    });
+    let rx_handle = EntityHandle::new_with_krate(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+        source,
+        krate,
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    let channel = Arc::new(StdMutex::new(BroadcastRuntimeState {
+        tx_id: tx_handle.id().clone(),
+        rx_id: rx_handle.id().clone(),
+        tx_ref_count: 1,
+        rx_ref_count: 1,
+        capacity: capacity_u32,
+        tx_close_cause: None,
+        rx_close_cause: None,
+    }));
+    (
+        BroadcastSender {
+            inner: tx,
+            handle: tx_handle,
+            receiver_handle: rx_handle.clone(),
+            channel: channel.clone(),
+            name: name.clone(),
+        },
+        BroadcastReceiver {
+            inner: rx,
+            handle: rx_handle,
+            channel,
+            name,
+        },
+    )
+}
+
+#[macro_export]
+macro_rules! broadcast {
+    ($name:expr, $capacity:expr $(,)?) => {
+        $crate::broadcast_with_krate(
+            $name,
+            $capacity,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
+}
+
+#[deprecated(note = "use the watch! macro instead")]
 #[track_caller]
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
@@ -3346,12 +3623,87 @@ pub fn watch<T: Clone>(
     )
 }
 
+#[deprecated(note = "use the watch! macro instead")]
 #[track_caller]
 pub fn watch_channel<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
+    #[allow(deprecated)]
     watch(name, initial)
+}
+
+pub fn watch_with_krate<T: Clone>(
+    name: impl Into<CompactString>,
+    initial: T,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+) -> (WatchSender<T>, WatchReceiver<T>) {
+    let name = name.into();
+    let source = source.into();
+    let krate = krate.into();
+    let (tx, rx) = watch::channel(initial);
+    let details = ChannelDetails::Watch(WatchChannelDetails {
+        last_update_at: None,
+    });
+    let tx_handle = EntityHandle::new_with_krate(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+        source.clone(),
+        krate.clone(),
+    );
+    let details = ChannelDetails::Watch(WatchChannelDetails {
+        last_update_at: None,
+    });
+    let rx_handle = EntityHandle::new_with_krate(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+        source,
+        krate,
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    let channel = Arc::new(StdMutex::new(WatchRuntimeState {
+        tx_id: tx_handle.id().clone(),
+        rx_id: rx_handle.id().clone(),
+        tx_ref_count: 1,
+        rx_ref_count: 1,
+        tx_close_cause: None,
+        rx_close_cause: None,
+        last_update_at: None,
+    }));
+    (
+        WatchSender {
+            inner: tx,
+            handle: tx_handle,
+            receiver_handle: rx_handle.clone(),
+            channel: channel.clone(),
+            name: name.clone(),
+        },
+        WatchReceiver {
+            inner: rx,
+            handle: rx_handle,
+            channel,
+            name,
+        },
+    )
+}
+
+#[macro_export]
+macro_rules! watch {
+    ($name:expr, $initial:expr $(,)?) => {
+        $crate::watch_with_krate(
+            $name,
+            $initial,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    };
 }
 
 impl Notify {

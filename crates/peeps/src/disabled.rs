@@ -1366,3 +1366,115 @@ macro_rules! peep {
         compile_error!("invalid `peep!` arguments");
     }};
 }
+
+#[macro_export]
+macro_rules! channel {
+    ($name:expr, $capacity:expr $(,)?) => {
+        $crate::channel($name, $capacity)
+    };
+}
+
+#[macro_export]
+macro_rules! unbounded_channel {
+    ($name:expr $(,)?) => {
+        $crate::unbounded_channel($name)
+    };
+}
+
+#[macro_export]
+macro_rules! oneshot {
+    ($name:expr $(,)?) => {
+        $crate::oneshot($name)
+    };
+}
+
+#[macro_export]
+macro_rules! broadcast {
+    ($name:expr, $capacity:expr $(,)?) => {
+        $crate::broadcast($name, $capacity)
+    };
+}
+
+#[macro_export]
+macro_rules! watch {
+    ($name:expr, $initial:expr $(,)?) => {
+        $crate::watch($name, $initial)
+    };
+}
+
+#[macro_export]
+macro_rules! notify {
+    ($name:expr $(,)?) => {
+        $crate::Notify::new($name)
+    };
+}
+
+#[macro_export]
+macro_rules! once_cell {
+    ($name:expr $(,)?) => {
+        $crate::OnceCell::new($name)
+    };
+}
+
+#[macro_export]
+macro_rules! semaphore {
+    ($name:expr, $permits:expr $(,)?) => {
+        $crate::Semaphore::new($name, $permits)
+    };
+}
+
+#[macro_export]
+macro_rules! join_set {
+    ($name:expr $(,)?) => {
+        $crate::JoinSet::named($name)
+    };
+}
+
+#[macro_export]
+macro_rules! spawn_tracked {
+    ($name:expr, $fut:expr $(,)?) => {
+        $crate::spawn_tracked($name, $fut)
+    };
+}
+
+#[macro_export]
+macro_rules! spawn_blocking_tracked {
+    ($name:expr, $f:expr $(,)?) => {
+        $crate::spawn_blocking_tracked($name, $f)
+    };
+}
+
+#[macro_export]
+macro_rules! sleep {
+    ($duration:expr, $label:expr $(,)?) => {
+        $crate::sleep($duration, $label)
+    };
+}
+
+#[macro_export]
+macro_rules! timeout {
+    ($duration:expr, $future:expr, $label:expr $(,)?) => {
+        $crate::timeout($duration, $future, $label)
+    };
+}
+
+#[macro_export]
+macro_rules! rpc_request {
+    ($method:expr, $args_preview:expr $(,)?) => {
+        $crate::rpc_request($method, $args_preview)
+    };
+}
+
+#[macro_export]
+macro_rules! rpc_response {
+    ($method:expr $(,)?) => {
+        $crate::rpc_response($method)
+    };
+}
+
+#[macro_export]
+macro_rules! rpc_response_for {
+    ($method:expr, $request:expr $(,)?) => {
+        $crate::rpc_response_for($method, $request)
+    };
+}

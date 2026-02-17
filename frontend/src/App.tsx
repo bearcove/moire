@@ -864,15 +864,20 @@ function GraphFlow({
 }
 
 function getConnectedSubgraph(entityId: string, entities: EntityDef[], edges: EdgeDef[]): { entities: EntityDef[]; edges: EdgeDef[] } {
-  const connectedEdges = edges.filter((e) => e.source === entityId || e.target === entityId);
-  const connectedIds = new Set([entityId]);
-  for (const e of connectedEdges) {
-    connectedIds.add(e.source);
-    connectedIds.add(e.target);
+  const connectedIds = new Set<string>();
+  const queue = [entityId];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    if (connectedIds.has(id)) continue;
+    connectedIds.add(id);
+    for (const e of edges) {
+      if (e.source === id && !connectedIds.has(e.target)) queue.push(e.target);
+      if (e.target === id && !connectedIds.has(e.source)) queue.push(e.source);
+    }
   }
   return {
     entities: entities.filter((e) => connectedIds.has(e.id)),
-    edges: connectedEdges,
+    edges: edges.filter((e) => connectedIds.has(e.source) && connectedIds.has(e.target)),
   };
 }
 
