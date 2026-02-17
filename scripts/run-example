@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLES_DIR="$ROOT_DIR/examples"
 FRONTEND_DIR="$ROOT_DIR/crates/peeps-web/frontend"
+LAST_EXAMPLE_FILE="${PEEPS_LAST_EXAMPLE_FILE:-$ROOT_DIR/.run-example-last}"
 
 PEEPS_LISTEN="${PEEPS_LISTEN:-127.0.0.1:9119}"
 PEEPS_HTTP="${PEEPS_HTTP:-127.0.0.1:9130}"
@@ -15,18 +16,18 @@ backend_pid=""
 frontend_pid=""
 cleaned_up="0"
 
-list_examples() {
-  local had_any="0"
-  for manifest in "$EXAMPLES_DIR"/*/Cargo.toml; do
-    if [[ -f "$manifest" ]]; then
-      had_any="1"
-      basename "$(dirname "$manifest")"
-    fi
-  done
+run_selector() {
+  (
+    cd "$ROOT_DIR"
+    cargo run --quiet -p peeps-example-selector -- \
+      --examples-dir "$EXAMPLES_DIR" \
+      --last-file "$LAST_EXAMPLE_FILE" \
+      "$@"
+  )
+}
 
-  if [[ "$had_any" == "0" ]]; then
-    echo "No examples found in $EXAMPLES_DIR" >&2
-  fi
+list_examples() {
+  run_selector --list
 }
 
 usage() {
@@ -114,31 +115,36 @@ open_browser() {
   fi
 }
 
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "Missing required command: cargo" >&2
+  exit 1
+fi
+
 if [[ "${1:-}" == "--list" ]]; then
   list_examples
   exit 0
 fi
 
 if [[ "$#" -eq 0 ]]; then
-  list_examples
-  exit 0
-fi
-
-if [[ "$#" -ne 1 ]]; then
+  if [[ -r /dev/tty ]]; then
+    example_name="$(run_selector < /dev/tty)"
+  else
+    example_name="$(run_selector)"
+  fi
+elif [[ "$#" -eq 1 ]]; then
+  example_name="$(run_selector "$1")"
+else
   usage
   exit 1
 fi
 
-example_name="$1"
 example_manifest="$EXAMPLES_DIR/$example_name/Cargo.toml"
-
 if [[ ! -f "$example_manifest" ]]; then
-  echo "Unknown example '$example_name'. Available examples:" >&2
-  list_examples >&2
+  echo "Resolved example '$example_name' has no Cargo.toml at '$example_manifest'." >&2
   exit 1
 fi
 
-for cmd in cargo pnpm curl; do
+for cmd in pnpm curl; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     exit 1

@@ -7,3 +7,4 @@ node_modules
 # vite prod build
 dist
 .cache
+.run-example-last

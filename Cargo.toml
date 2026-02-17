@@ -4,6 +4,7 @@ members = [
   "crates/peeps",
   "crates/peeps-types",
   "crates/peeps-web",
+  "crates/peeps-example-selector",
 ]
 
 [workspace.package]
