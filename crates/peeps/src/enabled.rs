@@ -9,6 +9,7 @@ use peeps_types::{
     ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId, SemaphoreEntity, SeqNo,
     StampedChange, StreamCursor, StreamId, WatchChannelDetails,
 };
+use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::ffi::{OsStr, OsString};
 use std::future::Future;
@@ -37,6 +38,9 @@ static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 const DASHBOARD_PUSH_MAX_CHANGES: u32 = 2048;
 const DASHBOARD_PUSH_INTERVAL_MS: u64 = 100;
 const DASHBOARD_RECONNECT_DELAY_MS: u64 = 500;
+tokio::task_local! {
+    static FUTURE_CAUSAL_STACK: RefCell<Vec<EntityId>>;
+}
 
 #[track_caller]
 pub fn init(process_name: &str) {
@@ -260,7 +264,10 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    tokio::spawn(instrument_future_named(name, fut))
+    tokio::spawn(FUTURE_CAUSAL_STACK.scope(
+        RefCell::new(Vec::new()),
+        instrument_future_named(name, fut),
+    ))
 }
 
 #[track_caller]
@@ -1014,6 +1021,17 @@ pub fn entity_ref_from_wire(id: impl Into<CompactString>) -> EntityRef {
     EntityRef {
         id: EntityId::new(id.into()),
     }
+}
+
+fn current_causal_target() -> Option<EntityRef> {
+    FUTURE_CAUSAL_STACK
+        .try_with(|stack| {
+            stack.borrow().last().map(|id| EntityRef {
+                id: EntityId::new(id.as_str()),
+            })
+        })
+        .ok()
+        .flatten()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -3651,8 +3669,10 @@ where
         F: Future<Output = T> + Send + 'static,
     {
         let joinset_handle = self.handle.clone();
-        self.inner
-            .spawn(async move { instrument_future_on(label, &joinset_handle, future).await });
+        self.inner.spawn(FUTURE_CAUSAL_STACK.scope(
+            RefCell::new(Vec::new()),
+            async move { instrument_future_on(label, &joinset_handle, future).await },
+        ));
     }
 
     #[track_caller]
@@ -3790,6 +3810,7 @@ pub struct InstrumentedFuture<F> {
 
 impl<F> InstrumentedFuture<F> {
     fn new(inner: F, future_handle: EntityHandle, target: Option<EntityRef>) -> Self {
+        let target = target.or_else(current_causal_target);
         Self {
             inner,
             future_handle,
@@ -3807,6 +3828,13 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
+        let pushed = FUTURE_CAUSAL_STACK
+            .try_with(|stack| {
+                stack
+                    .borrow_mut()
+                    .push(EntityId::new(this.future_handle.id().as_str()));
+            })
+            .is_ok();
 
         if let Some(target) = &this.target {
             if this.current_edge.is_none() {
@@ -3818,6 +3846,11 @@ where
         }
 
         let poll = unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx);
+        if pushed {
+            let _ = FUTURE_CAUSAL_STACK.try_with(|stack| {
+                stack.borrow_mut().pop();
+            });
+        }
         match poll {
             Poll::Pending => {
                 if let Some(target) = &this.target {
@@ -3997,6 +4030,14 @@ mod tests {
         db.entities.contains_key(id)
     }
 
+    fn entity_id_by_name(name: &str) -> Option<EntityId> {
+        let db = runtime_db().lock().expect("runtime db lock should be available");
+        db.entities
+            .values()
+            .find(|entity| entity.name.as_str() == name)
+            .map(|entity| EntityId::new(entity.id.as_str()))
+    }
+
     #[test]
     fn instrument_future_named_uses_caller_source() {
         let _guard = test_guard();
@@ -4070,5 +4111,38 @@ mod tests {
         assert!(entity_exists(&fut_id));
         assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Needs));
         assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Polls));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn peep_child_future_links_to_current_parent_future() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let parent = spawn_tracked("test.parent.future", async {
+            crate::peep!(std::future::pending::<()>(), "test.child.future").await;
+        });
+
+        let mut found = false;
+        for _ in 0..64 {
+            tokio::task::yield_now().await;
+            let Some(parent_id) = entity_id_by_name("test.parent.future") else {
+                continue;
+            };
+            let Some(child_id) = entity_id_by_name("test.child.future") else {
+                continue;
+            };
+            if edge_exists(&child_id, &parent_id, EdgeKind::Needs) {
+                found = true;
+                break;
+            }
+        }
+
+        parent.abort();
+        let _ = parent.await;
+
+        assert!(
+            found,
+            "expected child future to link to parent future via needs edge"
+        );
     }
 }
