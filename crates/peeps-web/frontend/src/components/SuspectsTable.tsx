@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { WarningOctagon, CaretLeft, CaretRight, Circle } from "@phosphor-icons/react";
-import { kindMeta, ProcessSwatch } from "./NodeCards";
+import { ProcessSwatch } from "./NodeCards";
+import { kindDisplayName, kindIcon } from "../nodeKindSpec";
 
 export interface SuspectItem {
   id: string;
@@ -48,7 +49,7 @@ function processLabel(process: string): string {
 }
 
 function kindLabel(kind: string): string {
-  return kindMeta[kind]?.displayName ?? kind;
+  return kindDisplayName(kind);
 }
 
 function reasonTone(reason: string): "critical" | "warn" | "info" {
@@ -146,7 +147,7 @@ export function SuspectsTable({
             >
               <div className="suspect-card-top">
                 <span className="suspect-kind-pill" title={kindLabel(suspect.kind)}>
-                  <span className="suspect-kind-icon">{kindMeta[suspect.kind]?.icon ?? <Circle size={12} weight="fill" />}</span>
+                  <span className="suspect-kind-icon">{kindIcon(suspect.kind, 12) ?? <Circle size={12} weight="fill" />}</span>
                   <span>{kindLabel(suspect.kind)}</span>
                 </span>
                 <span className="request-card-elapsed elapsed-hot">{formatElapsed(suspect.age_ns)}</span>

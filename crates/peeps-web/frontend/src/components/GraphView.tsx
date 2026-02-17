@@ -17,7 +17,8 @@ import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import { Graph as GraphIcon, MagnifyingGlass, X, Funnel, CaretDown } from "@phosphor-icons/react";
 import type { SnapshotGraph, SnapshotEdge } from "../types";
-import { PeepsNode, processColor, ProcessSwatch, estimateNodeHeight, kindMeta, type NodeData } from "./NodeCards";
+import { PeepsNode, processColor, ProcessSwatch, estimateNodeHeight, type NodeData } from "./NodeCards";
+import { kindMetaFor } from "../nodeKindSpec";
 
 const elkOptions = {
   "elk.algorithm": "layered",
@@ -342,7 +343,7 @@ function KindFilterDropdown({
       {open && (
         <div className="kind-filter-menu">
           {allKinds.map((kind) => {
-            const meta = kindMeta[kind];
+            const meta = kindMetaFor(kind);
             const checked = !hiddenKinds.has(kind);
             return (
               <label
@@ -361,8 +362,8 @@ function KindFilterDropdown({
                   onChange={() => onToggleKind(kind)}
                   className="kind-filter-checkbox"
                 />
-                <span className="kind-filter-icon">{meta?.icon ?? <Funnel size={14} weight="bold" />}</span>
-                <span className="kind-filter-name">{meta?.displayName ?? kind}</span>
+                <span className="kind-filter-icon">{meta.icon}</span>
+                <span className="kind-filter-name">{meta.displayName}</span>
                 <span className="kind-filter-kind">{kind}</span>
               </label>
             );

@@ -1,12 +1,10 @@
 import { memo } from "react";
 import {
-  Timer,
   Lock,
   LockOpen,
   ArrowLineUp,
   ArrowLineDown,
   Gauge,
-  ToggleRight,
   Eye,
   PaperPlaneTilt,
   ArrowBendDownLeft,
@@ -14,11 +12,6 @@ import {
   Check,
   X as XIcon,
   Warning,
-  Ghost,
-  Plugs,
-  WifiHigh,
-  ArrowFatLineRight,
-  ArrowFatLineLeft,
   Stack,
   Terminal,
   FileText,
@@ -28,6 +21,7 @@ import {
   HourglassSimple,
 } from "@phosphor-icons/react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { kindIcon } from "../nodeKindSpec";
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -347,7 +341,7 @@ function FutureCard({ data }: NodeProps<Node<NodeData>>) {
       kind="future"
       process={process}
       label={label}
-      icon={<Timer size={14} weight="bold" />}
+      icon={kindIcon("future", 14)}
       stateClass={isDeadlockCandidate ? "card--danger-border" : undefined}
     >
       <div className="card-row">
@@ -501,11 +495,11 @@ function ChannelTxCard({ data }: NodeProps<Node<NodeData>>) {
 
   const icon =
     channelKind === "watch" ? (
-      <Eye size={14} weight="bold" />
+      kindIcon("watch", 14)
     ) : channelKind === "oneshot" ? (
-      <ToggleRight size={14} weight="bold" />
+      kindIcon("oneshot", 14)
     ) : (
-      <ArrowLineUp size={14} weight="bold" />
+      kindIcon("tx", 14)
     );
 
   return (
@@ -553,11 +547,11 @@ function ChannelRxCard({ data }: NodeProps<Node<NodeData>>) {
 
   const icon =
     channelKind === "watch" ? (
-      <Eye size={14} weight="bold" />
+      kindIcon("watch", 14)
     ) : channelKind === "oneshot" ? (
-      <ToggleRight size={14} weight="bold" />
+      kindIcon("oneshot", 14)
     ) : (
-      <ArrowLineDown size={14} weight="bold" />
+      kindIcon("rx", 14)
     );
 
   return (
@@ -605,7 +599,7 @@ function OneshotCard({ data }: NodeProps<Node<NodeData>>) {
       kind="oneshot"
       process={process}
       label={label}
-      icon={isDropped ? <Warning size={14} weight="bold" /> : <ToggleRight size={14} weight="bold" />}
+      icon={isDropped ? <Warning size={14} weight="bold" /> : kindIcon("oneshot", 14)}
       stateClass={isDropped ? "card--dropped" : undefined}
     >
       <div className="card-row card-row--center">
@@ -702,7 +696,7 @@ function OnceCellCard({ data }: NodeProps<Node<NodeData>>) {
       kind="oncecell"
       process={process}
       label={label}
-      icon={<ToggleRight size={14} weight="bold" />}
+      icon={kindIcon("oncecell", 14)}
     >
       <div className="card-row">
         <StatePill state={state.toUpperCase()} variant={stateVariant} />
@@ -820,13 +814,6 @@ function NetWaitCard({ data }: NodeProps<Node<NodeData>>) {
   const transport = attr(attrs, "net.transport") ?? "";
   const elapsedNs = numAttr(attrs, "elapsed_ns");
 
-  const iconMap: Record<string, React.ReactNode> = {
-    net_connect: <Plugs size={14} weight="bold" />,
-    net_accept: <WifiHigh size={14} weight="bold" />,
-    net_readable: <ArrowFatLineLeft size={14} weight="bold" />,
-    net_writable: <ArrowFatLineRight size={14} weight="bold" />,
-  };
-
   const displayOp = op.replace("net_", "").toUpperCase();
 
   return (
@@ -834,7 +821,7 @@ function NetWaitCard({ data }: NodeProps<Node<NodeData>>) {
       kind={kind}
       process={process}
       label={endpoint || label}
-      icon={iconMap[kind] ?? <Plugs size={14} weight="bold" />}
+      icon={kindIcon(kind, 14)}
     >
       <div className="card-row">
         <StatePill state={displayOp} variant="neutral" />
@@ -859,7 +846,7 @@ function GhostCard({ data }: NodeProps<Node<NodeData>>) {
     <div className="card card--ghost">
       <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
       <div className="card-head">
-        <span className="card-icon"><Ghost size={14} weight="bold" /></span>
+        <span className="card-icon">{kindIcon("ghost", 14)}</span>
         <span className="card-label" title={label}>{label}</span>
       </div>
       <div className="card-body">
@@ -1205,45 +1192,6 @@ const cardByKind: Record<string, (props: NodeProps<Node<NodeData>>) => React.Rea
   sleep: SleepCard,
   interval: IntervalCard,
   timeout: TimeoutCard,
-};
-
-/** Icon + human-readable name for each node kind (used by the filter dropdown). */
-export const kindMeta: Record<string, { icon: React.ReactNode; displayName: string }> = {
-  future:    { icon: <Timer size={14} weight="bold" />,            displayName: "Future" },
-  lock:      { icon: <Lock size={14} weight="bold" />,             displayName: "Mutex" },
-  mutex:     { icon: <Lock size={14} weight="bold" />,             displayName: "Mutex" },
-  rwlock:    { icon: <LockOpen size={14} weight="bold" />,         displayName: "RwLock" },
-  tx:        { icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "Channel Tx" },
-  rx:        { icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "Channel Rx" },
-  channel_tx:{ icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "Channel Tx" },
-  channel_rx:{ icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "Channel Rx" },
-  mpsc_tx:   { icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "MPSC Tx" },
-  mpsc_rx:   { icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "MPSC Rx" },
-  remote_tx: { icon: <ArrowLineUp size={14} weight="bold" />,      displayName: "Remote Tx" },
-  remote_rx: { icon: <ArrowLineDown size={14} weight="bold" />,    displayName: "Remote Rx" },
-  oneshot:   { icon: <ToggleRight size={14} weight="bold" />,      displayName: "Oneshot" },
-  oneshot_tx:{ icon: <ToggleRight size={14} weight="bold" />,      displayName: "Oneshot Tx" },
-  oneshot_rx:{ icon: <ToggleRight size={14} weight="bold" />,      displayName: "Oneshot Rx" },
-  watch:     { icon: <Eye size={14} weight="bold" />,              displayName: "Watch" },
-  watch_tx:  { icon: <Eye size={14} weight="bold" />,              displayName: "Watch Tx" },
-  watch_rx:  { icon: <Eye size={14} weight="bold" />,              displayName: "Watch Rx" },
-  semaphore: { icon: <Gauge size={14} weight="bold" />,            displayName: "Semaphore" },
-  oncecell:  { icon: <ToggleRight size={14} weight="bold" />,      displayName: "OnceCell" },
-  once_cell: { icon: <ToggleRight size={14} weight="bold" />,      displayName: "OnceCell" },
-  request:   { icon: <PaperPlaneTilt size={14} weight="bold" />,   displayName: "Request" },
-  response:     { icon: <ArrowBendDownLeft size={14} weight="bold" />,displayName: "Response" },
-  net_connect:  { icon: <Plugs size={14} weight="bold" />,           displayName: "Connect" },
-  net_accept:   { icon: <WifiHigh size={14} weight="bold" />,        displayName: "Accept" },
-  net_readable: { icon: <ArrowFatLineLeft size={14} weight="bold" />,displayName: "Readable" },
-  net_writable: { icon: <ArrowFatLineRight size={14} weight="bold" />,displayName: "Writable" },
-  ghost:        { icon: <Ghost size={14} weight="bold" />,           displayName: "Ghost" },
-  joinset:      { icon: <Stack size={14} weight="bold" />,          displayName: "JoinSet" },
-  command:      { icon: <Terminal size={14} weight="bold" />,       displayName: "Command" },
-  file_op:      { icon: <FileText size={14} weight="bold" />,      displayName: "File Op" },
-  notify:       { icon: <Bell size={14} weight="bold" />,           displayName: "Notify" },
-  sleep:        { icon: <Moon size={14} weight="bold" />,           displayName: "Sleep" },
-  interval:     { icon: <Repeat size={14} weight="bold" />,        displayName: "Interval" },
-  timeout:      { icon: <HourglassSimple size={14} weight="bold" />,displayName: "Timeout" },
 };
 
 export const PeepsNode = memo((props: NodeProps<Node<NodeData>>) => {

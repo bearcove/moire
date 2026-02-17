@@ -18,7 +18,6 @@ import {
   ArrowLineUp,
   ArrowLineDown,
   Gauge,
-  ToggleRight,
   Eye,
   PaperPlaneTilt,
   ArrowBendDownLeft,
@@ -33,6 +32,7 @@ import {
 } from "@phosphor-icons/react";
 import { fetchTimelinePage } from "../api";
 import { isResourceKind } from "../resourceKinds";
+import { kindIcon } from "../nodeKindSpec";
 import {
   CommonInspectorFields,
   formatRelativeTimestampFromOrigin,
@@ -179,30 +179,6 @@ function responseTiming(attrs: Record<string, unknown>, status: string): {
   const queueWaitNs = elapsedBetween(handledAtNs, deliveredAtNs ?? snapshotAtNs);
   return { elapsedNs: computedElapsedNs, handledElapsedNs: computedHandledElapsedNs, queueWaitNs };
 }
-
-const kindIcons: Record<string, React.ReactNode> = {
-  future: <Timer size={16} weight="bold" />,
-  task: <Timer size={16} weight="bold" />,
-  mutex: <Lock size={16} weight="bold" />,
-  rwlock: <LockOpen size={16} weight="bold" />,
-  channel_tx: <ArrowLineUp size={16} weight="bold" />,
-  channel_rx: <ArrowLineDown size={16} weight="bold" />,
-  mpsc_tx: <ArrowLineUp size={16} weight="bold" />,
-  mpsc_rx: <ArrowLineDown size={16} weight="bold" />,
-  oneshot: <ToggleRight size={16} weight="bold" />,
-  oneshot_tx: <ToggleRight size={16} weight="bold" />,
-  oneshot_rx: <ToggleRight size={16} weight="bold" />,
-  watch: <Eye size={16} weight="bold" />,
-  watch_tx: <Eye size={16} weight="bold" />,
-  watch_rx: <Eye size={16} weight="bold" />,
-  semaphore: <Gauge size={16} weight="bold" />,
-  oncecell: <ToggleRight size={16} weight="bold" />,
-  once_cell: <ToggleRight size={16} weight="bold" />,
-  request: <PaperPlaneTilt size={16} weight="bold" />,
-  response: <ArrowBendDownLeft size={16} weight="bold" />,
-  connection: <LinkSimple size={16} weight="bold" />,
-  ghost: <Ghost size={16} weight="bold" />,
-};
 
 export function Inspector({
   snapshotId,
@@ -576,15 +552,15 @@ function NodeDetail({
     ) : (node.kind === "rx" || node.kind.endsWith("_rx")) && channelKind === "watch" ? (
       <Eye size={16} weight="bold" />
     ) : (node.kind === "tx" || node.kind.endsWith("_tx")) && channelKind === "oneshot" ? (
-      <ToggleRight size={16} weight="bold" />
+      kindIcon("oneshot", 16)
     ) : (node.kind === "rx" || node.kind.endsWith("_rx")) && channelKind === "oneshot" ? (
-      <ToggleRight size={16} weight="bold" />
+      kindIcon("oneshot", 16)
     ) : node.kind === "tx" || node.kind.endsWith("_tx") ? (
       <ArrowLineUp size={16} weight="bold" />
     ) : node.kind === "rx" || node.kind.endsWith("_rx") ? (
       <ArrowLineDown size={16} weight="bold" />
     ) : (
-      kindIcons[node.kind]
+      kindIcon(node.kind, 16)
     );
   const DetailComponent = kindDetailMap[node.kind];
   const isFocused = filteredNodeId === node.id;
