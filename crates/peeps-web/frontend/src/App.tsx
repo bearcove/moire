@@ -8,7 +8,7 @@ import {
   fetchTimelineProcessOptions,
   fetchSnapshotProcesses,
   requestProcessDebug,
-  jumpNow,
+  takeSnapshot,
 } from "./api";
 import { Header } from "./components/Header";
 import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
@@ -18,7 +18,7 @@ import { Inspector } from "./components/Inspector";
 import { TimelineView } from "./components/TimelineView";
 import { isResourceKind } from "./resourceKinds";
 import type {
-  JumpNowResponse,
+  TakeSnapshotResponse,
   SnapshotProgressResponse,
   SnapshotEdge,
   SnapshotGraph,
@@ -516,7 +516,7 @@ function applyDeadlockFocus(
 
 export function App() {
   const initialRoute = readRouteState();
-  const [snapshot, setSnapshot] = useState<JumpNowResponse | null>(null);
+  const [snapshot, setSnapshot] = useState<TakeSnapshotResponse | null>(null);
   const [graph, setGraph] = useState<SnapshotGraph | null>(null);
   const [loading, setLoading] = useState(false);
   const [snapshotProgress, setSnapshotProgress] = useState<SnapshotProgressResponse | null>(null);
@@ -670,7 +670,7 @@ export function App() {
     setError(null);
     setSnapshotProcesses([]);
     try {
-      const snap = await jumpNow();
+      const snap = await takeSnapshot();
       setSnapshot(snap);
       const processData = await waitForSnapshotFinalization(snap.snapshot_id, snap.requested);
       const graphData = await fetchGraph(snap.snapshot_id);

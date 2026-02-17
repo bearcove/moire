@@ -1,4 +1,4 @@
-export interface JumpNowResponse {
+export interface TakeSnapshotResponse {
   snapshot_id: number;
   captured_at_ns: number;
   requested: number;

@@ -165,7 +165,7 @@ async fn main() {
         .route("/health", get(health))
         .route("/favicon.svg", get(favicon_svg))
         .route("/favicon.ico", get(favicon_ico))
-        .route("/api/jump-now", post(api::api_jump_now))
+        .route("/api/take-snapshot", post(api::api_take_snapshot))
         .route("/api/snapshot-progress", get(api::api_snapshot_progress))
         .route("/api/connections", get(api::api_connections))
         .route(

@@ -1,4 +1,4 @@
-//! HTTP API endpoints: POST /api/jump-now, GET /api/snapshot-progress,
+//! HTTP API endpoints: POST /api/take-snapshot, GET /api/snapshot-progress,
 //! GET /api/connections, POST /api/process-debug, GET /api/process-debug-result/{result_id},
 //! POST /api/sql
 //!
@@ -52,7 +52,7 @@ const SCOPED_TABLES: &[(&str, &str)] = &[
 // ── Request/response types ───────────────────────────────────────
 
 #[derive(Debug, Serialize)]
-pub struct JumpNowResponse {
+pub struct TakeSnapshotResponse {
     pub snapshot_id: i64,
     pub captured_at_ns: i64,
     pub requested: usize,
@@ -153,15 +153,15 @@ fn api_error(status: StatusCode, msg: impl Into<String>) -> (StatusCode, Json<Ap
     (status, Json(ApiError { error: msg.into() }))
 }
 
-// ── POST /api/jump-now ───────────────────────────────────────────
+// ── POST /api/take-snapshot ──────────────────────────────────────
 
-pub async fn api_jump_now(
+pub async fn api_take_snapshot(
     State(state): State<AppState>,
-) -> Result<Json<JumpNowResponse>, (StatusCode, Json<ApiError>)> {
-    info!("api jump-now requested");
+) -> Result<Json<TakeSnapshotResponse>, (StatusCode, Json<ApiError>)> {
+    info!("api take-snapshot requested");
     let (snapshot_id, processes_requested) =
         crate::trigger_snapshot(&state).await.map_err(|e| {
-            error!(%e, "api jump-now failed to trigger snapshot");
+            error!(%e, "api take-snapshot failed to trigger snapshot");
             api_error(StatusCode::INTERNAL_SERVER_ERROR, e)
         })?;
 
@@ -216,9 +216,9 @@ pub async fn api_jump_now(
             timed_out,
             error,
             captured_at_ns,
-            "api jump-now completed"
+            "api take-snapshot completed"
         );
-        Ok(Json(JumpNowResponse {
+        Ok(Json(TakeSnapshotResponse {
             snapshot_id,
             captured_at_ns,
             requested: processes_requested,
@@ -229,7 +229,7 @@ pub async fn api_jump_now(
     })
     .await
     .map_err(|e| {
-        error!(%e, "api jump-now response join error");
+        error!(%e, "api take-snapshot response join error");
         api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}"))
     })?
 }

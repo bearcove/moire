@@ -22,7 +22,8 @@ This design optimizes for iteration speed and debuggability:
 - Time and result-size limits.
 - Rejection of unsafe SQL patterns.
 
-### HTTP surface
+### Interface contract
 
-- `POST /api/jump-now`: request a fresh snapshot.
-- `POST /api/sql`: run a read-only query within one snapshot scope.
+The primary interface is SQL via `/api/sql`.
+
+Other HTTP routes are an internal contract between the bundled client and server, and may change without notice.
