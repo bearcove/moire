@@ -31,7 +31,7 @@ import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
-import { DeadlockDetectorMockup } from "./DeadlockDetectorPage";
+import { DeadlockDetectorApp, MOCK_ENTITIES, MOCK_EDGES } from "./DeadlockDetectorPage";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
 type DemoConnectionRow = {
@@ -53,7 +53,7 @@ type DemoConnectionRow = {
   lastSentTone: DemoTone;
 };
 
-export function LabPage() {
+export function StorybookPage() {
   const [textValue, setTextValue] = useState("Hello");
   const [searchValue, setSearchValue] = useState("");
   const [checked, setChecked] = useState(true);
@@ -339,7 +339,7 @@ export function LabPage() {
       <PanelHeader title="Lab" hint="Primitives and tone language" />
       <div className="lab-body">
         <Section title="Deadlock Detector" subtitle="Full app layout mockup with resizable inspector" wide>
-          <DeadlockDetectorMockup />
+          <DeadlockDetectorApp entityDefs={MOCK_ENTITIES} edgeDefs={MOCK_EDGES} />
         </Section>
 
         <Section title="UI font — Manrope" subtitle="UI font in the sizes we actually use" wide>

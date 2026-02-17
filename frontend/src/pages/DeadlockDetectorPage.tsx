@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -38,22 +39,11 @@ import { DurationDisplay } from "../ui/primitives/DurationDisplay";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
 
-// ── ELK layout engine ────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────
 
-const elk = new ELK({ workerUrl: elkWorkerUrl });
+type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
 
-const elkOptions = {
-  "elk.algorithm": "layered",
-  "elk.direction": "DOWN",
-  "elk.spacing.nodeNode": "24",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
-  "elk.padding": "[top=24,left=24,bottom=24,right=24]",
-  "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-};
-
-// ── Mock data ─────────────────────────────────────────────────
-
-type MockEntityDef = {
+export type EntityDef = {
   id: string;
   name: string;
   kind: string;
@@ -67,14 +57,16 @@ type MockEntityDef = {
   stat?: string;
 };
 
-type MockEdgeDef = {
+export type EdgeDef = {
   id: string;
   source: string;
   target: string;
   kind: "needs" | "polls" | "closed_by" | "channel_link" | "rpc_link";
 };
 
-const MOCK_ENTITIES: MockEntityDef[] = [
+// ── Mock data ─────────────────────────────────────────────────
+
+export const MOCK_ENTITIES: EntityDef[] = [
   {
     id: "req_sleepy", name: "DemoRpc.sleepy_forever", kind: "request", bodyKind: "Request",
     body: { method: "DemoRpc.sleepy_forever", args_preview: "(no args)" },
@@ -175,7 +167,7 @@ const MOCK_ENTITIES: MockEntityDef[] = [
   },
 ];
 
-const MOCK_EDGES: MockEdgeDef[] = [
+export const MOCK_EDGES: EdgeDef[] = [
   { id: "e1", source: "resp_sleepy", target: "lock_state", kind: "needs" },
   { id: "e2", source: "lock_state", target: "ch_rx", kind: "needs" },
   { id: "e3", source: "ch_rx", target: "resp_sleepy", kind: "needs" },
@@ -190,7 +182,7 @@ const MOCK_EDGES: MockEdgeDef[] = [
   { id: "e12", source: "notify_shutdown", target: "ch_tx", kind: "closed_by" },
 ];
 
-function validateEdges(entities: MockEntityDef[], edges: MockEdgeDef[]) {
+function validateEdges(entities: EntityDef[], edges: EdgeDef[]) {
   const entityMap = new Map(entities.map((e) => [e.id, e]));
   for (const edge of edges) {
     const src = entityMap.get(edge.source);
@@ -214,9 +206,27 @@ function validateEdges(entities: MockEntityDef[], edges: MockEdgeDef[]) {
 
 validateEdges(MOCK_ENTITIES, MOCK_EDGES);
 
-// ── Layout ────────────────────────────────────────────────────
+// ── Live data stub ────────────────────────────────────────────
 
-function measureNodeDefs(defs: MockEntityDef[]): Map<string, { width: number; height: number }> {
+function useLiveData(): { entities: EntityDef[]; edges: EdgeDef[]; connected: boolean } {
+  // TODO: connect to backend WebSocket/SSE and stream entity updates
+  return { entities: [], edges: [], connected: false };
+}
+
+// ── ELK layout engine ────────────────────────────────────────
+
+const elk = new ELK({ workerUrl: elkWorkerUrl });
+
+const elkOptions = {
+  "elk.algorithm": "layered",
+  "elk.direction": "DOWN",
+  "elk.spacing.nodeNode": "24",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+  "elk.padding": "[top=24,left=24,bottom=24,right=24]",
+  "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+};
+
+function measureNodeDefs(defs: EntityDef[]): Map<string, { width: number; height: number }> {
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
   document.body.appendChild(container);
@@ -282,7 +292,7 @@ function measureNodeDefs(defs: MockEntityDef[]): Map<string, { width: number; he
   return sizes;
 }
 
-function edgeStyle(kind: MockEdgeDef["kind"]) {
+function edgeStyle(kind: EdgeDef["kind"]) {
   switch (kind) {
     case "needs":
       return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
@@ -297,7 +307,7 @@ function edgeStyle(kind: MockEdgeDef["kind"]) {
   }
 }
 
-function edgeTooltip(kind: MockEdgeDef["kind"], sourceName: string, targetName: string): string {
+function edgeTooltip(kind: EdgeDef["kind"], sourceName: string, targetName: string): string {
   switch (kind) {
     case "needs": return `${sourceName} is blocked waiting for ${targetName}`;
     case "polls": return `${sourceName} polls ${targetName} (non-blocking)`;
@@ -307,16 +317,16 @@ function edgeTooltip(kind: MockEdgeDef["kind"], sourceName: string, targetName: 
   }
 }
 
-function edgeMarkerSize(kind: MockEdgeDef["kind"]): number {
+function edgeMarkerSize(kind: EdgeDef["kind"]): number {
   return kind === "needs" ? 12 : 8;
 }
 
 type ElkPoint = { x: number; y: number };
 type LayoutResult = { nodes: Node[]; edges: Edge[] };
 
-async function layoutMockGraph(
-  entityDefs: MockEntityDef[],
-  edgeDefs: MockEdgeDef[],
+async function layoutGraph(
+  entityDefs: EntityDef[],
+  edgeDefs: EdgeDef[],
   nodeSizes: Map<string, { width: number; height: number }>,
 ): Promise<LayoutResult> {
   const result = await elk.layout({
@@ -325,7 +335,7 @@ async function layoutMockGraph(
     children: entityDefs.map((n) => {
       const sz = nodeSizes.get(n.id);
       if (!sz || sz.width === 0 || sz.height === 0) {
-        console.warn(`[layoutMockGraph] missing/zero size for node "${n.id}":`, sz);
+        console.warn(`[layoutGraph] missing/zero size for node "${n.id}":`, sz);
       }
       return { id: n.id, width: sz?.width || 150, height: sz?.height || 36 };
     }),
@@ -473,13 +483,24 @@ const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
 
-function MockGraphPanel({ selection, onSelect }: { selection: GraphSelection; onSelect: (sel: GraphSelection) => void }) {
+function GraphPanel({
+  entityDefs,
+  edgeDefs,
+  selection,
+  onSelect,
+}: {
+  entityDefs: EntityDef[];
+  edgeDefs: EdgeDef[];
+  selection: GraphSelection;
+  onSelect: (sel: GraphSelection) => void;
+}) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
   useEffect(() => {
-    const sizes = measureNodeDefs(MOCK_ENTITIES);
-    layoutMockGraph(MOCK_ENTITIES, MOCK_EDGES, sizes).then(setLayout);
-  }, []);
+    if (entityDefs.length === 0) return;
+    const sizes = measureNodeDefs(entityDefs);
+    layoutGraph(entityDefs, edgeDefs, sizes).then(setLayout);
+  }, [entityDefs, edgeDefs]);
 
   const nodesWithSelection = useMemo(() =>
     layout.nodes.map((n) => ({
@@ -501,8 +522,8 @@ function MockGraphPanel({ selection, onSelect }: { selection: GraphSelection; on
     <div className="mockup-graph-panel">
       <div className="mockup-graph-toolbar">
         <div className="mockup-graph-toolbar-left">
-          <span className="mockup-graph-stat">{MOCK_ENTITIES.length} entities</span>
-          <span className="mockup-graph-stat">{MOCK_EDGES.length} edges</span>
+          <span className="mockup-graph-stat">{entityDefs.length} entities</span>
+          <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
         </div>
       </div>
       <div className="mockup-graph-flow">
@@ -536,7 +557,7 @@ function MockGraphPanel({ selection, onSelect }: { selection: GraphSelection; on
 
 // ── Inspector ─────────────────────────────────────────────────
 
-function EntityBodySection({ entity }: { entity: MockEntityDef }) {
+function EntityBodySection({ entity }: { entity: EntityDef }) {
   const { bodyKind, body } = entity;
   switch (bodyKind) {
     case "Request":
@@ -664,7 +685,7 @@ function EntityBodySection({ entity }: { entity: MockEntityDef }) {
   }
 }
 
-function EntityInspectorContent({ entity }: { entity: MockEntityDef }) {
+function EntityInspectorContent({ entity }: { entity: EntityDef }) {
   return (
     <>
       <div className="mockup-inspector-node-header">
@@ -699,12 +720,12 @@ function EntityInspectorContent({ entity }: { entity: MockEntityDef }) {
       </div>
 
       <EntityBodySection entity={entity} />
-      <MockMetaSection meta={entity.meta} />
+      <MetaSection meta={entity.meta} />
     </>
   );
 }
 
-const EDGE_KIND_LABELS: Record<MockEdgeDef["kind"], string> = {
+const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
   needs: "Causal dependency",
   polls: "Non-blocking observation",
   closed_by: "Closure cause",
@@ -712,9 +733,9 @@ const EDGE_KIND_LABELS: Record<MockEdgeDef["kind"], string> = {
   rpc_link: "RPC pairing",
 };
 
-function EdgeInspectorContent({ edge }: { edge: MockEdgeDef }) {
-  const srcEntity = MOCK_ENTITIES.find((e) => e.id === edge.source);
-  const dstEntity = MOCK_ENTITIES.find((e) => e.id === edge.target);
+function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs: EntityDef[] }) {
+  const srcEntity = entityDefs.find((e) => e.id === edge.source);
+  const dstEntity = entityDefs.find((e) => e.id === edge.target);
   const tooltip = edgeTooltip(edge.kind, srcEntity?.name ?? edge.source, dstEntity?.name ?? edge.target);
   const isStructural = edge.kind === "rpc_link" || edge.kind === "channel_link";
 
@@ -755,14 +776,18 @@ function EdgeInspectorContent({ edge }: { edge: MockEdgeDef }) {
   );
 }
 
-function MockInspectorPanel({
+function InspectorPanel({
   collapsed,
   onToggleCollapse,
   selection,
+  entityDefs,
+  edgeDefs,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
   selection: GraphSelection;
+  entityDefs: EntityDef[];
+  edgeDefs: EdgeDef[];
 }) {
   if (collapsed) {
     return (
@@ -779,11 +804,11 @@ function MockInspectorPanel({
 
   let content: React.ReactNode;
   if (selection?.kind === "entity") {
-    const entity = MOCK_ENTITIES.find((e) => e.id === selection.id);
+    const entity = entityDefs.find((e) => e.id === selection.id);
     content = entity ? <EntityInspectorContent entity={entity} /> : null;
   } else if (selection?.kind === "edge") {
-    const edge = MOCK_EDGES.find((e) => e.id === selection.id);
-    content = edge ? <EdgeInspectorContent edge={edge} /> : null;
+    const edge = edgeDefs.find((e) => e.id === selection.id);
+    content = edge ? <EdgeInspectorContent edge={edge} entityDefs={entityDefs} /> : null;
   } else {
     content = <div className="mockup-inspector-empty">Select an entity or edge</div>;
   }
@@ -803,8 +828,6 @@ function MockInspectorPanel({
     </div>
   );
 }
-
-type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
 
 function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaValue; depth?: number }) {
   const [expanded, setExpanded] = useState(depth < 1);
@@ -851,7 +874,7 @@ function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaVal
   );
 }
 
-function MockMetaSection({ meta }: { meta: Record<string, MetaValue> }) {
+function MetaSection({ meta }: { meta: Record<string, MetaValue> }) {
   return (
     <div className="mockup-inspector-section">
       <div className="mockup-inspector-raw-head">
@@ -869,25 +892,38 @@ function MockMetaSection({ meta }: { meta: Record<string, MetaValue> }) {
   );
 }
 
-// ── Deadlock detector mockup ──────────────────────────────────
+// ── App ───────────────────────────────────────────────────────
 
-export function DeadlockDetectorMockup() {
+export function DeadlockDetectorApp({
+  entityDefs,
+  edgeDefs,
+  live = false,
+}: {
+  entityDefs: EntityDef[];
+  edgeDefs: EdgeDef[];
+  live?: boolean;
+}) {
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
-  const [selection, setSelection] = useState<GraphSelection>({ kind: "entity", id: "resp_sleepy" });
+  const [selection, setSelection] = useState<GraphSelection>(
+    entityDefs.length > 0 ? { kind: "entity", id: entityDefs[0].id } : null,
+  );
 
   return (
     <div className="mockup-app">
       <div className="mockup-header">
         <Aperture size={16} weight="bold" />
         <span className="mockup-header-title">peeps</span>
-        <span className="mockup-header-badge mockup-header-badge--active">
-          <CheckCircle size={12} weight="bold" />
-          snapshot #4
-        </span>
-        <span className="mockup-header-badge">
-          3/3 responded
-        </span>
+        {live ? (
+          <span className="mockup-header-badge mockup-header-badge--active">
+            <CheckCircle size={12} weight="bold" />
+            live
+          </span>
+        ) : (
+          <span className="mockup-header-badge">
+            mock data
+          </span>
+        )}
         <span className="mockup-header-spacer" />
         <ActionButton variant="primary">
           <Camera size={14} weight="bold" />
@@ -896,16 +932,20 @@ export function DeadlockDetectorMockup() {
       </div>
       <SplitLayout
         left={
-          <MockGraphPanel
+          <GraphPanel
+            entityDefs={entityDefs}
+            edgeDefs={edgeDefs}
             selection={selection}
             onSelect={setSelection}
           />
         }
         right={
-          <MockInspectorPanel
+          <InspectorPanel
             collapsed={inspectorCollapsed}
             onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
             selection={selection}
+            entityDefs={entityDefs}
+            edgeDefs={edgeDefs}
           />
         }
         rightWidth={inspectorWidth}
@@ -921,5 +961,17 @@ export function DeadlockDetectorMockup() {
 // ── Page ──────────────────────────────────────────────────────
 
 export function DeadlockDetectorPage() {
-  return <DeadlockDetectorMockup />;
+  const [searchParams] = useSearchParams();
+  const isMock = searchParams.has("mock");
+
+  if (isMock) {
+    return <DeadlockDetectorApp entityDefs={MOCK_ENTITIES} edgeDefs={MOCK_EDGES} />;
+  }
+
+  return <LiveDeadlockDetectorPage />;
+}
+
+function LiveDeadlockDetectorPage() {
+  const { entities, edges, connected } = useLiveData();
+  return <DeadlockDetectorApp entityDefs={entities} edgeDefs={edges} live={connected} />;
 }

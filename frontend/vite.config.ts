@@ -6,6 +6,9 @@ export default defineConfig({
   server: {
     port: 9131,
     strictPort: true,
+    hmr: {
+      port: 9132,
+    },
   },
   build: {
     outDir: "dist",

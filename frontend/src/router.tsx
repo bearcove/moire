@@ -1,10 +1,10 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { DeadlockDetectorPage } from "./pages/DeadlockDetectorPage";
-import { LabPage } from "./pages/LabPage";
+import { StorybookPage } from "./pages/StorybookPage";
 
 const router = createBrowserRouter([
   { path: "/", element: <DeadlockDetectorPage /> },
-  { path: "/lab", element: <LabPage /> },
+  { path: "/storybook", element: <StorybookPage /> },
 ]);
 
 export function Router() {
