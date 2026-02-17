@@ -56,6 +56,77 @@ impl EntityHandle {
     pub fn unlink_from_scope_handle(&self, _scope: &ScopeHandle) {}
 }
 
+/// A type that can be used as the `on =` argument of the `peeps!()` macro.
+pub trait AsEntityRef {
+    fn as_entity_ref(&self) -> EntityRef;
+}
+
+impl AsEntityRef for EntityHandle {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.entity_ref()
+    }
+}
+
+impl<T> AsEntityRef for Sender<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T> AsEntityRef for Receiver<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T> AsEntityRef for UnboundedSender<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T> AsEntityRef for UnboundedReceiver<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T> AsEntityRef for OneshotSender<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T> AsEntityRef for OneshotReceiver<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T: Clone> AsEntityRef for BroadcastSender<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T: Clone> AsEntityRef for BroadcastReceiver<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T: Clone> AsEntityRef for WatchSender<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<T: Clone> AsEntityRef for WatchReceiver<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RpcRequestHandle {
     handle: EntityHandle,
@@ -75,6 +146,7 @@ impl RpcRequestHandle {
         self.handle.entity_ref()
     }
 
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -91,6 +163,7 @@ impl RpcResponseHandle {
         &self.id
     }
 
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -245,6 +318,7 @@ impl<T> Clone for WatchReceiver<T> {
 }
 
 impl<T> Sender<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -263,6 +337,7 @@ impl<T> Sender<T> {
 }
 
 impl<T> Receiver<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -273,6 +348,7 @@ impl<T> Receiver<T> {
 }
 
 impl<T> UnboundedSender<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -287,6 +363,7 @@ impl<T> UnboundedSender<T> {
 }
 
 impl<T> UnboundedReceiver<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -297,6 +374,7 @@ impl<T> UnboundedReceiver<T> {
 }
 
 impl<T> OneshotSender<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -310,6 +388,7 @@ impl<T> OneshotSender<T> {
 }
 
 impl<T> OneshotReceiver<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -320,6 +399,7 @@ impl<T> OneshotReceiver<T> {
 }
 
 impl<T: Clone> BroadcastSender<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -337,6 +417,7 @@ impl<T: Clone> BroadcastSender<T> {
 }
 
 impl<T: Clone> BroadcastReceiver<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -347,6 +428,7 @@ impl<T: Clone> BroadcastReceiver<T> {
 }
 
 impl<T: Clone> WatchSender<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -368,6 +450,7 @@ impl<T: Clone> WatchSender<T> {
 }
 
 impl<T: Clone> WatchReceiver<T> {
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -1279,7 +1362,7 @@ where
     fut
 }
 
-pub fn instrument_future_on<F>(_name: impl Into<CompactString>, _on: &EntityHandle, fut: F) -> F
+pub fn instrument_future_on<F>(_name: impl Into<CompactString>, _on: &impl AsEntityRef, fut: F) -> F
 where
     F: core::future::Future,
 {
@@ -1288,7 +1371,7 @@ where
 
 pub fn instrument_future_on_with_source<F>(
     _name: impl Into<CompactString>,
-    _on: &EntityHandle,
+    _on: &impl AsEntityRef,
     fut: F,
     _source: impl Into<CompactString>,
 ) -> F
@@ -1300,7 +1383,7 @@ where
 
 pub fn instrument_future_on_with_krate<F>(
     _name: impl Into<CompactString>,
-    _on: &EntityHandle,
+    _on: &impl AsEntityRef,
     fut: F,
     _source: impl Into<CompactString>,
     _krate: impl Into<CompactString>,

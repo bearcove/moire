@@ -22,8 +22,6 @@ import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import {
-  ArrowLineDown,
-  ArrowLineUp,
   CaretDown,
   CaretLeft,
   CaretRight,
@@ -44,6 +42,7 @@ import { Badge } from "./ui/primitives/Badge";
 import { KeyValueRow } from "./ui/primitives/KeyValueRow";
 import { DurationDisplay } from "./ui/primitives/DurationDisplay";
 import { ActionButton } from "./ui/primitives/ActionButton";
+import { FilterMenu, type FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { kindIcon, kindDisplayName } from "./nodeKindSpec";
 import { apiClient, apiMode } from "./api";
 import type { ConnectedProcessInfo, ConnectionsResponse, EntityBody, SnapshotEdgeKind, SnapshotCutResponse } from "./api/types";
@@ -73,6 +72,7 @@ export type EntityDef = {
   kind: string;
   body: EntityBody;
   source: string;
+  krate?: string;
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
   birthPtime: number;
   /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
@@ -303,6 +303,7 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
         kind: bodyToKind(e.body),
         body: e.body,
         source: e.source,
+        krate: e.krate,
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,
@@ -709,8 +710,7 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
       ].filter(Boolean).join(" ")}>
         <div className="mockup-channel-pair-header">
           <span className="mockup-channel-pair-icon">
-            <ArrowLineUp size={9} weight="bold" />
-            <ArrowLineDown size={9} weight="bold" />
+            {kindIcon("channel_pair", 14)}
           </span>
           <span className="mockup-channel-pair-name">{channelName}</span>
         </div>
@@ -890,6 +890,10 @@ function GraphPanel({
   focusedEntityId,
   onExitFocus,
   waitingForProcesses,
+  crateItems,
+  hiddenKrates,
+  onKrateToggle,
+  onKrateSolo,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
@@ -899,6 +903,10 @@ function GraphPanel({
   focusedEntityId: string | null;
   onExitFocus: () => void;
   waitingForProcesses: boolean;
+  crateItems: FilterMenuItem[];
+  hiddenKrates: ReadonlySet<string>;
+  onKrateToggle: (krate: string) => void;
+  onKrateSolo: (krate: string) => void;
 }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
@@ -959,6 +967,15 @@ function GraphPanel({
         <div className="mockup-graph-toolbar-left">
           <span className="mockup-graph-stat">{entityDefs.length} entities</span>
           <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
+          {crateItems.length > 1 && (
+            <FilterMenu
+              label="Crate"
+              items={crateItems}
+              hiddenIds={hiddenKrates}
+              onToggle={onKrateToggle}
+              onSolo={onKrateSolo}
+            />
+          )}
         </div>
         {focusedEntityId && (
           <div className="mockup-graph-toolbar-right">
@@ -1236,6 +1253,11 @@ function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; o
             {tx.source}
           </a>
         </KeyValueRow>
+        {tx.krate && (
+          <KeyValueRow label="Crate">
+            <span className="mockup-inspector-mono">{tx.krate}</span>
+          </KeyValueRow>
+        )}
       </div>
 
       <div className="mockup-inspector-subsection-label">RX</div>
@@ -1251,6 +1273,11 @@ function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; o
             {rx.source}
           </a>
         </KeyValueRow>
+        {rx.krate && (
+          <KeyValueRow label="Crate">
+            <span className="mockup-inspector-mono">{rx.krate}</span>
+          </KeyValueRow>
+        )}
       </div>
     </>
   );
@@ -1295,6 +1322,11 @@ function EntityInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocu
             {entity.source}
           </a>
         </KeyValueRow>
+        {entity.krate && (
+          <KeyValueRow label="Crate">
+            <span className="mockup-inspector-mono">{entity.krate}</span>
+          </KeyValueRow>
+        )}
         <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
           <DurationDisplay ms={entity.ageMs} tone={ageTone} />
         </KeyValueRow>
@@ -1559,14 +1591,43 @@ export function App() {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
+  const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
 
+  const crateItems = useMemo<FilterMenuItem[]>(() => {
+    const counts = new Map<string, number>();
+    for (const e of allEntities) {
+      const k = e.krate ?? "~no-crate";
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return Array.from(counts.keys()).sort().map((k) => ({
+      id: k,
+      label: k === "~no-crate" ? "(no crate)" : k,
+      meta: counts.get(k),
+    }));
+  }, [allEntities]);
+
+  const handleKrateToggle = useCallback((krate: string) => {
+    setHiddenKrates((prev) => {
+      const next = new Set(prev);
+      if (next.has(krate)) next.delete(krate); else next.add(krate);
+      return next;
+    });
+  }, []);
+
+  const handleKrateSolo = useCallback((krate: string) => {
+    setHiddenKrates(new Set(crateItems.filter((i) => i.id !== krate).map((i) => i.id)));
+  }, [crateItems]);
+
   const { entities, edges } = useMemo(() => {
-    if (!focusedEntityId) return { entities: allEntities, edges: allEdges };
-    return getConnectedSubgraph(focusedEntityId, allEntities, allEdges);
-  }, [focusedEntityId, allEntities, allEdges]);
+    const filtered = hiddenKrates.size === 0
+      ? allEntities
+      : allEntities.filter((e) => !hiddenKrates.has(e.krate ?? "~no-crate"));
+    if (!focusedEntityId) return { entities: filtered, edges: allEdges };
+    return getConnectedSubgraph(focusedEntityId, filtered, allEdges);
+  }, [focusedEntityId, allEntities, allEdges, hiddenKrates]);
 
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
@@ -1684,6 +1745,10 @@ export function App() {
             focusedEntityId={focusedEntityId}
             onExitFocus={() => setFocusedEntityId(null)}
             waitingForProcesses={waitingForProcesses}
+            crateItems={crateItems}
+            hiddenKrates={hiddenKrates}
+            onKrateToggle={handleKrateToggle}
+            onKrateSolo={handleKrateSolo}
           />
         }
         right={

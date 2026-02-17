@@ -73,6 +73,7 @@ export interface SnapshotEntity {
   /** Process-relative birth time in milliseconds (PTime). Not comparable across processes. */
   birth: number;
   source: string;
+  krate?: string;
   name: string;
   body: EntityBody;
   meta: Record<string, unknown> | null;
@@ -84,6 +85,7 @@ export interface SnapshotScope {
   id: string;
   birth: number;
   source: string;
+  krate?: string;
   name: string;
 }
 

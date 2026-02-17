@@ -8,10 +8,9 @@ async fn main() {
 
     peeps::spawn_tracked("stalled_receiver", async move {
         println!("receiver started but is intentionally not draining the queue");
-        let rx_handle = rx.handle().clone();
         peeps::peeps!(
             name = "receiver.simulated_hang",
-            on = rx_handle,
+            on = rx,
             fut = tokio::time::sleep(Duration::from_secs(3600)),
         )
         .await;

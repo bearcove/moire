@@ -21,6 +21,7 @@ import {
   PaperPlaneTilt,
   Plugs,
   Repeat,
+  BracketsCurly,
   Stack,
   Terminal,
   UploadSimple,
@@ -306,7 +307,7 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     canonical: "channel_pair",
     displayName: "Channel",
     category: "channel",
-    icon: iconFactory(Stack),
+    icon: iconFactory(BracketsCurly),
   },
 };
 
