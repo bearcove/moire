@@ -1,5 +1,6 @@
 use compact_str::CompactString;
 use facet::Facet;
+use figue as args;
 use std::time::{Duration, Instant};
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9130";
@@ -35,6 +36,41 @@ struct QueryRequest {
     limit: Option<u32>,
 }
 
+#[derive(Facet, Debug)]
+struct Cli {
+    #[facet(flatten)]
+    builtins: args::FigueBuiltins,
+    #[facet(args::subcommand)]
+    command: Command,
+}
+
+#[derive(Facet, Debug)]
+#[repr(u8)]
+enum Command {
+    Cut {
+        #[facet(args::named, default)]
+        url: Option<CompactString>,
+        #[facet(args::named, default)]
+        poll_ms: Option<u64>,
+        #[facet(args::named, default)]
+        timeout_ms: Option<u64>,
+    },
+    Sql {
+        #[facet(args::named, default)]
+        url: Option<CompactString>,
+        #[facet(args::named)]
+        query: CompactString,
+    },
+    Query {
+        #[facet(args::named, default)]
+        url: Option<CompactString>,
+        #[facet(args::named)]
+        name: CompactString,
+        #[facet(args::named, default)]
+        limit: Option<u32>,
+    },
+}
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -43,64 +79,41 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    let mut args = std::env::args().skip(1).collect::<Vec<_>>();
-    if args.is_empty() {
-        return Err(usage());
-    }
+    let figue_config = args::builder::<Cli>()
+        .map_err(|e| format!("failed to build CLI schema: {e}"))?
+        .cli(|cli| cli.strict())
+        .help(|h| {
+            h.program_name("peeps")
+                .description("CLI for peeps-web cuts and graph queries")
+                .version(option_env!("CARGO_PKG_VERSION").unwrap_or("dev"))
+        })
+        .build();
+    let cli = args::Driver::new(figue_config)
+        .run()
+        .into_result()
+        .map_err(|e| e.to_string())?;
 
-    let command = args.remove(0);
-    match command.as_str() {
-        "cut" => run_cut(args),
-        "sql" => run_sql(args),
-        "query" => run_query_pack(args),
-        "-h" | "--help" | "help" => {
-            println!("{}", usage());
-            Ok(())
-        }
-        other => Err(format!("unknown command: {other}\n\n{}", usage())),
+    match cli.value.command {
+        Command::Cut {
+            url,
+            poll_ms,
+            timeout_ms,
+        } => run_cut(url, poll_ms, timeout_ms),
+        Command::Sql { url, query } => run_sql(url, query),
+        Command::Query { url, name, limit } => run_query_pack(url, name, limit),
     }
 }
 
-fn run_cut(args: Vec<String>) -> Result<(), String> {
-    let mut base_url = DEFAULT_BASE_URL.to_string();
-    let mut poll_ms = DEFAULT_POLL_MS;
-    let mut timeout_ms = DEFAULT_TIMEOUT_MS;
-    let mut i = 0usize;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--url" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --url".to_string());
-                };
-                base_url = value.clone();
-            }
-            "--poll-ms" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --poll-ms".to_string());
-                };
-                poll_ms = value
-                    .parse::<u64>()
-                    .map_err(|e| format!("invalid --poll-ms: {e}"))?;
-            }
-            "--timeout-ms" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --timeout-ms".to_string());
-                };
-                timeout_ms = value
-                    .parse::<u64>()
-                    .map_err(|e| format!("invalid --timeout-ms: {e}"))?;
-            }
-            "--help" | "-h" => {
-                println!("{}", cut_usage());
-                return Ok(());
-            }
-            other => return Err(format!("unknown flag for cut: {other}\n\n{}", cut_usage())),
-        }
-        i += 1;
-    }
+fn run_cut(
+    url: Option<CompactString>,
+    poll_ms: Option<u64>,
+    timeout_ms: Option<u64>,
+) -> Result<(), String> {
+    let base_url = url
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let poll_ms = poll_ms.unwrap_or(DEFAULT_POLL_MS);
+    let timeout_ms = timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
 
     let trigger_url = format!("{}/api/cuts", base_url.trim_end_matches('/'));
     let trigger_body = http_post_json(&trigger_url, "{}")?;
@@ -135,42 +148,12 @@ fn run_cut(args: Vec<String>) -> Result<(), String> {
     }
 }
 
-fn run_sql(args: Vec<String>) -> Result<(), String> {
-    let mut base_url = DEFAULT_BASE_URL.to_string();
-    let mut query: Option<String> = None;
-    let mut i = 0usize;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--url" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --url".to_string());
-                };
-                base_url = value.clone();
-            }
-            "--query" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --query".to_string());
-                };
-                query = Some(value.clone());
-            }
-            "--help" | "-h" => {
-                println!("{}", sql_usage());
-                return Ok(());
-            }
-            other => return Err(format!("unknown flag for sql: {other}\n\n{}", sql_usage())),
-        }
-        i += 1;
-    }
+fn run_sql(url: Option<CompactString>, query: CompactString) -> Result<(), String> {
+    let base_url = url
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
 
-    let Some(query) = query else {
-        return Err(format!("missing --query\n\n{}", sql_usage()));
-    };
-
-    let req = SqlRequest {
-        sql: CompactString::from(query),
-    };
+    let req = SqlRequest { sql: query };
     let body = facet_json::to_string(&req).map_err(|e| format!("encode sql request: {e}"))?;
     let url = format!("{}/api/sql", base_url.trim_end_matches('/'));
     let response = http_post_json(&url, &body)?;
@@ -183,55 +166,17 @@ fn run_sql(args: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
-fn run_query_pack(args: Vec<String>) -> Result<(), String> {
-    let mut base_url = DEFAULT_BASE_URL.to_string();
-    let mut name: Option<String> = None;
-    let mut limit: u32 = DEFAULT_QUERY_LIMIT;
-    let mut i = 0usize;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--url" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --url".to_string());
-                };
-                base_url = value.clone();
-            }
-            "--name" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --name".to_string());
-                };
-                name = Some(value.clone());
-            }
-            "--limit" => {
-                i += 1;
-                let Some(value) = args.get(i) else {
-                    return Err("missing value for --limit".to_string());
-                };
-                limit = value
-                    .parse::<u32>()
-                    .map_err(|e| format!("invalid --limit: {e}"))?;
-            }
-            "--help" | "-h" => {
-                println!("{}", query_usage());
-                return Ok(());
-            }
-            other => {
-                return Err(format!(
-                    "unknown flag for query: {other}\n\n{}",
-                    query_usage()
-                ))
-            }
-        }
-        i += 1;
-    }
-
-    let Some(name) = name else {
-        return Err(format!("missing --name\n\n{}", query_usage()));
-    };
+fn run_query_pack(
+    url: Option<CompactString>,
+    name: CompactString,
+    limit: Option<u32>,
+) -> Result<(), String> {
+    let base_url = url
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT);
     let req = QueryRequest {
-        name: CompactString::from(name),
+        name,
         limit: Some(limit),
     };
     let body = facet_json::to_string(&req).map_err(|e| format!("encode query request: {e}"))?;
@@ -263,39 +208,4 @@ fn http_post_json(url: &str, body: &str) -> Result<String, String> {
     response
         .into_string()
         .map_err(|e| format!("read POST response body: {e}"))
-}
-
-fn usage() -> String {
-    format!(
-        "peeps-cli commands:\n  cut [--url URL] [--poll-ms N] [--timeout-ms N]\n  sql --query \"...\" [--url URL]\n  query --name <blockers|blocked-senders|blocked-receivers|stalled-sends|channel-pressure|channel-health|scope-membership|stale-blockers> [--url URL]\n\n{}",
-        defaults_usage()
-    )
-}
-
-fn cut_usage() -> String {
-    format!(
-        "peeps-cli cut [--url URL] [--poll-ms N] [--timeout-ms N]\n\n{}",
-        defaults_usage()
-    )
-}
-
-fn sql_usage() -> String {
-    format!(
-        "peeps-cli sql --query \"...\" [--url URL]\n\n{}",
-        defaults_usage()
-    )
-}
-
-fn query_usage() -> String {
-    format!(
-        "peeps-cli query --name <blockers|blocked-senders|blocked-receivers|stalled-sends|channel-pressure|channel-health|scope-membership|stale-blockers> [--url URL]\n\n{}",
-        defaults_usage()
-    )
-}
-
-fn defaults_usage() -> String {
-    format!(
-        "defaults:\n  --url {}\n  --poll-ms {}\n  --timeout-ms {}\n  --limit {}",
-        DEFAULT_BASE_URL, DEFAULT_POLL_MS, DEFAULT_TIMEOUT_MS, DEFAULT_QUERY_LIMIT
-    )
 }

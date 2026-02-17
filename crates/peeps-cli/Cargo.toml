@@ -4,9 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "peeps"
+path = "src/main.rs"
+
 [dependencies]
 compact_str.workspace = true
 facet.workspace = true
 facet-json.workspace = true
 facet-value.workspace = true
+figue.workspace = true
 ureq.workspace = true
