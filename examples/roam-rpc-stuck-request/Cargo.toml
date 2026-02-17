@@ -7,12 +7,12 @@ publish = false
 [workspace]
 
 [dependencies]
-peeps = { path = "../../crates/peeps", features = ["diagnostics", "dashboard"] }
+peeps-legacy = { path = "../../crates/peeps-legacy", features = ["diagnostics", "dashboard"] }
 tokio = { version = "1.49", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
 roam = { path = "../../../roam/rust/roam" }
 roam-session = { path = "../../../roam/rust/roam-session", features = ["diagnostics"] }
 roam-wire = { path = "../../../roam/rust/roam-wire" }
 
 [patch."https://github.com/bearcove/peeps"]
-peeps = { path = "../../crates/peeps" }
-peeps-types = { path = "../../crates/peeps-types" }
+peeps-legacy = { path = "../../crates/peeps-legacy" }
+peeps-types-legacy = { path = "../../crates/peeps-types-legacy" }

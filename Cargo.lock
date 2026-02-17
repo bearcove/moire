@@ -794,26 +794,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeps"
-version = "0.1.0"
-dependencies = [
- "facet",
- "facet-json",
- "parking_lot",
- "peeps-types",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "peeps-example-selector"
+name = "peeps-example-selector-legacy"
 version = "0.1.0"
 dependencies = [
  "dialoguer",
 ]
 
 [[package]]
-name = "peeps-types"
+name = "peeps-legacy"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-json",
+ "parking_lot",
+ "peeps-types-legacy",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "peeps-types-legacy"
 version = "0.1.0"
 dependencies = [
  "compact_str",
@@ -826,13 +826,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeps-web"
+name = "peeps-web-legacy"
 version = "0.1.0"
 dependencies = [
  "axum",
  "facet",
  "facet-json",
- "peeps-types",
+ "peeps-types-legacy",
  "rusqlite",
  "serde",
  "serde_json",

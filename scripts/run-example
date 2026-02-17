@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLES_DIR="$ROOT_DIR/examples"
-FRONTEND_DIR="$ROOT_DIR/crates/peeps-web/frontend"
+FRONTEND_DIR="$ROOT_DIR/crates/peeps-web-legacy/frontend"
 LAST_EXAMPLE_FILE="${PEEPS_LAST_EXAMPLE_FILE:-$ROOT_DIR/.run-example-last}"
 
 PEEPS_LISTEN="${PEEPS_LISTEN:-127.0.0.1:9119}"
@@ -19,7 +19,7 @@ cleaned_up="0"
 run_selector() {
   (
     cd "$ROOT_DIR"
-    cargo run --quiet -p peeps-example-selector -- \
+    cargo run --quiet -p peeps-example-selector-legacy -- \
       --examples-dir "$EXAMPLES_DIR" \
       --last-file "$LAST_EXAMPLE_FILE" \
       "$@"
@@ -152,7 +152,7 @@ for cmd in pnpm curl; do
 done
 
 if curl -fsS "http://${PEEPS_HTTP}/health" >/dev/null 2>&1; then
-  echo "A peeps-web backend is already running at http://${PEEPS_HTTP}." >&2
+  echo "A peeps-web-legacy backend is already running at http://${PEEPS_HTTP}." >&2
   echo "Stop it first, or set PEEPS_HTTP/PEEPS_LISTEN to alternate ports." >&2
   exit 1
 fi
@@ -165,10 +165,10 @@ fi
 
 trap cleanup EXIT INT TERM
 
-echo "Starting peeps-web backend on $PEEPS_HTTP (ingest: $PEEPS_LISTEN)"
+echo "Starting peeps-web-legacy backend on $PEEPS_HTTP (ingest: $PEEPS_LISTEN)"
 (
   cd "$ROOT_DIR"
-  PEEPS_LISTEN="$PEEPS_LISTEN" PEEPS_HTTP="$PEEPS_HTTP" cargo run -p peeps-web
+  PEEPS_LISTEN="$PEEPS_LISTEN" PEEPS_HTTP="$PEEPS_HTTP" cargo run -p peeps-web-legacy
 ) &
 backend_pid=$!
 
@@ -179,9 +179,9 @@ echo "Starting frontend dev server on $PEEPS_FRONTEND_URL"
 ) &
 frontend_pid=$!
 
-wait_for_url "http://${PEEPS_HTTP}/health" "peeps-web backend"
+wait_for_url "http://${PEEPS_HTTP}/health" "peeps-web-legacy backend"
 wait_for_url "$PEEPS_FRONTEND_URL" "frontend dev server"
-ensure_process_alive "$backend_pid" "peeps-web backend"
+ensure_process_alive "$backend_pid" "peeps-web-legacy backend"
 ensure_process_alive "$frontend_pid" "frontend dev server"
 
 open_browser "$PEEPS_FRONTEND_URL"

@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/peeps",
-  "crates/peeps-types",
-  "crates/peeps-web",
-  "crates/peeps-example-selector",
+  "crates/peeps-legacy",
+  "crates/peeps-types-legacy",
+  "crates/peeps-web-legacy",
+  "crates/peeps-example-selector-legacy",
 ]
 
 [workspace.package]
@@ -15,9 +15,9 @@ repository = "https://github.com/bearcove/peeps"
 
 [workspace.dependencies]
 # Internal
-peeps = { path = "crates/peeps" }
-peeps-types = { path = "crates/peeps-types" }
-peeps-web = { path = "crates/peeps-web" }
+peeps-legacy = { path = "crates/peeps-legacy" }
+peeps-types-legacy = { path = "crates/peeps-types-legacy" }
+peeps-web-legacy = { path = "crates/peeps-web-legacy" }
 
 # External
 backtrace = "0.3"
