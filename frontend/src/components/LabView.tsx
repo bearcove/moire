@@ -434,20 +434,22 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
       <Handle type="target" position={Position.Top} style={hiddenHandle} />
       <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
       <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}${data.selected ? " mockup-node--selected" : ""}`}>
-        <div className="mockup-node-main">
-          <span className="mockup-node-icon">{kindIcon(data.kind, 14)}</span>
-          <span className="mockup-node-label">{data.label}</span>
-        </div>
-        <div className="mockup-node-details">
-          <Badge tone={data.status.tone}>{data.status.label}</Badge>
-          <span className="mockup-node-dot">&middot;</span>
-          <DurationDisplay ms={data.birthAgeMs} />
-          {data.stat && (
-            <>
-              <span className="mockup-node-dot">&middot;</span>
-              <span className="mockup-node-stat">{data.stat}</span>
-            </>
-          )}
+        <span className="mockup-node-icon">{kindIcon(data.kind, 18)}</span>
+        <div className="mockup-node-content">
+          <div className="mockup-node-main">
+            <span className="mockup-node-label">{data.label}</span>
+          </div>
+          <div className="mockup-node-details">
+            <Badge tone={data.status.tone}>{data.status.label}</Badge>
+            <span className="mockup-node-dot">&middot;</span>
+            <DurationDisplay ms={data.birthAgeMs} />
+            {data.stat && (
+              <>
+                <span className="mockup-node-dot">&middot;</span>
+                <span className="mockup-node-stat">{data.stat}</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </>

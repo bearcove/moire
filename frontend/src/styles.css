@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;700;800&display=swap");
-
 :root {
     color-scheme: light dark;
     --font-ui: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -4855,35 +4853,40 @@ body {
 
 .mockup-node {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 6px 10px;
+    gap: 8px;
+    padding: 8px 10px;
     border-radius: 8px;
     font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 600;
     white-space: nowrap;
     background: var(--surface-raised);
     border: 1px solid var(--border);
     color: var(--text-primary);
-}
-
-.mockup-node-main {
-    display: flex;
     align-items: center;
-    gap: 6px;
-}
-
-.mockup-node--cycle {
-    border: 2px solid light-dark(#d7263d, #ff6b81);
-    background: light-dark(#fff5f5, #2a1414);
 }
 
 .mockup-node-icon {
     display: grid;
     place-items: center;
     flex-shrink: 0;
+    width: 20px;
     color: var(--text-secondary);
+}
+
+.mockup-node-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.mockup-node-main {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.mockup-node--cycle {
+    border: 2px solid light-dark(#d7263d, #ff6b81);
+    background: light-dark(#fff5f5, #2a1414);
 }
 
 .mockup-node--cycle .mockup-node-icon {
@@ -4902,21 +4905,20 @@ body {
 
 .mockup-node-details {
     display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 9.5px;
-    font-weight: 500;
-    padding-left: 20px; /* align with label (icon width 14 + gap 6) */
+    align-items: baseline;
+    gap: 6px;
 }
 
 .mockup-node-dot {
     color: var(--text-tertiary);
-    font-weight: 700;
+    font-size: 11px;
+    line-height: 1;
 }
 
 .mockup-node-stat {
     color: var(--text-secondary);
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 500;
 }
 
 .mockup-inspector-empty {
@@ -4941,12 +4943,6 @@ body {
 
 
 /* ---- Live mode scaffold styles ---- */
-:root {
-  color: #111827;
-  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top left, #eef6ff, #f9fafb 44%);
-}
-
 * {
   box-sizing: border-box;
 }
@@ -4961,6 +4957,9 @@ body {
 }
 
 .page {
+  color: #111827;
+  font-family: var(--font-ui);
+  background: radial-gradient(circle at top left, #eef6ff, #f9fafb 44%);
   margin: 0 auto;
   max-width: 1400px;
   padding: 1.5rem;

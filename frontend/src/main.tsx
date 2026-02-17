@@ -18,7 +18,7 @@ function getUiMode(): UiMode {
     return fromEnv;
   }
 
-  return "lab";
+  return "live";
 }
 
 createRoot(document.getElementById("app")!).render(getUiMode() === "live" ? <App /> : <LabApp />);
