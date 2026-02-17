@@ -1,0 +1,220 @@
+use compact_str::CompactString;
+use facet::Facet;
+
+use crate::{
+    caller_source, next_event_id, ChannelCloseCause, EntityId, EventId, MetaSerializeError, PTime,
+    ScopeId,
+};
+
+/// Relationship between two entities.
+#[derive(Facet)]
+pub struct Edge {
+    /// Source entity in the causal relationship.
+    pub src: EntityId,
+    /// Destination entity in the causal relationship.
+    pub dst: EntityId,
+    /// Causal edge kind.
+    pub kind: EdgeKind,
+    /// Extensible metadata for optional edge context.
+    pub meta: facet_value::Value,
+}
+
+impl Edge {
+    /// Builds a causal edge with typed metadata.
+    pub fn new<M>(
+        src: EntityId,
+        dst: EntityId,
+        kind: EdgeKind,
+        meta: &M,
+    ) -> Result<Self, MetaSerializeError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Ok(Self {
+            src,
+            dst,
+            kind,
+            meta: facet_value::to_value(meta)?,
+        })
+    }
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum EdgeKind {
+    /// Waiting/blocked-on relationship.
+    Needs,
+    /// Closure/cancellation cause relationship.
+    ClosedBy,
+    /// Structural channel endpoint pairing (`tx -> rx`).
+    ChannelLink,
+    /// Structural request/response pairing.
+    RpcLink,
+}
+
+#[derive(Facet)]
+pub struct Event {
+    /// Opaque event identifier.
+    pub id: EventId,
+    /// Event timestamp.
+    pub at: PTime,
+    /// Event source site as `{absolute_path}:{line}`.
+    pub source: CompactString,
+    /// Event target (entity or scope).
+    pub target: EventTarget,
+    /// Event kind.
+    pub kind: EventKind,
+    /// Extensible metadata for optional event details.
+    pub meta: facet_value::Value,
+}
+
+impl Event {
+    /// Builds an event with typed metadata and auto-generated id/timestamp/source.
+    #[track_caller]
+    pub fn new<M>(
+        target: EventTarget,
+        kind: EventKind,
+        meta: &M,
+    ) -> Result<Self, MetaSerializeError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Ok(Self {
+            id: next_event_id(),
+            at: PTime::now(),
+            source: caller_source(),
+            target,
+            kind,
+            meta: facet_value::to_value(meta)?,
+        })
+    }
+
+    /// Channel send event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_sent(
+        target: EventTarget,
+        meta: &ChannelSendEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelSent, meta)
+    }
+
+    /// Channel receive event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_received(
+        target: EventTarget,
+        meta: &ChannelReceiveEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelReceived, meta)
+    }
+
+    /// Channel closure event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_closed(
+        target: EventTarget,
+        meta: &ChannelClosedEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelClosed, meta)
+    }
+
+    /// Channel wait-start event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_wait_started(
+        target: EventTarget,
+        meta: &ChannelWaitStartedEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelWaitStarted, meta)
+    }
+
+    /// Channel wait-end event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_wait_ended(
+        target: EventTarget,
+        meta: &ChannelWaitEndedEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelWaitEnded, meta)
+    }
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum EventTarget {
+    Entity(EntityId),
+    Scope(ScopeId),
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum EventKind {
+    StateChanged,
+    ChannelSent,
+    ChannelReceived,
+    ChannelClosed,
+    ChannelWaitStarted,
+    ChannelWaitEnded,
+}
+
+#[derive(Facet)]
+pub struct ChannelSendEvent {
+    /// Send attempt outcome.
+    pub outcome: ChannelSendOutcome,
+    /// Queue length after the operation, when observable.
+    pub queue_len: Option<u32>,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelSendOutcome {
+    Ok,
+    Full,
+    Closed,
+}
+
+#[derive(Facet)]
+pub struct ChannelReceiveEvent {
+    /// Receive attempt outcome.
+    pub outcome: ChannelReceiveOutcome,
+    /// Queue length after the operation, when observable.
+    pub queue_len: Option<u32>,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelReceiveOutcome {
+    Ok,
+    Empty,
+    Closed,
+}
+
+#[derive(Facet)]
+pub struct ChannelClosedEvent {
+    /// Reason the endpoint transitioned to closed.
+    pub cause: ChannelCloseCause,
+}
+
+#[derive(Facet)]
+pub struct ChannelWaitStartedEvent {
+    /// Wait type being started.
+    pub kind: ChannelWaitKind,
+}
+
+#[derive(Facet)]
+pub struct ChannelWaitEndedEvent {
+    /// Wait type that ended.
+    pub kind: ChannelWaitKind,
+    /// Observed wait duration in nanoseconds.
+    pub wait_ns: u64,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelWaitKind {
+    Send,
+    Receive,
+    Change,
+}
