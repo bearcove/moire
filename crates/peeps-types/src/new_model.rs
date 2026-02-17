@@ -10,8 +10,9 @@
 //! In short: events happen to entities, entities are connected by edges,
 //! and entities live inside scopes.
 
-use compact_str::CompactString;
+use compact_str::{CompactString, ToCompactString};
 use facet::Facet;
+use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -139,7 +140,7 @@ fn next_entity_id() -> EntityId {
 
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_FFFF_FFFF_FFFF;
     let raw = ((prefix as u64) << 48) | counter;
-    EntityId(peeps_hex(raw))
+    EntityId(PeepsHex2(raw).to_compact_string())
 }
 
 #[track_caller]
@@ -148,23 +149,21 @@ fn caller_source() -> CompactString {
     CompactString::from(format!("{}:{}", location.file(), location.line()))
 }
 
-/// Encodes a 64-bit value as lowercase hex, then remaps `a..f` to:
-/// `a->p`, `b->e`, `c->s`, `d->P`, `e->E`, `f->S`.
-fn peeps_hex(raw: u64) -> CompactString {
-    let mut out = String::with_capacity(16);
-    for ch in format!("{raw:016x}").chars() {
-        let mapped = match ch {
-            'a' => 'p',
-            'b' => 'e',
-            'c' => 's',
-            'd' => 'P',
-            'e' => 'E',
-            'f' => 'S',
-            _ => ch,
-        };
-        out.push(mapped);
+/// `peeps-hex-2` formatter:
+/// lowercase hex with `a..f` remapped to `p,e,s,P,E,S`.
+struct PeepsHex2(u64);
+
+impl fmt::Display for PeepsHex2 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const DIGITS: &[u8; 16] = b"0123456789pesPES";
+        let mut out = [0u8; 16];
+        for (idx, shift) in (0..16).zip((0..64).step_by(4).rev()) {
+            let nibble = ((self.0 >> shift) & 0xF) as usize;
+            out[idx] = DIGITS[nibble];
+        }
+        // SAFETY: DIGITS only contains ASCII bytes.
+        f.write_str(unsafe { std::str::from_utf8_unchecked(&out) })
     }
-    CompactString::from(out)
 }
 
 /// Typed payload for each entity kind.
