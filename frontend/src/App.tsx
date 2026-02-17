@@ -360,6 +360,7 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
   const allEntities: EntityDef[] = [];
   const allEdges: EdgeDef[] = [];
 
+  // First pass: collect all entities so we can do cross-process edge resolution.
   for (const proc of snapshot.processes) {
     const { process_id, process_name, ptime_now_ms } = proc;
     const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
@@ -387,10 +388,24 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
         statTone: deriveStatTone(e.body),
       });
     }
+  }
 
+  // Build raw entity ID → composite ID lookup for cross-process edge resolution.
+  // rpc_link edges have their src set to the request's raw ID from the other process.
+  const rawToCompositeId = new Map<string, string>();
+  for (const entity of allEntities) {
+    rawToCompositeId.set(entity.rawEntityId, entity.id);
+  }
+
+  // Second pass: build edges, resolving cross-process src IDs for rpc_link.
+  for (const proc of snapshot.processes) {
+    const { process_id } = proc;
     for (let i = 0; i < proc.snapshot.edges.length; i++) {
       const e = proc.snapshot.edges[i];
-      const srcComposite = `${process_id}/${e.src}`;
+      const localSrc = `${process_id}/${e.src}`;
+      const srcComposite = e.kind === "rpc_link"
+        ? (rawToCompositeId.get(e.src) ?? localSrc)
+        : localSrc;
       const dstComposite = `${process_id}/${e.dst}`;
       allEdges.push({
         id: `e${i}-${srcComposite}-${dstComposite}-${e.kind}`,
