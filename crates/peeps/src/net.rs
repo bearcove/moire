@@ -1,12 +1,12 @@
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 use compact_str::CompactString;
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 use peeps_types::{EntityBody, NetEntity};
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 use std::future::Future;
 use std::future::IntoFuture;
 
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 fn net_wait<F>(
     future: F,
     endpoint: &str,
@@ -24,7 +24,7 @@ where
     async move { crate::instrument_future_on(wait_name, &op_handle, future.into_future()).await }
 }
 
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 #[inline]
 pub fn connect<F: IntoFuture>(
     future: F,
@@ -42,13 +42,13 @@ pub fn connect<F: IntoFuture>(
     )
 }
 
-#[cfg(not(feature = "diagnostics"))]
+#[cfg(any(not(feature = "diagnostics"), target_arch = "wasm32"))]
 #[inline]
 pub fn connect<F: IntoFuture>(future: F, _endpoint: &str, _transport: &str) -> F::IntoFuture {
     future.into_future()
 }
 
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 #[inline]
 pub fn accept<F: IntoFuture>(
     future: F,
@@ -66,13 +66,13 @@ pub fn accept<F: IntoFuture>(
     )
 }
 
-#[cfg(not(feature = "diagnostics"))]
+#[cfg(any(not(feature = "diagnostics"), target_arch = "wasm32"))]
 #[inline]
 pub fn accept<F: IntoFuture>(future: F, _endpoint: &str, _transport: &str) -> F::IntoFuture {
     future.into_future()
 }
 
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 #[inline]
 pub fn readable<F: IntoFuture>(
     future: F,
@@ -90,13 +90,13 @@ pub fn readable<F: IntoFuture>(
     )
 }
 
-#[cfg(not(feature = "diagnostics"))]
+#[cfg(any(not(feature = "diagnostics"), target_arch = "wasm32"))]
 #[inline]
 pub fn readable<F: IntoFuture>(future: F, _endpoint: &str, _transport: &str) -> F::IntoFuture {
     future.into_future()
 }
 
-#[cfg(feature = "diagnostics")]
+#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 #[inline]
 pub fn writable<F: IntoFuture>(
     future: F,
@@ -114,7 +114,7 @@ pub fn writable<F: IntoFuture>(
     )
 }
 
-#[cfg(not(feature = "diagnostics"))]
+#[cfg(any(not(feature = "diagnostics"), target_arch = "wasm32"))]
 #[inline]
 pub fn writable<F: IntoFuture>(future: F, _endpoint: &str, _transport: &str) -> F::IntoFuture {
     future.into_future()
