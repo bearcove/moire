@@ -51,36 +51,6 @@ is still alive and well.
 
 So someone remind me to update these docs when I actually find it. 
  
-## What shows up as nodes
-
-- Async execution
-  - `future`: tracked futures/tasks
-  - `joinset`: task group / join set entities
-- Synchronization
-  - `lock`: lock contention points (mutex/rwlock wrappers)
-  - `semaphore`: semaphore coordination points
-  - `oncecell`: lazy initialization coordination points
-  - `notify`: notify/wait coordination points
-- Channels
-  - `tx`: local channel sender endpoints
-  - `rx`: local channel receiver endpoints
-  - `remote_tx`: cross-process sender endpoints
-  - `remote_rx`: cross-process receiver endpoints
-- RPC and transport
-  - `request`: RPC request lifecycle entities
-  - `response`: RPC response lifecycle entities
-  - `connection`: transport or RPC connection entities
-- Time
-  - `sleep`: sleep timer waits
-  - `interval`: interval timer cadence points
-  - `timeout`: timeout guard boundaries
-- System operations
-  - `command`: process execution operations
-  - `file_op`: filesystem operations
-- Network operations
-  - `net_connect`: network connect waits
-  - `net_accept`: network accept waits
-  - `net_readable`: network readability waits
-  - `net_writable`: network writability waits
-- VixenFS
-  - `syscall`: handling a filesystem syscall as a VFS
+<p style="text-align:center; margin-top:2rem;">
+  <a class="cta-button" href="/instrumentation/">Go to Instrumentation</a>
+</p>

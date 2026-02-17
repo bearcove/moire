@@ -11,8 +11,8 @@
         <a href="/" class="brand">peeps</a>
         <span class="spacer"></span>
         <a href="/concepts/" {% if current_path is starting_with("/concepts") %}class="active"{% endif %}>Concepts</a>
-        <a href="/architecture/" {% if current_path is starting_with("/architecture") %}class="active"{% endif %}>Architecture</a>
         <a href="/instrumentation/" {% if current_path is starting_with("/instrumentation") %}class="active"{% endif %}>Instrumentation</a>
+        <a href="/architecture/" {% if current_path is starting_with("/architecture") %}class="active"{% endif %}>Architecture</a>
     </nav>
     <div class="wrapper">
         {% block body %}{% endblock body %}

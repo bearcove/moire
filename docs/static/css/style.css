@@ -455,6 +455,16 @@ li {
     text-decoration: none;
 }
 
+.cta-button {
+    display: inline-block;
+    font-size: 1.05rem;
+    font-weight: 700;
+    padding: 0.9rem 1.5rem;
+    border: 2px solid currentColor;
+    border-radius: 999px;
+    text-decoration: none;
+}
+
 /* ── Footer ─────────────────────────────────────────── */
 
 .site-footer {
