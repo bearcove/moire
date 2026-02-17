@@ -1083,6 +1083,7 @@ pub struct OneshotReceiver<T> {
 pub struct BroadcastSender<T> {
     inner: broadcast::Sender<T>,
     handle: EntityHandle,
+    receiver_handle: EntityHandle,
     channel: Arc<Mutex<BroadcastRuntimeState>>,
     name: CompactString,
 }
@@ -1097,6 +1098,7 @@ pub struct BroadcastReceiver<T> {
 pub struct WatchSender<T> {
     inner: watch::Sender<T>,
     handle: EntityHandle,
+    receiver_handle: EntityHandle,
     channel: Arc<Mutex<WatchRuntimeState>>,
     name: CompactString,
 }
@@ -1200,6 +1202,7 @@ impl<T> Clone for BroadcastSender<T> {
         Self {
             inner: self.inner.clone(),
             handle: self.handle.clone(),
+            receiver_handle: self.receiver_handle.clone(),
             channel: self.channel.clone(),
             name: self.name.clone(),
         }
@@ -1228,6 +1231,7 @@ impl<T> Clone for WatchSender<T> {
         Self {
             inner: self.inner.clone(),
             handle: self.handle.clone(),
+            receiver_handle: self.receiver_handle.clone(),
             channel: self.channel.clone(),
             name: self.name.clone(),
         }
@@ -2049,7 +2053,7 @@ impl<T: Clone> BroadcastSender<T> {
         }
         BroadcastReceiver {
             inner: self.inner.subscribe(),
-            handle: self.handle.clone(),
+            handle: self.receiver_handle.clone(),
             channel: self.channel.clone(),
             name: self.name.clone(),
         }
@@ -2234,7 +2238,7 @@ impl<T: Clone> WatchSender<T> {
         }
         WatchReceiver {
             inner: self.inner.subscribe(),
-            handle: self.handle.clone(),
+            handle: self.receiver_handle.clone(),
             channel: self.channel.clone(),
             name: self.name.clone(),
         }
@@ -2348,6 +2352,7 @@ pub fn broadcast<T: Clone>(
         BroadcastSender {
             inner: tx,
             handle: tx_handle,
+            receiver_handle: rx_handle.clone(),
             channel: channel.clone(),
             name: name.clone(),
         },
@@ -2397,6 +2402,7 @@ pub fn watch<T: Clone>(name: impl Into<CompactString>, initial: T) -> (WatchSend
         WatchSender {
             inner: tx,
             handle: tx_handle,
+            receiver_handle: rx_handle.clone(),
             channel: channel.clone(),
             name: name.clone(),
         },

@@ -1,12 +1,13 @@
 use compact_str::CompactString;
 use peeps_types::{
-    ChannelDetails, ChannelEndpointEntity, ChannelEndpointLifecycle, CutAck, CutId, Edge, EdgeKind,
-    Entity, EntityBody, EntityId, Event, OneshotChannelDetails, OneshotState, PullChangesResponse,
-    RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId,
+    BroadcastChannelDetails, BufferState, ChannelDetails, ChannelEndpointEntity,
+    ChannelEndpointLifecycle, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
+    OneshotChannelDetails, OneshotState, PullChangesResponse, RequestEntity, ResponseEntity,
+    ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId, WatchChannelDetails,
 };
 use std::future::Future;
 use std::sync::Once;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 #[derive(Clone, Debug, Default)]
 pub struct EntityRef;
@@ -112,7 +113,58 @@ pub struct OneshotReceiver<T> {
     handle: EntityHandle,
 }
 
+pub struct BroadcastSender<T> {
+    inner: broadcast::Sender<T>,
+    handle: EntityHandle,
+    receiver_handle: EntityHandle,
+}
+
+pub struct BroadcastReceiver<T> {
+    inner: broadcast::Receiver<T>,
+    handle: EntityHandle,
+}
+
+pub struct WatchSender<T> {
+    inner: watch::Sender<T>,
+    handle: EntityHandle,
+    receiver_handle: EntityHandle,
+}
+
+pub struct WatchReceiver<T> {
+    inner: watch::Receiver<T>,
+    handle: EntityHandle,
+}
+
 impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+        }
+    }
+}
+
+impl<T> Clone for BroadcastSender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            receiver_handle: self.receiver_handle.clone(),
+        }
+    }
+}
+
+impl<T> Clone for WatchSender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            receiver_handle: self.receiver_handle.clone(),
+        }
+    }
+}
+
+impl<T> Clone for WatchReceiver<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -164,6 +216,72 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
+impl<T: Clone> BroadcastSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn subscribe(&self) -> BroadcastReceiver<T> {
+        BroadcastReceiver {
+            inner: self.inner.subscribe(),
+            handle: self.receiver_handle.clone(),
+        }
+    }
+
+    pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
+        self.inner.send(value)
+    }
+}
+
+impl<T: Clone> BroadcastReceiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
+        self.inner.recv().await
+    }
+}
+
+impl<T: Clone> WatchSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
+        self.inner.send(value)
+    }
+
+    pub fn send_replace(&self, value: T) -> T {
+        self.inner.send_replace(value)
+    }
+
+    pub fn subscribe(&self) -> WatchReceiver<T> {
+        WatchReceiver {
+            inner: self.inner.subscribe(),
+            handle: self.receiver_handle.clone(),
+        }
+    }
+}
+
+impl<T: Clone> WatchReceiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
+        self.inner.changed().await
+    }
+
+    pub fn borrow(&self) -> watch::Ref<'_, T> {
+        self.inner.borrow()
+    }
+
+    pub fn borrow_and_update(&mut self) -> watch::Ref<'_, T> {
+        self.inner.borrow_and_update()
+    }
+}
+
 pub fn channel<T>(_name: impl Into<CompactString>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = mpsc::channel(capacity);
     (
@@ -207,6 +325,88 @@ pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotR
         },
         OneshotReceiver {
             inner: Some(rx),
+            handle: rx_handle,
+        },
+    )
+}
+
+pub fn broadcast<T: Clone>(
+    name: impl Into<CompactString>,
+    capacity: usize,
+) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    let name = name.into();
+    let (tx, rx) = broadcast::channel(capacity);
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details: ChannelDetails::Broadcast(BroadcastChannelDetails {
+                buffer: Some(BufferState {
+                    occupancy: 0,
+                    capacity: Some(capacity.min(u32::MAX as usize) as u32),
+                }),
+            }),
+        }),
+    );
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details: ChannelDetails::Broadcast(BroadcastChannelDetails {
+                buffer: Some(BufferState {
+                    occupancy: 0,
+                    capacity: Some(capacity.min(u32::MAX as usize) as u32),
+                }),
+            }),
+        }),
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    (
+        BroadcastSender {
+            inner: tx,
+            handle: tx_handle,
+            receiver_handle: rx_handle.clone(),
+        },
+        BroadcastReceiver {
+            inner: rx,
+            handle: rx_handle,
+        },
+    )
+}
+
+pub fn watch<T: Clone>(
+    name: impl Into<CompactString>,
+    initial: T,
+) -> (WatchSender<T>, WatchReceiver<T>) {
+    let name = name.into();
+    let (tx, rx) = watch::channel(initial);
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details: ChannelDetails::Watch(WatchChannelDetails {
+                last_update_at: None,
+            }),
+        }),
+    );
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details: ChannelDetails::Watch(WatchChannelDetails {
+                last_update_at: None,
+            }),
+        }),
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    (
+        WatchSender {
+            inner: tx,
+            handle: tx_handle,
+            receiver_handle: rx_handle.clone(),
+        },
+        WatchReceiver {
+            inner: rx,
             handle: rx_handle,
         },
     )

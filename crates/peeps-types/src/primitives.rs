@@ -15,7 +15,7 @@ fn ptime_anchor() -> &'static Instant {
 }
 
 /// process start time + N milliseconds
-#[derive(Facet)]
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PTime(u64);
 
 impl PTime {
