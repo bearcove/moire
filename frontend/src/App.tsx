@@ -7,10 +7,10 @@ import type {
   ConnectionsResponse,
   CutStatusResponse,
   SqlResponse,
-} from "./api";
-import { fetchConnections, fetchCutStatus, runSql, triggerCut } from "./api";
+} from "./api/types";
+import { apiClient, apiMode } from "./api";
 
-interface FlowNodeData {
+interface FlowNodeData extends Record<string, unknown> {
   label: string;
   detail: string;
 }
@@ -22,6 +22,7 @@ const FLOW_NODE_HEIGHT = 64;
 const CONNECTION_POLL_MS = 1000;
 const CUT_STATUS_POLL_MS = 600;
 const WEBSOCKET_URL = import.meta.env.VITE_PEEPS_WS_URL ?? "ws://127.0.0.1:9119";
+const isLabMode = apiMode === "lab";
 
 function buildFlowGraph(
   connections: ConnectedProcessInfo[],
@@ -150,7 +151,7 @@ export function App() {
   });
 
   const refreshConnections = useCallback(async () => {
-    const next = await fetchConnections();
+    const next = await apiClient.fetchConnections();
     setConnections(next);
   }, []);
 
@@ -158,10 +159,10 @@ export function App() {
     setBusySql(true);
     setError(null);
     try {
-      const response = await runSql(
-        "SELECT conn_id, process_name, pid, connected_at_ns, disconnected_at_ns " +
-          "FROM connections ORDER BY connected_at_ns DESC LIMIT 8",
-      );
+    const response = await apiClient.runSql(
+      "SELECT conn_id, process_name, pid, connected_at_ns, disconnected_at_ns " +
+        "FROM connections ORDER BY connected_at_ns DESC LIMIT 8",
+    );
       setSqlPreview(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -174,8 +175,8 @@ export function App() {
     setBusyCut(true);
     setError(null);
     try {
-      const triggered = await triggerCut();
-      const status = await fetchCutStatus(triggered.cut_id);
+    const triggered = await apiClient.triggerCut();
+    const status = await apiClient.fetchCutStatus(triggered.cut_id);
       setCutStatus(status);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -216,7 +217,7 @@ export function App() {
 
     const poll = async () => {
       try {
-        const next = await fetchCutStatus(cutStatus.cut_id);
+        const next = await apiClient.fetchCutStatus(cutStatus.cut_id);
         if (!active) return;
         setCutStatus(next);
       } catch (err) {
@@ -265,6 +266,12 @@ export function App() {
             With `peeps-web --dev`, the backend proxies this frontend from Vite while `/api` stays
             in peeps-web. Ingest remains direct on `{WEBSOCKET_URL}`.
           </p>
+          {isLabMode && (
+            <p className="lab-note">
+              Lab mode is active (`VITE_PEEPS_API_MODE=lab`). All `/api` calls are handled locally
+              so you can develop the React tree without the backend.
+            </p>
+          )}
         </div>
         <div className="topbar-actions">
           <button type="button" onClick={runCut} disabled={busyCut}>
@@ -282,7 +289,7 @@ export function App() {
         <article className="card flow-card">
           <h2>Live Topology</h2>
           <div className="flow-wrap">
-            <ReactFlow nodes={flow.nodes} edges={flow.edges} fitView>
+            <ReactFlow<Node<FlowNodeData>, Edge> nodes={flow.nodes} edges={flow.edges} fitView>
               <Background />
               <Controls />
               <MiniMap />

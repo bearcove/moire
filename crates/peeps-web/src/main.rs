@@ -406,7 +406,8 @@ fn print_startup_hints(http_addr: &str, tcp_addr: &str, vite_addr: Option<&str>)
 async fn start_vite_dev_server(vite_addr: &str) -> Result<Child, String> {
     let socket_addr = std::net::SocketAddr::from_str(vite_addr)
         .map_err(|e| format!("invalid PEEPS_VITE_ADDR '{vite_addr}': {e}"))?;
-    let frontend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../frontend");
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let frontend_dir = workspace_root.join("frontend");
     if !frontend_dir.is_dir() {
         return Err(format!(
             "frontend directory not found at {}",
@@ -414,18 +415,20 @@ async fn start_vite_dev_server(vite_addr: &str) -> Result<Child, String> {
         ));
     }
 
-    ensure_frontend_deps(&frontend_dir).await?;
+    ensure_frontend_deps(&workspace_root).await?;
 
     let mut command = tokio::process::Command::new("pnpm");
     command
-        .arg("--dir")
-        .arg(&frontend_dir)
+        .arg("--filter")
+        .arg("peeps-frontend")
         .arg("dev")
+        .arg("--")
         .arg("--host")
         .arg(socket_addr.ip().to_string())
         .arg("--port")
         .arg(socket_addr.port().to_string())
         .arg("--strictPort")
+        .current_dir(&workspace_root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .kill_on_drop(true);
@@ -433,20 +436,31 @@ async fn start_vite_dev_server(vite_addr: &str) -> Result<Child, String> {
     let child = command.spawn().map_err(|e| {
         format!(
             "failed to launch Vite via pnpm in {}: {e}",
-            frontend_dir.display()
+            workspace_root.display()
         )
     })?;
     wait_for_tcp_ready(vite_addr, Duration::from_secs(20)).await?;
     Ok(child)
 }
 
-async fn ensure_frontend_deps(frontend_dir: &PathBuf) -> Result<(), String> {
-    let vite_bin = frontend_dir.join("node_modules/.bin/vite");
-    if vite_bin.is_file() {
+async fn ensure_frontend_deps(workspace_root: &PathBuf) -> Result<(), String> {
+    let vite_ready = tokio::process::Command::new("pnpm")
+        .arg("--filter")
+        .arg("peeps-frontend")
+        .arg("exec")
+        .arg("vite")
+        .arg("--version")
+        .current_dir(workspace_root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .map(|status| status.success())
+        .unwrap_or(false);
+    if vite_ready {
         return Ok(());
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     info!(
         workspace = %workspace_root.display(),
         "frontend dependencies missing, running pnpm install"
@@ -474,10 +488,22 @@ async fn ensure_frontend_deps(frontend_dir: &PathBuf) -> Result<(), String> {
         ));
     }
 
-    if !vite_bin.is_file() {
+    let vite_ready = tokio::process::Command::new("pnpm")
+        .arg("--filter")
+        .arg("peeps-frontend")
+        .arg("exec")
+        .arg("vite")
+        .arg("--version")
+        .current_dir(workspace_root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .map(|status| status.success())
+        .unwrap_or(false);
+    if !vite_ready {
         return Err(format!(
-            "pnpm install succeeded but {} is still missing",
-            vite_bin.display()
+            "pnpm install succeeded but vite is still unavailable for peeps-frontend"
         ));
     }
 

@@ -4,8 +4,8 @@ use peeps_types::{
     ChannelEndpointEntity, ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome,
     ChannelSendEvent, ChannelSendOutcome, ChannelWaitEndedEvent, ChannelWaitKind,
     ChannelWaitStartedEvent, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
-    EventKind, EventTarget, MpscChannelDetails, PullChangesResponse, Scope, ScopeBody, ScopeId,
-    SeqNo, StampedChange, StreamCursor, StreamId,
+    EventKind, EventTarget, MpscChannelDetails, PullChangesResponse, RequestEntity, ResponseEntity,
+    ResponseStatus, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
@@ -415,6 +415,34 @@ impl RuntimeDb {
                 entity_json,
             });
         }
+    }
+
+    fn update_response_status(&mut self, id: &EntityId, status: ResponseStatus) -> bool {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return false;
+        };
+
+        let mut changed = false;
+        match &mut entity.body {
+            EntityBody::Response(response) => {
+                if response.status != status {
+                    response.status = status;
+                    changed = true;
+                }
+            }
+            _ => return false,
+        }
+
+        if !changed {
+            return false;
+        }
+        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+        true
     }
 
     fn remove_entity(&mut self, id: &EntityId) {
@@ -842,6 +870,111 @@ impl EntityHandle {
     pub fn link_to_handle(&self, target: &EntityHandle, kind: EdgeKind) {
         self.link_to(&target.entity_ref(), kind);
     }
+}
+
+#[derive(Clone)]
+pub struct RpcRequestHandle {
+    handle: EntityHandle,
+}
+
+impl RpcRequestHandle {
+    pub fn id(&self) -> &EntityId {
+        self.handle.id()
+    }
+
+    pub fn id_for_wire(&self) -> CompactString {
+        CompactString::from(self.handle.id().as_str())
+    }
+
+    pub fn entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+}
+
+#[derive(Clone)]
+pub struct RpcResponseHandle {
+    handle: EntityHandle,
+}
+
+impl RpcResponseHandle {
+    pub fn id(&self) -> &EntityId {
+        self.handle.id()
+    }
+
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn set_status(&self, status: ResponseStatus) {
+        let mut changed = false;
+        if let Ok(mut db) = runtime_db().lock() {
+            changed = db.update_response_status(self.handle.id(), status);
+        }
+        if !changed {
+            return;
+        }
+        if let Ok(event) = Event::new(
+            EventTarget::Entity(self.handle.id().clone()),
+            EventKind::StateChanged,
+            &status,
+        ) {
+            if let Ok(mut db) = runtime_db().lock() {
+                db.record_event(event);
+            }
+        }
+    }
+
+    pub fn mark_ok(&self) {
+        self.set_status(ResponseStatus::Ok);
+    }
+
+    pub fn mark_error(&self) {
+        self.set_status(ResponseStatus::Error);
+    }
+
+    pub fn mark_cancelled(&self) {
+        self.set_status(ResponseStatus::Cancelled);
+    }
+}
+
+pub fn rpc_request(
+    method: impl Into<CompactString>,
+    args_preview: impl Into<CompactString>,
+) -> RpcRequestHandle {
+    let method = method.into();
+    let body = EntityBody::Request(RequestEntity {
+        method: method.clone(),
+        args_preview: args_preview.into(),
+    });
+    RpcRequestHandle {
+        handle: EntityHandle::new(format!("rpc.request.{method}"), body),
+    }
+}
+
+pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
+    let method = method.into();
+    let body = EntityBody::Response(ResponseEntity {
+        method: method.clone(),
+        status: ResponseStatus::Pending,
+    });
+    RpcResponseHandle {
+        handle: EntityHandle::new(format!("rpc.response.{method}"), body),
+    }
+}
+
+pub fn rpc_response_for(
+    method: impl Into<CompactString>,
+    request: &EntityRef,
+) -> RpcResponseHandle {
+    let response = rpc_response(method);
+    if let Ok(mut db) = runtime_db().lock() {
+        db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
+    }
+    response
 }
 
 pub struct Sender<T> {

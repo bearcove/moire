@@ -291,10 +291,11 @@ pub struct ResponseEntity {
     pub status: ResponseStatus,
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ResponseStatus {
+    Pending,
     Ok,
     Error,
     Cancelled,
