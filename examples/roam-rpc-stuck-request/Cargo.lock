@@ -827,6 +827,7 @@ dependencies = [
 name = "roam-rpc-stuck-request"
 version = "0.1.0"
 dependencies = [
+ "facet-postcard",
  "peeps",
  "roam",
  "roam-session",
