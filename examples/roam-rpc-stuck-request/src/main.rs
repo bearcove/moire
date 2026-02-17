@@ -8,8 +8,6 @@ use roam_session::{
 use roam_wire::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-const DEFAULT_ADDR: &str = "127.0.0.1:43219";
-
 #[service]
 trait DemoRpc {
     async fn sleepy_forever(&self) -> String;
@@ -92,34 +90,6 @@ impl MessageTransport for TcpMessageTransport {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Mode {
-    Server,
-    Client,
-}
-
-fn parse_args() -> Result<(Mode, String), String> {
-    let mut args = std::env::args().skip(1);
-    let Some(mode_raw) = args.next() else {
-        return Err(format!(
-            "missing mode\nusage:\n  cargo run -- server [addr]\n  cargo run -- client [addr]\ndefault addr: {DEFAULT_ADDR}"
-        ));
-    };
-
-    let mode = match mode_raw.as_str() {
-        "server" => Mode::Server,
-        "client" => Mode::Client,
-        _ => {
-            return Err(format!(
-                "invalid mode `{mode_raw}`\nusage:\n  cargo run -- server [addr]\n  cargo run -- client [addr]"
-            ));
-        }
-    };
-
-    let addr = args.next().unwrap_or_else(|| DEFAULT_ADDR.to_string());
-    Ok((mode, addr))
-}
-
 async fn run_server(addr: &str) {
     peeps::init("example-roam-rpc-stuck-request.server");
 
@@ -127,8 +97,14 @@ async fn run_server(addr: &str) {
         .await
         .expect("server failed to bind tcp listener");
 
-    println!("server listening on {addr}");
-    println!("waiting for one client connection...");
+    let bound_addr = listener.local_addr().expect("failed to get local addr");
+    println!("server listening on {bound_addr}");
+
+    let exe = std::env::current_exe().expect("failed to get current exe path");
+    let mut child = tokio::process::Command::new(&exe)
+        .arg(bound_addr.to_string())
+        .spawn()
+        .expect("failed to spawn client process");
 
     let (stream, peer_addr) = listener
         .accept()
@@ -153,6 +129,7 @@ async fn run_server(addr: &str) {
     println!("server ready: requests to sleepy_forever will stall forever");
     println!("press Ctrl+C to exit");
     let _ = tokio::signal::ctrl_c().await;
+    child.kill().await.ok();
 }
 
 async fn run_client(addr: &str) {
@@ -183,24 +160,14 @@ async fn run_client(addr: &str) {
             .expect("request unexpectedly completed");
     });
 
-    println!("client connected to {addr}");
-    println!("sent one sleepy_forever RPC request (intentionally stuck)");
-    println!("press Ctrl+C to exit");
+    println!("client: sent one sleepy_forever RPC request (intentionally stuck)");
     let _ = tokio::signal::ctrl_c().await;
 }
 
 #[tokio::main]
 async fn main() {
-    let (mode, addr) = match parse_args() {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!("{msg}");
-            std::process::exit(2);
-        }
-    };
-
-    match mode {
-        Mode::Server => run_server(&addr).await,
-        Mode::Client => run_client(&addr).await,
+    match std::env::args().nth(1) {
+        None => run_server("127.0.0.1:0").await,
+        Some(addr) => run_client(&addr).await,
     }
 }

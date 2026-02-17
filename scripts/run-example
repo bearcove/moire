@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -m  # enable job control so backgrounded jobs get their own process groups
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLES_DIR="$ROOT_DIR/examples"
@@ -50,7 +51,7 @@ cleanup() {
   local exit_code=$?
 
   if [[ -n "$backend_pid" ]] && kill -0 "$backend_pid" 2>/dev/null; then
-    kill "$backend_pid" 2>/dev/null || true
+    kill -- -"$backend_pid" 2>/dev/null || true
   fi
 
   if [[ -n "$backend_pid" ]]; then

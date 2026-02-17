@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
 import "./App.css";
 import "./components/graph/graph.css";
 import "./components/inspector/inspector.css";
@@ -86,6 +87,8 @@ export type EntityDef = {
   statTone?: Tone;
   /** Present when this is a merged TX/RX channel pair node. */
   channelPair?: { tx: EntityDef; rx: EntityDef };
+  /** Present when this is a merged request/response RPC pair node. */
+  rpcPair?: { req: EntityDef; resp: EntityDef };
 };
 
 export type EdgeDef = {
@@ -283,6 +286,76 @@ function mergeChannelPairs(
   return { entities: newEntities, edges: newEdges };
 }
 
+function mergeRpcPairs(
+  entities: EntityDef[],
+  edges: EdgeDef[],
+): { entities: EntityDef[]; edges: EdgeDef[] } {
+  const rpcLinks = edges.filter((e) => e.kind === "rpc_link");
+  const entityById = new Map(entities.map((e) => [e.id, e]));
+
+  const mergedIdFor = new Map<string, string>();
+  const portIdFor = new Map<string, string>();
+  const removedIds = new Set<string>();
+  const mergedEntities: EntityDef[] = [];
+
+  for (const link of rpcLinks) {
+    const reqEntity = entityById.get(link.source);
+    const respEntity = entityById.get(link.target);
+    if (!reqEntity || !respEntity) continue;
+    if (mergedIdFor.has(link.source) || mergedIdFor.has(link.target)) continue;
+
+    const mergedId = `rpc_pair:${link.source}:${link.target}`;
+    const reqPortId = `${mergedId}:req`;
+    const respPortId = `${mergedId}:resp`;
+
+    mergedIdFor.set(link.source, mergedId);
+    mergedIdFor.set(link.target, mergedId);
+    portIdFor.set(link.source, reqPortId);
+    portIdFor.set(link.target, respPortId);
+    removedIds.add(link.source);
+    removedIds.add(link.target);
+
+    const rpcName = reqEntity.name.endsWith(":req")
+      ? reqEntity.name.slice(0, -4)
+      : reqEntity.name;
+
+    const respBody = typeof respEntity.body !== "string" && "response" in respEntity.body
+      ? respEntity.body.response
+      : null;
+    const mergedStatus = respBody
+      ? deriveStatus(respEntity.body)
+      : { label: "in_flight", tone: "warn" as Tone };
+
+    mergedEntities.push({
+      ...reqEntity,
+      id: mergedId,
+      name: rpcName,
+      kind: "rpc_pair",
+      status: mergedStatus,
+      inCycle: false,
+      rpcPair: { req: reqEntity, resp: respEntity },
+    });
+  }
+
+  const filteredEntities = entities.filter((e) => !removedIds.has(e.id));
+  const newEntities = [...filteredEntities, ...mergedEntities];
+
+  const newEdges = edges
+    .filter((e) => e.kind !== "rpc_link")
+    .map((e) => {
+      const origSource = e.source;
+      const origTarget = e.target;
+      const newSource = mergedIdFor.get(origSource) ?? origSource;
+      const newTarget = mergedIdFor.get(origTarget) ?? origTarget;
+      const sourcePort = mergedIdFor.has(origSource) ? portIdFor.get(origSource) : undefined;
+      const targetPort = mergedIdFor.has(origTarget) ? portIdFor.get(origTarget) : undefined;
+      if (newSource === origSource && newTarget === origTarget) return e;
+      return { ...e, source: newSource, target: newTarget, sourcePort, targetPort };
+    });
+
+  return { entities: newEntities, edges: newEdges };
+}
+
 function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]; edges: EdgeDef[] } {
   const allEntities: EntityDef[] = [];
   const allEdges: EdgeDef[] = [];
@@ -328,7 +401,8 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
     }
   }
 
-  const { entities: mergedEntities, edges: mergedEdges } = mergeChannelPairs(allEntities, allEdges);
+  const { entities: channelMerged, edges: channelEdges } = mergeChannelPairs(allEntities, allEdges);
+  const { entities: mergedEntities, edges: mergedEdges } = mergeRpcPairs(channelMerged, channelEdges);
 
   const cycleIds = detectCycleNodes(mergedEntities, mergedEdges);
   for (const entity of mergedEntities) {
@@ -351,129 +425,64 @@ const elkOptions = {
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
 
-function measureNodeDefs(defs: EntityDef[]): Map<string, { width: number; height: number }> {
+async function measureNodeDefs(defs: EntityDef[]): Promise<Map<string, { width: number; height: number }>> {
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
   document.body.appendChild(container);
 
-  const elements: { id: string; el: HTMLDivElement }[] = [];
+  const roots: { id: string; el: HTMLDivElement; root: ReturnType<typeof createRoot> }[] = [];
+
   for (const def of defs) {
-    if (def.channelPair) {
-      const el = document.createElement("div");
-      el.className = [
-        "mockup-channel-pair",
-        def.statTone === "crit" && "mockup-channel-pair--stat-crit",
-        def.statTone === "warn" && "mockup-channel-pair--stat-warn",
-      ].filter(Boolean).join(" ");
-
-      const header = document.createElement("div");
-      header.className = "mockup-channel-pair-header";
-      const nameEl = document.createElement("span");
-      nameEl.className = "mockup-channel-pair-name";
-      nameEl.textContent = def.name;
-      header.appendChild(nameEl);
-      el.appendChild(header);
-
-      const rows = document.createElement("div");
-      rows.className = "mockup-channel-pair-rows";
-      for (const [rowLabel, rowDef] of [["TX", def.channelPair.tx], ["RX", def.channelPair.rx]] as const) {
-        const row = document.createElement("div");
-        row.className = "mockup-channel-pair-row";
-        const lbl = document.createElement("span");
-        lbl.className = "mockup-channel-pair-row-label";
-        lbl.textContent = rowLabel;
-        row.appendChild(lbl);
-        const badge = document.createElement("span");
-        badge.className = `badge badge--${rowDef.status.tone}`;
-        badge.textContent = rowDef.status.label;
-        row.appendChild(badge);
-        const dot = document.createElement("span");
-        dot.className = "mockup-node-dot";
-        dot.textContent = "·";
-        row.appendChild(dot);
-        const dur = document.createElement("span");
-        dur.className = "ui-duration-display";
-        dur.textContent = "00m00s";
-        row.appendChild(dur);
-        if (rowLabel === "TX" && def.stat) {
-          const dot2 = document.createElement("span");
-          dot2.className = "mockup-node-dot";
-          dot2.textContent = "·";
-          row.appendChild(dot2);
-          const statEl = document.createElement("span");
-          statEl.className = "mockup-node-stat";
-          statEl.textContent = def.stat;
-          row.appendChild(statEl);
-        }
-        rows.appendChild(row);
-      }
-      el.appendChild(rows);
-      container.appendChild(el);
-      elements.push({ id: def.id, el });
-      continue;
-    }
-
     const el = document.createElement("div");
-    el.className = [
-      "mockup-node",
-      def.inCycle && "mockup-node--cycle",
-      def.statTone === "crit" && "mockup-node--stat-crit",
-      def.statTone === "warn" && "mockup-node--stat-warn",
-    ].filter(Boolean).join(" ");
-
-    const icon = document.createElement("span");
-    icon.className = "mockup-node-icon";
-    icon.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;";
-    el.appendChild(icon);
-
-    const content = document.createElement("div");
-    content.className = "mockup-node-content";
-
-    const mainRow = document.createElement("div");
-    mainRow.className = "mockup-node-main";
-    const label = document.createElement("span");
-    label.className = "mockup-node-label";
-    label.textContent = def.name;
-    mainRow.appendChild(label);
-    content.appendChild(mainRow);
-
-    const details = document.createElement("div");
-    details.className = "mockup-node-details";
-    const badgeEl = document.createElement("span");
-    badgeEl.className = "badge badge--neutral";
-    badgeEl.textContent = def.status.label;
-    details.appendChild(badgeEl);
-    const dot1 = document.createElement("span");
-    dot1.className = "mockup-node-dot";
-    dot1.textContent = "·";
-    details.appendChild(dot1);
-    const ageEl = document.createElement("span");
-    ageEl.className = "ui-duration-display";
-    ageEl.textContent = "00m00s";
-    details.appendChild(ageEl);
-    if (def.stat) {
-      const dot2 = document.createElement("span");
-      dot2.className = "mockup-node-dot";
-      dot2.textContent = "·";
-      details.appendChild(dot2);
-      const statEl = document.createElement("span");
-      statEl.className = [
-        "mockup-node-stat",
-        def.statTone === "crit" && "mockup-node-stat--crit",
-        def.statTone === "warn" && "mockup-node-stat--warn",
-      ].filter(Boolean).join(" ");
-      statEl.textContent = def.stat;
-      details.appendChild(statEl);
-    }
-    content.appendChild(details);
-    el.appendChild(content);
     container.appendChild(el);
-    elements.push({ id: def.id, el });
+    const root = createRoot(el);
+
+    let node: React.ReactNode;
+    if (def.channelPair) {
+      node = (
+        <ChannelPairNode data={{
+          tx: def.channelPair.tx,
+          rx: def.channelPair.rx,
+          channelName: def.name,
+          selected: false,
+          statTone: def.statTone,
+        }} />
+      );
+    } else if (def.rpcPair) {
+      node = (
+        <RpcPairNode data={{
+          req: def.rpcPair.req,
+          resp: def.rpcPair.resp,
+          rpcName: def.name,
+          selected: false,
+        }} />
+      );
+    } else {
+      node = (
+        <MockNodeComponent data={{
+          kind: def.kind,
+          label: def.name,
+          inCycle: def.inCycle,
+          selected: false,
+          status: def.status,
+          ageMs: def.ageMs,
+          stat: def.stat,
+          statTone: def.statTone,
+        }} />
+      );
+    }
+
+    root.render(<ReactFlowProvider>{node}</ReactFlowProvider>);
+    roots.push({ id: def.id, el, root });
   }
 
+  // Yield to let React finish rendering before measuring.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
   const sizes = new Map<string, { width: number; height: number }>();
-  for (const { id, el } of elements) {
+  for (const { id, el, root } of roots) {
     sizes.set(id, { width: el.offsetWidth, height: el.offsetHeight });
+    root.unmount();
   }
   document.body.removeChild(container);
   return sizes;
@@ -557,6 +566,19 @@ async function layoutGraph(
         },
       };
     }
+    if (def.rpcPair) {
+      return {
+        id: def.id,
+        type: "rpcPairNode",
+        position,
+        data: {
+          req: def.rpcPair.req,
+          resp: def.rpcPair.resp,
+          rpcName: def.name,
+          selected: false,
+        },
+      };
+    }
     return {
       id: def.id,
       type: "mockNode",
@@ -634,11 +656,12 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
         <div className="mockup-node-content">
           <div className="mockup-node-main">
             <span className="mockup-node-label">{data.label}</span>
-          </div>
-          <div className="mockup-node-details">
-            <Badge tone={data.status.tone}>{data.status.label}</Badge>
-            <span className="mockup-node-dot">&middot;</span>
-            <DurationDisplay ms={data.ageMs} />
+            {data.ageMs > 3000 && (
+              <>
+                <span className="mockup-node-dot">&middot;</span>
+                <DurationDisplay ms={data.ageMs} />
+              </>
+            )}
             {data.stat && (
               <>
                 <span className="mockup-node-dot">&middot;</span>
@@ -718,8 +741,12 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
           <div className="mockup-channel-pair-row">
             <span className="mockup-channel-pair-row-label">TX</span>
             <Badge tone={txTone}>{txLifecycle}</Badge>
-            <span className="mockup-node-dot">&middot;</span>
-            <DurationDisplay ms={tx.ageMs} />
+            {tx.ageMs > 3000 && (
+              <>
+                <span className="mockup-node-dot">&middot;</span>
+                <DurationDisplay ms={tx.ageMs} />
+              </>
+            )}
             {bufferStat && (
               <>
                 <span className="mockup-node-dot">&middot;</span>
@@ -734,8 +761,65 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
           <div className="mockup-channel-pair-row">
             <span className="mockup-channel-pair-row-label">RX</span>
             <Badge tone={rxTone}>{rxLifecycle}</Badge>
-            <span className="mockup-node-dot">&middot;</span>
-            <DurationDisplay ms={rx.ageMs} />
+            {rx.ageMs > 3000 && (
+              <>
+                <span className="mockup-node-dot">&middot;</span>
+                <DurationDisplay ms={rx.ageMs} />
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+type RpcPairNodeData = {
+  req: EntityDef;
+  resp: EntityDef;
+  rpcName: string;
+  selected: boolean;
+};
+
+function RpcPairNode({ data }: { data: RpcPairNodeData }) {
+  const { req, resp, rpcName, selected } = data;
+
+  const reqBody = typeof req.body !== "string" && "request" in req.body ? req.body.request : null;
+  const respBody = typeof resp.body !== "string" && "response" in resp.body ? resp.body.response : null;
+
+  const respStatus = respBody ? respBody.status : "pending";
+  const respTone: Tone = respStatus === "ok" ? "ok" : respStatus === "error" ? "crit" : "warn";
+  const method = respBody?.method ?? reqBody?.method ?? "?";
+
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={visibleHandleTop} />
+      <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />
+      <div className={[
+        "mockup-channel-pair",
+        selected && "mockup-channel-pair--selected",
+        respStatus === "error" && "mockup-channel-pair--stat-crit",
+      ].filter(Boolean).join(" ")}>
+        <div className="mockup-channel-pair-header">
+          <span className="mockup-channel-pair-icon">
+            {kindIcon("rpc_pair", 14)}
+          </span>
+          <span className="mockup-channel-pair-name">{rpcName}</span>
+        </div>
+        <div className="mockup-channel-pair-rows">
+          <div className="mockup-channel-pair-row">
+            <span className="mockup-channel-pair-row-label">fn</span>
+            <span className="mockup-inspector-mono" style={{ fontSize: "11px" }}>{method}</span>
+          </div>
+          <div className="mockup-channel-pair-row">
+            <span className="mockup-channel-pair-row-label">→</span>
+            <Badge tone={respTone}>{respStatus}</Badge>
+            {resp.ageMs > 3000 && (
+              <>
+                <span className="mockup-node-dot">&middot;</span>
+                <DurationDisplay ms={resp.ageMs} />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -790,7 +874,7 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   );
 }
 
-const mockNodeTypes = { mockNode: MockNodeComponent, channelPairNode: ChannelPairNode };
+const mockNodeTypes = { mockNode: MockNodeComponent, channelPairNode: ChannelPairNode, rpcPairNode: RpcPairNode };
 const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Graph panel ────────────────────────────────────────────────
@@ -894,6 +978,10 @@ function GraphPanel({
   hiddenKrates,
   onKrateToggle,
   onKrateSolo,
+  processItems,
+  hiddenProcesses,
+  onProcessToggle,
+  onProcessSolo,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
@@ -907,13 +995,18 @@ function GraphPanel({
   hiddenKrates: ReadonlySet<string>;
   onKrateToggle: (krate: string) => void;
   onKrateSolo: (krate: string) => void;
+  processItems: FilterMenuItem[];
+  hiddenProcesses: ReadonlySet<string>;
+  onProcessToggle: (pid: string) => void;
+  onProcessSolo: (pid: string) => void;
 }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
   React.useEffect(() => {
     if (entityDefs.length === 0) return;
-    const sizes = measureNodeDefs(entityDefs);
-    layoutGraph(entityDefs, edgeDefs, sizes).then(setLayout).catch(console.error);
+    measureNodeDefs(entityDefs).then((sizes) =>
+      layoutGraph(entityDefs, edgeDefs, sizes)
+    ).then(setLayout).catch(console.error);
   }, [entityDefs, edgeDefs]);
 
   const nodesWithSelection = useMemo(() =>
@@ -932,10 +1025,50 @@ function GraphPanel({
     [layout.edges, selection],
   );
 
-  if (entityDefs.length === 0) {
-    const isBusy = snapPhase === "cutting" || snapPhase === "loading";
-    return (
-      <div className="mockup-graph-panel">
+  const isBusy = snapPhase === "cutting" || snapPhase === "loading";
+  const showToolbar = crateItems.length > 1 || processItems.length > 1 || focusedEntityId;
+
+  return (
+    <div className="mockup-graph-panel">
+      {showToolbar && (
+        <div className="mockup-graph-toolbar">
+          <div className="mockup-graph-toolbar-left">
+            {entityDefs.length > 0 && (
+              <>
+                <span className="mockup-graph-stat">{entityDefs.length} entities</span>
+                <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
+              </>
+            )}
+            {processItems.length > 1 && (
+              <FilterMenu
+                label="Process"
+                items={processItems}
+                hiddenIds={hiddenProcesses}
+                onToggle={onProcessToggle}
+                onSolo={onProcessSolo}
+              />
+            )}
+            {crateItems.length > 1 && (
+              <FilterMenu
+                label="Crate"
+                items={crateItems}
+                hiddenIds={hiddenKrates}
+                onToggle={onKrateToggle}
+                onSolo={onKrateSolo}
+              />
+            )}
+          </div>
+          {focusedEntityId && (
+            <div className="mockup-graph-toolbar-right">
+              <ActionButton onPress={onExitFocus}>
+                <Crosshair size={14} weight="bold" />
+                Exit Focus
+              </ActionButton>
+            </div>
+          )}
+        </div>
+      )}
+      {entityDefs.length === 0 ? (
         <div className="mockup-graph-empty">
           {isBusy
             ? <><CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" /> {GRAPH_EMPTY_MESSAGES[snapPhase]}</>
@@ -957,44 +1090,17 @@ function GraphPanel({
                 : GRAPH_EMPTY_MESSAGES[snapPhase]
           }
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mockup-graph-panel">
-      <div className="mockup-graph-toolbar">
-        <div className="mockup-graph-toolbar-left">
-          <span className="mockup-graph-stat">{entityDefs.length} entities</span>
-          <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
-          {crateItems.length > 1 && (
-            <FilterMenu
-              label="Crate"
-              items={crateItems}
-              hiddenIds={hiddenKrates}
-              onToggle={onKrateToggle}
-              onSolo={onKrateSolo}
+      ) : (
+        <div className="mockup-graph-flow">
+          <ReactFlowProvider>
+            <GraphFlow
+              nodes={nodesWithSelection}
+              edges={edgesWithSelection}
+              onSelect={onSelect}
             />
-          )}
+          </ReactFlowProvider>
         </div>
-        {focusedEntityId && (
-          <div className="mockup-graph-toolbar-right">
-            <ActionButton onPress={onExitFocus}>
-              <Crosshair size={14} weight="bold" />
-              Exit Focus
-            </ActionButton>
-          </div>
-        )}
-      </div>
-      <div className="mockup-graph-flow">
-        <ReactFlowProvider>
-          <GraphFlow
-            nodes={nodesWithSelection}
-            edges={edgesWithSelection}
-            onSelect={onSelect}
-          />
-        </ReactFlowProvider>
-      </div>
+      )}
     </div>
   );
 }
@@ -1592,6 +1698,7 @@ export function App() {
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
+  const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
@@ -1609,6 +1716,17 @@ export function App() {
     }));
   }, [allEntities]);
 
+  const processItems = useMemo<FilterMenuItem[]>(() => {
+    const counts = new Map<string, number>();
+    for (const e of allEntities) {
+      counts.set(e.processId, (counts.get(e.processId) ?? 0) + 1);
+    }
+    return Array.from(counts.keys()).sort().map((pid) => {
+      const name = allEntities.find((e) => e.processId === pid)?.processName ?? pid;
+      return { id: pid, label: name, meta: counts.get(pid) };
+    });
+  }, [allEntities]);
+
   const handleKrateToggle = useCallback((krate: string) => {
     setHiddenKrates((prev) => {
       const next = new Set(prev);
@@ -1621,13 +1739,26 @@ export function App() {
     setHiddenKrates(new Set(crateItems.filter((i) => i.id !== krate).map((i) => i.id)));
   }, [crateItems]);
 
+  const handleProcessToggle = useCallback((pid: string) => {
+    setHiddenProcesses((prev) => {
+      const next = new Set(prev);
+      if (next.has(pid)) next.delete(pid); else next.add(pid);
+      return next;
+    });
+  }, []);
+
+  const handleProcessSolo = useCallback((pid: string) => {
+    setHiddenProcesses(new Set(processItems.filter((i) => i.id !== pid).map((i) => i.id)));
+  }, [processItems]);
+
   const { entities, edges } = useMemo(() => {
-    const filtered = hiddenKrates.size === 0
-      ? allEntities
-      : allEntities.filter((e) => !hiddenKrates.has(e.krate ?? "~no-crate"));
+    const filtered = allEntities.filter((e) =>
+      (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
+      (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId))
+    );
     if (!focusedEntityId) return { entities: filtered, edges: allEdges };
     return getConnectedSubgraph(focusedEntityId, filtered, allEdges);
-  }, [focusedEntityId, allEntities, allEdges, hiddenKrates]);
+  }, [focusedEntityId, allEntities, allEdges, hiddenKrates, hiddenProcesses]);
 
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
@@ -1749,6 +1880,10 @@ export function App() {
             hiddenKrates={hiddenKrates}
             onKrateToggle={handleKrateToggle}
             onKrateSolo={handleKrateSolo}
+            processItems={processItems}
+            hiddenProcesses={hiddenProcesses}
+            onProcessToggle={handleProcessToggle}
+            onProcessSolo={handleProcessSolo}
           />
         }
         right={

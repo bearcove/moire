@@ -3,7 +3,7 @@ import {
   ArrowBendDownLeft,
   ArrowLineDown,
   ArrowLineUp,
-  ArrowsClockwise,
+  ArrowsLeftRight,
   Bell,
   CircleDashed,
   Cube,
@@ -22,6 +22,7 @@ import {
   Plugs,
   Repeat,
   BracketsCurly,
+  Pipe,
   Stack,
   Terminal,
   UploadSimple,
@@ -92,7 +93,7 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     canonical: "future",
     displayName: "Future",
     category: "async",
-    icon: iconFactory(ArrowsClockwise),
+    icon: iconFactory(BracketsCurly),
     expectedAttrs: [
       { key: "state", format: "enum", importance: "primary" },
       { key: "poll_count", format: "number", importance: "secondary" },
@@ -225,6 +226,12 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     category: "rpc",
     icon: iconFactory(ArrowBendDownLeft),
   },
+  rpc_pair: {
+    canonical: "rpc_pair",
+    displayName: "RPC Call",
+    category: "rpc",
+    icon: iconFactory(ArrowsLeftRight),
+  },
   connection: {
     canonical: "connection",
     displayName: "Connection",
@@ -307,7 +314,7 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     canonical: "channel_pair",
     displayName: "Channel",
     category: "channel",
-    icon: iconFactory(BracketsCurly),
+    icon: iconFactory(Pipe),
   },
 };
 
