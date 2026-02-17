@@ -2979,6 +2979,16 @@ body {
     overflow: hidden;
 }
 
+.lab-app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.lab-app .panel--lab {
+    flex: 1;
+}
+
 .lab-header-hint {
     margin-left: auto;
     margin-right: 6px;
