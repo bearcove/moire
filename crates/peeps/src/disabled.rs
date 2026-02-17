@@ -1,9 +1,10 @@
 use compact_str::CompactString;
 use peeps_types::{
-    CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, Event, PullChangesResponse, Scope,
-    ScopeBody, SeqNo, StreamCursor, StreamId,
+    CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PullChangesResponse,
+    RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId,
 };
 use std::future::Future;
+use std::sync::Once;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug, Default)]
@@ -30,6 +31,54 @@ impl EntityHandle {
     pub fn link_to(&self, _target: &EntityRef, _kind: EdgeKind) {}
 
     pub fn link_to_handle(&self, _target: &EntityHandle, _kind: EdgeKind) {}
+}
+
+#[derive(Clone, Debug)]
+pub struct RpcRequestHandle {
+    handle: EntityHandle,
+    id: EntityId,
+}
+
+impl RpcRequestHandle {
+    pub fn id(&self) -> &EntityId {
+        &self.id
+    }
+
+    pub fn id_for_wire(&self) -> CompactString {
+        CompactString::from(self.id.as_str())
+    }
+
+    pub fn entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RpcResponseHandle {
+    handle: EntityHandle,
+    id: EntityId,
+}
+
+impl RpcResponseHandle {
+    pub fn id(&self) -> &EntityId {
+        &self.id
+    }
+
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn set_status(&self, _status: ResponseStatus) {}
+
+    pub fn mark_ok(&self) {}
+
+    pub fn mark_error(&self) {}
+
+    pub fn mark_cancelled(&self) {}
 }
 
 impl ScopeHandle {
@@ -95,7 +144,31 @@ pub fn channel<T>(_name: impl Into<CompactString>, capacity: usize) -> (Sender<T
     )
 }
 
-pub fn init(_process_name: &str) {}
+static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
+
+pub fn init(_process_name: &str) {
+    maybe_warn_dashboard_ignored();
+}
+
+fn maybe_warn_dashboard_ignored() {
+    let Some(value) = std::env::var_os("PEEPS_DASHBOARD") else {
+        return;
+    };
+    if value.to_string_lossy().trim().is_empty() {
+        return;
+    }
+
+    DASHBOARD_DISABLED_WARNING_ONCE.call_once(|| {
+        eprintln!(
+            "\n\x1b[1;31m\
+======================================================================\n\
+ PEEPS WARNING: PEEPS_DASHBOARD is set, but peeps diagnostics is disabled.\n\
+ This process will NOT connect to peeps-web in this build.\n\
+ Enable the `diagnostics` cargo feature of `peeps` to use dashboard push.\n\
+======================================================================\x1b[0m\n"
+        );
+    });
+}
 
 pub fn spawn_tracked<F>(_: impl Into<CompactString>, fut: F) -> tokio::task::JoinHandle<F::Output>
 where
@@ -107,6 +180,47 @@ where
 
 pub fn entity_ref_from_wire(_id: impl Into<CompactString>) -> EntityRef {
     EntityRef
+}
+
+pub fn rpc_request(
+    method: impl Into<CompactString>,
+    args_preview: impl Into<CompactString>,
+) -> RpcRequestHandle {
+    let method = method.into();
+    let args_preview = args_preview.into();
+    let handle = EntityHandle::new(
+        format!("rpc.request.{method}"),
+        EntityBody::Request(RequestEntity {
+            method: method.clone(),
+            args_preview,
+        }),
+    );
+    RpcRequestHandle {
+        handle,
+        id: EntityId::new(format!("disabled-request-{method}")),
+    }
+}
+
+pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
+    let method = method.into();
+    let handle = EntityHandle::new(
+        format!("rpc.response.{method}"),
+        EntityBody::Response(ResponseEntity {
+            method: method.clone(),
+            status: ResponseStatus::Pending,
+        }),
+    );
+    RpcResponseHandle {
+        handle,
+        id: EntityId::new(format!("disabled-response-{method}")),
+    }
+}
+
+pub fn rpc_response_for(
+    method: impl Into<CompactString>,
+    _request: &EntityRef,
+) -> RpcResponseHandle {
+    rpc_response(method)
 }
 
 pub trait SnapshotSink {

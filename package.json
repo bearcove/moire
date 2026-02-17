@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.29.3",
   "scripts": {
-    "dev": "./scripts/dev",
+    "dev": "cargo run -p peeps-web -- --dev",
     "dev:frontend": "pnpm --dir frontend dev",
     "dev:web": "cargo run -p peeps-web",
     "build": "pnpm --dir frontend build",

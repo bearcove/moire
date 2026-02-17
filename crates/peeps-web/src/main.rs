@@ -1,16 +1,20 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::io::Read;
 use std::path::PathBuf;
+use std::process::Stdio;
+use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use axum::body::Bytes;
-use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
+use axum::body::{self, Body, Bytes};
+use axum::extract::{Path, Request, State};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use axum::Router;
 use compact_str::CompactString;
 use facet::Facet;
+use figue as args;
 use peeps_types::Change;
 use peeps_wire::{
     decode_client_message_default, encode_server_message_default, ClientMessage, ServerMessage,
@@ -18,13 +22,27 @@ use peeps_wire::{
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::process::Child;
 use tokio::sync::{mpsc, Mutex};
+use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
 #[derive(Clone)]
 struct AppState {
     inner: Arc<Mutex<ServerState>>,
     db_path: Arc<PathBuf>,
+    dev_proxy: Option<DevProxyState>,
+}
+
+#[derive(Clone)]
+struct DevProxyState {
+    base_url: Arc<String>,
+}
+
+struct ProxiedResponse {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
 }
 
 struct ServerState {
@@ -99,10 +117,29 @@ struct SqlResponse {
     row_count: u32,
 }
 
+#[derive(Facet, Debug)]
+struct Cli {
+    #[facet(flatten)]
+    builtins: args::FigueBuiltins,
+    #[facet(args::named, default)]
+    dev: bool,
+}
+
 const DB_SCHEMA_VERSION: i64 = 3;
+const DEFAULT_VITE_ADDR: &str = "127.0.0.1:9131";
+const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 
 #[tokio::main]
 async fn main() {
+    if let Err(err) = run().await {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), String> {
+    let cli = parse_cli()?;
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -112,9 +149,22 @@ async fn main() {
 
     let tcp_addr = std::env::var("PEEPS_LISTEN").unwrap_or_else(|_| "127.0.0.1:9119".into());
     let http_addr = std::env::var("PEEPS_HTTP").unwrap_or_else(|_| "127.0.0.1:9130".into());
+    let vite_addr = std::env::var("PEEPS_VITE_ADDR").unwrap_or_else(|_| DEFAULT_VITE_ADDR.into());
     let db_path =
         PathBuf::from(std::env::var("PEEPS_DB").unwrap_or_else(|_| "peeps-web.sqlite".into()));
-    init_sqlite(&db_path).unwrap_or_else(|e| panic!("failed to init sqlite at {:?}: {e}", db_path));
+    init_sqlite(&db_path).map_err(|e| format!("failed to init sqlite at {:?}: {e}", db_path))?;
+
+    let mut dev_vite_child: Option<Child> = None;
+    let dev_proxy = if cli.dev {
+        let child = start_vite_dev_server(&vite_addr).await?;
+        info!(vite_addr = %vite_addr, "peeps-web --dev launched Vite");
+        dev_vite_child = Some(child);
+        Some(DevProxyState {
+            base_url: Arc::new(format!("http://{vite_addr}")),
+        })
+    } else {
+        None
+    };
 
     let state = AppState {
         inner: Arc::new(Mutex::new(ServerState {
@@ -124,27 +174,41 @@ async fn main() {
             cuts: BTreeMap::new(),
         })),
         db_path: Arc::new(db_path),
+        dev_proxy,
     };
 
     let tcp_listener = TcpListener::bind(&tcp_addr)
         .await
-        .unwrap_or_else(|e| panic!("failed to bind TCP on {tcp_addr}: {e}"));
+        .map_err(|e| format!("failed to bind TCP on {tcp_addr}: {e}"))?;
     info!(%tcp_addr, "peeps-web TCP ingest listener ready");
 
     let http_listener = TcpListener::bind(&http_addr)
         .await
-        .unwrap_or_else(|e| panic!("failed to bind HTTP on {http_addr}: {e}"));
-    info!(%http_addr, "peeps-web HTTP API ready");
+        .map_err(|e| format!("failed to bind HTTP on {http_addr}: {e}"))?;
+    if cli.dev {
+        info!(%http_addr, vite_addr = %vite_addr, "peeps-web HTTP API + Vite proxy ready");
+    } else {
+        info!(%http_addr, "peeps-web HTTP API ready");
+    }
+    print_startup_hints(
+        &http_addr,
+        &tcp_addr,
+        if cli.dev { Some(&vite_addr) } else { None },
+    );
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/health", get(health))
         .route("/api/connections", get(api_connections))
         .route("/api/cuts", post(api_trigger_cut))
         .route("/api/cuts/{cut_id}", get(api_cut_status))
         .route("/api/sql", post(api_sql))
-        .route("/api/query", post(api_query))
-        .with_state(state.clone());
+        .route("/api/query", post(api_query));
+    if state.dev_proxy.is_some() {
+        app = app.fallback(any(proxy_vite));
+    }
+    let app = app.with_state(state.clone());
 
+    let _dev_vite_child = dev_vite_child;
     tokio::select! {
         _ = run_tcp_acceptor(tcp_listener, state.clone()) => {}
         result = axum::serve(http_listener, app) => {
@@ -153,6 +217,7 @@ async fn main() {
             }
         }
     }
+    Ok(())
 }
 
 async fn health() -> impl IntoResponse {
@@ -303,6 +368,295 @@ async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoRespo
             format!("query worker join error: {e}"),
         ),
     }
+}
+
+fn parse_cli() -> Result<Cli, String> {
+    let figue_config = args::builder::<Cli>()
+        .map_err(|e| format!("failed to build CLI schema: {e}"))?
+        .cli(|cli| cli.strict())
+        .help(|h| {
+            h.program_name("peeps-web")
+                .description("SQLite-backed peeps ingest + API server")
+                .version(option_env!("CARGO_PKG_VERSION").unwrap_or("dev"))
+        })
+        .build();
+    let cli = args::Driver::new(figue_config)
+        .run()
+        .into_result()
+        .map_err(|e| e.to_string())?;
+    Ok(cli.value)
+}
+
+fn print_startup_hints(http_addr: &str, tcp_addr: &str, vite_addr: Option<&str>) {
+    let mode = if vite_addr.is_some() {
+        "dev proxy"
+    } else {
+        "api only"
+    };
+    println!();
+    println!("peeps-web ready ({mode})");
+    println!("Open in browser: http://{http_addr}");
+    println!("Connect apps with: PEEPS_DASHBOARD={tcp_addr} <your-binary>");
+    if let Some(vite_addr) = vite_addr {
+        println!("Vite dev server (managed): http://{vite_addr}");
+    }
+    println!();
+}
+
+async fn start_vite_dev_server(vite_addr: &str) -> Result<Child, String> {
+    let socket_addr = std::net::SocketAddr::from_str(vite_addr)
+        .map_err(|e| format!("invalid PEEPS_VITE_ADDR '{vite_addr}': {e}"))?;
+    let frontend_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../frontend");
+    if !frontend_dir.is_dir() {
+        return Err(format!(
+            "frontend directory not found at {}",
+            frontend_dir.display()
+        ));
+    }
+
+    ensure_frontend_deps(&frontend_dir).await?;
+
+    let mut command = tokio::process::Command::new("pnpm");
+    command
+        .arg("--dir")
+        .arg(&frontend_dir)
+        .arg("dev")
+        .arg("--host")
+        .arg(socket_addr.ip().to_string())
+        .arg("--port")
+        .arg(socket_addr.port().to_string())
+        .arg("--strictPort")
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true);
+
+    let child = command.spawn().map_err(|e| {
+        format!(
+            "failed to launch Vite via pnpm in {}: {e}",
+            frontend_dir.display()
+        )
+    })?;
+    wait_for_tcp_ready(vite_addr, Duration::from_secs(20)).await?;
+    Ok(child)
+}
+
+async fn ensure_frontend_deps(frontend_dir: &PathBuf) -> Result<(), String> {
+    let vite_bin = frontend_dir.join("node_modules/.bin/vite");
+    if vite_bin.is_file() {
+        return Ok(());
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    info!(
+        workspace = %workspace_root.display(),
+        "frontend dependencies missing, running pnpm install"
+    );
+
+    let status = tokio::process::Command::new("pnpm")
+        .arg("install")
+        .current_dir(&workspace_root)
+        .env("CI", "true")
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .await
+        .map_err(|e| {
+            format!(
+                "failed to run pnpm install in {}: {e}",
+                workspace_root.display()
+            )
+        })?;
+
+    if !status.success() {
+        return Err(format!(
+            "pnpm install failed in {} (status: {status})",
+            workspace_root.display()
+        ));
+    }
+
+    if !vite_bin.is_file() {
+        return Err(format!(
+            "pnpm install succeeded but {} is still missing",
+            vite_bin.display()
+        ));
+    }
+
+    Ok(())
+}
+
+async fn wait_for_tcp_ready(addr: &str, timeout: Duration) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        match tokio::net::TcpStream::connect(addr).await {
+            Ok(stream) => {
+                drop(stream);
+                return Ok(());
+            }
+            Err(err) => {
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(format!("timed out waiting for Vite at {addr}: {err}"));
+                }
+            }
+        }
+        sleep(Duration::from_millis(150)).await;
+    }
+}
+
+async fn proxy_vite(State(state): State<AppState>, request: Request) -> axum::response::Response {
+    let Some(proxy) = state.dev_proxy.clone() else {
+        return (StatusCode::NOT_FOUND, "not found").into_response();
+    };
+    let (parts, body) = request.into_parts();
+    let method = parts.method.as_str().to_string();
+    let path_and_query = parts
+        .uri
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or("/");
+    let url = format!("{}{}", proxy.base_url, path_and_query);
+    let headers = copy_request_headers(&parts.headers);
+    let body = match body::to_bytes(body, PROXY_BODY_LIMIT_BYTES).await {
+        Ok(body) => body.to_vec(),
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("failed to read request body: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    let proxied = match tokio::task::spawn_blocking(move || {
+        proxy_vite_blocking(&method, &url, headers, body)
+    })
+    .await
+    {
+        Ok(Ok(response)) => response,
+        Ok(Err(err)) => return (StatusCode::BAD_GATEWAY, err).into_response(),
+        Err(err) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("proxy worker join error: {err}"),
+            )
+                .into_response();
+        }
+    };
+
+    build_proxy_response(proxied)
+}
+
+fn copy_request_headers(headers: &HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|v| (name.as_str().to_string(), v.to_string()))
+        })
+        .collect()
+}
+
+fn proxy_vite_blocking(
+    method: &str,
+    url: &str,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+) -> Result<ProxiedResponse, String> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(2))
+        .timeout_read(Duration::from_secs(30))
+        .build();
+    let mut req = agent.request(method, url);
+
+    for (name, value) in headers {
+        if skip_request_header(&name) {
+            continue;
+        }
+        req = req.set(&name, &value);
+    }
+
+    let resp = if body.is_empty() && (method == "GET" || method == "HEAD") {
+        match req.call() {
+            Ok(resp) => resp,
+            Err(ureq::Error::Status(_, resp)) => resp,
+            Err(ureq::Error::Transport(err)) => {
+                return Err(format!("Vite proxy request failed for {url}: {err}"));
+            }
+        }
+    } else {
+        match req.send_bytes(&body) {
+            Ok(resp) => resp,
+            Err(ureq::Error::Status(_, resp)) => resp,
+            Err(ureq::Error::Transport(err)) => {
+                return Err(format!("Vite proxy request failed for {url}: {err}"));
+            }
+        }
+    };
+
+    let status = resp.status();
+    let mut response_headers = Vec::new();
+    for name in resp.headers_names() {
+        for value in resp.all(&name) {
+            response_headers.push((name.clone(), value.to_string()));
+        }
+    }
+
+    let mut response_body = Vec::new();
+    resp.into_reader()
+        .read_to_end(&mut response_body)
+        .map_err(|e| format!("failed reading Vite proxy response body: {e}"))?;
+
+    Ok(ProxiedResponse {
+        status,
+        headers: response_headers,
+        body: response_body,
+    })
+}
+
+fn build_proxy_response(proxied: ProxiedResponse) -> axum::response::Response {
+    let status = StatusCode::from_u16(proxied.status).unwrap_or(StatusCode::BAD_GATEWAY);
+    let mut response = axum::response::Response::new(Body::from(proxied.body));
+    *response.status_mut() = status;
+
+    for (name, value) in proxied.headers {
+        if skip_response_header(&name) {
+            continue;
+        }
+        let Ok(header_name) = header::HeaderName::from_str(&name) else {
+            continue;
+        };
+        let Ok(header_value) = header::HeaderValue::from_str(&value) else {
+            continue;
+        };
+        response.headers_mut().append(header_name, header_value);
+    }
+
+    response
+}
+
+fn skip_request_header(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower == "host" || lower == "content-length" || is_hop_by_hop(&lower)
+}
+
+fn skip_response_header(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower == "content-length" || is_hop_by_hop(&lower)
+}
+
+fn is_hop_by_hop(lowercase_name: &str) -> bool {
+    matches!(
+        lowercase_name,
+        "connection"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailers"
+            | "transfer-encoding"
+            | "upgrade"
+    )
 }
 
 async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {

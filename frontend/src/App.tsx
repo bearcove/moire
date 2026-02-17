@@ -262,8 +262,8 @@ export function App() {
         <div>
           <h1>Peeps Frontend Scaffold</h1>
           <p>
-            HTTP is proxied by Vite (`/api` to `127.0.0.1:9130`). Ingest remains direct on
-            `{WEBSOCKET_URL}`.
+            With `peeps-web --dev`, the backend proxies this frontend from Vite while `/api` stays
+            in peeps-web. Ingest remains direct on `{WEBSOCKET_URL}`.
           </p>
         </div>
         <div className="topbar-actions">

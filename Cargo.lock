@@ -1153,6 +1153,7 @@ dependencies = [
  "facet",
  "facet-json",
  "facet-value",
+ "figue",
  "peeps-sqlite-facet",
  "peeps-types",
  "peeps-wire",
@@ -1160,6 +1161,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "ureq",
 ]
 
 [[package]]
