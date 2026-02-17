@@ -4459,10 +4459,124 @@ body {
 .mockup-app {
     display: flex;
     flex-direction: column;
-    height: 560px;
-    border: 1px solid var(--border);
+    height: 100%;
     overflow: hidden;
     background: var(--surface-bg);
+}
+
+/* Process pill */
+.mockup-proc-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: opacity 120ms ease;
+}
+
+.mockup-proc-pill:hover {
+    opacity: 0.8;
+}
+
+.mockup-proc-pill--connected {
+    background: light-dark(#e8f5e9, #1b3a1b);
+    color: light-dark(#2e7d32, #66bb6a);
+}
+
+.mockup-proc-pill--disconnected {
+    background: light-dark(#ffebee, #3a1b1b);
+    color: light-dark(#c62828, #ef9a9a);
+}
+
+/* Modal */
+.mockup-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: light-dark(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.6));
+    display: grid;
+    place-items: center;
+    z-index: 1000;
+}
+
+.mockup-modal {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: min(560px, calc(100vw - 48px));
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 16px 48px light-dark(rgba(0,0,0,0.12), rgba(0,0,0,0.5));
+}
+
+.mockup-modal-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+}
+
+.mockup-modal-title {
+    font-weight: 700;
+    font-size: var(--font-size-md);
+    flex: 1;
+}
+
+.mockup-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.mockup-modal-empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+}
+
+/* Graph empty state */
+.mockup-graph-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+}
+
+.mockup-graph-empty-icon {
+    color: var(--text-muted);
+    opacity: 0.4;
+}
+
+.mockup-graph-empty-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.spinning {
+    animation: spin 1s linear infinite;
+}
+
+.mockup-header-error {
+    font-size: 11px;
+    color: light-dark(#c62828, #ef9a9a);
+    font-weight: 600;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Header */

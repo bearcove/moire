@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -38,7 +38,8 @@ import { DurationDisplay } from "./ui/primitives/DurationDisplay";
 import { ActionButton } from "./ui/primitives/ActionButton";
 import { kindIcon, kindDisplayName } from "./nodeKindSpec";
 import { apiClient, apiMode } from "./api";
-import type { EntityBody, SnapshotEdgeKind, SnapshotCutResponse } from "./api/types";
+import type { ConnectedProcessInfo, ConnectionsResponse, EntityBody, SnapshotEdgeKind, SnapshotCutResponse } from "./api/types";
+import { Table, type Column } from "./ui/primitives/Table";
 
 // ── Body type helpers ──────────────────────────────────────────
 
@@ -185,16 +186,16 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
   const allEdges: EdgeDef[] = [];
 
   for (const proc of snapshot.processes) {
-    const { process_id, process_name, captured_at_unix_ms, ptime_now_ms } = proc;
-    const anchorUnixMs = captured_at_unix_ms - ptime_now_ms;
+    const { process_id, process_name, ptime_now_ms } = proc;
+    const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
 
-    for (const e of proc.entities) {
+    for (const e of proc.snapshot.entities) {
       const compositeId = `${process_id}/${e.id}`;
       const ageMs = Math.max(0, ptime_now_ms - e.birth);
       allEntities.push({
         id: compositeId,
         rawEntityId: e.id,
-        processId: process_id,
+        processId: String(process_id),
         processName: process_name,
         name: e.name,
         kind: bodyToKind(e.body),
@@ -210,10 +211,10 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
       });
     }
 
-    for (let i = 0; i < proc.edges.length; i++) {
-      const e = proc.edges[i];
-      const srcComposite = `${process_id}/${e.src_id}`;
-      const dstComposite = `${process_id}/${e.dst_id}`;
+    for (let i = 0; i < proc.snapshot.edges.length; i++) {
+      const e = proc.snapshot.edges[i];
+      const srcComposite = `${process_id}/${e.src}`;
+      const dstComposite = `${process_id}/${e.dst}`;
       allEdges.push({
         id: `e${i}-${srcComposite}-${dstComposite}-${e.kind}`,
         source: srcComposite,
@@ -556,12 +557,21 @@ function GraphPanel({
   );
 
   if (entityDefs.length === 0) {
+    const isBusy = snapPhase === "cutting" || snapPhase === "loading";
     return (
       <div className="mockup-graph-panel">
         <div className="mockup-graph-empty">
-          {snapPhase === "cutting" || snapPhase === "loading"
-            ? <><CircleNotch size={16} weight="bold" className="spinning" /> {GRAPH_EMPTY_MESSAGES[snapPhase]}</>
-            : GRAPH_EMPTY_MESSAGES[snapPhase]
+          {isBusy
+            ? <><CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" /> {GRAPH_EMPTY_MESSAGES[snapPhase]}</>
+            : snapPhase === "idle"
+              ? (
+                <>
+                  <Camera size={32} weight="thin" className="mockup-graph-empty-icon" />
+                  <span>{GRAPH_EMPTY_MESSAGES[snapPhase]}</span>
+                  <span className="mockup-graph-empty-hint">Press "Take Snapshot" to capture the current state of all connected processes</span>
+                </>
+              )
+              : GRAPH_EMPTY_MESSAGES[snapPhase]
           }
         </div>
       </div>
@@ -1006,6 +1016,58 @@ type SnapshotState =
   | { phase: "ready"; entities: EntityDef[]; edges: EdgeDef[] }
   | { phase: "error"; message: string };
 
+// ── Process modal ──────────────────────────────────────────────
+
+const PROCESS_COLUMNS: readonly Column<ConnectedProcessInfo>[] = [
+  { key: "conn_id", label: "Conn", width: "60px", render: (r) => r.conn_id },
+  { key: "process_name", label: "Name", render: (r) => r.process_name },
+  { key: "pid", label: "PID", width: "80px", render: (r) => r.pid },
+];
+
+function ProcessModal({
+  connections,
+  onClose,
+}: {
+  connections: ConnectionsResponse;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="mockup-modal-backdrop" onClick={onClose}>
+      <div
+        className="mockup-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Connected processes"
+      >
+        <div className="mockup-modal-header">
+          <span className="mockup-modal-title">Connected processes</span>
+          <ActionButton size="sm" onPress={onClose}>✕</ActionButton>
+        </div>
+        <div className="mockup-modal-body">
+          <Table
+            columns={PROCESS_COLUMNS}
+            rows={connections.processes}
+            rowKey={(r) => String(r.conn_id)}
+            aria-label="Connected processes"
+          />
+          {connections.processes.length === 0 && (
+            <div className="mockup-modal-empty">No processes connected</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── App ────────────────────────────────────────────────────────
 
 export function App() {
@@ -1013,6 +1075,8 @@ export function App() {
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [selection, setSelection] = useState<GraphSelection>(null);
+  const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
+  const [showProcessModal, setShowProcessModal] = useState(false);
 
   const entities = snap.phase === "ready" ? snap.entities : [];
   const edges = snap.phase === "ready" ? snap.edges : [];
@@ -1036,6 +1100,15 @@ export function App() {
     }
   }, []);
 
+  useEffect(() => {
+    apiClient.fetchConnections().then((conns) => {
+      setConnections(conns);
+      if (conns.connected_processes > 0) {
+        takeSnapshot();
+      }
+    }).catch(console.error);
+  }, [takeSnapshot]);
+
   const isBusy = snap.phase === "cutting" || snap.phase === "loading";
 
   const buttonLabel =
@@ -1043,11 +1116,24 @@ export function App() {
     : snap.phase === "loading" ? "Loading…"
     : "Take Snapshot";
 
+  const connCount = connections?.connected_processes ?? 0;
+
   return (
     <div className="mockup-app">
+      {showProcessModal && connections && (
+        <ProcessModal connections={connections} onClose={() => setShowProcessModal(false)} />
+      )}
       <div className="mockup-header">
         <Aperture size={16} weight="bold" />
         <span className="mockup-header-title">peeps</span>
+        <button
+          type="button"
+          className={`mockup-proc-pill${connCount > 0 ? " mockup-proc-pill--connected" : " mockup-proc-pill--disconnected"}`}
+          onClick={() => setShowProcessModal(true)}
+          title="Click to see connected processes"
+        >
+          {connCount} {connCount === 1 ? "process" : "processes"}
+        </button>
         {apiMode === "lab" ? (
           <span className="mockup-header-badge">mock data</span>
         ) : snap.phase === "ready" ? (
