@@ -19,6 +19,11 @@ pub struct Entity {
     // very long string.
     pub source: CompactString,
 
+    /// Rust crate that created this entity, if known.
+    /// Populated when entities are created through macros (which can access `env!("CARGO_PKG_NAME")`),
+    /// `None` for entities created through `#[track_caller]`-based APIs.
+    pub krate: Option<CompactString>,
+
     /// Human-facing name for this entity.
     pub name: CompactString,
 
@@ -37,6 +42,7 @@ impl Entity {
             name: name.into(),
             body,
             source: None,
+            krate: None,
         }
     }
 
@@ -59,11 +65,17 @@ pub struct EntityBuilder {
     name: CompactString,
     body: EntityBody,
     source: Option<CompactString>,
+    krate: Option<CompactString>,
 }
 
 impl EntityBuilder {
     pub fn source(mut self, source: impl Into<CompactString>) -> Self {
         self.source = Some(source.into());
+        self
+    }
+
+    pub fn krate(mut self, krate: impl Into<CompactString>) -> Self {
+        self.krate = Some(krate.into());
         self
     }
 
@@ -76,8 +88,9 @@ impl EntityBuilder {
         Ok(Entity {
             id: next_entity_id(),
             birth: PTime::now(),
-            name: self.name,
             source: self.source.unwrap_or_else(caller_source),
+            krate: self.krate,
+            name: self.name,
             body: self.body,
             meta: facet_value::to_value(meta)?,
         })

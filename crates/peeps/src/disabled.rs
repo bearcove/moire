@@ -36,6 +36,14 @@ impl EntityHandle {
     pub fn link_to(&self, _target: &EntityRef, _kind: EdgeKind) {}
 
     pub fn link_to_handle(&self, _target: &EntityHandle, _kind: EdgeKind) {}
+
+    pub fn link_to_scope(&self, _scope: &ScopeRef) {}
+
+    pub fn link_to_scope_handle(&self, _scope: &ScopeHandle) {}
+
+    pub fn unlink_from_scope(&self, _scope: &ScopeRef) {}
+
+    pub fn unlink_from_scope_handle(&self, _scope: &ScopeHandle) {}
 }
 
 #[derive(Clone, Debug)]

@@ -3,7 +3,7 @@ use facet::Facet;
 
 use crate::{caller_source, next_scope_id, MetaSerializeError, PTime, ScopeId};
 
-/// A scope groups execution context over time (for example process/thread/task).
+/// A scope groups execution context over time (for example process/thread/task/connection).
 #[derive(Facet)]
 pub struct Scope {
     /// Opaque scope identifier.
@@ -14,6 +14,9 @@ pub struct Scope {
 
     /// Creation/discovery site in source code as `{path}:{line}`.
     pub source: CompactString,
+
+    /// Rust crate that created this scope, if known.
+    pub krate: Option<CompactString>,
 
     /// Human-facing name for this scope.
     pub name: CompactString,
@@ -31,6 +34,8 @@ impl Scope {
         ScopeBuilder {
             name: name.into(),
             body,
+            source: None,
+            krate: None,
         }
     }
 
@@ -52,9 +57,21 @@ impl Scope {
 pub struct ScopeBuilder {
     name: CompactString,
     body: ScopeBody,
+    source: Option<CompactString>,
+    krate: Option<CompactString>,
 }
 
 impl ScopeBuilder {
+    pub fn source(mut self, source: impl Into<CompactString>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+
+    pub fn krate(mut self, krate: impl Into<CompactString>) -> Self {
+        self.krate = Some(krate.into());
+        self
+    }
+
     /// Finalizes the scope with typed meta converted into `facet_value::Value`.
     #[track_caller]
     pub fn build<M>(self, meta: &M) -> Result<Scope, MetaSerializeError>
@@ -64,8 +81,9 @@ impl ScopeBuilder {
         Ok(Scope {
             id: next_scope_id(),
             birth: PTime::now(),
+            source: self.source.unwrap_or_else(caller_source),
+            krate: self.krate,
             name: self.name,
-            source: caller_source(),
             body: self.body,
             meta: facet_value::to_value(meta)?,
         })
@@ -79,4 +97,5 @@ pub enum ScopeBody {
     Process,
     Thread,
     Task,
+    Connection,
 }

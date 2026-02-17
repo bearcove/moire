@@ -277,6 +277,7 @@ pub enum ScopeBody {
     Process,
     Thread,
     Task,
+    Connection,
 }
 
 /// Typed payload for each entity kind.

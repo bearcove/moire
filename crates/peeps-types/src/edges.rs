@@ -63,6 +63,8 @@ pub struct Event {
     pub at: PTime,
     /// Event source site as `{path}:{line}`.
     pub source: CompactString,
+    /// Rust crate that created this event, if known.
+    pub krate: Option<CompactString>,
     /// Event target (entity or scope).
     pub target: EventTarget,
     /// Event kind.
@@ -86,6 +88,7 @@ impl Event {
             id: next_event_id(),
             at: PTime::now(),
             source: caller_source(),
+            krate: None,
             target,
             kind,
             meta: facet_value::to_value(meta)?,

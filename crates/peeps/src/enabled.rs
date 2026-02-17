@@ -1165,6 +1165,30 @@ impl EntityHandle {
     pub fn link_to_handle(&self, target: &EntityHandle, kind: EdgeKind) {
         self.link_to(&target.entity_ref(), kind);
     }
+
+    #[track_caller]
+    pub fn link_to_scope(&self, scope: &ScopeRef) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.link_entity_to_scope(self.id(), scope.id());
+        }
+    }
+
+    #[track_caller]
+    pub fn link_to_scope_handle(&self, scope: &ScopeHandle) {
+        self.link_to_scope(&scope.scope_ref());
+    }
+
+    #[track_caller]
+    pub fn unlink_from_scope(&self, scope: &ScopeRef) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.unlink_entity_from_scope(self.id(), scope.id());
+        }
+    }
+
+    #[track_caller]
+    pub fn unlink_from_scope_handle(&self, scope: &ScopeHandle) {
+        self.unlink_from_scope(&scope.scope_ref());
+    }
 }
 
 #[derive(Clone)]
