@@ -139,13 +139,32 @@ fn next_entity_id() -> EntityId {
 
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_FFFF_FFFF_FFFF;
     let raw = ((prefix as u64) << 48) | counter;
-    EntityId(CompactString::from(format!("{raw:016x}")))
+    EntityId(peeps_hex(raw))
 }
 
 #[track_caller]
 fn caller_source() -> CompactString {
     let location = std::panic::Location::caller();
     CompactString::from(format!("{}:{}", location.file(), location.line()))
+}
+
+/// Encodes a 64-bit value as lowercase hex, then remaps `a..f` to:
+/// `a->p`, `b->e`, `c->s`, `d->P`, `e->E`, `f->S`.
+fn peeps_hex(raw: u64) -> CompactString {
+    let mut out = String::with_capacity(16);
+    for ch in format!("{raw:016x}").chars() {
+        let mapped = match ch {
+            'a' => 'p',
+            'b' => 'e',
+            'c' => 's',
+            'd' => 'P',
+            'e' => 'E',
+            'f' => 'S',
+            _ => ch,
+        };
+        out.push(mapped);
+    }
+    CompactString::from(out)
 }
 
 /// Typed payload for each entity kind.
