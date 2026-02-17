@@ -4552,6 +4552,26 @@ body {
     height: 100%;
 }
 
+.mockup-graph-flow .react-flow__controls {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.mockup-graph-flow .react-flow__controls-button {
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border);
+    fill: var(--text-secondary);
+}
+
+.mockup-graph-flow .react-flow__controls-button:hover {
+    background: var(--surface-hover);
+}
+
+.mockup-graph-flow .react-flow__controls-button:last-child {
+    border-bottom: none;
+}
+
 /* Inspector panel */
 .mockup-inspector {
     display: flex;

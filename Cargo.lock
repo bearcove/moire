@@ -1043,6 +1043,8 @@ dependencies = [
  "compact_str",
  "facet",
  "facet-json",
+ "facet-value",
+ "peeps-sqlite-facet",
  "peeps-types",
  "peeps-wire",
  "rusqlite",

@@ -8,8 +8,11 @@ import {
   BackgroundVariant,
   Controls,
   MarkerType,
+  useInternalNode,
   type Node,
   type Edge,
+  type EdgeProps,
+  type InternalNode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk-api.js";
@@ -67,6 +70,7 @@ const elkOptions = {
   "elk.spacing.nodeNode": "24",
   "elk.layered.spacing.nodeNodeBetweenLayers": "48",
   "elk.padding": "[top=24,left=24,bottom=24,right=24]",
+  "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
 
 // ── Mock data for the deadlock detector mockup ────────────────
@@ -88,17 +92,12 @@ const MOCK_NODE_DEFS: MockNodeDef[] = [
   { id: "connection:initiator", kind: "connection", label: "initiator\u2192acceptor" },
 ];
 
-const MOCK_NODE_WIDTH = 180;
-const MOCK_NODE_HEIGHT = 40;
-
-function makeMockNodes(defs: MockNodeDef[]): Node[] {
-  return defs.map((d) => ({
-    id: d.id,
-    type: "mockNode",
-    position: { x: 0, y: 0 },
-    data: { kind: d.kind, label: d.label, inCycle: d.inCycle ?? false },
-  }));
+/** Estimate rendered node width: icon (14) + gap (6) + label chars + padding. */
+function estimateNodeWidth(label: string): number {
+  // Mono 11px ≈ 6.6px per char, plus icon 14 + gap 6 + horizontal padding 20
+  return Math.ceil(label.length * 6.6) + 14 + 6 + 20;
 }
+const MOCK_NODE_HEIGHT = 40;
 
 type MockEdgeDef = {
   id: string;
@@ -117,78 +116,181 @@ const MOCK_EDGE_DEFS: MockEdgeDef[] = [
   { id: "e7", source: "request:demorpc.sleepy", target: "connection:initiator", rel: "touches" },
 ];
 
-function makeMockEdges(defs: MockEdgeDef[]): Edge[] {
-  return defs.map((d) => {
-    const isNeeds = d.rel === "needs";
-    const isSpawned = d.rel === "spawned";
-    const isTouches = d.rel === "touches";
-    return {
-      id: d.id,
-      source: d.source,
-      target: d.target,
-      style: isNeeds
-        ? { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 }
-        : isSpawned
-          ? { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" }
-          : isTouches
-            ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3" }
-            : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, width: isNeeds ? 12 : isSpawned ? 8 : 10, height: isNeeds ? 12 : isSpawned ? 8 : 10 },
-    };
-  });
+function edgeStyle(rel: MockEdgeDef["rel"]) {
+  switch (rel) {
+    case "needs":
+      return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
+    case "spawned":
+      return { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" };
+    case "touches":
+      return { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3" };
+    default:
+      return { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 };
+  }
 }
 
-async function layoutMockGraph(nodes: Node[], edges: Edge[]): Promise<Node[]> {
+function edgeMarkerSize(rel: MockEdgeDef["rel"]) {
+  return rel === "needs" ? 12 : rel === "spawned" ? 8 : 10;
+}
+
+type LayoutResult = { nodes: Node[]; edges: Edge[] };
+
+async function layoutMockGraph(nodeDefs: MockNodeDef[], edgeDefs: MockEdgeDef[]): Promise<LayoutResult> {
+  const nodeWidths = new Map(nodeDefs.map((n) => [n.id, estimateNodeWidth(n.label)]));
+
   const result = await elk.layout({
     id: "root",
     layoutOptions: elkOptions,
-    children: nodes.map((n) => ({
+    children: nodeDefs.map((n) => ({
       id: n.id,
-      width: MOCK_NODE_WIDTH,
+      width: nodeWidths.get(n.id)!,
       height: MOCK_NODE_HEIGHT,
     })),
-    edges: edges.map((e) => ({
+    edges: edgeDefs.map((e) => ({
       id: e.id,
       sources: [e.source],
       targets: [e.target],
     })),
   });
+
   const posMap = new Map(
     (result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]),
   );
-  return nodes.map((node) => ({
-    ...node,
-    position: posMap.get(node.id) ?? { x: 0, y: 0 },
+
+  const nodes: Node[] = nodeDefs.map((def) => ({
+    id: def.id,
+    type: "mockNode",
+    position: posMap.get(def.id) ?? { x: 0, y: 0 },
+    data: { kind: def.kind, label: def.label, inCycle: def.inCycle ?? false },
   }));
+
+  const edges: Edge[] = edgeDefs.map((def) => {
+    const sz = edgeMarkerSize(def.rel);
+    return {
+      id: def.id,
+      source: def.source,
+      target: def.target,
+      type: "floating",
+      style: edgeStyle(def.rel),
+      markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
+    };
+  });
+
+  return { nodes, edges };
 }
 
 // ── Custom node component for mockup ─────────────────────────
 
+const hiddenHandle: React.CSSProperties = { opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0, position: "absolute", top: "50%", left: "50%", pointerEvents: "none" };
+
 function MockNodeComponent({ data }: { data: { kind: string; label: string; inCycle: boolean } }) {
   return (
     <>
-      <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
+      <Handle type="target" position={Position.Top} style={hiddenHandle} />
+      <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
       <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}`}>
         <span className="mockup-node-icon">{kindIcon(data.kind, 14)}</span>
         <span className="mockup-node-label">{data.label}</span>
       </div>
-      <Handle type="source" position={Position.Bottom} style={{ visibility: "hidden" }} />
     </>
   );
 }
 
+/** Compute the point where a line from center of a rect to an external point intersects the rect border. */
+function getNodeBorderPoint(node: InternalNode, otherX: number, otherY: number): { x: number; y: number } {
+  const w = node.measured?.width ?? 100;
+  const h = node.measured?.height ?? 40;
+  const cx = node.internals.positionAbsolute.x + w / 2;
+  const cy = node.internals.positionAbsolute.y + h / 2;
+  const dx = otherX - cx;
+  const dy = otherY - cy;
+
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+
+  // Find intersection with rect border
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const hw = w / 2;
+  const hh = h / 2;
+
+  let t: number;
+  if (absDx * hh > absDy * hw) {
+    // Hits left or right side
+    t = hw / absDx;
+  } else {
+    // Hits top or bottom side
+    t = hh / absDy;
+  }
+
+  return { x: cx + dx * t, y: cy + dy * t };
+}
+
+function FloatingEdge({ id, source, target, style, markerEnd }: EdgeProps) {
+  const sourceNode = useInternalNode(source);
+  const targetNode = useInternalNode(target);
+  if (!sourceNode || !targetNode) return null;
+
+  const sw = sourceNode.measured?.width ?? 100;
+  const sh = sourceNode.measured?.height ?? 40;
+  const tw = targetNode.measured?.width ?? 100;
+  const th = targetNode.measured?.height ?? 40;
+  const sCx = sourceNode.internals.positionAbsolute.x + sw / 2;
+  const sCy = sourceNode.internals.positionAbsolute.y + sh / 2;
+  const tCx = targetNode.internals.positionAbsolute.x + tw / 2;
+  const tCy = targetNode.internals.positionAbsolute.y + th / 2;
+
+  const s = getNodeBorderPoint(sourceNode, tCx, tCy);
+  const t = getNodeBorderPoint(targetNode, sCx, sCy);
+
+  // Bezier control points — offset perpendicular to the line for a gentle curve
+  const dx = t.x - s.x;
+  const dy = t.y - s.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const curvature = Math.min(dist * 0.25, 60);
+
+  // Use the dominant axis for control point direction
+  let c1x: number, c1y: number, c2x: number, c2y: number;
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    // Mostly vertical — control points shift along Y
+    const sign = dy >= 0 ? 1 : -1;
+    c1x = s.x;
+    c1y = s.y + sign * curvature;
+    c2x = t.x;
+    c2y = t.y - sign * curvature;
+  } else {
+    // Mostly horizontal — control points shift along X
+    const sign = dx >= 0 ? 1 : -1;
+    c1x = s.x + sign * curvature;
+    c1y = s.y;
+    c2x = t.x - sign * curvature;
+    c2y = t.y;
+  }
+
+  const path = `M ${s.x} ${s.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${t.x} ${t.y}`;
+
+  return (
+    <path
+      id={id}
+      d={path}
+      style={style as React.CSSProperties}
+      markerEnd={markerEnd as string}
+      fill="none"
+      className="react-flow__edge-path"
+    />
+  );
+}
+
 const mockNodeTypes = { mockNode: MockNodeComponent };
+const mockEdgeTypes = { floating: FloatingEdge };
 
 // ── Mock graph panel ──────────────────────────────────────────
 
 function MockGraphPanel() {
-  const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
-  const edges = useMemo(() => makeMockEdges(MOCK_EDGE_DEFS), []);
+  const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
   useEffect(() => {
-    const rawNodes = makeMockNodes(MOCK_NODE_DEFS);
-    layoutMockGraph(rawNodes, edges).then(setLayoutedNodes);
-  }, [edges]);
+    layoutMockGraph(MOCK_NODE_DEFS, MOCK_EDGE_DEFS).then(setLayout);
+  }, []);
 
   return (
     <div className="mockup-graph-panel">
@@ -208,9 +310,10 @@ function MockGraphPanel() {
       <div className="mockup-graph-flow">
         <ReactFlowProvider>
           <ReactFlow
-            nodes={layoutedNodes}
-            edges={edges}
+            nodes={layout.nodes}
+            edges={layout.edges}
             nodeTypes={mockNodeTypes}
+            edgeTypes={mockEdgeTypes}
             fitView
             fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
             proOptions={{ hideAttribution: true }}
@@ -721,7 +824,7 @@ export function LabView() {
           <DeadlockDetectorMockup />
         </Section>
 
-        <Section title="UI font \u2014 Manrope" subtitle="UI font in the sizes we actually use" wide>
+        <Section title="UI font — Manrope" subtitle="UI font in the sizes we actually use" wide>
           <div className="ui-typo-card">
             <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
             <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
@@ -735,7 +838,7 @@ export function LabView() {
           </div>
         </Section>
 
-        <Section title="Mono font \u2014 Jetbrains Mono" subtitle="Mono font in the sizes we actually use" wide>
+        <Section title="Mono font — Jetbrains Mono" subtitle="Mono font in the sizes we actually use" wide>
           <div className="ui-typo-card">
             <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY&hellip;</div>
             <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
