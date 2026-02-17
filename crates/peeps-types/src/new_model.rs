@@ -3,7 +3,7 @@
 //! - `Event`: a point-in-time occurrence with a timestamp.
 //! - `Entity`: a runtime thing that exists over time (for example a lock,
 //!   future, channel, request, or connection).
-//! - `Edge`: a causal dependency relationship between entities.
+//! - `Edge`: a relationship between entities (causal or structural).
 //! - `Scope`: an execution container that groups entities (for example a
 //!   process, thread, or task).
 //!
@@ -52,7 +52,7 @@ pub struct Snapshot {
     pub entities: Vec<Entity>,
     /// Execution scopes present in this snapshot.
     pub scopes: Vec<Scope>,
-    /// Causal entity-to-entity edges present in this snapshot.
+    /// Entity-to-entity edges present in this snapshot.
     pub edges: Vec<Edge>,
     /// Point-in-time events captured for this snapshot.
     pub events: Vec<Event>,
@@ -329,8 +329,27 @@ pub enum LockKind {
 
 #[derive(Facet)]
 pub struct ChannelEndpointEntity {
+    /// Endpoint lifecycle state.
+    pub lifecycle: ChannelEndpointLifecycle,
     /// Channel-kind-specific runtime details.
     pub details: ChannelDetails,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelEndpointLifecycle {
+    Open,
+    Closed(ChannelCloseCause),
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelCloseCause {
+    SenderDropped,
+    ReceiverDropped,
+    ReceiverClosed,
 }
 
 #[derive(Facet)]
@@ -483,7 +502,7 @@ pub enum ResponseStatus {
 // Edges
 ////////////////////////////////////////////////////////////////////////////////////
 
-/// Causal relationship between two entities.
+/// Relationship between two entities.
 #[derive(Facet)]
 pub struct Edge {
     /// Source entity in the causal relationship.
@@ -520,8 +539,14 @@ impl Edge {
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum EdgeKind {
+    /// Waiting/blocked-on relationship.
     Needs,
+    /// Closure/cancellation cause relationship.
     ClosedBy,
+    /// Structural channel endpoint pairing (`tx -> rx`).
+    ChannelLink,
+    /// Structural request/response pairing.
+    RpcLink,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -564,6 +589,51 @@ impl Event {
             meta: facet_value::to_value(meta)?,
         })
     }
+
+    /// Channel send event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_sent(
+        target: EventTarget,
+        meta: &ChannelSendEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelSent, meta)
+    }
+
+    /// Channel receive event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_received(
+        target: EventTarget,
+        meta: &ChannelReceiveEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelReceived, meta)
+    }
+
+    /// Channel closure event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_closed(
+        target: EventTarget,
+        meta: &ChannelClosedEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelClosed, meta)
+    }
+
+    /// Channel wait-start event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_wait_started(
+        target: EventTarget,
+        meta: &ChannelWaitStartedEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelWaitStarted, meta)
+    }
+
+    /// Channel wait-end event with typed payload metadata.
+    #[track_caller]
+    pub fn channel_wait_ended(
+        target: EventTarget,
+        meta: &ChannelWaitEndedEvent,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new(target, EventKind::ChannelWaitEnded, meta)
+    }
 }
 
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -585,4 +655,69 @@ pub enum EventKind {
     ChannelSent,
     ChannelReceived,
     ChannelClosed,
+    ChannelWaitStarted,
+    ChannelWaitEnded,
+}
+
+#[derive(Facet)]
+pub struct ChannelSendEvent {
+    /// Send attempt outcome.
+    pub outcome: ChannelSendOutcome,
+    /// Queue length after the operation, when observable.
+    pub queue_len: Option<u32>,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelSendOutcome {
+    Ok,
+    Full,
+    Closed,
+}
+
+#[derive(Facet)]
+pub struct ChannelReceiveEvent {
+    /// Receive attempt outcome.
+    pub outcome: ChannelReceiveOutcome,
+    /// Queue length after the operation, when observable.
+    pub queue_len: Option<u32>,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelReceiveOutcome {
+    Ok,
+    Empty,
+    Closed,
+}
+
+#[derive(Facet)]
+pub struct ChannelClosedEvent {
+    /// Reason the endpoint transitioned to closed.
+    pub cause: ChannelCloseCause,
+}
+
+#[derive(Facet)]
+pub struct ChannelWaitStartedEvent {
+    /// Wait type being started.
+    pub kind: ChannelWaitKind,
+}
+
+#[derive(Facet)]
+pub struct ChannelWaitEndedEvent {
+    /// Wait type that ended.
+    pub kind: ChannelWaitKind,
+    /// Observed wait duration in nanoseconds.
+    pub wait_ns: u64,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelWaitKind {
+    Send,
+    Receive,
+    Change,
 }
