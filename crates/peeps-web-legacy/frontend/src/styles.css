@@ -4853,8 +4853,8 @@ body {
 
 .mockup-node {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    gap: 3px;
     padding: 6px 10px;
     border-radius: 8px;
     font-family: var(--font-mono);
@@ -4864,6 +4864,12 @@ body {
     background: var(--surface-raised);
     border: 1px solid var(--border);
     color: var(--text-primary);
+}
+
+.mockup-node-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .mockup-node--cycle {
@@ -4890,6 +4896,25 @@ body {
 .mockup-node-label {
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.mockup-node-details {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 9.5px;
+    font-weight: 500;
+    padding-left: 20px; /* align with label (icon width 14 + gap 6) */
+}
+
+.mockup-node-dot {
+    color: var(--text-tertiary);
+    font-weight: 700;
+}
+
+.mockup-node-stat {
+    color: var(--text-secondary);
+    font-weight: 600;
 }
 
 .mockup-inspector-empty {

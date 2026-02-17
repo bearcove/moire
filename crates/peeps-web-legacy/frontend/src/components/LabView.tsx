@@ -81,6 +81,8 @@ type MockEntityDef = {
   birthAgeMs: number; // age in ms for display
   meta: Record<string, MetaValue>;
   inCycle?: boolean;
+  status: { label: string; tone: "ok" | "warn" | "crit" | "neutral" };
+  stat?: string; // compact operational stat — "3/5", "2 waiters", etc.
 };
 
 type MockEdgeDef = {
@@ -96,48 +98,99 @@ const MOCK_ENTITIES: MockEntityDef[] = [
     body: { method: "DemoRpc.sleepy_forever", args_preview: "(no args)" },
     source: "src/rpc/demo.rs:42", birthAgeMs: 1245000,
     meta: { level: "info", rpc_service: "DemoRpc", transport: "roam-tcp" },
+    status: { label: "in_flight", tone: "warn" },
   },
   {
     id: "resp_sleepy", name: "DemoRpc.sleepy_forever", kind: "response", bodyKind: "Response",
     body: { method: "DemoRpc.sleepy_forever", status: "error" },
     source: "src/rpc/demo.rs:45", birthAgeMs: 1244800, inCycle: true,
     meta: { level: "info", status_detail: "deadline exceeded" },
+    status: { label: "error", tone: "crit" },
   },
   {
     id: "req_ping", name: "DemoRpc.ping", kind: "request", bodyKind: "Request",
     body: { method: "DemoRpc.ping", args_preview: "{ ttl: 30 }" },
     source: "src/rpc/demo.rs:18", birthAgeMs: 820000,
     meta: { level: "info", rpc_service: "DemoRpc", transport: "roam-tcp" },
+    status: { label: "in_flight", tone: "warn" },
   },
   {
     id: "resp_ping", name: "DemoRpc.ping", kind: "response", bodyKind: "Response",
     body: { method: "DemoRpc.ping", status: "ok" },
     source: "src/rpc/demo.rs:20", birthAgeMs: 819500,
     meta: { level: "info" },
+    status: { label: "ok", tone: "ok" },
   },
   {
     id: "lock_state", name: "Mutex<GlobalState>", kind: "mutex", bodyKind: "Lock",
     body: { kind: "mutex" },
     source: "src/state.rs:12", birthAgeMs: 3600000, inCycle: true,
     meta: { level: "debug" },
+    status: { label: "held", tone: "crit" }, stat: "1 waiter",
   },
   {
     id: "ch_tx", name: "mpsc.send", kind: "channel_tx", bodyKind: "ChannelTx",
     body: { lifecycle: "open", details: { kind: "mpsc", capacity: 128, queue_len: 0 } },
     source: "src/dispatch.rs:67", birthAgeMs: 3590000,
     meta: { level: "debug" },
+    status: { label: "open", tone: "ok" }, stat: "0/128",
   },
   {
     id: "ch_rx", name: "mpsc.recv", kind: "channel_rx", bodyKind: "ChannelRx",
     body: { lifecycle: "open", details: { kind: "mpsc", capacity: 128, queue_len: 0 } },
     source: "src/dispatch.rs:68", birthAgeMs: 3590000, inCycle: true,
     meta: { level: "debug" },
+    status: { label: "blocked", tone: "crit" }, stat: "0/128",
   },
   {
     id: "future_store", name: "store.incoming.recv", kind: "future", bodyKind: "Future",
     body: {},
     source: "src/store.rs:104", birthAgeMs: 2100000,
     meta: { level: "trace", poll_count: 847 },
+    status: { label: "polling", tone: "neutral" }, stat: "847 polls",
+  },
+  // ── New entity types ──────────────────────────────────────
+  {
+    id: "sem_conns", name: "conn.rate_limit", kind: "semaphore", bodyKind: "Semaphore",
+    body: { permits_total: 5, permits_available: 3 },
+    source: "src/server/limits.rs:28", birthAgeMs: 3580000,
+    meta: { level: "debug", scope: "rate_limiter" },
+    status: { label: "3/5 permits", tone: "warn" }, stat: "3/5",
+  },
+  {
+    id: "notify_shutdown", name: "shutdown.signal", kind: "notify", bodyKind: "Notify",
+    body: { waiters: 2 },
+    source: "src/lifecycle.rs:15", birthAgeMs: 3600000,
+    meta: { level: "info" },
+    status: { label: "waiting", tone: "neutral" }, stat: "2 waiters",
+  },
+  {
+    id: "oncecell_config", name: "AppConfig", kind: "oncecell", bodyKind: "OnceCell",
+    body: { state: "initializing" },
+    source: "src/config.rs:8", birthAgeMs: 1800000,
+    meta: { level: "info", config_path: "/etc/app/config.toml" },
+    status: { label: "initializing", tone: "warn" }, stat: "1 waiter",
+  },
+  {
+    id: "cmd_migrate", name: "db-migrate", kind: "command", bodyKind: "Command",
+    body: { program: "db-migrate", args: ["--up", "--env=staging"] },
+    source: "src/bootstrap.rs:55", birthAgeMs: 45000,
+    meta: { level: "info", exit_code: null },
+    status: { label: "running", tone: "neutral" },
+  },
+  {
+    id: "file_config", name: "config.toml", kind: "file_op", bodyKind: "FileOp",
+    body: { op: "read", path: "/etc/app/config.toml" },
+    source: "src/config.rs:22", birthAgeMs: 1799500,
+    meta: { level: "debug", bytes: 4096 },
+    status: { label: "reading", tone: "ok" },
+  },
+  {
+    id: "net_peer", name: "peer:10.0.0.5:8080", kind: "net_connect", bodyKind: "NetConnect",
+    body: { addr: "10.0.0.5:8080", transport: "tcp" },
+    source: "src/net/peer.rs:31", birthAgeMs: 920000,
+    meta: { level: "info", tls: true },
+    status: { label: "connected", tone: "ok" },
   },
 ];
 
@@ -161,6 +214,11 @@ const MOCK_EDGES: MockEdgeDef[] = [
   // Non-blocking observations
   { id: "e7", source: "req_ping", target: "lock_state", kind: "polls" },
   { id: "e8", source: "future_store", target: "ch_rx", kind: "polls" },
+  // New entity connections
+  { id: "e9", source: "oncecell_config", target: "file_config", kind: "needs" },
+  { id: "e10", source: "cmd_migrate", target: "oncecell_config", kind: "polls" },
+  { id: "e11", source: "net_peer", target: "sem_conns", kind: "polls" },
+  { id: "e12", source: "notify_shutdown", target: "ch_tx", kind: "closed_by" },
 ];
 
 /** Validate edge definitions against entity kinds. */
@@ -200,15 +258,48 @@ function measureNodeDefs(defs: MockEntityDef[]): Map<string, { width: number; he
   for (const def of defs) {
     const el = document.createElement("div");
     el.className = `mockup-node${def.inCycle ? " mockup-node--cycle" : ""}`;
-    // Replicate the node's inner structure
+
+    // Main row: icon + label
+    const mainRow = document.createElement("div");
+    mainRow.className = "mockup-node-main";
     const icon = document.createElement("span");
     icon.className = "mockup-node-icon";
     icon.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;";
     const label = document.createElement("span");
     label.className = "mockup-node-label";
     label.textContent = def.name;
-    el.appendChild(icon);
-    el.appendChild(label);
+    mainRow.appendChild(icon);
+    mainRow.appendChild(label);
+    el.appendChild(mainRow);
+
+    // Details row: badge · age · stat
+    const details = document.createElement("div");
+    details.className = "mockup-node-details";
+    // Representative text for measurement — badge + age + optional stat
+    const badgeEl = document.createElement("span");
+    badgeEl.className = "ui-badge ui-badge--standard ui-badge--neutral";
+    badgeEl.textContent = def.status.label;
+    details.appendChild(badgeEl);
+    const dot1 = document.createElement("span");
+    dot1.className = "mockup-node-dot";
+    dot1.textContent = "·";
+    details.appendChild(dot1);
+    const ageEl = document.createElement("span");
+    ageEl.className = "ui-duration-display";
+    ageEl.textContent = "00m00s"; // representative width
+    details.appendChild(ageEl);
+    if (def.stat) {
+      const dot2 = document.createElement("span");
+      dot2.className = "mockup-node-dot";
+      dot2.textContent = "·";
+      details.appendChild(dot2);
+      const statEl = document.createElement("span");
+      statEl.className = "mockup-node-stat";
+      statEl.textContent = def.stat;
+      details.appendChild(statEl);
+    }
+    el.appendChild(details);
+
     container.appendChild(el);
     elements.push({ id: def.id, el });
   }
@@ -294,7 +385,10 @@ async function layoutMockGraph(
     id: def.id,
     type: "mockNode",
     position: posMap.get(def.id) ?? { x: 0, y: 0 },
-    data: { kind: def.kind, label: def.name, inCycle: def.inCycle ?? false, selected: false },
+    data: {
+      kind: def.kind, label: def.name, inCycle: def.inCycle ?? false, selected: false,
+      status: def.status, birthAgeMs: def.birthAgeMs, stat: def.stat,
+    },
   }));
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
@@ -327,14 +421,34 @@ async function layoutMockGraph(
 
 const hiddenHandle: React.CSSProperties = { opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0, position: "absolute", top: "50%", left: "50%", pointerEvents: "none" };
 
-function MockNodeComponent({ data }: { data: { kind: string; label: string; inCycle: boolean; selected: boolean } }) {
+type MockNodeData = {
+  kind: string; label: string; inCycle: boolean; selected: boolean;
+  status: { label: string; tone: "ok" | "warn" | "crit" | "neutral" };
+  birthAgeMs: number;
+  stat?: string;
+};
+
+function MockNodeComponent({ data }: { data: MockNodeData }) {
   return (
     <>
       <Handle type="target" position={Position.Top} style={hiddenHandle} />
       <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
       <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}${data.selected ? " mockup-node--selected" : ""}`}>
-        <span className="mockup-node-icon">{kindIcon(data.kind, 14)}</span>
-        <span className="mockup-node-label">{data.label}</span>
+        <div className="mockup-node-main">
+          <span className="mockup-node-icon">{kindIcon(data.kind, 14)}</span>
+          <span className="mockup-node-label">{data.label}</span>
+        </div>
+        <div className="mockup-node-details">
+          <Badge tone={data.status.tone}>{data.status.label}</Badge>
+          <span className="mockup-node-dot">&middot;</span>
+          <DurationDisplay ms={data.birthAgeMs} />
+          {data.stat && (
+            <>
+              <span className="mockup-node-dot">&middot;</span>
+              <span className="mockup-node-stat">{data.stat}</span>
+            </>
+          )}
+        </div>
       </div>
     </>
   );
@@ -521,6 +635,65 @@ function EntityBodySection({ entity }: { entity: MockEntityDef }) {
         <div className="mockup-inspector-section">
           <KeyValueRow label="Body">
             <span className="mockup-inspector-mono mockup-inspector-muted">Future (no body fields)</span>
+          </KeyValueRow>
+        </div>
+      );
+    case "Semaphore":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Permits available">
+            <span className="mockup-inspector-mono">{body.permits_available} / {body.permits_total}</span>
+          </KeyValueRow>
+        </div>
+      );
+    case "Notify":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Waiters">
+            <span className="mockup-inspector-mono">{body.waiters}</span>
+          </KeyValueRow>
+        </div>
+      );
+    case "OnceCell":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="State" icon={<CircleNotch size={12} weight="bold" />}>
+            <Badge tone={body.state === "initialized" ? "ok" : "warn"}>
+              {body.state}
+            </Badge>
+          </KeyValueRow>
+        </div>
+      );
+    case "Command":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Program">
+            <span className="mockup-inspector-mono">{body.program}</span>
+          </KeyValueRow>
+          <KeyValueRow label="Args">
+            <span className="mockup-inspector-mono">{body.args?.join(" ") ?? "(none)"}</span>
+          </KeyValueRow>
+        </div>
+      );
+    case "FileOp":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Operation">
+            <span className="mockup-inspector-mono">{body.op}</span>
+          </KeyValueRow>
+          <KeyValueRow label="Path">
+            <span className="mockup-inspector-mono">{body.path}</span>
+          </KeyValueRow>
+        </div>
+      );
+    case "NetConnect":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Address">
+            <span className="mockup-inspector-mono">{body.addr}</span>
+          </KeyValueRow>
+          <KeyValueRow label="Transport">
+            <span className="mockup-inspector-mono">{body.transport}</span>
           </KeyValueRow>
         </div>
       );
