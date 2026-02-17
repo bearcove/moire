@@ -4573,26 +4573,23 @@ body {
     border-bottom: none;
 }
 
-/* Re-enable pointer events on edges so SVG <title> tooltips work */
+/* Edges are selectable — cursor hint */
 .mockup-graph-flow .react-flow__edge {
-    pointer-events: auto;
+    cursor: pointer;
 }
 
-/* Edge tooltip */
-.mockup-edge-tooltip {
-    position: absolute;
-    pointer-events: none;
-    z-index: 10;
-    transform: translate(-50%, calc(-100% - 10px));
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-family: var(--font-mono);
-    line-height: 1.4;
-    white-space: nowrap;
-    background: light-dark(#1a1a2e, #e8e8f0);
-    color: light-dark(#e8e8f0, #1a1a2e);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+/* Hide ReactFlow's default selected-edge styling */
+.mockup-graph-flow .react-flow__edge.selected .react-flow__edge-path {
+    stroke: unset;
+}
+
+/* Subtle pulse on the outer selection glow */
+@keyframes mockup-edge-glow-pulse {
+    0%, 100% { opacity: 0.18; }
+    50% { opacity: 0.32; }
+}
+.mockup-edge-glow {
+    animation: mockup-edge-glow-pulse 2s ease-in-out infinite;
 }
 
 /* Inspector panel */
@@ -4697,6 +4694,11 @@ body {
     background: light-dark(#f0f0f5, #28282e);
     color: var(--text-primary);
     flex-shrink: 0;
+}
+
+.mockup-inspector-node-icon--causal {
+    background: light-dark(#fff0f0, #2a1414);
+    color: light-dark(#d7263d, #ff6b81);
 }
 
 .mockup-inspector-node-kind {

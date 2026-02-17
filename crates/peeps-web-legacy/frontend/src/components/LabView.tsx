@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -341,7 +341,7 @@ function MockNodeComponent({ data }: { data: { kind: string; label: string; inCy
 }
 
 /** Edge component that draws through ELK's computed route points. */
-function ElkRoutedEdge({ id, data, style, markerEnd }: EdgeProps) {
+function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   const edgeData = data as { points?: ElkPoint[]; tooltip?: string } | undefined;
   const points = edgeData?.points ?? [];
   if (points.length < 2) return null;
@@ -366,12 +366,22 @@ function ElkRoutedEdge({ id, data, style, markerEnd }: EdgeProps) {
 
   return (
     <g>
-      {/* Invisible wider path for easier hover targeting */}
-      <path d={d} fill="none" stroke="transparent" strokeWidth={12} />
+      {/* Invisible wider path for easier click targeting — pointerEvents:all overrides ReactFlow's visiblestroke */}
+      <path d={d} fill="none" stroke="transparent" strokeWidth={14} style={{ cursor: "pointer", pointerEvents: "all" }} />
+      {/* Selection glow — two layers for a strong, visible highlight */}
+      {selected && (
+        <>
+          <path d={d} fill="none" stroke="var(--accent, #3b82f6)" strokeWidth={10} strokeLinecap="round" opacity={0.18} className="mockup-edge-glow" />
+          <path d={d} fill="none" stroke="var(--accent, #3b82f6)" strokeWidth={5} strokeLinecap="round" opacity={0.45} />
+        </>
+      )}
       <path
         id={id}
         d={d}
-        style={style as React.CSSProperties}
+        style={{
+          ...(style as React.CSSProperties),
+          ...(selected ? { stroke: "var(--accent, #3b82f6)", strokeWidth: 2.5 } : {}),
+        }}
         markerEnd={markerEnd as string}
         fill="none"
         className="react-flow__edge-path"
@@ -385,12 +395,10 @@ const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Mock graph panel ──────────────────────────────────────────
 
-type EdgeTooltipState = { text: string; x: number; y: number } | null;
+type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
 
-function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId?: string; onSelectEntity: (id: string) => void }) {
+function MockGraphPanel({ selection, onSelect }: { selection: GraphSelection; onSelect: (sel: GraphSelection) => void }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
-  const [edgeTooltip, setEdgeTooltip] = useState<EdgeTooltipState>(null);
-  const flowContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const sizes = measureNodeDefs(MOCK_ENTITIES);
@@ -400,35 +408,18 @@ function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId
   const nodesWithSelection = useMemo(() =>
     layout.nodes.map((n) => ({
       ...n,
-      data: { ...n.data, selected: n.id === selectedEntityId },
+      data: { ...n.data, selected: selection?.kind === "entity" && n.id === selection.id },
     })),
-    [layout.nodes, selectedEntityId],
+    [layout.nodes, selection],
   );
 
-  const getRelativePos = useCallback((event: React.MouseEvent) => {
-    const rect = flowContainerRef.current?.getBoundingClientRect();
-    if (!rect) return null;
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-  }, []);
-
-  const onEdgeMouseEnter = useCallback((event: React.MouseEvent, edge: Edge) => {
-    const text = (edge.data as any)?.tooltip;
-    if (!text) return;
-    const pos = getRelativePos(event);
-    if (!pos) return;
-    setEdgeTooltip({ text, ...pos });
-  }, [getRelativePos]);
-
-  const onEdgeMouseMove = useCallback((event: React.MouseEvent) => {
-    setEdgeTooltip((prev) => {
-      if (!prev) return null;
-      const rect = flowContainerRef.current?.getBoundingClientRect();
-      if (!rect) return prev;
-      return { ...prev, x: event.clientX - rect.left, y: event.clientY - rect.top };
-    });
-  }, []);
-
-  const onEdgeMouseLeave = useCallback(() => setEdgeTooltip(null), []);
+  const edgesWithSelection = useMemo(() =>
+    layout.edges.map((e) => ({
+      ...e,
+      selected: selection?.kind === "edge" && e.id === selection.id,
+    })),
+    [layout.edges, selection],
+  );
 
   return (
     <div className="mockup-graph-panel">
@@ -438,17 +429,16 @@ function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId
           <span className="mockup-graph-stat">{MOCK_EDGES.length} edges</span>
         </div>
       </div>
-      <div className="mockup-graph-flow" ref={flowContainerRef}>
+      <div className="mockup-graph-flow">
         <ReactFlowProvider>
           <ReactFlow
             nodes={nodesWithSelection}
-            edges={layout.edges}
+            edges={edgesWithSelection}
             nodeTypes={mockNodeTypes}
             edgeTypes={mockEdgeTypes}
-            onNodeClick={(_event, node) => onSelectEntity(node.id)}
-            onEdgeMouseEnter={onEdgeMouseEnter}
-            onEdgeMouseMove={onEdgeMouseMove}
-            onEdgeMouseLeave={onEdgeMouseLeave}
+            onNodeClick={(_event, node) => onSelect({ kind: "entity", id: node.id })}
+            onEdgeClick={(_event, edge) => onSelect({ kind: "edge", id: edge.id })}
+            onPaneClick={() => onSelect(null)}
             fitView
             fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
             proOptions={{ hideAttribution: true }}
@@ -457,20 +447,12 @@ function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId
             panOnDrag
             nodesDraggable={false}
             nodesConnectable={false}
-            elementsSelectable={false}
+            elementsSelectable
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
             <Controls showInteractive={false} />
           </ReactFlow>
         </ReactFlowProvider>
-        {edgeTooltip && (
-          <div
-            className="mockup-edge-tooltip"
-            style={{ left: edgeTooltip.x, top: edgeTooltip.y }}
-          >
-            {edgeTooltip.text}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -588,14 +570,65 @@ function EntityInspectorContent({ entity }: { entity: MockEntityDef }) {
   );
 }
 
+const EDGE_KIND_LABELS: Record<MockEdgeDef["kind"], string> = {
+  needs: "Causal dependency",
+  polls: "Non-blocking observation",
+  closed_by: "Closure cause",
+  channel_link: "Channel pairing",
+  rpc_link: "RPC pairing",
+};
+
+function EdgeInspectorContent({ edge }: { edge: MockEdgeDef }) {
+  const srcEntity = MOCK_ENTITIES.find((e) => e.id === edge.source);
+  const dstEntity = MOCK_ENTITIES.find((e) => e.id === edge.target);
+  const tooltip = edgeTooltip(edge.kind, srcEntity?.name ?? edge.source, dstEntity?.name ?? edge.target);
+  const isStructural = edge.kind === "rpc_link" || edge.kind === "channel_link";
+
+  return (
+    <>
+      <div className="mockup-inspector-node-header">
+        <span className={`mockup-inspector-node-icon${isStructural ? "" : " mockup-inspector-node-icon--causal"}`}>
+          <LinkSimple size={16} weight="bold" />
+        </span>
+        <div className="mockup-inspector-node-header-text">
+          <div className="mockup-inspector-node-kind">{edge.kind}</div>
+          <div className="mockup-inspector-node-label">{EDGE_KIND_LABELS[edge.kind]}</div>
+        </div>
+      </div>
+
+      <div className="mockup-inspector-alert-slot" />
+
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
+          <span className="mockup-inspector-mono">{srcEntity?.name ?? edge.source}</span>
+        </KeyValueRow>
+        <KeyValueRow label="To" icon={dstEntity ? kindIcon(dstEntity.kind, 12) : undefined}>
+          <span className="mockup-inspector-mono">{dstEntity?.name ?? edge.target}</span>
+        </KeyValueRow>
+      </div>
+
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Meaning">
+          <span className="mockup-inspector-mono">{tooltip}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Type">
+          <Badge tone={isStructural ? "neutral" : edge.kind === "needs" ? "crit" : "warn"}>
+            {isStructural ? "structural" : "causal"}
+          </Badge>
+        </KeyValueRow>
+      </div>
+    </>
+  );
+}
+
 function MockInspectorPanel({
   collapsed,
   onToggleCollapse,
-  entity,
+  selection,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
-  entity: MockEntityDef | undefined;
+  selection: GraphSelection;
 }) {
   if (collapsed) {
     return (
@@ -610,6 +643,17 @@ function MockInspectorPanel({
     );
   }
 
+  let content: React.ReactNode;
+  if (selection?.kind === "entity") {
+    const entity = MOCK_ENTITIES.find((e) => e.id === selection.id);
+    content = entity ? <EntityInspectorContent entity={entity} /> : null;
+  } else if (selection?.kind === "edge") {
+    const edge = MOCK_EDGES.find((e) => e.id === selection.id);
+    content = edge ? <EdgeInspectorContent edge={edge} /> : null;
+  } else {
+    content = <div className="mockup-inspector-empty">Select an entity or edge</div>;
+  }
+
   return (
     <div className="mockup-inspector">
       <div className="mockup-inspector-header">
@@ -620,9 +664,7 @@ function MockInspectorPanel({
         </button>
       </div>
       <div className="mockup-inspector-body">
-        {entity ? <EntityInspectorContent entity={entity} /> : (
-          <div className="mockup-inspector-empty">Select an entity in the graph</div>
-        )}
+        {content}
       </div>
     </div>
   );
@@ -698,8 +740,7 @@ function MockMetaSection({ meta }: { meta: Record<string, MetaValue> }) {
 function DeadlockDetectorMockup() {
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
-  const [selectedEntityId, setSelectedEntityId] = useState<string | undefined>("resp_sleepy");
-  const selectedEntity = MOCK_ENTITIES.find((e) => e.id === selectedEntityId);
+  const [selection, setSelection] = useState<GraphSelection>({ kind: "entity", id: "resp_sleepy" });
 
   return (
     <div className="mockup-app">
@@ -722,15 +763,15 @@ function DeadlockDetectorMockup() {
       <SplitLayout
         left={
           <MockGraphPanel
-            selectedEntityId={selectedEntityId}
-            onSelectEntity={setSelectedEntityId}
+            selection={selection}
+            onSelect={setSelection}
           />
         }
         right={
           <MockInspectorPanel
             collapsed={inspectorCollapsed}
             onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
-            entity={selectedEntity}
+            selection={selection}
           />
         }
         rightWidth={inspectorWidth}
