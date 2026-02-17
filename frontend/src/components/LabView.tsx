@@ -259,25 +259,31 @@ function measureNodeDefs(defs: MockEntityDef[]): Map<string, { width: number; he
     const el = document.createElement("div");
     el.className = `mockup-node${def.inCycle ? " mockup-node--cycle" : ""}`;
 
-    // Main row: icon + label
-    const mainRow = document.createElement("div");
-    mainRow.className = "mockup-node-main";
+    // Icon
     const icon = document.createElement("span");
     icon.className = "mockup-node-icon";
-    icon.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;";
+    icon.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;";
+    el.appendChild(icon);
+
+    // Content wrapper
+    const content = document.createElement("div");
+    content.className = "mockup-node-content";
+
+    // Main row: label
+    const mainRow = document.createElement("div");
+    mainRow.className = "mockup-node-main";
     const label = document.createElement("span");
     label.className = "mockup-node-label";
     label.textContent = def.name;
-    mainRow.appendChild(icon);
     mainRow.appendChild(label);
-    el.appendChild(mainRow);
+    content.appendChild(mainRow);
 
     // Details row: badge · age · stat
     const details = document.createElement("div");
     details.className = "mockup-node-details";
     // Representative text for measurement — badge + age + optional stat
     const badgeEl = document.createElement("span");
-    badgeEl.className = "ui-badge ui-badge--standard ui-badge--neutral";
+    badgeEl.className = "badge badge--neutral";
     badgeEl.textContent = def.status.label;
     details.appendChild(badgeEl);
     const dot1 = document.createElement("span");
@@ -298,8 +304,9 @@ function measureNodeDefs(defs: MockEntityDef[]): Map<string, { width: number; he
       statEl.textContent = def.stat;
       details.appendChild(statEl);
     }
-    el.appendChild(details);
+    content.appendChild(details);
 
+    el.appendChild(content);
     container.appendChild(el);
     elements.push({ id: def.id, el });
   }
