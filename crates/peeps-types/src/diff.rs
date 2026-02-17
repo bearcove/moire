@@ -24,6 +24,10 @@ impl SeqNo {
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamId(pub CompactString);
 
+/// Logical barrier identifier used to coordinate multi-process "cuts".
+#[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CutId(pub CompactString);
+
 /// One canonical graph mutation in the append-only stream.
 #[derive(Facet)]
 #[repr(u8)]
@@ -76,6 +80,11 @@ pub struct PullChangesResponse {
     pub changes: Vec<StampedChange>,
     /// `true` when additional changes are available after this batch.
     pub truncated: bool,
+    /// When present, requested history before this cursor was compacted away.
+    ///
+    /// Consumers should rebuild from a checkpoint and resume from this cursor.
+    #[facet(skip_unless_truthy)]
+    pub compacted_before_seq_no: Option<SeqNo>,
 }
 
 /// Last durable/applied cursor for one stream.
@@ -83,6 +92,19 @@ pub struct PullChangesResponse {
 pub struct StreamCursor {
     pub stream_id: StreamId,
     pub next_seq_no: SeqNo,
+}
+
+/// Server-to-process request to acknowledge current cursor for a cut.
+#[derive(Facet)]
+pub struct CutRequest {
+    pub cut_id: CutId,
+}
+
+/// Process-to-server acknowledgement of cursor for a cut barrier.
+#[derive(Facet)]
+pub struct CutAck {
+    pub cut_id: CutId,
+    pub cursor: StreamCursor,
 }
 
 /// Optional periodic checkpoint to bound replay time.

@@ -1,16 +1,49 @@
 use compact_str::CompactString;
-use peeps_types::{Edge, EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget};
+use peeps_types::{
+    Change, ChannelDetails, ChannelEndpointEntity, ChannelEndpointLifecycle, CutAck, CutId, Edge,
+    EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, MpscChannelDetails,
+    PullChangesResponse, SeqNo, StampedChange, StreamCursor, StreamId,
+};
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
+use tokio::sync::mpsc;
 
 const MAX_EVENTS: usize = 16_384;
+const MAX_CHANGES_BEFORE_COMPACT: usize = 65_536;
+const COMPACT_TARGET_CHANGES: usize = 8_192;
+const DEFAULT_STREAM_ID_PREFIX: &str = "proc";
+
+pub fn init(_process_name: &str) {}
+
+pub fn spawn_tracked<F>(
+    name: impl Into<CompactString>,
+    fut: F,
+) -> tokio::task::JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(instrument_future_named(name, fut))
+}
 
 fn runtime_db() -> &'static Mutex<RuntimeDb> {
     static DB: OnceLock<Mutex<RuntimeDb>> = OnceLock::new();
-    DB.get_or_init(|| Mutex::new(RuntimeDb::new(MAX_EVENTS)))
+    DB.get_or_init(|| Mutex::new(RuntimeDb::new(runtime_stream_id(), MAX_EVENTS)))
+}
+
+fn runtime_stream_id() -> StreamId {
+    static STREAM_ID: OnceLock<StreamId> = OnceLock::new();
+    STREAM_ID
+        .get_or_init(|| {
+            StreamId(CompactString::from(format!(
+                "{DEFAULT_STREAM_ID_PREFIX}:{}",
+                std::process::id()
+            )))
+        })
+        .clone()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -21,58 +54,304 @@ struct EdgeKey {
 }
 
 struct RuntimeDb {
+    stream_id: StreamId,
+    next_seq_no: SeqNo,
+    compacted_before_seq_no: Option<SeqNo>,
     entities: BTreeMap<EntityId, Entity>,
     edges: BTreeMap<EdgeKey, Edge>,
     events: VecDeque<Event>,
+    changes: VecDeque<InternalStampedChange>,
     max_events: usize,
 }
 
 impl RuntimeDb {
-    fn new(max_events: usize) -> Self {
+    fn new(stream_id: StreamId, max_events: usize) -> Self {
         Self {
+            stream_id,
+            next_seq_no: SeqNo::ZERO,
+            compacted_before_seq_no: None,
             entities: BTreeMap::new(),
             edges: BTreeMap::new(),
             events: VecDeque::with_capacity(max_events.min(256)),
+            changes: VecDeque::new(),
             max_events,
         }
     }
 
+    fn push_change(&mut self, change: InternalChange) {
+        let seq_no = self.next_seq_no;
+        self.next_seq_no = self.next_seq_no.next();
+        self.changes
+            .push_back(InternalStampedChange { seq_no, change });
+        if self.changes.len() > MAX_CHANGES_BEFORE_COMPACT {
+            self.compact_changes();
+        }
+    }
+
+    fn compact_changes(&mut self) {
+        let old_front = self.changes.front().map(|c| c.seq_no);
+        if self.changes.len() <= COMPACT_TARGET_CHANGES {
+            return;
+        }
+
+        let mut keep_seq: BTreeMap<SeqNo, ()> = BTreeMap::new();
+        let mut seen_entities: BTreeMap<EntityId, ()> = BTreeMap::new();
+        let mut seen_edges: BTreeMap<EdgeKey, ()> = BTreeMap::new();
+
+        for stamped in self.changes.iter().rev() {
+            match &stamped.change {
+                InternalChange::AppendEvent { .. } => {
+                    keep_seq.insert(stamped.seq_no, ());
+                }
+                InternalChange::UpsertEntity { id, .. } | InternalChange::RemoveEntity { id } => {
+                    if !seen_entities.contains_key(id) {
+                        seen_entities.insert(EntityId::new(id.as_str()), ());
+                        keep_seq.insert(stamped.seq_no, ());
+                    }
+                }
+                InternalChange::UpsertEdge { src, dst, kind, .. }
+                | InternalChange::RemoveEdge { src, dst, kind } => {
+                    let key = EdgeKey {
+                        src: EntityId::new(src.as_str()),
+                        dst: EntityId::new(dst.as_str()),
+                        kind: *kind,
+                    };
+                    if !seen_edges.contains_key(&key) {
+                        seen_edges.insert(key, ());
+                        keep_seq.insert(stamped.seq_no, ());
+                    }
+                }
+            }
+            if keep_seq.len() >= COMPACT_TARGET_CHANGES {
+                break;
+            }
+        }
+
+        if keep_seq.len() == self.changes.len() {
+            return;
+        }
+
+        self.changes.retain(|c| keep_seq.contains_key(&c.seq_no));
+        let new_front = self.changes.front().map(|c| c.seq_no);
+        if let (Some(old_front), Some(new_front)) = (old_front, new_front) {
+            if new_front > old_front {
+                self.compacted_before_seq_no = Some(
+                    self.compacted_before_seq_no
+                        .map(|existing| existing.max(new_front))
+                        .unwrap_or(new_front),
+                );
+            }
+        }
+        // TODO: replace this with checkpoint-aware compaction once we plumb
+        // checkpoint materialization and replay handoff.
+    }
+
     fn upsert_entity(&mut self, entity: Entity) {
-        self.entities.insert(entity.id.clone(), entity);
+        let entity_id = EntityId::new(entity.id.as_str());
+        let entity_json = facet_json::to_vec(&entity).ok();
+        self.entities
+            .insert(EntityId::new(entity.id.as_str()), entity);
+        if let Some(entity_json) = entity_json {
+            self.push_change(InternalChange::UpsertEntity {
+                id: entity_id,
+                entity_json,
+            });
+        }
     }
 
     fn remove_entity(&mut self, id: &EntityId) {
-        self.entities.remove(id);
-        self.edges.retain(|k, _| &k.src != id && &k.dst != id);
+        if self.entities.remove(id).is_none() {
+            return;
+        }
+        let mut removed_edges: Vec<(EntityId, EntityId, EdgeKind)> = Vec::new();
+        self.edges.retain(|k, _| {
+            let remove = &k.src == id || &k.dst == id;
+            if remove {
+                removed_edges.push((
+                    EntityId::new(k.src.as_str()),
+                    EntityId::new(k.dst.as_str()),
+                    k.kind,
+                ));
+            }
+            !remove
+        });
+        for (src, dst, kind) in removed_edges {
+            self.push_change(InternalChange::RemoveEdge { src, dst, kind });
+        }
+        self.push_change(InternalChange::RemoveEntity {
+            id: EntityId::new(id.as_str()),
+        });
     }
 
     fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
         let key = EdgeKey {
-            src: src.clone(),
-            dst: dst.clone(),
+            src: EntityId::new(src.as_str()),
+            dst: EntityId::new(dst.as_str()),
             kind,
         };
+        if self.edges.contains_key(&key) {
+            return;
+        }
         let edge = Edge {
-            src: src.clone(),
-            dst: dst.clone(),
+            src: EntityId::new(src.as_str()),
+            dst: EntityId::new(dst.as_str()),
             kind,
             meta: facet_value::Value::NULL,
         };
+        let edge_json = facet_json::to_vec(&edge).ok();
         self.edges.insert(key, edge);
+        if let Some(edge_json) = edge_json {
+            self.push_change(InternalChange::UpsertEdge {
+                src: EntityId::new(src.as_str()),
+                dst: EntityId::new(dst.as_str()),
+                kind,
+                edge_json,
+            });
+        }
     }
 
     fn remove_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
-        self.edges.remove(&EdgeKey {
-            src: src.clone(),
-            dst: dst.clone(),
+        let removed = self.edges.remove(&EdgeKey {
+            src: EntityId::new(src.as_str()),
+            dst: EntityId::new(dst.as_str()),
             kind,
         });
+        if removed.is_some() {
+            self.push_change(InternalChange::RemoveEdge {
+                src: EntityId::new(src.as_str()),
+                dst: EntityId::new(dst.as_str()),
+                kind,
+            });
+        }
     }
 
     fn record_event(&mut self, event: Event) {
+        let event_json = facet_json::to_vec(&event).ok();
         self.events.push_back(event);
         while self.events.len() > self.max_events {
             self.events.pop_front();
+        }
+        if let Some(event_json) = event_json {
+            self.push_change(InternalChange::AppendEvent { event_json });
+        }
+    }
+
+    fn pull_changes_since(&self, from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
+        let compacted_before = self.compacted_before_seq_no;
+        let effective_from = compacted_before
+            .map(|compacted| {
+                if from_seq_no < compacted {
+                    compacted
+                } else {
+                    from_seq_no
+                }
+            })
+            .unwrap_or(from_seq_no);
+        let mut changes: Vec<StampedChange> = Vec::new();
+        let limit = max_changes as usize;
+        if limit == 0 {
+            let truncated = self.changes.iter().any(|c| c.seq_no >= effective_from);
+            return PullChangesResponse {
+                stream_id: self.stream_id.clone(),
+                from_seq_no: effective_from,
+                next_seq_no: effective_from,
+                changes,
+                truncated,
+                compacted_before_seq_no: compacted_before,
+            };
+        }
+
+        let mut scanned = 0usize;
+        let mut truncated = false;
+        let mut next_seq_no = effective_from;
+        for change in &self.changes {
+            if change.seq_no < effective_from {
+                continue;
+            }
+            if scanned >= limit {
+                truncated = true;
+                break;
+            }
+            scanned += 1;
+            next_seq_no = change.seq_no.next();
+            if let Some(decoded) = change.to_change() {
+                changes.push(StampedChange {
+                    seq_no: change.seq_no,
+                    change: decoded,
+                });
+            }
+        }
+
+        PullChangesResponse {
+            stream_id: self.stream_id.clone(),
+            from_seq_no: effective_from,
+            next_seq_no,
+            changes,
+            truncated,
+            compacted_before_seq_no: compacted_before,
+        }
+    }
+
+    fn current_cursor(&self) -> StreamCursor {
+        StreamCursor {
+            stream_id: self.stream_id.clone(),
+            next_seq_no: self.next_seq_no,
+        }
+    }
+}
+
+enum InternalChange {
+    UpsertEntity {
+        id: EntityId,
+        entity_json: Vec<u8>,
+    },
+    RemoveEntity {
+        id: EntityId,
+    },
+    UpsertEdge {
+        src: EntityId,
+        dst: EntityId,
+        kind: EdgeKind,
+        edge_json: Vec<u8>,
+    },
+    RemoveEdge {
+        src: EntityId,
+        dst: EntityId,
+        kind: EdgeKind,
+    },
+    AppendEvent {
+        event_json: Vec<u8>,
+    },
+}
+
+struct InternalStampedChange {
+    seq_no: SeqNo,
+    change: InternalChange,
+}
+
+impl InternalStampedChange {
+    fn to_change(&self) -> Option<Change> {
+        match &self.change {
+            InternalChange::UpsertEntity { entity_json, .. } => {
+                let entity = facet_json::from_slice::<Entity>(entity_json).ok()?;
+                Some(Change::UpsertEntity(entity))
+            }
+            InternalChange::RemoveEntity { id } => Some(Change::RemoveEntity {
+                id: EntityId::new(id.as_str()),
+            }),
+            InternalChange::UpsertEdge { edge_json, .. } => {
+                let edge = facet_json::from_slice::<Edge>(edge_json).ok()?;
+                Some(Change::UpsertEdge(edge))
+            }
+            InternalChange::RemoveEdge { src, dst, kind } => Some(Change::RemoveEdge {
+                src: EntityId::new(src.as_str()),
+                dst: EntityId::new(dst.as_str()),
+                kind: *kind,
+            }),
+            InternalChange::AppendEvent { event_json } => {
+                let event = facet_json::from_slice::<Event>(event_json).ok()?;
+                Some(Change::AppendEvent(event))
+            }
         }
     }
 }
@@ -133,7 +412,7 @@ impl EntityHandle {
 
     pub fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            id: self.inner.entity.id.clone(),
+            id: EntityId::new(self.inner.id.as_str()),
         }
     }
 
@@ -146,6 +425,100 @@ impl EntityHandle {
     pub fn link_to_handle(&self, target: &EntityHandle, kind: EdgeKind) {
         self.link_to(&target.entity_ref(), kind);
     }
+}
+
+pub struct Sender<T> {
+    inner: mpsc::Sender<T>,
+    handle: EntityHandle,
+    name: CompactString,
+}
+
+pub struct Receiver<T> {
+    inner: mpsc::Receiver<T>,
+    handle: EntityHandle,
+    name: CompactString,
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T> Sender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        instrument_future_on(
+            format!("{}.send", self.name),
+            &self.handle,
+            self.inner.send(value),
+        )
+        .await
+    }
+}
+
+impl<T> Receiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn recv(&mut self) -> Option<T> {
+        instrument_future_on(
+            format!("{}.recv", self.name),
+            &self.handle,
+            self.inner.recv(),
+        )
+        .await
+    }
+}
+
+pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+    let name = name.into();
+    let (tx, rx) = mpsc::channel(capacity);
+
+    let details = ChannelDetails::Mpsc(MpscChannelDetails {
+        capacity: Some(capacity.min(u32::MAX as usize) as u32),
+        queue_len: 0,
+    });
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    let details = ChannelDetails::Mpsc(MpscChannelDetails {
+        capacity: Some(capacity.min(u32::MAX as usize) as u32),
+        queue_len: 0,
+    });
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+
+    (
+        Sender {
+            inner: tx,
+            handle: tx_handle,
+            name: name.clone(),
+        },
+        Receiver {
+            inner: rx,
+            handle: rx_handle,
+            name,
+        },
+    )
 }
 
 pub trait SnapshotSink {
@@ -172,10 +545,44 @@ where
     }
 }
 
+pub fn pull_changes_since(from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
+    let stream_id = runtime_stream_id();
+    let Ok(db) = runtime_db().lock() else {
+        return PullChangesResponse {
+            stream_id,
+            from_seq_no,
+            next_seq_no: from_seq_no,
+            changes: Vec::new(),
+            truncated: false,
+            compacted_before_seq_no: None,
+        };
+    };
+    db.pull_changes_since(from_seq_no, max_changes)
+}
+
+pub fn current_cursor() -> StreamCursor {
+    let stream_id = runtime_stream_id();
+    let Ok(db) = runtime_db().lock() else {
+        return StreamCursor {
+            stream_id,
+            next_seq_no: SeqNo::ZERO,
+        };
+    };
+    db.current_cursor()
+}
+
+pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
+    CutAck {
+        cut_id: CutId(cut_id.into()),
+        cursor: current_cursor(),
+    }
+}
+
 pub struct InstrumentedFuture<F> {
     inner: F,
     future_handle: EntityHandle,
     target: Option<EntityRef>,
+    current_edge: Option<EdgeKind>,
 }
 
 impl<F> InstrumentedFuture<F> {
@@ -184,6 +591,7 @@ impl<F> InstrumentedFuture<F> {
             inner,
             future_handle,
             target,
+            current_edge: None,
         }
     }
 }
@@ -198,8 +606,11 @@ where
         let this = unsafe { self.get_unchecked_mut() };
 
         if let Some(target) = &this.target {
-            if let Ok(mut db) = runtime_db().lock() {
-                db.upsert_edge(this.future_handle.id(), target.id(), EdgeKind::Polls);
+            if this.current_edge.is_none() {
+                if let Ok(mut db) = runtime_db().lock() {
+                    db.upsert_edge(this.future_handle.id(), target.id(), EdgeKind::Polls);
+                }
+                this.current_edge = Some(EdgeKind::Polls);
             }
         }
 
@@ -207,9 +618,18 @@ where
         match poll {
             Poll::Pending => {
                 if let Some(target) = &this.target {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.remove_edge(this.future_handle.id(), target.id(), EdgeKind::Polls);
-                        db.upsert_edge(this.future_handle.id(), target.id(), EdgeKind::Needs);
+                    if this.current_edge != Some(EdgeKind::Needs) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            if this.current_edge == Some(EdgeKind::Polls) {
+                                db.remove_edge(
+                                    this.future_handle.id(),
+                                    target.id(),
+                                    EdgeKind::Polls,
+                                );
+                            }
+                            db.upsert_edge(this.future_handle.id(), target.id(), EdgeKind::Needs);
+                        }
+                        this.current_edge = Some(EdgeKind::Needs);
                     }
                 }
                 Poll::Pending
@@ -217,9 +637,11 @@ where
             Poll::Ready(output) => {
                 if let Some(target) = &this.target {
                     if let Ok(mut db) = runtime_db().lock() {
-                        db.remove_edge(this.future_handle.id(), target.id(), EdgeKind::Polls);
-                        db.remove_edge(this.future_handle.id(), target.id(), EdgeKind::Needs);
+                        if let Some(kind) = this.current_edge {
+                            db.remove_edge(this.future_handle.id(), target.id(), kind);
+                        }
                     }
+                    this.current_edge = None;
                 }
 
                 if let Ok(event) = Event::new(
@@ -265,5 +687,16 @@ macro_rules! peeps {
     }};
     (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
         $crate::instrument_future_on($name, &$on, $fut)
+    }};
+}
+
+#[macro_export]
+macro_rules! peep {
+    ($fut:expr, $name:expr $(,)?) => {{
+        $crate::instrument_future_named($name, $fut)
+    }};
+    ($fut:expr, $name:expr, $meta:tt $(,)?) => {{
+        let _ = &$meta;
+        $crate::instrument_future_named($name, $fut)
     }};
 }

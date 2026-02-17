@@ -1,6 +1,6 @@
 use compact_str::CompactString;
 use facet::Facet;
-use peeps_types::Snapshot;
+use peeps_types::{CutAck, CutRequest, Snapshot};
 use std::fmt;
 
 pub const DEFAULT_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
@@ -150,6 +150,7 @@ pub struct ClientError {
 pub enum ClientMessage {
     Handshake(Handshake),
     SnapshotReply(SnapshotReply),
+    CutAck(CutAck),
     Error(ClientError),
 }
 
@@ -158,6 +159,7 @@ pub enum ClientMessage {
 #[facet(rename_all = "snake_case")]
 pub enum ServerMessage {
     SnapshotRequest(SnapshotRequest),
+    CutRequest(CutRequest),
 }
 
 pub fn encode_client_message(

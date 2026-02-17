@@ -802,6 +802,7 @@ dependencies = [
  "facet-value",
  "peeps-sqlite-facet",
  "peeps-types",
+ "tokio",
 ]
 
 [[package]]
