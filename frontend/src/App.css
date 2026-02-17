@@ -1293,6 +1293,34 @@
     font-weight: 500;
 }
 
+.mockup-node-stat--crit {
+    color: light-dark(#d30000, #ff6b6b);
+    font-weight: 700;
+}
+
+.mockup-node-stat--warn {
+    color: light-dark(#bf5600, #ffa94d);
+    font-weight: 700;
+}
+
+.mockup-node--stat-crit {
+    border-color: light-dark(#d30000, #ff6b6b);
+    background: light-dark(#fff5f5, #2a1414);
+}
+
+.mockup-node--stat-crit .mockup-node-icon {
+    color: light-dark(#d30000, #ff6b6b);
+}
+
+.mockup-node--stat-warn {
+    border-color: light-dark(#bf5600, #ffa94d);
+    background: light-dark(#fff9f0, #2a1f10);
+}
+
+.mockup-node--stat-warn .mockup-node-icon {
+    color: light-dark(#bf5600, #ffa94d);
+}
+
 .mockup-inspector-empty {
     padding: 24px 16px;
     text-align: center;

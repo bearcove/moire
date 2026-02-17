@@ -81,6 +81,7 @@ export type EntityDef = {
   inCycle: boolean;
   status: { label: string; tone: Tone };
   stat?: string;
+  statTone?: Tone;
 };
 
 export type EdgeDef = {
@@ -155,6 +156,20 @@ function deriveStat(body: EntityBody): string | undefined {
   return undefined;
 }
 
+function deriveStatTone(body: EntityBody): Tone | undefined {
+  if (typeof body === "string") return undefined;
+  if ("channel_tx" in body || "channel_rx" in body) {
+    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
+    if ("mpsc" in ep.details && ep.details.mpsc.buffer) {
+      const { occupancy, capacity } = ep.details.mpsc.buffer;
+      if (capacity == null) return undefined;
+      if (occupancy >= capacity) return "crit";
+      if (occupancy / capacity >= 0.75) return "warn";
+    }
+  }
+  return undefined;
+}
+
 function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<string> {
   const adj = new Map<string, string[]>();
   for (const e of edges) {
@@ -214,6 +229,7 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
         inCycle: false,
         status: deriveStatus(e.body),
         stat: deriveStat(e.body),
+        statTone: deriveStatTone(e.body),
       });
     }
 
@@ -259,7 +275,12 @@ function measureNodeDefs(defs: EntityDef[]): Map<string, { width: number; height
   const elements: { id: string; el: HTMLDivElement }[] = [];
   for (const def of defs) {
     const el = document.createElement("div");
-    el.className = `mockup-node${def.inCycle ? " mockup-node--cycle" : ""}`;
+    el.className = [
+      "mockup-node",
+      def.inCycle && "mockup-node--cycle",
+      def.statTone === "crit" && "mockup-node--stat-crit",
+      def.statTone === "warn" && "mockup-node--stat-warn",
+    ].filter(Boolean).join(" ");
 
     const icon = document.createElement("span");
     icon.className = "mockup-node-icon";
@@ -297,7 +318,11 @@ function measureNodeDefs(defs: EntityDef[]): Map<string, { width: number; height
       dot2.textContent = "·";
       details.appendChild(dot2);
       const statEl = document.createElement("span");
-      statEl.className = "mockup-node-stat";
+      statEl.className = [
+        "mockup-node-stat",
+        def.statTone === "crit" && "mockup-node-stat--crit",
+        def.statTone === "warn" && "mockup-node-stat--warn",
+      ].filter(Boolean).join(" ");
       statEl.textContent = def.stat;
       details.appendChild(statEl);
     }
@@ -388,6 +413,7 @@ async function layoutGraph(
       status: def.status,
       ageMs: def.ageMs,
       stat: def.stat,
+      statTone: def.statTone,
     },
   }));
 
@@ -432,6 +458,7 @@ type MockNodeData = {
   status: { label: string; tone: Tone };
   ageMs: number;
   stat?: string;
+  statTone?: Tone;
 };
 
 function MockNodeComponent({ data }: { data: MockNodeData }) {
@@ -439,7 +466,13 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
     <>
       <Handle type="target" position={Position.Top} style={hiddenHandle} />
       <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
-      <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}${data.selected ? " mockup-node--selected" : ""}`}>
+      <div className={[
+        "mockup-node",
+        data.inCycle && "mockup-node--cycle",
+        data.selected && "mockup-node--selected",
+        data.statTone === "crit" && "mockup-node--stat-crit",
+        data.statTone === "warn" && "mockup-node--stat-warn",
+      ].filter(Boolean).join(" ")}>
         <span className="mockup-node-icon">{kindIcon(data.kind, 18)}</span>
         <div className="mockup-node-content">
           <div className="mockup-node-main">
@@ -452,7 +485,11 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
             {data.stat && (
               <>
                 <span className="mockup-node-dot">&middot;</span>
-                <span className="mockup-node-stat">{data.stat}</span>
+                <span className={[
+                  "mockup-node-stat",
+                  data.statTone === "crit" && "mockup-node-stat--crit",
+                  data.statTone === "warn" && "mockup-node-stat--warn",
+                ].filter(Boolean).join(" ")}>{data.stat}</span>
               </>
             )}
           </div>
@@ -893,7 +930,7 @@ function EntityInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocu
           <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>{entity.processId}</span>
         </KeyValueRow>
         <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
-          <a className="mockup-inspector-source-link" href="#" title="Open in editor">
+          <a className="mockup-inspector-source-link" href={`zed://file${entity.source}`} title="Open in Zed">
             {entity.source}
           </a>
         </KeyValueRow>
