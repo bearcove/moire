@@ -3804,20 +3804,106 @@ pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
 pub struct InstrumentedFuture<F> {
     inner: F,
     future_handle: EntityHandle,
-    target: Option<EntityRef>,
+    awaited_by: Option<FutureEdgeRelation>,
+    waits_on: Option<FutureEdgeRelation>,
+}
+
+#[derive(Clone, Copy)]
+enum FutureEdgeDirection {
+    ParentToChild,
+    ChildToTarget,
+}
+
+struct FutureEdgeRelation {
+    target: EntityRef,
+    direction: FutureEdgeDirection,
     current_edge: Option<EdgeKind>,
+}
+
+impl FutureEdgeRelation {
+    fn new(target: EntityRef, direction: FutureEdgeDirection) -> Self {
+        Self {
+            target,
+            direction,
+            current_edge: None,
+        }
+    }
 }
 
 impl<F> InstrumentedFuture<F> {
     fn new(inner: F, future_handle: EntityHandle, target: Option<EntityRef>) -> Self {
-        let target = target.or_else(current_causal_target);
+        let awaited_by = current_causal_target().and_then(|parent| {
+            if parent.id().as_str() == future_handle.id().as_str() {
+                None
+            } else {
+                Some(FutureEdgeRelation::new(
+                    parent,
+                    FutureEdgeDirection::ParentToChild,
+                ))
+            }
+        });
+        let waits_on = target.map(|target| {
+            FutureEdgeRelation::new(target, FutureEdgeDirection::ChildToTarget)
+        });
         Self {
             inner,
             future_handle,
-            target,
-            current_edge: None,
+            awaited_by,
+            waits_on,
         }
     }
+}
+
+fn future_relation_endpoints(
+    future_id: &EntityId,
+    relation: &FutureEdgeRelation,
+) -> (EntityId, EntityId) {
+    match relation.direction {
+        FutureEdgeDirection::ParentToChild => (
+            EntityId::new(relation.target.id().as_str()),
+            EntityId::new(future_id.as_str()),
+        ),
+        FutureEdgeDirection::ChildToTarget => (
+            EntityId::new(future_id.as_str()),
+            EntityId::new(relation.target.id().as_str()),
+        ),
+    }
+}
+
+fn ensure_relation_polls_edge(future_id: &EntityId, relation: &mut FutureEdgeRelation) {
+    if relation.current_edge.is_some() {
+        return;
+    }
+    let (src, dst) = future_relation_endpoints(future_id, relation);
+    if let Ok(mut db) = runtime_db().lock() {
+        db.upsert_edge(&src, &dst, EdgeKind::Polls);
+    }
+    relation.current_edge = Some(EdgeKind::Polls);
+}
+
+fn ensure_relation_needs_edge(future_id: &EntityId, relation: &mut FutureEdgeRelation) {
+    if relation.current_edge == Some(EdgeKind::Needs) {
+        return;
+    }
+    let (src, dst) = future_relation_endpoints(future_id, relation);
+    if let Ok(mut db) = runtime_db().lock() {
+        if relation.current_edge == Some(EdgeKind::Polls) {
+            db.remove_edge(&src, &dst, EdgeKind::Polls);
+        }
+        db.upsert_edge(&src, &dst, EdgeKind::Needs);
+    }
+    relation.current_edge = Some(EdgeKind::Needs);
+}
+
+fn clear_relation_edge(future_id: &EntityId, relation: &mut FutureEdgeRelation) {
+    let Some(kind) = relation.current_edge else {
+        return;
+    };
+    let (src, dst) = future_relation_endpoints(future_id, relation);
+    if let Ok(mut db) = runtime_db().lock() {
+        db.remove_edge(&src, &dst, kind);
+    }
+    relation.current_edge = None;
 }
 
 impl<F> Future for InstrumentedFuture<F>
@@ -3828,21 +3914,20 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
+        let future_id = EntityId::new(this.future_handle.id().as_str());
         let pushed = FUTURE_CAUSAL_STACK
             .try_with(|stack| {
                 stack
                     .borrow_mut()
-                    .push(EntityId::new(this.future_handle.id().as_str()));
+                    .push(EntityId::new(future_id.as_str()));
             })
             .is_ok();
 
-        if let Some(target) = &this.target {
-            if this.current_edge.is_none() {
-                if let Ok(mut db) = runtime_db().lock() {
-                    db.upsert_edge(this.future_handle.id(), target.id(), EdgeKind::Polls);
-                }
-                this.current_edge = Some(EdgeKind::Polls);
-            }
+        if let Some(relation) = this.awaited_by.as_mut() {
+            ensure_relation_polls_edge(&future_id, relation);
+        }
+        if let Some(relation) = this.waits_on.as_mut() {
+            ensure_relation_polls_edge(&future_id, relation);
         }
 
         let poll = unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx);
@@ -3853,35 +3938,24 @@ where
         }
         match poll {
             Poll::Pending => {
-                if let Some(target) = &this.target {
-                    if this.current_edge != Some(EdgeKind::Needs) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            if this.current_edge == Some(EdgeKind::Polls) {
-                                db.remove_edge(
-                                    this.future_handle.id(),
-                                    target.id(),
-                                    EdgeKind::Polls,
-                                );
-                            }
-                            db.upsert_edge(this.future_handle.id(), target.id(), EdgeKind::Needs);
-                        }
-                        this.current_edge = Some(EdgeKind::Needs);
-                    }
+                if let Some(relation) = this.awaited_by.as_mut() {
+                    ensure_relation_needs_edge(&future_id, relation);
+                }
+                if let Some(relation) = this.waits_on.as_mut() {
+                    ensure_relation_needs_edge(&future_id, relation);
                 }
                 Poll::Pending
             }
             Poll::Ready(output) => {
-                if let Some(target) = &this.target {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        if let Some(kind) = this.current_edge {
-                            db.remove_edge(this.future_handle.id(), target.id(), kind);
-                        }
-                    }
-                    this.current_edge = None;
+                if let Some(relation) = this.awaited_by.as_mut() {
+                    clear_relation_edge(&future_id, relation);
+                }
+                if let Some(relation) = this.waits_on.as_mut() {
+                    clear_relation_edge(&future_id, relation);
                 }
 
                 if let Ok(event) = Event::new(
-                    EventTarget::Entity(this.future_handle.id().clone()),
+                    EventTarget::Entity(future_id),
                     EventKind::StateChanged,
                     &(),
                 ) {
@@ -3898,14 +3972,12 @@ where
 
 impl<F> Drop for InstrumentedFuture<F> {
     fn drop(&mut self) {
-        let Some(target) = &self.target else {
-            return;
-        };
-        let Some(kind) = self.current_edge else {
-            return;
-        };
-        if let Ok(mut db) = runtime_db().lock() {
-            db.remove_edge(self.future_handle.id(), target.id(), kind);
+        let future_id = EntityId::new(self.future_handle.id().as_str());
+        if let Some(relation) = self.awaited_by.as_mut() {
+            clear_relation_edge(&future_id, relation);
+        }
+        if let Some(relation) = self.waits_on.as_mut() {
+            clear_relation_edge(&future_id, relation);
         }
     }
 }
@@ -4025,6 +4097,10 @@ mod tests {
         })
     }
 
+    fn edge_exists_any(src: &EntityId, dst: &EntityId) -> bool {
+        edge_exists(src, dst, EdgeKind::Needs) || edge_exists(src, dst, EdgeKind::Polls)
+    }
+
     fn entity_exists(id: &EntityId) -> bool {
         let db = runtime_db().lock().expect("runtime db lock should be available");
         db.entities.contains_key(id)
@@ -4131,7 +4207,7 @@ mod tests {
             let Some(child_id) = entity_id_by_name("test.child.future") else {
                 continue;
             };
-            if edge_exists(&child_id, &parent_id, EdgeKind::Needs) {
+            if edge_exists(&parent_id, &child_id, EdgeKind::Needs) {
                 found = true;
                 break;
             }
@@ -4143,6 +4219,46 @@ mod tests {
         assert!(
             found,
             "expected child future to link to parent future via needs edge"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn peep_with_on_keeps_parent_and_resource_chain() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let target = EntityHandle::new("test.resource.target", EntityBody::Future);
+        let target_id = EntityId::new(target.id().as_str());
+        let parent = spawn_tracked("test.parent.with_on", async move {
+            crate::peeps!(
+                name = "test.child.with_on",
+                on = target,
+                fut = std::future::pending::<()>()
+            )
+            .await;
+        });
+
+        let mut chain_found = false;
+        for _ in 0..64 {
+            tokio::task::yield_now().await;
+            let Some(parent_id) = entity_id_by_name("test.parent.with_on") else {
+                continue;
+            };
+            let Some(child_id) = entity_id_by_name("test.child.with_on") else {
+                continue;
+            };
+            if edge_exists_any(&parent_id, &child_id) && edge_exists_any(&child_id, &target_id) {
+                chain_found = true;
+                break;
+            }
+        }
+
+        parent.abort();
+        let _ = parent.await;
+
+        assert!(
+            chain_found,
+            "expected parent->child and child->target await chain edges"
         );
     }
 }

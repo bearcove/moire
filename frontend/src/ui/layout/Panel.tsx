@@ -1,4 +1,5 @@
 import type React from "react";
+import "./Panel.css";
 
 export function Panel({
   variant,

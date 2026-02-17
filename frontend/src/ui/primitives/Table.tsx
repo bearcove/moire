@@ -1,4 +1,5 @@
 import type React from "react";
+import "./Table.css";
 
 export type Column<T> = {
   key: string;

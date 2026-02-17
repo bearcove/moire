@@ -4,6 +4,7 @@ import {
   SliderThumb,
   SliderTrack,
 } from "react-aria-components";
+import "./Slider.css";
 
 export function Slider({
   className,

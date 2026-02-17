@@ -1,0 +1,29 @@
+.ui-process-identicon {
+    display: inline-block;
+    vertical-align: middle;
+    border-radius: 2px;
+    background: light-dark(#f0f0f2, #2a2a2e);
+    flex-shrink: 0;
+}
+
+.ui-identicon-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ui-identicon-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-size-sm);
+    overflow: hidden;
+    min-width: 0;
+}
+
+.ui-identicon-cell span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}

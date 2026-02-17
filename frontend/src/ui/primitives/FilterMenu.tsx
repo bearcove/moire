@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState } from "react";
+import "./FilterMenu.css";
 import {
   Button,
   Dialog,

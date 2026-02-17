@@ -1,0 +1,40 @@
+/* ── Segment group ─────────────────────────────────────── */
+
+.ui-segmented-group {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    background: light-dark(#eae7e2, #0f0e0d);
+    padding: 2px;
+    gap: 2px;
+}
+
+.ui-segmented-option {
+    border: none;
+    background: transparent;
+    color: light-dark(#6e6e73, #807a73);
+    padding: 0 10px;
+    height: 24px;
+    border-radius: 4px;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+.ui-segmented-option--selected {
+    background: light-dark(#fff, #33302c);
+    color: light-dark(#1d1d1f, #e5e5e7);
+    box-shadow: 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.5));
+}
+
+.ui-segmented-option:hover:not(.ui-segmented-option--selected) {
+    background: light-dark(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.06));
+}
+
+.ui-segmented-group--sm .ui-segmented-option {
+    padding: 0 8px;
+    height: 20px;
+    font-size: 11px;
+}

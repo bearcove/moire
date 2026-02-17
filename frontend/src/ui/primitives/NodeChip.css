@@ -1,0 +1,47 @@
+.ui-node-chip {
+    display: inline-flex;
+    width: fit-content;
+    min-width: 0;
+    max-width: fit-content;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    height: 24px;
+    border-radius: 4px;
+    border: none;
+    background: light-dark(#eae7e2, #2a2722);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    overflow: hidden;
+}
+
+.ui-node-chip:hover {
+    background: light-dark(#dfdbd5, #35312b);
+}
+
+.ui-node-chip:hover .ui-node-chip__icon {
+    background: light-dark(#d5d1cb, #302c26);
+}
+
+.ui-node-chip__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0 6px;
+    background: light-dark(#dfdbd5, #221f1b);
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.ui-node-chip__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+}

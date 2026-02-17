@@ -1,4 +1,5 @@
 import type React from "react";
+import "./Section.css";
 
 export function Section({
   title,

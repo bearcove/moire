@@ -8,6 +8,7 @@ import {
 } from "react-aria-components";
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import type React from "react";
+import "./SearchInput.css";
 
 export type SearchSuggestion = {
   id: string;

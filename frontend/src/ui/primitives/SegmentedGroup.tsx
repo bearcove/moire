@@ -1,5 +1,6 @@
 import type React from "react";
 import { RadioGroup, Radio } from "react-aria-components";
+import "./SegmentedGroup.css";
 
 export type SegmentedOption = {
   value: string;

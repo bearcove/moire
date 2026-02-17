@@ -1,5 +1,6 @@
 import type React from "react";
 import { kindIcon } from "../../nodeKindSpec";
+import "./NodeChip.css";
 
 export type NodeChipProps = {
   label: React.ReactNode;

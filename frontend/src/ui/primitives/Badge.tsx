@@ -1,4 +1,5 @@
 import type React from "react";
+import "./Badge.css";
 
 export type BadgeTone = "neutral" | "ok" | "warn" | "crit";
 export type BadgeVariant = "standard" | "count";

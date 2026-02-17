@@ -1,0 +1,39 @@
+.ui-relative-timestamp {
+    display: inline;
+    cursor: default;
+    font-weight: 500;
+}
+
+.ui-relative-timestamp__prefix {
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.ui-relative-timestamp--ok .ui-relative-timestamp__value {
+    color: light-dark(#155724, #75b798);
+}
+
+.ui-relative-timestamp--warn .ui-relative-timestamp__value {
+    color: light-dark(#856404, #ffc107);
+}
+
+.ui-relative-timestamp--crit .ui-relative-timestamp__value {
+    color: light-dark(#721c24, #ff6b6b);
+}
+
+.ui-relative-timestamp-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.ui-relative-timestamp-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ui-relative-timestamp-caption {
+    color: light-dark(#6e6e73, #98989d);
+    font-size: 11px;
+}

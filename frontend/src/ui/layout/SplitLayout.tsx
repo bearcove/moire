@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import "./SplitLayout.css";
 
 export type SplitLayoutProps = {
   left: ReactNode;

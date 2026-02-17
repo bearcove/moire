@@ -1,5 +1,6 @@
 import type React from "react";
 import { Checkbox as AriaCheckbox } from "react-aria-components";
+import "./Checkbox.css";
 import { Check } from "@phosphor-icons/react";
 
 export function Checkbox({

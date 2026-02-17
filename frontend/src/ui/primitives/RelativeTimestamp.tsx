@@ -1,4 +1,5 @@
 import type React from "react";
+import "./RelativeTimestamp.css";
 
 export type RelativeTimestampTone = "neutral" | "ok" | "warn" | "crit";
 

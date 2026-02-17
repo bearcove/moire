@@ -1,5 +1,6 @@
 import type React from "react";
 import { Input, TextField } from "react-aria-components";
+import "./TextInput.css";
 
 export function TextInput({
   value,

@@ -1,0 +1,32 @@
+.ui-key-value-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: var(--font-size-sm);
+    min-height: 22px;
+}
+
+.ui-key-value-row__label {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: light-dark(#6e6e73, #98989d);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ui-key-value-row__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 12px;
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.ui-key-value-row__value {
+    flex: 1;
+    min-width: 0;
+    word-break: break-all;
+    font-weight: 500;
+}

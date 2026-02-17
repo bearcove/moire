@@ -1,5 +1,6 @@
 import type React from "react";
 import { DotOutline } from "@phosphor-icons/react";
+import "./KeyValueRow.css";
 
 export type KeyValueRowProps = {
   label: React.ReactNode;

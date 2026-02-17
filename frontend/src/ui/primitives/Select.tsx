@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "react-aria-components";
 import { CaretDown } from "@phosphor-icons/react";
+import "./Select.css";
 
 export type SelectOption = {
   value: string;

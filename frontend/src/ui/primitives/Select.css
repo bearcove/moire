@@ -1,0 +1,64 @@
+.ui-select {
+    position: relative;
+}
+
+.ui-select-trigger {
+    height: 28px;
+    padding: 0 8px;
+    min-width: 140px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: inherit;
+    font-family: var(--font-ui);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.ui-select-trigger[data-focused],
+.ui-select-trigger[data-focus-visible],
+.ui-select[data-open] .ui-select-trigger {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--focus-ring);
+    border-color: light-dark(#a09888, #665e52);
+}
+
+.ui-select-popover {
+    min-width: var(--trigger-width);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-raised);
+    box-shadow: 0 6px 16px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.40));
+    padding: 3px;
+    z-index: 20;
+}
+
+.ui-select-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    outline: none;
+}
+
+.ui-select-item {
+    border-radius: 2px;
+    color: inherit;
+    font-size: var(--font-size-sm);
+    padding: 4px 8px;
+    cursor: default;
+    outline: none;
+}
+
+.ui-select-item[data-focused],
+.ui-select-item[data-hovered] {
+    background: var(--surface-hover);
+}
+
+.ui-select-item[data-selected] {
+    font-weight: 700;
+}

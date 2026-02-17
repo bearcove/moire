@@ -1,0 +1,84 @@
+.ui-table {
+    border: 1px solid light-dark(#d2d2d7, #2a2a2e);
+    border-radius: 3px;
+    background: light-dark(#ffffff, #1a1a1e);
+}
+
+.ui-table-header {
+    display: grid;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: light-dark(#f6f6f8, #1c1c20);
+    border-bottom: 1px solid light-dark(#d2d2d7, #2a2a2e);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.ui-table-header-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-align: left;
+    padding: 4px 8px;
+    overflow: hidden;
+}
+
+.ui-table-sortable {
+    border: none;
+    background: transparent;
+    width: 100%;
+    padding: 4px 8px;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+.ui-table-sort-indicator {
+    color: light-dark(#3a3a3f, #d0d0d6);
+    font-size: 10px;
+    line-height: 1;
+}
+
+.ui-table-row {
+    display: grid;
+    font-size: var(--font-size-sm);
+    padding: 4px 0;
+    border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.06));
+}
+
+.ui-table-row--clickable {
+    cursor: default;
+    cursor: pointer;
+}
+
+.ui-table-row:last-child {
+    border-bottom: none;
+}
+
+.ui-table-row:hover {
+    background: light-dark(#f7f7f9, #222226);
+}
+
+.ui-table-row--selected {
+    background: light-dark(#d4e4fc, #1e2d44);
+}
+
+.ui-table-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 8px;
+    min-width: 0;
+}
+
+.ui-table .ui-node-chip {
+    max-width: 100%;
+}

@@ -1,4 +1,5 @@
 import type React from "react";
+import "./ProcessIdenticon.css";
 
 function djb2(value: string): number {
   let h = 5381;

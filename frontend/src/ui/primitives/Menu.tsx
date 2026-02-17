@@ -6,6 +6,7 @@ import {
   MenuTrigger,
   Popover,
 } from "react-aria-components";
+import "./Menu.css";
 
 export type MenuOption = {
   id: string;

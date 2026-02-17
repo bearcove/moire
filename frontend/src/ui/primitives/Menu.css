@@ -1,0 +1,63 @@
+.ui-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-raised);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: inherit;
+    user-select: none;
+    cursor: pointer;
+}
+
+.ui-menu-trigger[data-focused],
+.ui-menu-trigger[data-focus-visible],
+.ui-menu-trigger[data-pressed],
+.ui-menu-trigger[data-open] {
+    box-shadow: 0 0 0 2px var(--focus-ring);
+    border-color: light-dark(#a09888, #665e52);
+}
+
+.ui-menu-popover {
+    min-width: 180px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-raised);
+    box-shadow: 0 6px 16px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.40));
+    padding: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    z-index: 20;
+}
+
+.ui-menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    outline: none;
+}
+
+.ui-menu-item {
+    border-radius: 2px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font-family: var(--font-ui);
+    font-size: var(--font-size-sm);
+    padding: 4px 8px;
+    cursor: default;
+    outline: none;
+}
+
+.ui-menu-item[data-focused],
+.ui-menu-item[data-hovered] {
+    background: var(--surface-hover);
+}
+
+.ui-menu-item--danger {
+    color: light-dark(#721c24, #ff6b6b);
+}

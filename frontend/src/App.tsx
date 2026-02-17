@@ -1,4 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import "./App.css";
+import "./components/graph/graph.css";
+import "./components/inspector/inspector.css";
+import "./components/requests/requests.css";
+import "./components/timeline/timeline.css";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -532,7 +537,7 @@ function GraphFlow({
   const { fitView } = useReactFlow();
 
   useEffect(() => {
-    fitView({ padding: 0.3, maxZoom: 1.2, duration: 300 });
+    fitView({ padding: 0.3, maxZoom: 1.2, duration: 0 });
   }, [nodes, edges, fitView]);
 
   return (
@@ -579,6 +584,7 @@ function GraphPanel({
   onSelect,
   focusedEntityId,
   onExitFocus,
+  waitingForProcesses,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
@@ -587,6 +593,7 @@ function GraphPanel({
   onSelect: (sel: GraphSelection) => void;
   focusedEntityId: string | null;
   onExitFocus: () => void;
+  waitingForProcesses: boolean;
 }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
@@ -619,15 +626,22 @@ function GraphPanel({
         <div className="mockup-graph-empty">
           {isBusy
             ? <><CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" /> {GRAPH_EMPTY_MESSAGES[snapPhase]}</>
-            : snapPhase === "idle"
+            : snapPhase === "idle" && waitingForProcesses
               ? (
                 <>
-                  <Camera size={32} weight="thin" className="mockup-graph-empty-icon" />
-                  <span>{GRAPH_EMPTY_MESSAGES[snapPhase]}</span>
-                  <span className="mockup-graph-empty-hint">Press "Take Snapshot" to capture the current state of all connected processes</span>
+                  <CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" />
+                  <span>Waiting for a process to connect…</span>
                 </>
               )
-              : GRAPH_EMPTY_MESSAGES[snapPhase]
+              : snapPhase === "idle"
+                ? (
+                  <>
+                    <Camera size={32} weight="thin" className="mockup-graph-empty-icon" />
+                    <span>{GRAPH_EMPTY_MESSAGES[snapPhase]}</span>
+                    <span className="mockup-graph-empty-hint">Press "Take Snapshot" to capture the current state of all connected processes</span>
+                  </>
+                )
+                : GRAPH_EMPTY_MESSAGES[snapPhase]
           }
         </div>
       </div>
@@ -1158,12 +1172,25 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    apiClient.fetchConnections().then((conns) => {
-      setConnections(conns);
-      if (conns.connected_processes > 0) {
-        takeSnapshot();
+    let cancelled = false;
+    async function poll() {
+      while (!cancelled) {
+        try {
+          const conns = await apiClient.fetchConnections();
+          if (cancelled) break;
+          setConnections(conns);
+          if (conns.connected_processes > 0) {
+            takeSnapshot();
+            break;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 2000));
       }
-    }).catch(console.error);
+    }
+    poll();
+    return () => { cancelled = true; };
   }, [takeSnapshot]);
 
   useEffect(() => {
@@ -1188,6 +1215,7 @@ export function App() {
     : "Take Snapshot";
 
   const connCount = connections?.connected_processes ?? 0;
+  const waitingForProcesses = connCount === 0 && snap.phase === "idle";
 
   return (
     <div className="mockup-app">
@@ -1203,7 +1231,10 @@ export function App() {
           onClick={() => setShowProcessModal(true)}
           title="Click to see connected processes"
         >
-          {connCount} {connCount === 1 ? "process" : "processes"}
+          {waitingForProcesses
+            ? <><CircleNotch size={11} weight="bold" className="spinning" /> waiting…</>
+            : <>{connCount} {connCount === 1 ? "process" : "processes"}</>
+          }
         </button>
         {apiMode === "lab" ? (
           <span className="mockup-header-badge">mock data</span>
@@ -1235,6 +1266,7 @@ export function App() {
             onSelect={setSelection}
             focusedEntityId={focusedEntityId}
             onExitFocus={() => setFocusedEntityId(null)}
+            waitingForProcesses={waitingForProcesses}
           />
         }
         right={
