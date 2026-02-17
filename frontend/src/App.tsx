@@ -21,6 +21,7 @@ const FLOW_NODE_WIDTH = 210;
 const FLOW_NODE_HEIGHT = 64;
 const CONNECTION_POLL_MS = 1000;
 const CUT_STATUS_POLL_MS = 600;
+const WEBSOCKET_URL = import.meta.env.VITE_PEEPS_WS_URL ?? "ws://127.0.0.1:9119";
 
 function buildFlowGraph(
   connections: ConnectedProcessInfo[],
@@ -262,7 +263,7 @@ export function App() {
           <h1>Peeps Frontend Scaffold</h1>
           <p>
             HTTP is proxied by Vite (`/api` to `127.0.0.1:9130`). Ingest remains direct on
-            `127.0.0.1:9119`.
+            `{WEBSOCKET_URL}`.
           </p>
         </div>
         <div className="topbar-actions">

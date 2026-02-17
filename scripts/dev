@@ -28,4 +28,14 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-wait -n "$backend_pid" "$frontend_pid"
+while true; do
+  if ! kill -0 "$backend_pid" >/dev/null 2>&1; then
+    wait "$backend_pid"
+    exit $?
+  fi
+  if ! kill -0 "$frontend_pid" >/dev/null 2>&1; then
+    wait "$frontend_pid"
+    exit $?
+  fi
+  sleep 1
+done
