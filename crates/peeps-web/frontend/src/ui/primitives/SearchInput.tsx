@@ -68,7 +68,7 @@ export function SearchInput({
         </Button>
       </div>
       {showSuggestions && (
-        <Popover className="ui-search-popover" placement="bottom start" offset={6}>
+        <Popover className="ui-search-popover" placement="bottom start" offset={0}>
           <div className="ui-search-results">
             {resultHint && (
               <div className="ui-search-results-head">{resultHint}</div>

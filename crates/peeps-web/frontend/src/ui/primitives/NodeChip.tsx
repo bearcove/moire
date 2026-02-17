@@ -50,19 +50,29 @@ export function NodeChip({
     );
   }
 
-  return (
-    <button
-      type="button"
-      className={chipClassName}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-    >
+  const content = (
+    <>
       {iconNode && (
         <span className="ui-node-chip__icon" aria-hidden="true">
           {iconNode}
         </span>
       )}
       <span className="ui-node-chip__label">{label}</span>
-    </button>
+    </>
   );
+
+  if (onClick || onContextMenu) {
+    return (
+      <button
+        type="button"
+        className={chipClassName}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <span className={chipClassName}>{content}</span>;
 }

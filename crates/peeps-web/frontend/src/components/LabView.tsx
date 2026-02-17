@@ -440,8 +440,8 @@ export function LabView() {
             aria-label="Search input"
             items={searchResults.map((item) => ({
               id: item.id,
-              label: item.label,
-              meta: `${item.kind} · ${item.process}`,
+              label: <NodeChip kind={item.kind} label={item.label} />,
+              meta: item.process,
             }))}
             showSuggestions={showSearchResults}
             selectedId={selectedSearchId}

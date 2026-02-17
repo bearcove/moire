@@ -7,6 +7,7 @@
 use std::sync::OnceLock;
 
 use facet::Facet;
+mod new_model;
 
 // ── Global process name ─────────────────────────────────────────
 
