@@ -312,6 +312,21 @@ export function mergeRpcPairs(
   return { entities: newEntities, edges: newEdges };
 }
 
+function coalesceContextEdges(edges: EdgeDef[]): EdgeDef[] {
+  // If we already have a richer causal/structural edge for a pair,
+  // suppress parallel `touches` to avoid double-rendering the same relation.
+  const hasNonTouchesForPair = new Set<string>();
+  for (const edge of edges) {
+    if (edge.kind === "touches") continue;
+    hasNonTouchesForPair.add(`${edge.source}->${edge.target}`);
+  }
+
+  return edges.filter((edge) => {
+    if (edge.kind !== "touches") return true;
+    return !hasNonTouchesForPair.has(`${edge.source}->${edge.target}`);
+  });
+}
+
 export function convertSnapshot(snapshot: SnapshotCutResponse): {
   entities: EntityDef[];
   edges: EdgeDef[];
@@ -392,12 +407,13 @@ export function convertSnapshot(snapshot: SnapshotCutResponse): {
     channelEdges,
   );
 
-  const cycleIds = detectCycleNodes(mergedEntities, mergedEdges);
+  const coalescedEdges = coalesceContextEdges(mergedEdges);
+  const cycleIds = detectCycleNodes(mergedEntities, coalescedEdges);
   for (const entity of mergedEntities) {
     entity.inCycle = cycleIds.has(entity.id);
   }
 
-  return { entities: mergedEntities, edges: mergedEdges };
+  return { entities: mergedEntities, edges: coalescedEdges };
 }
 
 export function getConnectedSubgraph(
