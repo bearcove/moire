@@ -14,3 +14,11 @@
 Read and follow `/Users/amos/bearcove/peeps/TONE.md` before writing or editing documentation.
 
 When the user provides copy, preserve cadence and phrasing. Do not smooth or rewrite by default; fix only obvious typos unless explicitly asked.
+
+## Internals Index
+
+- `internals/examples-conventions.md` - Example authoring and runner contract (`just ex` flow, process-group lifecycle, multi-process examples).
+- `internals/RESOURCES.md` - External references and technical material used while shaping instrumentation and model decisions.
+- `internals/async-stack-sketch.md` - Current async stack and causality sketch notes.
+- `internals/scope-ui.md` - Scope UI direction and constraints.
+- `internals/prompts/on-accepts-wrapper.md` - Prompt/spec notes for on-accept wrappers.

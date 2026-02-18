@@ -10,6 +10,7 @@ PEEPS_LISTEN="${PEEPS_LISTEN:-127.0.0.1:9119}"
 PEEPS_HTTP="${PEEPS_HTTP:-127.0.0.1:9130}"
 
 backend_pid=""
+example_pid=""
 cleaned_up="0"
 
 run_selector() {
@@ -50,8 +51,16 @@ cleanup() {
 
   local exit_code=$?
 
+  if [[ -n "$example_pid" ]] && kill -0 "$example_pid" 2>/dev/null; then
+    kill -- -"$example_pid" 2>/dev/null || true
+  fi
+
   if [[ -n "$backend_pid" ]] && kill -0 "$backend_pid" 2>/dev/null; then
     kill -- -"$backend_pid" 2>/dev/null || true
+  fi
+
+  if [[ -n "$example_pid" ]]; then
+    wait "$example_pid" 2>/dev/null || true
   fi
 
   if [[ -n "$backend_pid" ]]; then
@@ -83,6 +92,15 @@ ensure_process_alive() {
     echo "$name exited unexpectedly. Check logs above for details." >&2
     return 1
   fi
+}
+
+monitor_until_example_exits() {
+  while kill -0 "$example_pid" 2>/dev/null; do
+    ensure_process_alive "$backend_pid" "peeps-web backend"
+    sleep 0.2
+  done
+
+  wait "$example_pid"
 }
 
 open_browser() {
@@ -164,4 +182,7 @@ echo "Running example '$example_name' (PEEPS_DASHBOARD=$PEEPS_DASHBOARD)"
 (
   cd "$ROOT_DIR"
   PEEPS_DASHBOARD="$PEEPS_DASHBOARD" cargo run --manifest-path "$example_manifest"
-)
+) &
+example_pid=$!
+ensure_process_alive "$example_pid" "example process"
+monitor_until_example_exits
