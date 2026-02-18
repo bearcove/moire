@@ -72,8 +72,8 @@ Current scenarios:
 Run it with:
 
 ```bash
-scripts/run-example --list
-scripts/run-example <example-name>
+just ex --list
+just ex <example-name>
 ```
 
 ## Architecture

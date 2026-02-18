@@ -7,7 +7,7 @@ dev:
     cargo run --bin peeps-web -- --dev
 
 example *args:
-    ./scripts/run-example {{ args }}
+    cargo run --bin peeps-examples -- {{ args }}
 
 ex *args:
-    just example {{ args }}
+    cargo run --bin peeps-examples -- {{ args }}

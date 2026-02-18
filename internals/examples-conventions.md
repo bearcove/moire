@@ -25,11 +25,11 @@ Every example must satisfy this:
 - Example startup should fail fast with a clear error if one required role cannot start.
 - Example shutdown should terminate all child work it started.
 
-The runner script may set environment (`PEEPS_DASHBOARD`, ports), but it should not contain scenario-specific orchestration logic.
+The runner may set environment (`PEEPS_DASHBOARD`, ports), but it should not contain scenario-specific orchestration logic.
 
 ## Process-Group Contract
 
-`scripts/run-example` is responsible for top-level lifecycle:
+`peeps-examples` (`cargo run --bin peeps-examples`, used by `just ex`) is responsible for top-level lifecycle:
 
 - It starts `peeps-web` in one process group.
 - It starts the chosen example (`cargo run`) in another process group.

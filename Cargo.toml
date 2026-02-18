@@ -7,7 +7,7 @@ members = [
   "crates/peeps-types",
   "crates/peeps-wire",
   "crates/peeps-sqlite-facet",
-  "crates/peeps-example-selector",
+  "crates/peeps-examples",
 ]
 
 [workspace.package]

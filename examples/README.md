@@ -7,8 +7,8 @@ These examples live in-repo but outside the workspace crates so they are easy to
 Use the helper launcher to run dashboard backend + frontend + any example in one command:
 
 ```bash
-scripts/run-example --list
-scripts/run-example channel-full-stall
+just ex --list
+just ex channel-full-stall
 ```
 
 When you stop the runner (`Ctrl+C`), all child processes are stopped too.
@@ -25,7 +25,7 @@ What it does:
 ### Run it
 
 ```bash
-scripts/run-example oneshot-sender-lost-in-map
+just ex oneshot-sender-lost-in-map
 ```
 
 Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect `demo.request_42.response`, `response_bus.recv`, and `request_42.await_response.blocked`.
@@ -43,7 +43,7 @@ What it does:
 ### Run it
 
 ```bash
-scripts/run-example mutex-lock-order-inversion
+just ex mutex-lock-order-inversion
 ```
 
 ## 3) Channel full stall (`tokio::sync::mpsc` behavior)
@@ -93,7 +93,7 @@ What it does:
 Single-command runner:
 
 ```bash
-scripts/run-example roam-rpc-stuck-request
+just ex roam-rpc-stuck-request
 ```
 
 Manual mode:
@@ -129,7 +129,7 @@ What it does:
 ### Run it
 
 ```bash
-scripts/run-example semaphore-starvation
+just ex semaphore-starvation
 ```
 
 ## 6) Roam Rust↔Swift stuck request
@@ -144,7 +144,7 @@ What it does:
 ### Run it
 
 ```bash
-scripts/run-example roam-rust-swift-stuck-request
+just ex roam-rust-swift-stuck-request
 ```
 
 Requirements:

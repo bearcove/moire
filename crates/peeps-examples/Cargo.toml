@@ -1,5 +1,5 @@
 [package]
-name = "peeps-example-selector"
+name = "peeps-examples"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,3 +7,6 @@ repository.workspace = true
 
 [dependencies]
 dialoguer = { version = "0.12", features = ["fuzzy-select"] }
+libc.workspace = true
+ureq.workspace = true
+ctrlc = "3.4"
