@@ -27,6 +27,9 @@ export function Menu({
   const [open, setOpen] = useState(false);
   const instanceId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const suppressTriggerCloseRef = useRef(false);
+  const suppressNextOpenRef = useRef(false);
 
   const announceOpen = () => {
     window.dispatchEvent(
@@ -53,15 +56,76 @@ export function Menu({
     announceOpen();
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (triggerRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const clearSuppression = () => {
+      setTimeout(() => {
+        suppressTriggerCloseRef.current = false;
+        suppressNextOpenRef.current = false;
+      }, 0);
+    };
+    window.addEventListener("pointerup", clearSuppression);
+    window.addEventListener("pointercancel", clearSuppression);
+    return () => {
+      window.removeEventListener("pointerup", clearSuppression);
+      window.removeEventListener("pointercancel", clearSuppression);
+    };
+  }, []);
+
   return (
     <MenuTrigger
       isOpen={open}
-      onOpenChange={setOpen}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen && suppressNextOpenRef.current) {
+          suppressNextOpenRef.current = false;
+          return;
+        }
+        if (!nextOpen && suppressTriggerCloseRef.current) return;
+        setOpen(nextOpen);
+      }}
     >
-      <Button ref={triggerRef} className="ui-action-button ui-menu-trigger">
+      <Button
+        ref={triggerRef}
+        className="ui-action-button ui-menu-trigger"
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          if (open) {
+            event.preventDefault();
+            suppressTriggerCloseRef.current = false;
+            suppressNextOpenRef.current = true;
+            setOpen(false);
+            return;
+          }
+          suppressTriggerCloseRef.current = true;
+          setOpen(true);
+          announceOpen();
+        }}
+        onPointerEnter={(event) => {
+          if ((event.buttons & 1) !== 1) return;
+          if (open) return;
+          suppressTriggerCloseRef.current = true;
+          setOpen(true);
+          announceOpen();
+        }}
+      >
         {label}
       </Button>
       <Popover
+        ref={popoverRef}
         className="ui-menu-popover"
         placement="bottom start"
         offset={0}

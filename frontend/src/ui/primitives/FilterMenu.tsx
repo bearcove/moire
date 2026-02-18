@@ -54,6 +54,8 @@ export function FilterMenu({
   const [dragSelectActive, setDragSelectActive] = useState(false);
   const instanceId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const suppressTriggerCloseRef = useRef(false);
   const hiddenCount = items.filter((item) => hiddenIds.has(item.id)).length;
 
   const announceOpen = () => {
@@ -93,10 +95,41 @@ export function FilterMenu({
     announceOpen();
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (triggerRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
+      setDragSelectActive(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const clearSuppression = () => {
+      setTimeout(() => {
+        suppressTriggerCloseRef.current = false;
+      }, 0);
+    };
+    window.addEventListener("pointerup", clearSuppression);
+    window.addEventListener("pointercancel", clearSuppression);
+    return () => {
+      window.removeEventListener("pointerup", clearSuppression);
+      window.removeEventListener("pointercancel", clearSuppression);
+    };
+  }, []);
+
   return (
     <DialogTrigger
       isOpen={open}
       onOpenChange={(nextOpen) => {
+        if (!nextOpen && suppressTriggerCloseRef.current) return;
         setOpen(nextOpen);
         if (!nextOpen) setDragSelectActive(false);
       }}
@@ -105,6 +138,19 @@ export function FilterMenu({
         ref={triggerRef}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
+          if (!open) {
+            suppressTriggerCloseRef.current = true;
+            setOpen(true);
+            announceOpen();
+          }
+          setDragSelectActive(true);
+        }}
+        onPointerEnter={(event) => {
+          if ((event.buttons & 1) !== 1) return;
+          if (open) return;
+          suppressTriggerCloseRef.current = true;
+          setOpen(true);
+          announceOpen();
           setDragSelectActive(true);
         }}
         className={[
@@ -135,6 +181,7 @@ export function FilterMenu({
         />
       </Button>
       <Popover
+        ref={popoverRef}
         className="ui-filter-popover"
         placement="bottom start"
         offset={0}
