@@ -12,10 +12,10 @@ function djb2(value: string): number {
 function makeForegroundColor(processName: string): string {
   const hash = djb2(processName);
   const hue = hash % 360;
-  const saturation = 45 + (hash % 21);
+  const saturation = 38 + (hash % 17);
   const isDarkMode = typeof window !== "undefined"
     && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const lightness = isDarkMode ? 55 + ((hash >> 8) % 11) : 45 + ((hash >> 8) % 11);
+  const lightness = isDarkMode ? 52 + ((hash >> 8) % 9) : 43 + ((hash >> 8) % 9);
   return `hsl(${hue} ${saturation}% ${lightness}%)`;
 }
 

@@ -1,10 +1,27 @@
+@font-face {
+    font-family: "Maple Mono";
+    src: url("/fonts/MapleMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Maple Mono";
+    src: url("/fonts/MapleMono-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
     color-scheme: light dark;
     --font-ui: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: "JetBrains Mono", monospace;
-    --font-size-sm: 12px;
-    --font-size-md: 14px;
-    --font-size-lg: 18px;
+    --font-mono: "Maple Mono", monospace;
+    --font-scale-ui: 1.08;
+    --font-size-sm: calc(12px * var(--font-scale-ui));
+    --font-size-md: calc(14px * var(--font-scale-ui));
+    --font-size-lg: calc(18px * var(--font-scale-ui));
     --radius-control: 3px;
     font-family: var(--font-ui);
     font-size: var(--font-size-md);
@@ -27,15 +44,16 @@
 
     --border-subtle: light-dark(#d7e0ec, #232b3a);
     --border-default: light-dark(#c0cad9, #2e384a);
+    --border-edge: light-dark(#e4ebf5, #2a3344);
 
     --text-primary: light-dark(#1b2432, #e6edf3);
     --text-secondary: light-dark(#4d5b71, #a8b3c2);
     --text-muted: light-dark(#728099, #6b7789);
     --text-tertiary: var(--text-muted);
 
-    --accent: light-dark(#516f88, color-mix(in srgb, #5f7d96, #332222));
-    --accent-hover: light-dark(#5f7d96, #6d8ba4);
-    --accent-active: light-dark(#435f78, #516f88);
+    --accent: light-dark(#3e6fa8, #3e6fa8);
+    --accent-hover: light-dark(#4f80b8, #4f80b8);
+    --accent-active: light-dark(#335f91, #335f91);
 
     --status-success: light-dark(#2f9f45, #3fb950);
     --status-warning: light-dark(#b37f1c, #d29922);
@@ -53,8 +71,8 @@
     --pulse-danger-shadow-rest: color-mix(in srgb, var(--status-danger) 24%, transparent);
     --pulse-danger-shadow-peak: color-mix(in srgb, var(--status-danger) 14%, transparent);
 
-    --scope-rgb-fallback-light: 194 204 220;
-    --scope-rgb-fallback-dark: 83 93 117;
+    --scope-rgb-fallback-light: 191 224 255;
+    --scope-rgb-fallback-dark: 79 163 255;
 }
 
 * {

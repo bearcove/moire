@@ -3,9 +3,9 @@ export type Rect = { x: number; y: number; width: number; height: number };
 
 export interface GeometryNode {
   id: string;
-  kind: string; // "mockNode" | "channelPairNode" | "rpcPairNode"
+  kind: string; // "graphNode"
   worldRect: Rect;
-  data: any; // GraphNodeData | ChannelPairNodeData | RpcPairNodeData shapes
+  data: any; // GraphNodeData shape
 }
 
 export interface GeometryGroup {

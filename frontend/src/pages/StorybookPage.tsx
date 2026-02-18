@@ -38,8 +38,6 @@ import type { RecordingState, SnapshotState } from "../App";
 import { Switch } from "../ui/primitives/Switch";
 import type { EntityDef } from "../snapshot";
 import { GraphNode } from "../components/graph/GraphNode";
-import { ChannelPairNode } from "../components/graph/ChannelPairNode";
-import { RpcPairNode } from "../components/graph/RpcPairNode";
 import { InspectorPanel } from "../components/inspector/InspectorPanel";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
@@ -581,7 +579,7 @@ export function StorybookPage() {
           </div>
         </Section>
 
-        <Section title="Mono font — Jetbrains Mono" subtitle="Mono font in the sizes we actually use" wide>
+        <Section title="Mono font — Maple Mono" subtitle="Mono font in the sizes we actually use" wide>
           <div className="ui-typo-card">
             <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY&hellip;</div>
             <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
@@ -737,50 +735,32 @@ export function StorybookPage() {
                   statTone: "warn",
                 }}
               />
-              <ChannelPairNode
+              <GraphNode
                 data={{
-                  nodeId: "sample-channel-pair",
-                  tx: inspectorEntity.channelPair!.tx,
-                  rx: inspectorEntity.channelPair!.rx,
-                  channelName: "roam_driver",
+                  kind: "channel_pair",
+                  label: "roam_driver",
+                  inCycle: false,
                   selected: false,
+                  status: { label: "open", tone: "ok" },
+                  ageMs: 739,
+                  stat: "0/256",
                   statTone: "ok",
+                  portTopId: "sample-channel-pair:rx",
+                  portBottomId: "sample-channel-pair:tx",
                 }}
               />
-              <RpcPairNode
+              <GraphNode
                 data={{
-                  nodeId: "sample-rpc-pair",
-                  req: {
-                    ...inspectorEntity.channelPair!.tx,
-                    id: "101/rpc_req",
-                    rawEntityId: "rpc_req",
-                    name: "roam.call.await_response:req",
-                    kind: "request",
-                    body: {
-                      request: {
-                        method: "DemoRpc.sleepy_forever",
-                        args_preview: "(no args)",
-                      },
-                    },
-                    status: { label: "in_flight", tone: "warn" },
-                  } as unknown as EntityDef,
-                  resp: {
-                    ...inspectorEntity.channelPair!.rx,
-                    id: "101/rpc_resp",
-                    rawEntityId: "rpc_resp",
-                    name: "roam.call.await_response:resp",
-                    kind: "response",
-                    ageMs: 721,
-                    body: {
-                      response: {
-                        method: "DemoRpc.sleepy_forever",
-                        status: "pending",
-                      },
-                    },
-                    status: { label: "pending", tone: "warn" },
-                  } as unknown as EntityDef,
-                  rpcName: "roam.call.await_response",
+                  kind: "rpc_pair",
+                  label: "roam.call.await_response",
+                  inCycle: false,
                   selected: false,
+                  status: { label: "pending", tone: "warn" },
+                  ageMs: 721,
+                  stat: "RESP pending",
+                  statTone: "warn",
+                  portTopId: "sample-rpc-pair:resp",
+                  portBottomId: "sample-rpc-pair:req",
                 }}
               />
             </div>

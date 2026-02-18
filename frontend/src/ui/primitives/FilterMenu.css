@@ -26,10 +26,10 @@
 }
 
 .ui-filter-popover {
-    border: 1px solid var(--border-subtle);
+    border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
     border-radius: var(--radius-control);
-    background: var(--bg-surface);
-    box-shadow: 0 6px 16px var(--shadow-strong);
+    background: color-mix(in srgb, var(--bg-elevated) 54%, var(--bg-base));
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow-strong) 75%, transparent);
     padding: 0;
     z-index: 20;
     font-size: var(--font-size-sm);
@@ -45,6 +45,10 @@
     margin: 0;
 }
 
+.ui-filter-setting-row--subgraphs {
+    padding-bottom: 11px;
+}
+
 .ui-filter-setting-row:hover {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
 }
@@ -52,7 +56,7 @@
 .ui-filter-divider {
     height: 1px;
     margin: 0;
-    background: var(--border-subtle);
+    background: color-mix(in srgb, var(--border-subtle) 82%, transparent);
 }
 
 .ui-filter-list {
@@ -106,9 +110,13 @@
     font-weight: 500;
 }
 
+.ui-filter-checkbox[data-selected] .ui-filter-item-label {
+    font-weight: 600;
+}
+
 .ui-filter-item-meta {
     font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: 10px;
+    color: color-mix(in srgb, var(--text-muted) 78%, var(--text-tertiary));
     margin-left: auto;
 }

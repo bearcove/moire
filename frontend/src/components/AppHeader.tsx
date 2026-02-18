@@ -116,7 +116,7 @@ export function AppHeader({
       )}
       {recording.phase === "recording" && (
         <ActionButton
-          variant={isLive ? "primary" : "default"}
+          variant="default"
           onPress={() => onSetIsLive((v) => !v)}
         >
           Live
@@ -151,7 +151,7 @@ export function AppHeader({
           Stop
         </ActionButton>
       )}
-      <ActionButton variant="primary" onPress={onTakeSnapshot} isDisabled={isBusy || connCount === 0}>
+      <ActionButton variant="default" onPress={onTakeSnapshot} isDisabled={isBusy || connCount === 0}>
         {isBusy ? <CircleNotch size={14} weight="bold" /> : <Camera size={14} weight="bold" />}
         {buttonLabel}
       </ActionButton>

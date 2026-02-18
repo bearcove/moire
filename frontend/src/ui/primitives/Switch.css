@@ -19,7 +19,7 @@
     width: 30px;
     height: 16px;
     border-radius: var(--radius-control);
-    background: var(--border-default);
+    background: color-mix(in srgb, var(--border-subtle) 80%, var(--bg-elevated));
     border: 1px solid var(--border-default);
     display: inline-flex;
     align-items: center;
@@ -39,17 +39,19 @@
 }
 
 .ui-switch[data-selected] .ui-switch-track {
-    background: color-mix(in srgb, var(--accent) 58%, var(--bg-elevated));
-    border-color: color-mix(in srgb, var(--accent) 72%, var(--border-default));
+    background: color-mix(in srgb, var(--border-default) 72%, var(--bg-elevated));
+    border-color: var(--border-default);
 }
 
 .ui-switch[data-selected] .ui-switch-thumb {
-    background: var(--accent-hover);
+    background: var(--accent-active);
     transform: translateX(14px);
 }
 
 .ui-switch[data-focus-visible] .ui-switch-track {
-    box-shadow: 0 0 0 2px var(--focus-ring);
+    box-shadow:
+        0 0 0 1px var(--accent),
+        0 0 0 3px var(--focus-ring);
 }
 
 .ui-switch[data-disabled] {

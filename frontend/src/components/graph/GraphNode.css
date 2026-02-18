@@ -42,29 +42,34 @@
 
 .graph-node {
     display: flex;
-    gap: 8px;
-    padding: 4px 6px;
+    flex-direction: row;
+    gap: 6px;
+    padding: 4px 4px 4px 6px;
     align-items: center;
+    font-family: var(--font-mono);
 }
 
 .graph-node-icon {
     display: grid;
     place-items: center;
     flex-shrink: 0;
-    width: 18px;
+    width: 14px;
+    height: 14px;
     color: inherit;
 }
 
 .graph-node-content {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
     min-width: 0;
 }
 
 .graph-node-main {
-    font-size: 11px;
-    font-weight: 600;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 400;
 }
 
 .graph-node--cycle {
@@ -80,6 +85,7 @@
 .graph-node-label {
     overflow: hidden;
     text-overflow: clip;
+    line-height: 1.2;
 }
 
 .graph-node-details {
@@ -90,14 +96,14 @@
 
 .graph-node-dot {
     color: var(--text-tertiary);
-    font-size: 11px;
+    font-size: 10px;
     line-height: 1;
-    padding: 0 0.4em;
+    padding: 0;
 }
 
 .graph-node-stat {
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
 }
 

@@ -3,8 +3,9 @@
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    border-bottom: 1px solid var(--border-default);
-    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-edge);
+    background: var(--bg-elevated);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--border-default) 65%, transparent);
     font-size: var(--font-size-sm);
     flex-shrink: 0;
 }

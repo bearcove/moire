@@ -52,8 +52,8 @@ export function FilterMenu({
 }: FilterMenuProps) {
   const [open, setOpen] = useState(false);
   const [dragSelectActive, setDragSelectActive] = useState(false);
-  const suppressTriggerCloseRef = useRef(false);
   const instanceId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const hiddenCount = items.filter((item) => hiddenIds.has(item.id)).length;
 
   const announceOpen = () => {
@@ -74,20 +74,6 @@ export function FilterMenu({
       window.removeEventListener("pointercancel", stop);
     };
   }, [dragSelectActive]);
-
-  useEffect(() => {
-    const clearSuppression = () => {
-      setTimeout(() => {
-        suppressTriggerCloseRef.current = false;
-      }, 0);
-    };
-    window.addEventListener("pointerup", clearSuppression);
-    window.addEventListener("pointercancel", clearSuppression);
-    return () => {
-      window.removeEventListener("pointerup", clearSuppression);
-      window.removeEventListener("pointercancel", clearSuppression);
-    };
-  }, []);
 
   useEffect(() => {
     const onOtherMenuOpened = (event: Event) => {
@@ -111,23 +97,14 @@ export function FilterMenu({
     <DialogTrigger
       isOpen={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen && suppressTriggerCloseRef.current) return;
         setOpen(nextOpen);
+        if (!nextOpen) setDragSelectActive(false);
       }}
     >
       <Button
+        ref={triggerRef}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
-          suppressTriggerCloseRef.current = true;
-          setOpen(true);
-          announceOpen();
-          setDragSelectActive(true);
-        }}
-        onPointerEnter={(event) => {
-          if ((event.buttons & 1) !== 1) return;
-          suppressTriggerCloseRef.current = true;
-          setOpen(true);
-          announceOpen();
           setDragSelectActive(true);
         }}
         className={[
@@ -162,6 +139,7 @@ export function FilterMenu({
         placement="bottom start"
         offset={0}
         isNonModal
+        shouldCloseOnInteractOutside={(element) => !triggerRef.current?.contains(element)}
       >
         <Dialog className="ui-filter-dialog" aria-label={`Filter ${label}`}>
           {onToggleColorBy && (

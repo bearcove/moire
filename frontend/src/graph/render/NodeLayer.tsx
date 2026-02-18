@@ -3,9 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
-import { GraphNode, type GraphNodeData } from "../../components/graph/GraphNode";
-import { ChannelPairNode, type ChannelPairNodeData } from "../../components/graph/ChannelPairNode";
-import { RpcPairNode, type RpcPairNodeData } from "../../components/graph/RpcPairNode";
+import { GraphNode, graphNodeDataFromEntity, type GraphNodeData } from "../../components/graph/GraphNode";
 import { ProcessIdenticon } from "../../ui/primitives/ProcessIdenticon";
 import { scopeKindIcon } from "../../scopeKindSpec";
 import "../../components/graph/ScopeGroupNode.css";
@@ -65,50 +63,7 @@ export async function measureGraphLayout(
     container.appendChild(el);
     const root = createRoot(el);
 
-    let card: React.ReactNode;
-    if (def.channelPair) {
-      card = (
-        <ChannelPairNode
-          data={{
-            nodeId: def.id,
-            tx: def.channelPair.tx,
-            rx: def.channelPair.rx,
-            channelName: def.name,
-            selected: false,
-            statTone: def.statTone,
-          }}
-        />
-      );
-    } else if (def.rpcPair) {
-      card = (
-        <RpcPairNode
-          data={{
-            nodeId: def.id,
-            req: def.rpcPair.req,
-            resp: def.rpcPair.resp,
-            rpcName: def.name,
-            selected: false,
-          }}
-        />
-      );
-    } else {
-      card = (
-        <GraphNode
-          data={{
-            kind: def.kind,
-            label: def.name,
-            inCycle: def.inCycle,
-            selected: false,
-            status: def.status,
-            ageMs: def.ageMs,
-            stat: def.stat,
-            statTone: def.statTone,
-          }}
-        />
-      );
-    }
-
-    flushSync(() => root.render(card));
+    flushSync(() => root.render(<GraphNode data={graphNodeDataFromEntity(def)} />));
     sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
     root.unmount();
   }
@@ -166,23 +121,9 @@ export function NodeLayer({
         const { x, y, width, height } = node.worldRect;
         const selected = node.id === selectedNodeId;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
-
-        let cardContent: React.ReactNode;
-        if (node.kind === "channelPairNode") {
-          cardContent = (
-            <ChannelPairNode
-              data={{ ...(node.data as ChannelPairNodeData), selected, ghost: isGhost }}
-            />
-          );
-        } else if (node.kind === "rpcPairNode") {
-          cardContent = (
-            <RpcPairNode data={{ ...(node.data as RpcPairNodeData), selected, ghost: isGhost }} />
-          );
-        } else {
-          cardContent = (
-            <GraphNode data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }} />
-          );
-        }
+        const cardContent = (
+          <GraphNode data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }} />
+        );
 
         return (
           <foreignObject

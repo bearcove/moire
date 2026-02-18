@@ -1,6 +1,7 @@
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import type { EntityDef, EdgeDef } from "../snapshot";
+import { graphNodeDataFromEntity } from "../components/graph/GraphNode";
 import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } from "./geometry";
 
 // ── ELK layout ────────────────────────────────────────────────
@@ -248,46 +249,10 @@ export async function layoutGraph(
   // Track absolute positions for each entity node (needed for group member listing)
   const absoluteNodePos = new Map<string, { x: number; y: number }>();
 
-  const makeNodeData = (def: EntityDef): { kind: string; data: any } => {
-    if (def.channelPair) {
-      return {
-        kind: "channelPairNode",
-        data: {
-          nodeId: def.id,
-          tx: def.channelPair.tx,
-          rx: def.channelPair.rx,
-          channelName: def.name,
-          selected: false,
-          statTone: def.statTone,
-        },
-      };
-    }
-    if (def.rpcPair) {
-      return {
-        kind: "rpcPairNode",
-        data: {
-          nodeId: def.id,
-          req: def.rpcPair.req,
-          resp: def.rpcPair.resp,
-          rpcName: def.name,
-          selected: false,
-        },
-      };
-    }
-    return {
-      kind: "mockNode",
-      data: {
-        kind: def.kind,
-        label: def.name,
-        inCycle: def.inCycle,
-        selected: false,
-        status: def.status,
-        ageMs: def.ageMs,
-        stat: def.stat,
-        statTone: def.statTone,
-      },
-    };
-  };
+  const makeNodeData = (def: EntityDef): { kind: string; data: any } => ({
+    kind: "graphNode",
+    data: graphNodeDataFromEntity(def),
+  });
 
   const walkChildren = (children: any[] | undefined) => {
     for (const child of children ?? []) {

@@ -16,8 +16,7 @@ CSS is co-located with components. Each component has a `.css` file next to its 
 | `styles.css` | `:root` tokens, `*`/`html`/`body`/`#app` resets, `.spinning`, all `@keyframes` |
 | `App.css` | `.app` shell layout |
 | **Graph components** | |
-| `components/graph/GraphNode.css` | `.graph-node*` |
-| `components/graph/ChannelPairNode.css` | `.channel-pair*` (shared by ChannelPairNode + RpcPairNode) |
+| `components/graph/GraphNode.css` | `.graph-node*` (all graph node variants) |
 | `components/graph/ScopeGroupNode.css` | `.scope-group*` |
 | `components/graph/ElkRoutedEdge.css` | `.edge-glow`, `.edge-label*` |
 | `components/graph/GraphPanel.css` | `.graph-*` (toolbar, panel, flow overrides, empty state) |

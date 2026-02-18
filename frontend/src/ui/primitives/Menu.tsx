@@ -25,8 +25,8 @@ export function Menu({
   onAction?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const suppressTriggerCloseRef = useRef(false);
   const instanceId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const announceOpen = () => {
     window.dispatchEvent(
@@ -35,20 +35,6 @@ export function Menu({
       }),
     );
   };
-
-  useEffect(() => {
-    const clearSuppression = () => {
-      setTimeout(() => {
-        suppressTriggerCloseRef.current = false;
-      }, 0);
-    };
-    window.addEventListener("pointerup", clearSuppression);
-    window.addEventListener("pointercancel", clearSuppression);
-    return () => {
-      window.removeEventListener("pointerup", clearSuppression);
-      window.removeEventListener("pointercancel", clearSuppression);
-    };
-  }, []);
 
   useEffect(() => {
     const onOtherMenuOpened = (event: Event) => {
@@ -70,29 +56,18 @@ export function Menu({
   return (
     <MenuTrigger
       isOpen={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen && suppressTriggerCloseRef.current) return;
-        setOpen(nextOpen);
-      }}
+      onOpenChange={setOpen}
     >
-      <Button
-        className="ui-action-button ui-menu-trigger"
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          suppressTriggerCloseRef.current = true;
-          setOpen(true);
-          announceOpen();
-        }}
-        onPointerEnter={(event) => {
-          if ((event.buttons & 1) !== 1) return;
-          suppressTriggerCloseRef.current = true;
-          setOpen(true);
-          announceOpen();
-        }}
-      >
+      <Button ref={triggerRef} className="ui-action-button ui-menu-trigger">
         {label}
       </Button>
-      <Popover className="ui-menu-popover" placement="bottom start" offset={0} isNonModal>
+      <Popover
+        className="ui-menu-popover"
+        placement="bottom start"
+        offset={0}
+        isNonModal
+        shouldCloseOnInteractOutside={(element) => !triggerRef.current?.contains(element)}
+      >
         <AriaMenu
           className="ui-menu-list"
           onAction={(key) => onAction?.(String(key))}
