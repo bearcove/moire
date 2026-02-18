@@ -103,11 +103,6 @@
     overflow: hidden;
 }
 
-.panel--graph .react-flow-wrapper {
-    flex: 1;
-    min-height: 0;
-}
-
 .graph-mode-panels {
     min-height: 0;
     display: grid;

@@ -1,0 +1,120 @@
+import { useCallback, useRef, useState } from "react";
+import type { RefObject } from "react";
+import type { Rect } from "../geometry";
+import { type Camera, MIN_ZOOM, MAX_ZOOM, fitBounds, screenToWorld } from "./camera";
+
+export function useCameraController(
+  svgRef: RefObject<SVGSVGElement | null>,
+  bounds: Rect | null,
+): {
+  camera: Camera;
+  setCamera: (c: Camera) => void;
+  fitView: () => void;
+  handlers: {
+    onWheel: (e: WheelEvent) => void;
+    onPointerDown: (e: PointerEvent) => void;
+    onPointerMove: (e: PointerEvent) => void;
+    onPointerUp: (e: PointerEvent) => void;
+  };
+} {
+  const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
+
+  const panState = useRef<{
+    active: boolean;
+    startClientX: number;
+    startClientY: number;
+    startCamera: Camera;
+  }>({ active: false, startClientX: 0, startClientY: 0, startCamera: { x: 0, y: 0, zoom: 1 } });
+
+  const getViewportSize = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) return { width: 800, height: 600 };
+    const rect = svg.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  }, [svgRef]);
+
+  const fitView = useCallback(() => {
+    if (!bounds) return;
+    const { width, height } = getViewportSize();
+    setCamera(fitBounds(bounds, width, height, 40));
+  }, [bounds, getViewportSize]);
+
+  const onWheel = useCallback(
+    (e: WheelEvent) => {
+      e.preventDefault();
+      const svg = svgRef.current;
+      if (!svg) return;
+      const svgRect = svg.getBoundingClientRect();
+      const { width, height } = getViewportSize();
+
+      // Cursor position relative to SVG top-left
+      const cursorX = e.clientX - svgRect.left;
+      const cursorY = e.clientY - svgRect.top;
+
+      setCamera((prev) => {
+        const worldAtCursor = screenToWorld(prev, width, height, {
+          x: cursorX,
+          y: cursorY,
+        });
+
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom * factor));
+
+        return {
+          zoom: newZoom,
+          x: worldAtCursor.x - (cursorX - width / 2) / newZoom,
+          y: worldAtCursor.y - (cursorY - height / 2) / newZoom,
+        };
+      });
+    },
+    [getViewportSize, svgRef],
+  );
+
+  const onPointerDown = useCallback(
+    (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const target = e.target as Element;
+      const svg = svgRef.current;
+      // Only pan when clicking the background (the SVG itself or the background rect)
+      if (!svg) return;
+      if (target !== svg && target.getAttribute("data-background") !== "true") return;
+      e.preventDefault();
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      panState.current = {
+        active: true,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startCamera: camera,
+      };
+    },
+    [camera, svgRef],
+  );
+
+  const onPointerMove = useCallback(
+    (e: PointerEvent) => {
+      const state = panState.current;
+      if (!state.active) return;
+      const dx = e.clientX - state.startClientX;
+      const dy = e.clientY - state.startClientY;
+      setCamera({
+        ...state.startCamera,
+        x: state.startCamera.x - dx / state.startCamera.zoom,
+        y: state.startCamera.y - dy / state.startCamera.zoom,
+      });
+    },
+    [],
+  );
+
+  const onPointerUp = useCallback((e: PointerEvent) => {
+    if (!panState.current.active) return;
+    panState.current.active = false;
+    (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+  }, []);
+
+  return {
+    camera,
+    setCamera,
+    fitView,
+    handlers: { onWheel, onPointerDown, onPointerMove, onPointerUp },
+  };
+}

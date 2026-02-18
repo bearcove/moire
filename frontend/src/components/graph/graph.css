@@ -262,11 +262,6 @@
     color: light-dark(#8e8e93, #636366);
 }
 
-.react-flow__node.selected .card {
-    border-color: light-dark(#0071e3, #0a84ff);
-    box-shadow: 0 0 0 2px light-dark(rgba(0, 113, 227, 0.25), rgba(10, 132, 255, 0.35));
-}
-
 /* ── Node cards (graph) ──────────────────────────────────── */
 
 .card {

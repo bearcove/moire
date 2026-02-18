@@ -1,0 +1,61 @@
+import type { Point, Rect } from "../geometry";
+
+export interface Camera {
+  x: number; // world X at center of viewport
+  y: number; // world Y at center of viewport
+  zoom: number; // scale factor (1 = 100%)
+}
+
+export const MIN_ZOOM = 0.1;
+export const MAX_ZOOM = 3.0;
+
+export function worldToScreen(
+  camera: Camera,
+  viewportWidth: number,
+  viewportHeight: number,
+  point: Point,
+): Point {
+  return {
+    x: (point.x - camera.x) * camera.zoom + viewportWidth / 2,
+    y: (point.y - camera.y) * camera.zoom + viewportHeight / 2,
+  };
+}
+
+export function screenToWorld(
+  camera: Camera,
+  viewportWidth: number,
+  viewportHeight: number,
+  point: Point,
+): Point {
+  return {
+    x: (point.x - viewportWidth / 2) / camera.zoom + camera.x,
+    y: (point.y - viewportHeight / 2) / camera.zoom + camera.y,
+  };
+}
+
+export function cameraTransform(
+  camera: Camera,
+  viewportWidth: number,
+  viewportHeight: number,
+): string {
+  return `translate(${viewportWidth / 2}, ${viewportHeight / 2}) scale(${camera.zoom}) translate(${-camera.x}, ${-camera.y})`;
+}
+
+export function fitBounds(
+  bounds: Rect,
+  viewportWidth: number,
+  viewportHeight: number,
+  padding = 40,
+): Camera {
+  const availW = viewportWidth - 2 * padding;
+  const availH = viewportHeight - 2 * padding;
+  const zoom = Math.min(
+    Math.max(MIN_ZOOM, Math.min(availW / bounds.width, availH / bounds.height)),
+    MAX_ZOOM,
+  );
+  return {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+    zoom,
+  };
+}

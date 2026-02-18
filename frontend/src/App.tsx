@@ -5,20 +5,6 @@ import "./components/inspector/inspector.css";
 import "./components/requests/requests.css";
 import "./components/timeline/timeline.css";
 import {
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
-  Handle,
-  Position,
-  Background,
-  BackgroundVariant,
-  Controls,
-  type Node,
-  type Edge,
-  type EdgeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import {
   CaretDown,
   CaretLeft,
   CaretRight,
@@ -29,7 +15,6 @@ import {
   CopySimple,
   DownloadSimple,
   FileRs,
-  Ghost,
   LinkSimple,
   MagnifyingGlass,
   PaperPlaneTilt,
@@ -64,14 +49,16 @@ import {
   type MetaValue,
 } from "./snapshot";
 import {
-  measureNodeDefs,
   layoutGraph,
   edgeTooltip,
-  type ElkPoint,
-  type LayoutResult,
-  type RenderNodeForMeasure,
   type SubgraphScopeMode,
-} from "./layout";
+} from "./graph/elkAdapter";
+import { measureEntityDefs } from "./graph/render/NodeLayer";
+import type { GraphGeometry } from "./graph/geometry";
+import { GraphCanvas, useCameraContext } from "./graph/canvas/GraphCanvas";
+import { NodeLayer } from "./graph/render/NodeLayer";
+import { EdgeLayer } from "./graph/render/EdgeLayer";
+import { GroupLayer } from "./graph/render/GroupLayer";
 import {
   buildUnionLayout,
   computeChangeFrames,
@@ -81,6 +68,7 @@ import {
   renderFrameFromUnion,
   type EntityDiff,
   type FrameChangeSummary,
+  type FrameRenderResult,
   type UnionLayout,
 } from "./recording/unionGraph";
 
@@ -93,495 +81,6 @@ function formatBytes(bytes: number): string {
 // Body type helpers used locally for the inspector
 type RequestBody = Extract<EntityBody, { request: unknown }>;
 type ResponseBody = Extract<EntityBody, { response: unknown }>;
-
-// ── Custom node component ──────────────────────────────────────
-
-const hiddenHandle: React.CSSProperties = {
-  opacity: 0,
-  width: 0,
-  height: 0,
-  minWidth: 0,
-  minHeight: 0,
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  pointerEvents: "none",
-};
-
-type MockNodeData = {
-  kind: string;
-  label: string;
-  inCycle: boolean;
-  selected: boolean;
-  status: { label: string; tone: Tone };
-  ageMs: number;
-  stat?: string;
-  statTone?: Tone;
-  scopeHue?: number;
-  ghost?: boolean;
-  measureMode?: boolean;
-};
-
-function MockNodeComponent({ data }: { data: MockNodeData }) {
-  const showScopeColor =
-    data.scopeHue !== undefined && !data.inCycle && data.statTone !== "crit" && data.statTone !== "warn";
-  return (
-    <>
-      {!data.measureMode && <Handle type="target" position={Position.Top} style={hiddenHandle} />}
-      {!data.measureMode && <Handle type="source" position={Position.Bottom} style={hiddenHandle} />}
-      <div
-        className={[
-          "mockup-node",
-          data.inCycle && "mockup-node--cycle",
-          data.selected && "mockup-node--selected",
-          data.statTone === "crit" && "mockup-node--stat-crit",
-          data.statTone === "warn" && "mockup-node--stat-warn",
-          showScopeColor && "mockup-node--scope",
-          data.ghost && "mockup-node--ghost",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={
-          showScopeColor
-            ? ({
-                "--scope-h": String(data.scopeHue),
-              } as React.CSSProperties)
-            : undefined
-        }
-      >
-        <span className="mockup-node-icon">{kindIcon(data.kind, 18)}</span>
-        <div className="mockup-node-content">
-          <div className="mockup-node-main">
-            <span className="mockup-node-label">{data.label}</span>
-            {data.ageMs > 3000 && (
-              <>
-                <span className="mockup-node-dot">&middot;</span>
-                <DurationDisplay ms={data.ageMs} />
-              </>
-            )}
-            {data.stat && (
-              <>
-                <span className="mockup-node-dot">&middot;</span>
-                <span
-                  className={[
-                    "mockup-node-stat",
-                    data.statTone === "crit" && "mockup-node-stat--crit",
-                    data.statTone === "warn" && "mockup-node-stat--warn",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  {data.stat}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-type ChannelPairNodeData = {
-  tx: EntityDef;
-  rx: EntityDef;
-  channelName: string;
-  selected: boolean;
-  statTone?: Tone;
-  scopeHue?: number;
-  ghost?: boolean;
-  measureMode?: boolean;
-};
-
-const visibleHandleTop: React.CSSProperties = {
-  width: 10,
-  height: 6,
-  minWidth: 0,
-  minHeight: 0,
-  background: "var(--text-tertiary)",
-  border: "none",
-  borderRadius: "0 0 3px 3px",
-  opacity: 0.5,
-  top: 0,
-  left: "50%",
-  transform: "translateX(-50%)",
-  pointerEvents: "none",
-};
-
-const visibleHandleBottom: React.CSSProperties = {
-  width: 10,
-  height: 6,
-  minWidth: 0,
-  minHeight: 0,
-  background: "var(--text-tertiary)",
-  border: "none",
-  borderRadius: "3px 3px 0 0",
-  opacity: 0.5,
-  bottom: 0,
-  left: "50%",
-  transform: "translateX(-50%)",
-  pointerEvents: "none",
-};
-
-function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
-  const { tx, rx, channelName, selected, statTone, scopeHue, ghost } = data;
-  const txEp = typeof tx.body !== "string" && "channel_tx" in tx.body ? tx.body.channel_tx : null;
-  const rxEp = typeof rx.body !== "string" && "channel_rx" in rx.body ? rx.body.channel_rx : null;
-
-  const mpscBuffer = txEp && "mpsc" in txEp.details ? txEp.details.mpsc.buffer : null;
-
-  const txLifecycle = txEp ? (txEp.lifecycle === "open" ? "open" : "closed") : "?";
-  const rxLifecycle = rxEp ? (rxEp.lifecycle === "open" ? "open" : "closed") : "?";
-  const txTone: Tone = txLifecycle === "open" ? "ok" : "neutral";
-  const rxTone: Tone = rxLifecycle === "open" ? "ok" : "neutral";
-
-  const bufferStat = mpscBuffer ? `${mpscBuffer.occupancy}/${mpscBuffer.capacity ?? "∞"}` : tx.stat;
-  const showScopeColor = scopeHue !== undefined && statTone !== "crit" && statTone !== "warn";
-
-  return (
-    <>
-      {!data.measureMode && <Handle type="target" position={Position.Top} style={visibleHandleTop} />}
-      {!data.measureMode && <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />}
-      <div
-        className={[
-          "mockup-channel-pair",
-          selected && "mockup-channel-pair--selected",
-          statTone === "crit" && "mockup-channel-pair--stat-crit",
-          statTone === "warn" && "mockup-channel-pair--stat-warn",
-          showScopeColor && "mockup-channel-pair--scope",
-          ghost && "mockup-channel-pair--ghost",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={
-          showScopeColor
-            ? ({
-                "--scope-h": String(scopeHue),
-              } as React.CSSProperties)
-            : undefined
-        }
-      >
-        <div className="mockup-channel-pair-header">
-          <span className="mockup-channel-pair-icon">{kindIcon("channel_pair", 14)}</span>
-          <span className="mockup-channel-pair-name">{channelName}</span>
-        </div>
-        <div className="mockup-channel-pair-rows">
-          <div className="mockup-channel-pair-row">
-            <span className="mockup-channel-pair-row-label">TX</span>
-            <Badge tone={txTone}>{txLifecycle}</Badge>
-            {tx.ageMs > 3000 && (
-              <>
-                <span className="mockup-node-dot">&middot;</span>
-                <DurationDisplay ms={tx.ageMs} />
-              </>
-            )}
-            {bufferStat && (
-              <>
-                <span className="mockup-node-dot">&middot;</span>
-                <span
-                  className={[
-                    "mockup-node-stat",
-                    statTone === "crit" && "mockup-node-stat--crit",
-                    statTone === "warn" && "mockup-node-stat--warn",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  {bufferStat}
-                </span>
-              </>
-            )}
-          </div>
-          <div className="mockup-channel-pair-row">
-            <span className="mockup-channel-pair-row-label">RX</span>
-            <Badge tone={rxTone}>{rxLifecycle}</Badge>
-            {rx.ageMs > 3000 && (
-              <>
-                <span className="mockup-node-dot">&middot;</span>
-                <DurationDisplay ms={rx.ageMs} />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-type RpcPairNodeData = {
-  req: EntityDef;
-  resp: EntityDef;
-  rpcName: string;
-  selected: boolean;
-  scopeHue?: number;
-  ghost?: boolean;
-  measureMode?: boolean;
-};
-
-function RpcPairNode({ data }: { data: RpcPairNodeData }) {
-  const { req, resp, rpcName, selected, scopeHue, ghost } = data;
-
-  const reqBody = typeof req.body !== "string" && "request" in req.body ? req.body.request : null;
-  const respBody =
-    typeof resp.body !== "string" && "response" in resp.body ? resp.body.response : null;
-
-  const respStatus = respBody ? respBody.status : "pending";
-  const respTone: Tone = respStatus === "ok" ? "ok" : respStatus === "error" ? "crit" : "warn";
-  const method = respBody?.method ?? reqBody?.method ?? "?";
-  const showScopeColor = scopeHue !== undefined && respStatus !== "error";
-
-  return (
-    <>
-      {!data.measureMode && <Handle type="target" position={Position.Top} style={visibleHandleTop} />}
-      {!data.measureMode && <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />}
-      <div
-        className={[
-          "mockup-channel-pair",
-          selected && "mockup-channel-pair--selected",
-          respStatus === "error" && "mockup-channel-pair--stat-crit",
-          showScopeColor && "mockup-channel-pair--scope",
-          ghost && "mockup-channel-pair--ghost",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={
-          showScopeColor
-            ? ({
-                "--scope-h": String(scopeHue),
-              } as React.CSSProperties)
-            : undefined
-        }
-      >
-        <div className="mockup-channel-pair-header">
-          <span className="mockup-channel-pair-icon">{kindIcon("rpc_pair", 14)}</span>
-          <span className="mockup-channel-pair-name">{rpcName}</span>
-        </div>
-        <div className="mockup-channel-pair-rows">
-          <div className="mockup-channel-pair-row">
-            <span className="mockup-channel-pair-row-label">fn</span>
-            <span className="mockup-inspector-mono" style={{ fontSize: "11px" }}>
-              {method}
-            </span>
-          </div>
-          <div className="mockup-channel-pair-row">
-            <span className="mockup-channel-pair-row-label">→</span>
-            <Badge tone={respTone}>{respStatus}</Badge>
-            {resp.ageMs > 3000 && (
-              <>
-                <span className="mockup-node-dot">&middot;</span>
-                <DurationDisplay ms={resp.ageMs} />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-type ScopeGroupNodeData = {
-  isScopeGroup: true;
-  label: string;
-  count: number;
-  selected: boolean;
-};
-
-function ScopeGroupNode({ data }: { data: ScopeGroupNodeData }) {
-  return (
-    <div className="mockup-scope-group">
-      <div className="mockup-scope-group-header">
-        <span className="mockup-scope-group-label">{data.label}</span>
-        <span className="mockup-scope-group-meta">{data.count}</span>
-      </div>
-    </div>
-  );
-}
-
-function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
-  const edgeData = data as
-    | {
-        points?: ElkPoint[];
-        tooltip?: string;
-        ghost?: boolean;
-        edgeLabel?: string;
-        edgePending?: boolean;
-      }
-    | undefined;
-  const points = edgeData?.points ?? [];
-  const ghost = edgeData?.ghost ?? false;
-  const edgeLabel = edgeData?.edgeLabel;
-  const edgePending = edgeData?.edgePending ?? false;
-  if (points.length < 2) return null;
-
-  const [start, ...rest] = points;
-  let d = `M ${start.x} ${start.y}`;
-  if (rest.length === 1) {
-    d += ` L ${rest[0].x} ${rest[0].y}`;
-  } else {
-    for (let i = 0; i < rest.length - 1; i++) {
-      const curr = rest[i];
-      const next = rest[i + 1];
-      if (i < rest.length - 2) {
-        const midX = (curr.x + next.x) / 2;
-        const midY = (curr.y + next.y) / 2;
-        d += ` Q ${curr.x} ${curr.y}, ${midX} ${midY}`;
-      } else {
-        d += ` Q ${curr.x} ${curr.y}, ${next.x} ${next.y}`;
-      }
-    }
-  }
-
-  const labelAnchor: { x: number; y: number; dx: number; dy: number } = (() => {
-    if (points.length < 2) {
-      const p = points[0] ?? { x: 0, y: 0 };
-      return { x: p.x, y: p.y, dx: 0, dy: 1 };
-    }
-    let totalLength = 0;
-    for (let i = 1; i < points.length; i++) {
-      const dx = points[i].x - points[i - 1].x;
-      const dy = points[i].y - points[i - 1].y;
-      totalLength += Math.hypot(dx, dy);
-    }
-    if (totalLength <= 0) {
-      const p = points[0];
-      return { x: p.x, y: p.y, dx: 0, dy: 1 };
-    }
-    const halfway = totalLength / 2;
-    let traversed = 0;
-    for (let i = 1; i < points.length; i++) {
-      const start = points[i - 1];
-      const end = points[i];
-      const segLength = Math.hypot(end.x - start.x, end.y - start.y);
-      if (traversed + segLength >= halfway) {
-        const remain = halfway - traversed;
-        const t = segLength <= 0 ? 0 : remain / segLength;
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        return {
-          x: start.x + (end.x - start.x) * t,
-          y: start.y + (end.y - start.y) * t,
-          dx,
-          dy,
-        };
-      }
-      traversed += segLength;
-    }
-    const mid = points[Math.floor(points.length / 2)];
-    return { x: mid.x, y: mid.y, dx: 0, dy: 1 };
-  })();
-  const dirLen = Math.hypot(labelAnchor.dx, labelAnchor.dy) || 1;
-  const nx = -labelAnchor.dy / dirLen;
-  const ny = labelAnchor.dx / dirLen;
-  const labelX = labelAnchor.x + nx * 20;
-  const labelY = labelAnchor.y + ny * 20;
-
-  return (
-    <g style={ghost ? { opacity: 0.2, pointerEvents: "none" } : undefined}>
-      <path
-        d={d}
-        fill="none"
-        stroke="transparent"
-        strokeWidth={14}
-        style={{ cursor: "pointer", pointerEvents: ghost ? "none" : "all" }}
-      />
-      {selected && (
-        <>
-          <path
-            d={d}
-            fill="none"
-            stroke="var(--accent, #3b82f6)"
-            strokeWidth={10}
-            strokeLinecap="round"
-            opacity={0.18}
-            className="mockup-edge-glow"
-          />
-          <path
-            d={d}
-            fill="none"
-            stroke="var(--accent, #3b82f6)"
-            strokeWidth={5}
-            strokeLinecap="round"
-            opacity={0.45}
-          />
-        </>
-      )}
-      <path
-        id={id}
-        d={d}
-        style={{
-          ...(style as React.CSSProperties),
-          ...(selected ? { stroke: "var(--accent, #3b82f6)", strokeWidth: 2.5 } : {}),
-        }}
-        markerEnd={markerEnd as string}
-        fill="none"
-        className="react-flow__edge-path"
-      />
-      {edgeLabel && (
-        <g className="mockup-edge-label" transform={`translate(${labelX}, ${labelY})`}>
-          <text className="mockup-edge-label-text" textAnchor="middle" dominantBaseline="middle">
-            {edgeLabel}
-            {edgePending && <tspan className="mockup-edge-label-symbol"> ⏳</tspan>}
-          </text>
-        </g>
-      )}
-    </g>
-  );
-}
-
-const mockNodeTypes = {
-  mockNode: MockNodeComponent,
-  channelPairNode: ChannelPairNode,
-  rpcPairNode: RpcPairNode,
-  scopeGroupNode: ScopeGroupNode,
-};
-const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
-
-// ── Render callback for layout measurement ────────────────────
-
-const renderNodeForMeasure: RenderNodeForMeasure = (def) => {
-  if (def.channelPair) {
-    return (
-      <ChannelPairNode
-        data={{
-          tx: def.channelPair.tx,
-          rx: def.channelPair.rx,
-          channelName: def.name,
-          selected: false,
-          statTone: def.statTone,
-          measureMode: true,
-        }}
-      />
-    );
-  }
-  if (def.rpcPair) {
-    return (
-      <RpcPairNode
-        data={{
-          req: def.rpcPair.req,
-          resp: def.rpcPair.resp,
-          rpcName: def.name,
-          selected: false,
-          measureMode: true,
-        }}
-      />
-    );
-  }
-  return (
-    <MockNodeComponent
-      data={{
-        kind: def.kind,
-        label: def.name,
-        inCycle: def.inCycle,
-        selected: false,
-        status: def.status,
-        ageMs: def.ageMs,
-        stat: def.stat,
-        statTone: def.statTone,
-        measureMode: true,
-      }}
-    />
-  );
-};
 
 // ── Graph panel ────────────────────────────────────────────────
 
@@ -612,71 +111,45 @@ function scopeHueForKey(scopeKey: string): number {
   return SCOPE_COLOR_HUES[hashString(scopeKey) % SCOPE_COLOR_HUES.length];
 }
 
-function GraphFlow({
-  nodes,
-  edges,
-  onSelect,
+// ── Auto-fit child component (inside GraphCanvas context) ──────
+
+function GraphAutoFit({
+  bounds,
   suppressAutoFit,
 }: {
-  nodes: Node[];
-  edges: Edge[];
-  onSelect: (sel: GraphSelection) => void;
-  /** When true, skip automatic fitView on structure changes (used during scrubbing). */
-  suppressAutoFit?: boolean;
+  bounds: { x: number; y: number; width: number; height: number } | null;
+  suppressAutoFit: boolean;
 }) {
-  const { fitView } = useReactFlow();
+  const { fitView } = useCameraContext();
   const hasFittedRef = useRef(false);
+  const boundsKey = bounds
+    ? `${bounds.x.toFixed(0)},${bounds.y.toFixed(0)},${bounds.width.toFixed(0)},${bounds.height.toFixed(0)}`
+    : "";
 
-  // Only refit when the graph structure changes (nodes/edges added or removed),
-  // not on selection changes which also mutate the nodes array.
-  const layoutKey = useMemo(
-    () => nodes.map((n) => n.id).join(",") + "|" + edges.map((e) => e.id).join(","),
-    [nodes, edges],
-  );
   useEffect(() => {
+    if (!boundsKey || !bounds) return;
     if (suppressAutoFit && hasFittedRef.current) return;
-    fitView({ padding: 0.3, maxZoom: 1.2, duration: 0 });
+    fitView();
     hasFittedRef.current = true;
-  }, [layoutKey, fitView, suppressAutoFit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boundsKey]);
 
-  // Press F to fit the view.
+  // Keyboard shortcut 'f' for fit view.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        fitView({ padding: 0.3, maxZoom: 1.2, duration: 300 });
-      }
+      if (e.key !== "f" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      fitView();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fitView]);
 
-  return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={mockNodeTypes}
-      edgeTypes={mockEdgeTypes}
-      onNodeClick={(_event, node) => {
-        if ((node.data as { isScopeGroup?: boolean } | undefined)?.isScopeGroup) return;
-        onSelect({ kind: "entity", id: node.id });
-      }}
-      onEdgeClick={(_event, edge) => onSelect({ kind: "edge", id: edge.id })}
-      onPaneClick={() => onSelect(null)}
-      proOptions={{ hideAttribution: true }}
-      minZoom={0.3}
-      maxZoom={3}
-      panOnDrag
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable
-    >
-      <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-      <Controls showInteractive={false} />
-    </ReactFlow>
-  );
+  return null;
 }
+
+// ── GraphPanel ─────────────────────────────────────────────────
 
 function GraphPanel({
   entityDefs,
@@ -701,7 +174,7 @@ function GraphPanel({
   subgraphScopeMode,
   onToggleProcessSubgraphs,
   onToggleCrateSubgraphs,
-  unionFrameLayout,
+  unionFrameResult,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
@@ -725,57 +198,72 @@ function GraphPanel({
   subgraphScopeMode: SubgraphScopeMode;
   onToggleProcessSubgraphs: () => void;
   onToggleCrateSubgraphs: () => void;
-  /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
-  unionFrameLayout?: LayoutResult;
+  /** When provided, use this pre-computed frame result (union mode) instead of measuring + ELK. */
+  unionFrameResult?: FrameRenderResult;
 }) {
-  const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
+  const [localGeometry, setLocalGeometry] = useState<GraphGeometry | null>(null);
 
-  // In snapshot mode (no unionFrameLayout), measure and lay out from scratch.
+  // In snapshot mode (no unionFrameResult), measure and lay out from scratch.
   React.useEffect(() => {
-    if (unionFrameLayout) return; // skip — union mode provides layout directly
-    if (entityDefs.length === 0) return;
-    measureNodeDefs(entityDefs, renderNodeForMeasure)
+    if (unionFrameResult) return; // skip — union mode provides geometry directly
+    if (entityDefs.length === 0) {
+      setLocalGeometry(null);
+      return;
+    }
+    measureEntityDefs(entityDefs)
       .then((sizes) => layoutGraph(entityDefs, edgeDefs, sizes, subgraphScopeMode))
-      .then(setLayout)
+      .then(setLocalGeometry)
       .catch(console.error);
-  }, [entityDefs, edgeDefs, subgraphScopeMode, unionFrameLayout]);
+  }, [entityDefs, edgeDefs, subgraphScopeMode, unionFrameResult]);
 
-  const effectiveLayout = unionFrameLayout ?? layout;
+  // Effective base geometry: from union frame or locally computed.
+  const baseGeometry = unionFrameResult?.geometry ?? localGeometry;
+  const ghostNodeIds = unionFrameResult?.ghostNodeIds;
+  const ghostEdgeIds = unionFrameResult?.ghostEdgeIds;
 
-  const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
+  // Enrich geometry with scope hues (applied on top of base geometry).
+  const enrichedGeometry = useMemo(() => {
+    if (!baseGeometry) return null;
+    const entityById = new Map(entityDefs.map((e) => [e.id, e]));
 
-  const nodesWithSelection = useMemo(
-    () =>
-      effectiveLayout.nodes.map((n) => {
-        const entity = entityById.get(n.id);
-        const scopeKey =
-          !entity
-            ? undefined
-            : scopeColorMode === "process"
-              ? entity.processId
-              : scopeColorMode === "crate"
-                ? (entity.krate ?? "~no-crate")
-                : undefined;
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            selected: selection?.kind === "entity" && n.id === selection.id,
-            scopeHue: scopeKey ? scopeHueForKey(scopeKey) : undefined,
-          },
-        };
-      }),
-    [effectiveLayout.nodes, entityById, scopeColorMode, selection],
-  );
+    const nodes = baseGeometry.nodes.map((node) => {
+      const entity = entityById.get(node.id);
+      const scopeKey =
+        !entity
+          ? undefined
+          : scopeColorMode === "process"
+            ? entity.processId
+            : scopeColorMode === "crate"
+              ? (entity.krate ?? "~no-crate")
+              : undefined;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          scopeHue: scopeKey ? scopeHueForKey(scopeKey) : undefined,
+        },
+      };
+    });
 
-  const edgesWithSelection = useMemo(
-    () =>
-      effectiveLayout.edges.map((e) => ({
-        ...e,
-        selected: selection?.kind === "edge" && e.id === selection.id,
-      })),
-    [effectiveLayout.edges, selection],
-  );
+    const groups = baseGeometry.groups.map((group) => {
+      const scopeKey =
+        scopeColorMode !== "none"
+          ? (group.data?.scopeKey as string | undefined)
+          : undefined;
+      return {
+        ...group,
+        data: {
+          ...group.data,
+          scopeHue: scopeKey ? scopeHueForKey(scopeKey) : undefined,
+        },
+      };
+    });
+
+    return { ...baseGeometry, nodes, groups };
+  }, [baseGeometry, entityDefs, scopeColorMode]);
+
+  const selectedNodeId = selection?.kind === "entity" ? selection.id : null;
+  const selectedEdgeId = selection?.kind === "edge" ? selection.id : null;
 
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
   const showToolbar = crateItems.length > 1 || processItems.length > 0 || focusedEntityId;
@@ -858,14 +346,28 @@ function GraphPanel({
         </div>
       ) : (
         <div className="mockup-graph-flow">
-          <ReactFlowProvider>
-            <GraphFlow
-              nodes={nodesWithSelection}
-              edges={edgesWithSelection}
-              onSelect={onSelect}
-              suppressAutoFit={!!unionFrameLayout}
+          <GraphCanvas
+            geometry={enrichedGeometry}
+            onBackgroundClick={() => onSelect(null)}
+          >
+            <GraphAutoFit
+              bounds={enrichedGeometry?.bounds ?? null}
+              suppressAutoFit={!!unionFrameResult}
             />
-          </ReactFlowProvider>
+            <GroupLayer groups={enrichedGeometry?.groups ?? []} />
+            <EdgeLayer
+              edges={enrichedGeometry?.edges ?? []}
+              selectedEdgeId={selectedEdgeId}
+              onEdgeClick={(id) => onSelect({ kind: "edge", id })}
+              ghostEdgeIds={ghostEdgeIds}
+            />
+            <NodeLayer
+              nodes={enrichedGeometry?.nodes ?? []}
+              selectedNodeId={selectedNodeId}
+              onNodeClick={(id) => onSelect({ kind: "entity", id })}
+              ghostNodeIds={ghostNodeIds}
+            />
+          </GraphCanvas>
         </div>
       )}
     </div>
@@ -1621,7 +1123,7 @@ export function App() {
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
-  const [unionFrameLayout, setUnionFrameLayout] = useState<LayoutResult | undefined>(undefined);
+  const [unionFrameResult, setUnionFrameResult] = useState<FrameRenderResult | undefined>(undefined);
   const [downsampleInterval, setDownsampleInterval] = useState(1);
   const [builtDownsampleInterval, setBuiltDownsampleInterval] = useState(1);
   const pollingRef = useRef<number | null>(null);
@@ -1825,7 +1327,6 @@ export function App() {
         const union = await buildUnionLayout(
           session.frames,
           apiClient,
-          renderNodeForMeasure,
           (loaded, total) => {
             setRecording((prev) => {
               if (prev.phase !== "stopped") return prev;
@@ -1841,7 +1342,7 @@ export function App() {
 
         // Render last frame from union layout.
         const snappedLast = nearestProcessedFrame(lastFrameIndex, union.processedFrameIndices);
-        const unionFrame = renderFrameFromUnion(
+        const frameResult = renderFrameFromUnion(
           snappedLast,
           union,
           hiddenKrates,
@@ -1849,7 +1350,7 @@ export function App() {
           focusedEntityId,
           ghostMode,
         );
-        setUnionFrameLayout(unionFrame);
+        setUnionFrameResult(frameResult);
       }
     } catch (err) {
       console.error(err);
@@ -1906,7 +1407,6 @@ export function App() {
           const union = await buildUnionLayout(
             session.frames,
             apiClient,
-            renderNodeForMeasure,
             (loaded, total) => {
               setRecording((prev) => {
                 if (prev.phase !== "stopped") return prev;
@@ -1921,14 +1421,14 @@ export function App() {
           });
 
           const snappedLast = nearestProcessedFrame(lastFrameIndex, union.processedFrameIndices);
-          const unionFrame = renderFrameFromUnion(
+          const frameResult = renderFrameFromUnion(
             snappedLast,
             union,
             hiddenKrates,
             hiddenProcesses,
             focusedEntityId,
           );
-          setUnionFrameLayout(unionFrame);
+          setUnionFrameResult(frameResult);
         }
       } catch (err) {
         console.error(err);
@@ -1942,7 +1442,6 @@ export function App() {
       setRecording((prev) => {
         if (prev.phase !== "stopped" && prev.phase !== "scrubbing") return prev;
         const { frames, frameCount, sessionId, avgCaptureMs, maxCaptureMs, totalCaptureMs } = prev;
-        // Both "stopped" and "scrubbing" have unionLayout. Narrow for TS:
         const unionLayout =
           prev.phase === "stopped" ? prev.unionLayout : prev.unionLayout;
         if (!unionLayout) return prev; // union not ready yet
@@ -1956,7 +1455,7 @@ export function App() {
           focusedEntityId,
           ghostMode,
         );
-        setUnionFrameLayout(result);
+        setUnionFrameResult(result);
 
         // Update snapshot state with this frame's entities/edges for the inspector.
         const snapped = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
@@ -2001,7 +1500,6 @@ export function App() {
       const union = await buildUnionLayout(
         frames,
         apiClient,
-        renderNodeForMeasure,
         (loaded, total) => {
           setRecording((prev) => {
             if (prev.phase !== "stopped") return prev;
@@ -2017,7 +1515,7 @@ export function App() {
       });
       const lastFrameIdx = frames[frames.length - 1]?.frame_index ?? 0;
       const snapped = nearestProcessedFrame(lastFrameIdx, union.processedFrameIndices);
-      const unionFrame = renderFrameFromUnion(
+      const frameResult = renderFrameFromUnion(
         snapped,
         union,
         hiddenKrates,
@@ -2025,7 +1523,7 @@ export function App() {
         focusedEntityId,
         ghostMode,
       );
-      setUnionFrameLayout(unionFrame);
+      setUnionFrameResult(frameResult);
       const frameData = union.frameCache.get(snapped);
       if (frameData) {
         setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges });
@@ -2046,7 +1544,7 @@ export function App() {
         focusedEntityId,
         ghostMode,
       );
-      setUnionFrameLayout(result);
+      setUnionFrameResult(result);
     } else if (recording.phase === "stopped" && recording.unionLayout) {
       const lastFrame = recording.frames.length - 1;
       const result = renderFrameFromUnion(
@@ -2057,14 +1555,14 @@ export function App() {
         focusedEntityId,
         ghostMode,
       );
-      setUnionFrameLayout(result);
+      setUnionFrameResult(result);
     }
   }, [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, recording]);
 
-  // Clear union frame layout when going back to idle or starting a new recording.
+  // Clear union frame result when going back to idle or starting a new recording.
   useEffect(() => {
     if (recording.phase === "idle" || recording.phase === "recording") {
-      setUnionFrameLayout(undefined);
+      setUnionFrameResult(undefined);
     }
   }, [recording.phase]);
 
@@ -2314,7 +1812,7 @@ export function App() {
             subgraphScopeMode={subgraphScopeMode}
             onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
             onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
-            unionFrameLayout={unionFrameLayout}
+            unionFrameResult={unionFrameResult}
           />
         }
         right={
