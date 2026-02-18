@@ -59,37 +59,3 @@
     min-height: 0;
     position: relative;
 }
-
-.graph-flow .react-flow {
-    height: 100%;
-}
-
-.graph-flow .react-flow__controls {
-    background: var(--surface-raised);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-}
-
-.graph-flow .react-flow__controls-button {
-    background: var(--surface-raised);
-    border-bottom: 1px solid var(--border);
-    fill: var(--text-secondary);
-}
-
-.graph-flow .react-flow__controls-button:hover {
-    background: var(--surface-hover);
-}
-
-.graph-flow .react-flow__controls-button:last-child {
-    border-bottom: none;
-}
-
-/* Edges are selectable — cursor hint */
-.graph-flow .react-flow__edge {
-    cursor: pointer;
-}
-
-/* Hide ReactFlow's default selected-edge styling */
-.graph-flow .react-flow__edge.selected .react-flow__edge-path {
-    stroke: unset;
-}

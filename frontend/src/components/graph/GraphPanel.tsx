@@ -1,16 +1,23 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ReactFlowProvider } from "@xyflow/react";
 import { Camera, CircleNotch, Crosshair } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { FilterMenu, type FilterMenuItem } from "../../ui/primitives/FilterMenu";
-import type { EntityDef, EdgeDef, Tone } from "../../snapshot";
-import { measureNodeDefs, layoutGraph, type LayoutResult, type SubgraphScopeMode } from "../../layout";
-import { GraphFlow, type GraphSelection } from "./GraphFlow";
-import { renderNodeForMeasure } from "./nodeTypes";
+import type { EntityDef, EdgeDef } from "../../snapshot";
+import { layoutGraph, type SubgraphScopeMode } from "../../graph/elkAdapter";
+import { measureEntityDefs } from "../../graph/render/NodeLayer";
+import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
+import { GroupLayer } from "../../graph/render/GroupLayer";
+import { EdgeLayer } from "../../graph/render/EdgeLayer";
+import { NodeLayer } from "../../graph/render/NodeLayer";
+import type { GraphGeometry } from "../../graph/geometry";
 import { scopeHueForKey } from "./scopeColors";
+import type { FrameRenderResult } from "../../recording/unionGraph";
 import "./GraphPanel.css";
 
-export type { GraphSelection };
+export type GraphSelection =
+  | { kind: "entity"; id: string }
+  | { kind: "edge"; id: string }
+  | null;
 
 export type SnapPhase = "idle" | "cutting" | "loading" | "ready" | "error";
 
@@ -72,59 +79,62 @@ export function GraphPanel({
   onToggleProcessSubgraphs: () => void;
   onToggleCrateSubgraphs: () => void;
   /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
-  unionFrameLayout?: LayoutResult;
+  unionFrameLayout?: FrameRenderResult;
 }) {
-  const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
+  const [layout, setLayout] = useState<GraphGeometry | null>(null);
 
   // In snapshot mode (no unionFrameLayout), measure and lay out from scratch.
   React.useEffect(() => {
     if (unionFrameLayout) return; // skip — union mode provides layout directly
     if (entityDefs.length === 0) return;
-    measureNodeDefs(entityDefs, renderNodeForMeasure)
+    measureEntityDefs(entityDefs)
       .then((sizes) => layoutGraph(entityDefs, edgeDefs, sizes, subgraphScopeMode))
       .then(setLayout)
       .catch(console.error);
   }, [entityDefs, edgeDefs, subgraphScopeMode, unionFrameLayout]);
 
-  const effectiveLayout = unionFrameLayout ?? layout;
+  const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
 
   const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
 
-  const nodesWithSelection = useMemo(
-    () =>
-      effectiveLayout.nodes.map((n) => {
-        const entity = entityById.get(n.id);
-        const scopeKey =
-          !entity
-            ? undefined
-            : scopeColorMode === "process"
-              ? entity.processId
-              : scopeColorMode === "crate"
-                ? (entity.krate ?? "~no-crate")
-                : undefined;
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            selected: selection?.kind === "entity" && n.id === selection.id,
-            scopeHue: scopeKey ? scopeHueForKey(scopeKey) : undefined,
-          },
-        };
-      }),
-    [effectiveLayout.nodes, entityById, scopeColorMode, selection],
-  );
+  const nodesWithScopeColor = useMemo(() => {
+    if (!effectiveGeometry) return [];
+    return effectiveGeometry.nodes.map((n) => {
+      const entity = entityById.get(n.id);
+      const scopeKey =
+        !entity
+          ? undefined
+          : scopeColorMode === "process"
+            ? entity.processId
+            : scopeColorMode === "crate"
+              ? (entity.krate ?? "~no-crate")
+              : undefined;
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          scopeHue: scopeKey ? scopeHueForKey(scopeKey) : undefined,
+        },
+      };
+    });
+  }, [effectiveGeometry, entityById, scopeColorMode]);
 
-  const edgesWithSelection = useMemo(
-    () =>
-      effectiveLayout.edges.map((e) => ({
-        ...e,
-        selected: selection?.kind === "edge" && e.id === selection.id,
-      })),
-    [effectiveLayout.edges, selection],
-  );
+  const ghostNodeIds = unionFrameLayout?.ghostNodeIds;
+  const ghostEdgeIds = unionFrameLayout?.ghostEdgeIds;
 
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
   const showToolbar = crateItems.length > 1 || processItems.length > 0 || focusedEntityId;
+
+  // Keep track of whether we've fitted the view at least once for this layout.
+  const [hasFitted, setHasFitted] = useState(false);
+  const geometryKey = effectiveGeometry
+    ? effectiveGeometry.nodes.map((n) => n.id).join(",")
+    : "";
+
+  // Reset fit state when geometry changes structure.
+  useEffect(() => {
+    setHasFitted(false);
+  }, [geometryKey]);
 
   return (
     <div className="graph-panel">
@@ -204,16 +214,78 @@ export function GraphPanel({
         </div>
       ) : (
         <div className="graph-flow">
-          <ReactFlowProvider>
-            <GraphFlow
-              nodes={nodesWithSelection}
-              edges={edgesWithSelection}
-              onSelect={onSelect}
-              suppressAutoFit={!!unionFrameLayout}
+          <GraphCanvas
+            geometry={effectiveGeometry}
+            onBackgroundClick={() => onSelect(null)}
+          >
+            <GraphAutoFit
+              geometryKey={geometryKey}
+              hasFitted={hasFitted}
+              onFitted={() => setHasFitted(true)}
+              suppressAutoFit={!!unionFrameLayout && hasFitted}
             />
-          </ReactFlowProvider>
+            {effectiveGeometry && (
+              <>
+                <GroupLayer groups={effectiveGeometry.groups} />
+                <EdgeLayer
+                  edges={effectiveGeometry.edges}
+                  selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
+                  ghostEdgeIds={ghostEdgeIds}
+                  onEdgeClick={(id) => onSelect({ kind: "edge", id })}
+                />
+                <NodeLayer
+                  nodes={nodesWithScopeColor}
+                  selectedNodeId={selection?.kind === "entity" ? selection.id : null}
+                  ghostNodeIds={ghostNodeIds}
+                  onNodeClick={(id) => onSelect({ kind: "entity", id })}
+                />
+              </>
+            )}
+          </GraphCanvas>
         </div>
       )}
     </div>
   );
+}
+
+// ── GraphAutoFit ───────────────────────────────────────────────
+
+/**
+ * Renders nothing; uses useCameraContext() to trigger fitView on geometry changes.
+ * Must be rendered inside <GraphCanvas>.
+ */
+function GraphAutoFit({
+  geometryKey,
+  hasFitted,
+  onFitted,
+  suppressAutoFit,
+}: {
+  geometryKey: string;
+  hasFitted: boolean;
+  onFitted: () => void;
+  suppressAutoFit: boolean;
+}) {
+  const { fitView } = useCameraContext();
+
+  useEffect(() => {
+    if (suppressAutoFit) return;
+    if (!geometryKey) return;
+    fitView();
+    onFitted();
+  }, [geometryKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Also wire up F key to fit view
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        fitView();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fitView]);
+
+  return null;
 }

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import "@xyflow/react/dist/style.css";
 import { SplitLayout } from "./ui/layout/SplitLayout";
 import type { FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { apiClient } from "./api";
@@ -12,7 +11,7 @@ import {
   type EntityDef,
   type EdgeDef,
 } from "./snapshot";
-import type { LayoutResult, SubgraphScopeMode } from "./layout";
+import type { SubgraphScopeMode } from "./graph/elkAdapter";
 import {
   buildUnionLayout,
   computeChangeFrames,
@@ -20,9 +19,9 @@ import {
   nearestProcessedFrame,
   renderFrameFromUnion,
   type FrameChangeSummary,
+  type FrameRenderResult,
   type UnionLayout,
 } from "./recording/unionGraph";
-import { renderNodeForMeasure } from "./components/graph/nodeTypes";
 import { GraphPanel, type GraphSelection, type ScopeColorMode, type SnapPhase } from "./components/graph/GraphPanel";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ProcessModal } from "./components/ProcessModal";
@@ -91,7 +90,7 @@ export function App() {
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
-  const [unionFrameLayout, setUnionFrameLayout] = useState<LayoutResult | undefined>(undefined);
+  const [unionFrameLayout, setUnionFrameLayout] = useState<FrameRenderResult | undefined>(undefined);
   const [downsampleInterval, setDownsampleInterval] = useState(1);
   const [builtDownsampleInterval, setBuiltDownsampleInterval] = useState(1);
   const pollingRef = useRef<number | null>(null);
@@ -293,7 +292,6 @@ export function App() {
         const union = await buildUnionLayout(
           session.frames,
           apiClient,
-          renderNodeForMeasure,
           (loaded, total) => {
             setRecording((prev) => {
               if (prev.phase !== "stopped") return prev;
@@ -373,7 +371,6 @@ export function App() {
           const union = await buildUnionLayout(
             session.frames,
             apiClient,
-            renderNodeForMeasure,
             (loaded, total) => {
               setRecording((prev) => {
                 if (prev.phase !== "stopped") return prev;
@@ -465,7 +462,6 @@ export function App() {
       const union = await buildUnionLayout(
         frames,
         apiClient,
-        renderNodeForMeasure,
         (loaded, total) => {
           setRecording((prev) => {
             if (prev.phase !== "stopped") return prev;

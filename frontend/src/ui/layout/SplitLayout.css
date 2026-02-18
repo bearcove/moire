@@ -18,7 +18,7 @@
 }
 
 .ui-split-layout--right-collapsed .ui-split-left {
-    /* Prevent left panel (e.g. ReactFlow) from overlapping the collapsed right column */
+    /* Prevent left panel (e.g. graph canvas) from overlapping the collapsed right column */
     overflow: hidden;
     position: relative;
     z-index: 0;

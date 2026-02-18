@@ -1,4 +1,3 @@
-import type { Node, Edge } from "@xyflow/react";
 import type { FrameSummary } from "../api/types";
 import type { ApiClient } from "../api/client";
 import {
@@ -7,19 +6,15 @@ import {
   type EntityDef,
   type EdgeDef,
 } from "../snapshot";
-import {
-  measureNodeDefs,
-  layoutGraph,
-  type LayoutResult,
-  type RenderNodeForMeasure,
-} from "../layout";
+import { measureEntityDefs } from "../graph/render/NodeLayer";
+import { layoutGraph } from "../graph/elkAdapter";
+import type { GraphGeometry, GeometryNode, GeometryEdge } from "../graph/geometry";
 
 // ── Types ─────────────────────────────────────────────────────
 
 export interface UnionLayout {
-  /** Full ELK layout result (nodes with positions, edges with waypoints). */
-  nodes: Node[];
-  edges: Edge[];
+  /** Full geometry (nodes with world positions, edges with polylines). */
+  geometry: GraphGeometry;
   /** Per-frame converted data: frameIndex → { entities, edges }. */
   frameCache: Map<number, { entities: EntityDef[]; edges: EdgeDef[] }>;
   /** Which node IDs exist at each frame index. */
@@ -28,6 +23,12 @@ export interface UnionLayout {
   edgePresence: Map<string, Set<number>>;
   /** Sorted list of frame indices that were actually fetched and processed. */
   processedFrameIndices: number[];
+}
+
+export interface FrameRenderResult {
+  geometry: GraphGeometry;
+  ghostNodeIds: Set<string>;
+  ghostEdgeIds: Set<string>;
 }
 
 // ── Build ─────────────────────────────────────────────────────
@@ -49,7 +50,6 @@ function selectFrameIndices(frames: FrameSummary[], interval: number): number[] 
 export async function buildUnionLayout(
   frames: FrameSummary[],
   apiClient: ApiClient,
-  renderNode: RenderNodeForMeasure,
   onProgress?: (loaded: number, total: number) => void,
   downsampleInterval: number = 1,
 ): Promise<UnionLayout> {
@@ -98,12 +98,11 @@ export async function buildUnionLayout(
   const unionEdges = Array.from(unionEdgesById.values());
 
   // Measure and layout the full union graph.
-  const sizes = await measureNodeDefs(unionEntities, renderNode);
-  const layout = await layoutGraph(unionEntities, unionEdges, sizes);
+  const sizes = await measureEntityDefs(unionEntities);
+  const geometry = await layoutGraph(unionEntities, unionEdges, sizes);
 
   return {
-    nodes: layout.nodes,
-    edges: layout.edges,
+    geometry,
     frameCache,
     nodePresence,
     edgePresence,
@@ -262,10 +261,11 @@ export function renderFrameFromUnion(
   hiddenProcesses: ReadonlySet<string>,
   focusedEntityId: string | null,
   ghostMode?: boolean,
-): LayoutResult {
+): FrameRenderResult {
   const snappedIndex = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
   const frameData = unionLayout.frameCache.get(snappedIndex);
-  if (!frameData) return { nodes: [], edges: [] };
+  const emptyGeometry: GraphGeometry = { nodes: [], groups: [], edges: [], bounds: { x: 0, y: 0, width: 0, height: 0 } };
+  if (!frameData) return { geometry: emptyGeometry, ghostNodeIds: new Set(), ghostEdgeIds: new Set() };
 
   // Apply krate/process filters.
   let filteredEntities = frameData.entities.filter(
@@ -290,14 +290,16 @@ export function renderFrameFromUnion(
       .map((e) => e.id),
   );
 
-  // Build a lookup from frame entity/edge data for updating node data.
+  // Build a lookup from frame entity data for updating node data.
   const frameEntityById = new Map(filteredEntities.map((e) => [e.id, e]));
 
   // Track all rendered node IDs (present + ghost) for edge validity in ghost mode.
   const renderedNodeIds = new Set<string>();
+  const ghostNodeIds = new Set<string>();
+  const ghostEdgeIds = new Set<string>();
 
-  const nodes: Node[] = [];
-  for (const unionNode of unionLayout.nodes) {
+  const nodes: GeometryNode[] = [];
+  for (const unionNode of unionLayout.geometry.nodes) {
     const isPresent = visibleNodeIds.has(unionNode.id);
 
     if (isPresent) {
@@ -338,31 +340,45 @@ export function renderFrameFromUnion(
       nodes.push({ ...unionNode, data });
       renderedNodeIds.add(unionNode.id);
     } else if (ghostMode) {
-      nodes.push({
-        ...unionNode,
-        data: { ...unionNode.data, ghost: true, selected: false },
-        selectable: false,
-        style: { pointerEvents: "none" as const },
-      });
+      nodes.push({ ...unionNode, data: { ...unionNode.data, ghost: true } });
+      ghostNodeIds.add(unionNode.id);
       renderedNodeIds.add(unionNode.id);
     }
   }
 
-  const edges: Edge[] = [];
-  for (const unionEdge of unionLayout.edges) {
+  const edges: GeometryEdge[] = [];
+  for (const unionEdge of unionLayout.geometry.edges) {
     if (visibleEdgeIds.has(unionEdge.id)) {
       edges.push(unionEdge);
     } else if (
       ghostMode &&
-      renderedNodeIds.has(unionEdge.source) &&
-      renderedNodeIds.has(unionEdge.target)
+      renderedNodeIds.has(unionEdge.sourceId) &&
+      renderedNodeIds.has(unionEdge.targetId)
     ) {
-      edges.push({
-        ...unionEdge,
-        data: { ...unionEdge.data, ghost: true },
-      });
+      edges.push({ ...unionEdge, data: { ...unionEdge.data, ghost: true } });
+      ghostEdgeIds.add(unionEdge.id);
     }
   }
 
-  return { nodes, edges };
+  // Recompute bounds for the filtered set
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const node of nodes) {
+    minX = Math.min(minX, node.worldRect.x);
+    minY = Math.min(minY, node.worldRect.y);
+    maxX = Math.max(maxX, node.worldRect.x + node.worldRect.width);
+    maxY = Math.max(maxY, node.worldRect.y + node.worldRect.height);
+  }
+  const bounds = minX === Infinity
+    ? { x: 0, y: 0, width: 0, height: 0 }
+    : { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
+  // Keep groups from the union geometry (they always show).
+  const geometry: GraphGeometry = {
+    nodes,
+    groups: unionLayout.geometry.groups,
+    edges,
+    bounds,
+  };
+
+  return { geometry, ghostNodeIds, ghostEdgeIds };
 }

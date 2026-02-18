@@ -4,7 +4,7 @@ import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { kindIcon } from "../../nodeKindSpec";
 import type { EntityDef, EdgeDef } from "../../snapshot";
-import { edgeTooltip } from "../../layout";
+import { edgeTooltip } from "../../graph/elkAdapter";
 import "./InspectorPanel.css";
 
 const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {

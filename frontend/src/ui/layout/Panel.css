@@ -103,7 +103,7 @@
     overflow: hidden;
 }
 
-.panel--graph .react-flow-wrapper {
+.panel--graph .graph-canvas-wrapper {
     flex: 1;
     min-height: 0;
 }

@@ -6,7 +6,7 @@ import type { UnionLayout } from "../../recording/unionGraph";
 import { diffEntityBetweenFrames } from "../../recording/unionGraph";
 import { EntityInspectorContent } from "./EntityInspectorContent";
 import { EdgeInspectorContent } from "./EdgeInspectorContent";
-import type { GraphSelection } from "../graph/GraphFlow";
+import type { GraphSelection } from "../graph/GraphPanel";
 import "./InspectorPanel.css";
 
 export function InspectorPanel({

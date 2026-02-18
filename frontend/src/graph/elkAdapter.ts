@@ -1,10 +1,7 @@
-import React from "react";
-import { createRoot } from "react-dom/client";
-import { flushSync } from "react-dom";
-import { ReactFlowProvider, MarkerType, type Node, type Edge } from "@xyflow/react";
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
-import type { EntityDef, EdgeDef } from "./snapshot";
+import type { EntityDef, EdgeDef } from "../snapshot";
+import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } from "./geometry";
 
 // ── ELK layout ────────────────────────────────────────────────
 
@@ -21,7 +18,13 @@ const elkOptions = {
 
 // ── Edge styling ──────────────────────────────────────────────
 
-export function edgeStyle(edge: EdgeDef) {
+export type EdgeStyle = {
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+};
+
+export function edgeStyle(edge: EdgeDef): EdgeStyle {
   const isPendingOp = edge.kind === "needs" && edge.state === "pending";
   if (isPendingOp) {
     return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.8 };
@@ -79,49 +82,7 @@ export function edgeLabel(edge: EdgeDef): string | undefined {
 
 // ── Types ─────────────────────────────────────────────────────
 
-export type ElkPoint = { x: number; y: number };
-export type LayoutResult = { nodes: Node[]; edges: Edge[] };
 export type SubgraphScopeMode = "none" | "process" | "crate";
-
-/** Callback that renders a measurement-mode React node for a given EntityDef. */
-export type RenderNodeForMeasure = (def: EntityDef) => React.ReactNode;
-
-// ── Measurement ───────────────────────────────────────────────
-
-export async function measureNodeDefs(
-  defs: EntityDef[],
-  renderNode: RenderNodeForMeasure,
-): Promise<Map<string, { width: number; height: number }>> {
-  // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
-  await Promise.resolve();
-
-  const container = document.createElement("div");
-  container.style.cssText =
-    "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
-  document.body.appendChild(container);
-
-  const sizes = new Map<string, { width: number; height: number }>();
-
-  for (const def of defs) {
-    const el = document.createElement("div");
-    container.appendChild(el);
-    const root = createRoot(el);
-
-    const node = renderNode(def);
-
-    flushSync(() => {
-      root.render(<ReactFlowProvider>{node}</ReactFlowProvider>);
-    });
-
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    sizes.set(def.id, { width: w, height: h });
-    root.unmount();
-  }
-
-  document.body.removeChild(container);
-  return sizes;
-}
 
 // ── Layout ────────────────────────────────────────────────────
 
@@ -130,7 +91,7 @@ export async function layoutGraph(
   edgeDefs: EdgeDef[],
   nodeSizes: Map<string, { width: number; height: number }>,
   subgraphScopeMode: SubgraphScopeMode = "none",
-): Promise<LayoutResult> {
+): Promise<GraphGeometry> {
   const nodeIds = new Set(entityDefs.map((n) => n.id));
   const validEdges = edgeDefs.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
 
@@ -192,9 +153,9 @@ export async function layoutGraph(
 
   type ElkSectionLike = {
     id?: string;
-    startPoint?: ElkPoint;
-    endPoint?: ElkPoint;
-    bendPoints?: ElkPoint[];
+    startPoint?: Point;
+    endPoint?: Point;
+    bendPoints?: Point[];
     incomingSections?: string[];
     outgoingSections?: string[];
   };
@@ -206,11 +167,7 @@ export async function layoutGraph(
   };
   const edgeLayoutsById = new Map<string, CollectedElkEdge[]>();
 
-  const collectEdgeLayouts = (
-    graph: any,
-    graphOffset: { x: number; y: number },
-    depth: number,
-  ) => {
+  const collectEdgeLayouts = (graph: any, depth: number) => {
     for (const edge of graph.edges ?? []) {
       const collected: CollectedElkEdge = {
         depth,
@@ -223,18 +180,11 @@ export async function layoutGraph(
     }
 
     for (const child of graph.children ?? []) {
-      collectEdgeLayouts(
-        child,
-        {
-          x: graphOffset.x + (child.x ?? 0),
-          y: graphOffset.y + (child.y ?? 0),
-        },
-        depth + 1,
-      );
+      collectEdgeLayouts(child, depth + 1);
     }
   };
 
-  collectEdgeLayouts(result, { x: 0, y: 0 }, 0);
+  collectEdgeLayouts(result, 0);
 
   const orderSections = (sections: ElkSectionLike[]): ElkSectionLike[] => {
     if (sections.length <= 1) return sections;
@@ -272,17 +222,16 @@ export async function layoutGraph(
     return ordered.length === 0 ? sections : ordered;
   };
 
-  const nodes: Node[] = [];
+  const geoNodes: GeometryNode[] = [];
+  const geoGroups: GeometryGroup[] = [];
+
+  // Track absolute positions for each entity node (needed for group member listing)
   const absoluteNodePos = new Map<string, { x: number; y: number }>();
 
-  const makeEntityNode = (def: EntityDef, position: { x: number; y: number }, parentId?: string): Node => {
+  const makeNodeData = (def: EntityDef): { kind: string; data: any } => {
     if (def.channelPair) {
       return {
-        id: def.id,
-        type: "channelPairNode",
-        position,
-        parentId,
-        extent: parentId ? "parent" : undefined,
+        kind: "channelPairNode",
         data: {
           tx: def.channelPair.tx,
           rx: def.channelPair.rx,
@@ -294,11 +243,7 @@ export async function layoutGraph(
     }
     if (def.rpcPair) {
       return {
-        id: def.id,
-        type: "rpcPairNode",
-        position,
-        parentId,
-        extent: parentId ? "parent" : undefined,
+        kind: "rpcPairNode",
         data: {
           req: def.rpcPair.req,
           resp: def.rpcPair.resp,
@@ -308,11 +253,7 @@ export async function layoutGraph(
       };
     }
     return {
-      id: def.id,
-      type: "graphNode",
-      position,
-      parentId,
-      extent: parentId ? "parent" : undefined,
+      kind: "mockNode",
       data: {
         kind: def.kind,
         label: def.name,
@@ -328,7 +269,6 @@ export async function layoutGraph(
 
   const walkChildren = (
     children: any[] | undefined,
-    parentId?: string,
     parentOffset: { x: number; y: number } = { x: 0, y: 0 },
   ) => {
     for (const child of children ?? []) {
@@ -337,53 +277,60 @@ export async function layoutGraph(
       const localY = child.y ?? 0;
       const absX = parentOffset.x + localX;
       const absY = parentOffset.y + localY;
+
       if (isGroupNode) {
         const groupId = String(child.id);
         const firstColon = groupId.indexOf(":");
         const secondColon = groupId.indexOf(":", firstColon + 1);
         const scopeKind = secondColon > -1 ? groupId.slice(firstColon + 1, secondColon) : "scope";
         const rawScopeKey = secondColon > -1 ? groupId.slice(secondColon + 1) : groupId;
-        const memberCount = (child.children ?? []).length;
-        nodes.push({
-          id: child.id,
-          type: "scopeGroupNode",
-          position: { x: absX, y: absY },
-          data: {
-            isScopeGroup: true,
-            scopeKind,
-            scopeKey: rawScopeKey,
-            label: rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey,
-            count: memberCount,
-            selected: false,
-          },
-          selectable: false,
-          draggable: false,
-          style: {
+        const memberIds = (child.children ?? [])
+          .filter((c: any) => !String(c.id).startsWith("scope-group:"))
+          .map((c: any) => String(c.id));
+
+        geoGroups.push({
+          id: groupId,
+          scopeKind,
+          label: rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey,
+          worldRect: {
+            x: absX,
+            y: absY,
             width: child.width ?? 260,
             height: child.height ?? 180,
           },
+          members: memberIds,
+          data: {
+            scopeKind,
+            scopeKey: rawScopeKey,
+            count: memberIds.length,
+          },
         });
-        walkChildren(child.children, child.id, { x: absX, y: absY });
+
+        walkChildren(child.children, { x: absX, y: absY });
         continue;
       }
 
       const entity = entityById.get(child.id);
       if (!entity) continue;
-      nodes.push(makeEntityNode(entity, { x: localX, y: localY }, parentId));
+
       absoluteNodePos.set(entity.id, { x: absX, y: absY });
+
+      const size = nodeSizes.get(entity.id) ?? { width: 150, height: 36 };
+      const { kind, data } = makeNodeData(entity);
+      geoNodes.push({
+        id: entity.id,
+        kind,
+        worldRect: { x: absX, y: absY, width: size.width, height: size.height },
+        data,
+      });
     }
   };
 
-  walkChildren(result.children, undefined, { x: 0, y: 0 });
+  walkChildren(result.children, { x: 0, y: 0 });
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
-  const edges: Edge[] = validEdges.map((def) => {
-    const sz = edgeMarkerSize(def);
-    const points: ElkPoint[] = [];
-    const srcPos = absoluteNodePos.get(def.source);
-    const dstPos = absoluteNodePos.get(def.target);
-    const srcSize = nodeSizes.get(def.source) ?? { width: 150, height: 36 };
-    const dstSize = nodeSizes.get(def.target) ?? { width: 150, height: 36 };
+  const geoEdges: GeometryEdge[] = validEdges.map((def) => {
+    const points: Point[] = [];
     const records = edgeLayoutsById.get(def.id) ?? [];
     if (records.length > 0) {
       const exact = records.filter(
@@ -398,26 +345,15 @@ export async function layoutGraph(
       const selected = candidates[0];
       const orderedSections = orderSections(selected.sections);
       for (const section of orderedSections) {
-        const sectionPoints: ElkPoint[] = [];
+        const sectionPoints: Point[] = [];
         if (section.startPoint) {
-          sectionPoints.push({
-            x: section.startPoint.x,
-            y: section.startPoint.y,
-          });
+          sectionPoints.push({ x: section.startPoint.x, y: section.startPoint.y });
         }
         if (section.bendPoints) {
-          sectionPoints.push(
-            ...section.bendPoints.map((p) => ({
-              x: p.x,
-              y: p.y,
-            })),
-          );
+          sectionPoints.push(...section.bendPoints.map((p) => ({ x: p.x, y: p.y })));
         }
         if (section.endPoint) {
-          sectionPoints.push({
-            x: section.endPoint.x,
-            y: section.endPoint.y,
-          });
+          sectionPoints.push({ x: section.endPoint.x, y: section.endPoint.y });
         }
         if (sectionPoints.length === 0) continue;
         if (points.length === 0) points.push(...sectionPoints);
@@ -425,31 +361,55 @@ export async function layoutGraph(
       }
     }
 
-    if (points.length === 0) {
-      if (srcPos && dstPos) {
-        points.push(
-          { x: srcPos.x + srcSize.width / 2, y: srcPos.y + srcSize.height / 2 },
-          { x: dstPos.x + dstSize.width / 2, y: dstPos.y + dstSize.height / 2 },
-        );
-      }
-    }
     const srcName = entityNameMap.get(def.source) ?? def.source;
     const dstName = entityNameMap.get(def.target) ?? def.target;
-    return {
+    const markerSize = edgeMarkerSize(def);
+
+    const edge: GeometryEdge = {
       id: def.id,
-      source: def.source,
-      target: def.target,
-      type: "elkrouted",
+      sourceId: def.source,
+      targetId: def.target,
+      polyline: points,
+      kind: def.kind,
       data: {
-        points,
+        style: edgeStyle(def),
         tooltip: edgeTooltip(def, srcName, dstName),
         edgeLabel: edgeLabel(def),
         edgePending: def.state === "pending",
+        markerSize,
       },
-      style: edgeStyle(def),
-      markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
     };
+    return edge;
   });
 
-  return { nodes, edges };
+  // Compute bounding box of all geometry
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const node of geoNodes) {
+    minX = Math.min(minX, node.worldRect.x);
+    minY = Math.min(minY, node.worldRect.y);
+    maxX = Math.max(maxX, node.worldRect.x + node.worldRect.width);
+    maxY = Math.max(maxY, node.worldRect.y + node.worldRect.height);
+  }
+  for (const group of geoGroups) {
+    minX = Math.min(minX, group.worldRect.x);
+    minY = Math.min(minY, group.worldRect.y);
+    maxX = Math.max(maxX, group.worldRect.x + group.worldRect.width);
+    maxY = Math.max(maxY, group.worldRect.y + group.worldRect.height);
+  }
+
+  const bounds =
+    minX === Infinity
+      ? { x: 0, y: 0, width: 0, height: 0 }
+      : { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+
+  return {
+    nodes: geoNodes,
+    groups: geoGroups,
+    edges: geoEdges,
+    bounds,
+  };
 }
