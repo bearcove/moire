@@ -79,7 +79,13 @@ export interface SnapshotEntity {
   meta: Record<string, unknown> | null;
 }
 
-export type SnapshotEdgeKind = "needs" | "polls" | "closed_by" | "channel_link" | "rpc_link";
+export type SnapshotEdgeKind =
+  | "needs"
+  | "holds"
+  | "polls"
+  | "closed_by"
+  | "channel_link"
+  | "rpc_link";
 
 export interface SnapshotScope {
   id: string;

@@ -683,10 +683,7 @@ async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl In
     tokio::spawn(async move {
         let interval_ms = {
             let guard = loop_state.inner.lock().await;
-            guard
-                .recording
-                .as_ref()
-                .map_or(500, |r| r.interval_ms)
+            guard.recording.as_ref().map_or(500, |r| r.interval_ms)
         };
         loop {
             tokio::select! {

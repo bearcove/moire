@@ -28,7 +28,7 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
 
 use peeps_wire::{
-    decode_server_message_default, encode_client_message_default, ClientMessage, ServerMessage,
+    ClientMessage, ServerMessage, decode_server_message_default, encode_client_message_default,
 };
 
 const MAX_EVENTS: usize = 16_384;
@@ -1947,6 +1947,25 @@ pub struct Semaphore {
     inner: Arc<tokio::sync::Semaphore>,
     handle: EntityHandle,
     max_permits: Arc<AtomicU32>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+}
+
+pub struct SemaphorePermit<'a> {
+    inner: Option<tokio::sync::SemaphorePermit<'a>>,
+    semaphore_id: EntityId,
+    holder_future_id: Option<EntityId>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    max_permits: Arc<AtomicU32>,
+}
+
+pub struct OwnedSemaphorePermit {
+    inner: Option<tokio::sync::OwnedSemaphorePermit>,
+    semaphore_id: EntityId,
+    holder_future_id: Option<EntityId>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    max_permits: Arc<AtomicU32>,
 }
 
 pub struct Command {
@@ -2419,6 +2438,7 @@ impl<T> Sender<T> {
         &self,
         value: T,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
+        let source = caller_source();
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_send_full() {
@@ -2443,10 +2463,11 @@ impl<T> Sender<T> {
                 Instant::now()
             });
 
-            let result = instrument_future_on(
+            let result = instrument_future_on_with_source(
                 format!("{}.send", self.name),
                 &self.handle,
                 self.inner.send(value),
+                source,
             )
             .await;
 
@@ -2530,6 +2551,7 @@ impl<T> Receiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
+        let source = caller_source();
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -2554,10 +2576,11 @@ impl<T> Receiver<T> {
                 Instant::now()
             });
 
-            let result = instrument_future_on(
+            let result = instrument_future_on_with_source(
                 format!("{}.recv", self.name),
                 &self.handle,
                 self.inner.recv(),
+                source,
             )
             .await;
 
@@ -2720,6 +2743,7 @@ impl<T> UnboundedReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
+        let source = caller_source();
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -2744,10 +2768,11 @@ impl<T> UnboundedReceiver<T> {
                 Instant::now()
             });
 
-            let result = instrument_future_on(
+            let result = instrument_future_on_with_source(
                 format!("{}.recv", self.name),
                 &self.handle,
                 self.inner.recv(),
+                source,
             )
             .await;
 
@@ -3312,10 +3337,16 @@ impl<T> OneshotReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(mut self) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
+        let source = caller_source();
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
-            let result =
-                instrument_future_on(format!("{}.recv", self.name), &self.handle, inner).await;
+            let result = instrument_future_on_with_source(
+                format!("{}.recv", self.name),
+                &self.handle,
+                inner,
+                source,
+            )
+            .await;
             match result {
                 Ok(value) => {
                     if let Ok(mut state) = self.channel.lock() {
@@ -3580,11 +3611,13 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
+        let source = caller_source();
         async move {
-            let result = instrument_future_on(
+            let result = instrument_future_on_with_source(
                 format!("{}.recv", self.name),
                 &self.handle,
                 self.inner.recv(),
+                source,
             )
             .await;
             match result {
@@ -3732,11 +3765,13 @@ impl<T: Clone> WatchReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn changed(&mut self) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
+        let source = caller_source();
         async move {
-            let result = instrument_future_on(
+            let result = instrument_future_on_with_source(
                 format!("{}.changed", self.name),
                 &self.handle,
                 self.inner.changed(),
+                source,
             )
             .await;
             match result {
@@ -4112,6 +4147,7 @@ impl Notify {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn notified(&self) -> impl Future<Output = ()> + '_ {
+        let source = caller_source();
         async move {
             let waiters = self
                 .waiter_count
@@ -4121,7 +4157,13 @@ impl Notify {
                 db.update_notify_waiter_count(self.handle.id(), waiters);
             }
 
-            instrument_future_on("notify.notified", &self.handle, self.inner.notified()).await;
+            instrument_future_on_with_source(
+                "notify.notified",
+                &self.handle,
+                self.inner.notified(),
+                source,
+            )
+            .await;
 
             let waiters = self
                 .waiter_count
@@ -4211,6 +4253,7 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
+        let source = caller_source();
         async move {
             let waiters = self
                 .waiter_count
@@ -4220,10 +4263,11 @@ impl<T> OnceCell<T> {
                 db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
             }
 
-            let result = instrument_future_on(
+            let result = instrument_future_on_with_source(
                 "once_cell.get_or_init",
                 &self.handle,
                 self.inner.get_or_init(f),
+                source,
             )
             .await;
 
@@ -4256,6 +4300,7 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
+        let source = caller_source();
         async move {
             let waiters = self
                 .waiter_count
@@ -4265,10 +4310,11 @@ impl<T> OnceCell<T> {
                 db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
             }
 
-            let result = instrument_future_on(
+            let result = instrument_future_on_with_source(
                 "once_cell.get_or_try_init",
                 &self.handle,
                 self.inner.get_or_try_init(f),
+                source,
             )
             .await;
 
@@ -4342,6 +4388,7 @@ impl Semaphore {
             inner: Arc::new(tokio::sync::Semaphore::new(permits)),
             handle,
             max_permits: Arc::new(AtomicU32::new(max_permits)),
+            holder_counts: Arc::new(StdMutex::new(BTreeMap::new())),
         }
     }
 
@@ -4365,6 +4412,7 @@ impl Semaphore {
             inner: Arc::new(tokio::sync::Semaphore::new(permits)),
             handle,
             max_permits: Arc::new(AtomicU32::new(max_permits)),
+            holder_counts: Arc::new(StdMutex::new(BTreeMap::new())),
         }
     }
 
@@ -4398,14 +4446,29 @@ impl Semaphore {
     #[allow(clippy::manual_async_fn)]
     pub fn acquire(
         &self,
-    ) -> impl Future<Output = Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_
-    {
+    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
+        let source = caller_source();
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit =
-                instrument_future_on("semaphore.acquire", &self.handle, self.inner.acquire())
-                    .await?;
+            let permit = instrument_future_on_with_source(
+                "semaphore.acquire",
+                &self.handle,
+                self.inner.acquire(),
+                source,
+            )
+            .await?;
+            if let Some(holder_id) = holder_future_id.as_ref() {
+                self.note_holder_acquired(holder_id);
+            }
             self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(permit)
+            Ok(SemaphorePermit {
+                inner: Some(permit),
+                semaphore_id: self.handle.id().clone(),
+                holder_future_id,
+                holder_counts: Arc::clone(&self.holder_counts),
+                semaphore: Arc::clone(&self.inner),
+                max_permits: Arc::clone(&self.max_permits),
+            })
         }
     }
 
@@ -4414,17 +4477,29 @@ impl Semaphore {
     pub fn acquire_many(
         &self,
         n: u32,
-    ) -> impl Future<Output = Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_
-    {
+    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
+        let source = caller_source();
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit = instrument_future_on(
+            let permit = instrument_future_on_with_source(
                 "semaphore.acquire_many",
                 &self.handle,
                 self.inner.acquire_many(n),
+                source,
             )
             .await?;
+            if let Some(holder_id) = holder_future_id.as_ref() {
+                self.note_holder_acquired(holder_id);
+            }
             self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(permit)
+            Ok(SemaphorePermit {
+                inner: Some(permit),
+                semaphore_id: self.handle.id().clone(),
+                holder_future_id,
+                holder_counts: Arc::clone(&self.holder_counts),
+                semaphore: Arc::clone(&self.inner),
+                max_permits: Arc::clone(&self.max_permits),
+            })
         }
     }
 
@@ -4432,17 +4507,29 @@ impl Semaphore {
     #[allow(clippy::manual_async_fn)]
     pub fn acquire_owned(
         &self,
-    ) -> impl Future<Output = Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_
-    {
+    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
+        let source = caller_source();
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit = instrument_future_on(
+            let permit = instrument_future_on_with_source(
                 "semaphore.acquire_owned",
                 &self.handle,
                 Arc::clone(&self.inner).acquire_owned(),
+                source,
             )
             .await?;
+            if let Some(holder_id) = holder_future_id.as_ref() {
+                self.note_holder_acquired(holder_id);
+            }
             self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(permit)
+            Ok(OwnedSemaphorePermit {
+                inner: Some(permit),
+                semaphore_id: self.handle.id().clone(),
+                holder_future_id,
+                holder_counts: Arc::clone(&self.holder_counts),
+                semaphore: Arc::clone(&self.inner),
+                max_permits: Arc::clone(&self.max_permits),
+            })
         }
     }
 
@@ -4451,64 +4538,239 @@ impl Semaphore {
     pub fn acquire_many_owned(
         &self,
         n: u32,
-    ) -> impl Future<Output = Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_
-    {
+    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
+        let source = caller_source();
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit = instrument_future_on(
+            let permit = instrument_future_on_with_source(
                 "semaphore.acquire_many_owned",
                 &self.handle,
                 Arc::clone(&self.inner).acquire_many_owned(n),
+                source,
             )
             .await?;
+            if let Some(holder_id) = holder_future_id.as_ref() {
+                self.note_holder_acquired(holder_id);
+            }
             self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(permit)
+            Ok(OwnedSemaphorePermit {
+                inner: Some(permit),
+                semaphore_id: self.handle.id().clone(),
+                holder_future_id,
+                holder_counts: Arc::clone(&self.holder_counts),
+                semaphore: Arc::clone(&self.inner),
+                max_permits: Arc::clone(&self.max_permits),
+            })
         }
     }
 
     #[track_caller]
-    pub fn try_acquire(
-        &self,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+    pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire()?;
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
+        if let Some(holder_id) = holder_future_id.as_ref() {
+            self.note_holder_acquired(holder_id);
+        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+        Ok(SemaphorePermit {
+            inner: Some(permit),
+            semaphore_id: self.handle.id().clone(),
+            holder_future_id,
+            holder_counts: Arc::clone(&self.holder_counts),
+            semaphore: Arc::clone(&self.inner),
+            max_permits: Arc::clone(&self.max_permits),
+        })
     }
 
     #[track_caller]
     pub fn try_acquire_many(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+    ) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire_many(n)?;
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
+        if let Some(holder_id) = holder_future_id.as_ref() {
+            self.note_holder_acquired(holder_id);
+        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+        Ok(SemaphorePermit {
+            inner: Some(permit),
+            semaphore_id: self.handle.id().clone(),
+            holder_future_id,
+            holder_counts: Arc::clone(&self.holder_counts),
+            semaphore: Arc::clone(&self.inner),
+            max_permits: Arc::clone(&self.max_permits),
+        })
     }
 
     #[track_caller]
-    pub fn try_acquire_owned(
-        &self,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+    pub fn try_acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_owned()?;
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
+        if let Some(holder_id) = holder_future_id.as_ref() {
+            self.note_holder_acquired(holder_id);
+        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+        Ok(OwnedSemaphorePermit {
+            inner: Some(permit),
+            semaphore_id: self.handle.id().clone(),
+            holder_future_id,
+            holder_counts: Arc::clone(&self.holder_counts),
+            semaphore: Arc::clone(&self.inner),
+            max_permits: Arc::clone(&self.max_permits),
+        })
     }
 
     #[track_caller]
     pub fn try_acquire_many_owned(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+    ) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_many_owned(n)?;
+        let holder_future_id = current_causal_target().map(|target| target.id().clone());
+        if let Some(holder_id) = holder_future_id.as_ref() {
+            self.note_holder_acquired(holder_id);
+        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+        Ok(OwnedSemaphorePermit {
+            inner: Some(permit),
+            semaphore_id: self.handle.id().clone(),
+            holder_future_id,
+            holder_counts: Arc::clone(&self.holder_counts),
+            semaphore: Arc::clone(&self.inner),
+            max_permits: Arc::clone(&self.max_permits),
+        })
     }
 
     fn sync_state(&self, max_permits: u32) {
-        let available = self.inner.available_permits().min(u32::MAX as usize) as u32;
-        let handed_out_permits = max_permits.saturating_sub(available);
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_semaphore_state(self.handle.id(), max_permits, handed_out_permits);
+        sync_semaphore_state(self.handle.id(), &self.inner, max_permits);
+    }
+
+    fn note_holder_acquired(&self, holder_id: &EntityId) {
+        let should_insert = if let Ok(mut holder_counts) = self.holder_counts.lock() {
+            let count = holder_counts.entry(holder_id.clone()).or_insert(0);
+            *count = count.saturating_add(1);
+            *count == 1
+        } else {
+            false
+        };
+        if should_insert {
+            if let Ok(mut db) = runtime_db().lock() {
+                db.upsert_edge(self.handle.id(), holder_id, EdgeKind::Holds);
+            }
         }
+    }
+}
+
+fn sync_semaphore_state(
+    semaphore_id: &EntityId,
+    semaphore: &Arc<tokio::sync::Semaphore>,
+    max_permits: u32,
+) {
+    let available = semaphore.available_permits().min(u32::MAX as usize) as u32;
+    let handed_out_permits = max_permits.saturating_sub(available);
+    if let Ok(mut db) = runtime_db().lock() {
+        db.update_semaphore_state(semaphore_id, max_permits, handed_out_permits);
+    }
+}
+
+fn release_semaphore_holder_edge(
+    semaphore_id: &EntityId,
+    holder_future_id: &mut Option<EntityId>,
+    holder_counts: &Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+) {
+    let Some(holder_id) = holder_future_id.take() else {
+        return;
+    };
+
+    let should_remove = if let Ok(mut counts) = holder_counts.lock() {
+        match counts.get_mut(&holder_id) {
+            None => false,
+            Some(count) if *count > 1 => {
+                *count -= 1;
+                false
+            }
+            Some(_) => {
+                counts.remove(&holder_id);
+                true
+            }
+        }
+    } else {
+        false
+    };
+
+    if should_remove {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.remove_edge(semaphore_id, &holder_id, EdgeKind::Holds);
+        }
+    }
+}
+
+impl<'a> Deref for SemaphorePermit<'a> {
+    type Target = tokio::sync::SemaphorePermit<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner
+            .as_ref()
+            .expect("semaphore permit accessed after drop")
+    }
+}
+
+impl<'a> DerefMut for SemaphorePermit<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+            .as_mut()
+            .expect("semaphore permit accessed after drop")
+    }
+}
+
+impl<'a> Drop for SemaphorePermit<'a> {
+    fn drop(&mut self) {
+        let _ = self.inner.take();
+        release_semaphore_holder_edge(
+            &self.semaphore_id,
+            &mut self.holder_future_id,
+            &self.holder_counts,
+        );
+        sync_semaphore_state(
+            &self.semaphore_id,
+            &self.semaphore,
+            self.max_permits.load(Ordering::Relaxed),
+        );
+    }
+}
+
+impl Deref for OwnedSemaphorePermit {
+    type Target = tokio::sync::OwnedSemaphorePermit;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner
+            .as_ref()
+            .expect("owned semaphore permit accessed after drop")
+    }
+}
+
+impl DerefMut for OwnedSemaphorePermit {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+            .as_mut()
+            .expect("owned semaphore permit accessed after drop")
+    }
+}
+
+impl Drop for OwnedSemaphorePermit {
+    fn drop(&mut self) {
+        let _ = self.inner.take();
+        release_semaphore_holder_edge(
+            &self.semaphore_id,
+            &mut self.holder_future_id,
+            &self.holder_counts,
+        );
+        sync_semaphore_state(
+            &self.semaphore_id,
+            &self.semaphore,
+            self.max_permits.load(Ordering::Relaxed),
+        );
     }
 }
 
@@ -4836,9 +5098,10 @@ where
         F: Future<Output = T> + Send + 'static,
     {
         let joinset_handle = self.handle.clone();
+        let source = caller_source();
         self.inner.spawn(
             FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
-                instrument_future_on(label, &joinset_handle, future).await
+                instrument_future_on_with_source(label, &joinset_handle, future, source).await
             }),
         );
     }
@@ -5161,6 +5424,12 @@ impl<F> Drop for InstrumentedFuture<F> {
 }
 
 #[track_caller]
+fn caller_source() -> CompactString {
+    let location = std::panic::Location::caller();
+    CompactString::from(format!("{}:{}", location.file(), location.line()))
+}
+
+#[track_caller]
 pub fn instrument_future_named<F>(
     name: impl Into<CompactString>,
     fut: F,
@@ -5168,9 +5437,7 @@ pub fn instrument_future_named<F>(
 where
     F: IntoFuture,
 {
-    let location = std::panic::Location::caller();
-    let source = format!("{}:{}", location.file(), location.line());
-    instrument_future_named_with_source(name, fut, source)
+    instrument_future_named_with_source(name, fut, caller_source())
 }
 
 pub fn instrument_future_named_with_source<F>(
@@ -5195,9 +5462,7 @@ pub fn instrument_future_on<F>(
 where
     F: IntoFuture,
 {
-    let location = std::panic::Location::caller();
-    let source = format!("{}:{}", location.file(), location.line());
-    instrument_future_on_with_source(name, on, fut, source)
+    instrument_future_on_with_source(name, on, fut, caller_source())
 }
 
 pub fn instrument_future_on_with_source<F>(
@@ -5210,8 +5475,9 @@ where
     F: IntoFuture,
 {
     let fut = fut.into_future();
+    let on_ref = on.as_entity_ref();
     let handle = EntityHandle::new_with_source(name, EntityBody::Future, source);
-    InstrumentedFuture::new(fut, handle, Some(on.as_entity_ref()))
+    InstrumentedFuture::new(fut, handle, Some(on_ref))
 }
 
 pub fn instrument_future_named_with_krate<F>(
@@ -5420,6 +5686,16 @@ mod tests {
             .values()
             .find(|entity| entity.name.as_str() == name)
             .map(|entity| EntityId::new(entity.id.as_str()))
+    }
+
+    fn entity_source_by_name(name: &str) -> Option<CompactString> {
+        let db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
+        db.entities
+            .values()
+            .find(|entity| entity.name.as_str() == name)
+            .map(|entity| entity.source.clone())
     }
 
     #[test]
@@ -5729,6 +6005,105 @@ mod tests {
         assert!(
             saw_expected_edges,
             "expected waiter->lock and lock->holder needs edges while contention is active"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn contended_semaphore_connects_waiter_and_holder_through_holds_edge() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let sem = Arc::new(crate::semaphore!("test.semaphore.shared.async", 1));
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+
+        let sem_for_holder = Arc::clone(&sem);
+        let barrier_for_holder = Arc::clone(&barrier);
+        let holder = crate::spawn_tracked!("test.semaphore.holder.async", async move {
+            let _permit = sem_for_holder
+                .acquire_owned()
+                .await
+                .expect("holder should acquire permit");
+            barrier_for_holder.wait();
+            std::thread::sleep(Duration::from_millis(150));
+        });
+
+        let sem_for_waiter = Arc::clone(&sem);
+        let barrier_for_waiter = Arc::clone(&barrier);
+        let waiter = crate::spawn_tracked!("test.semaphore.waiter.async", async move {
+            barrier_for_waiter.wait();
+            let _permit = crate::peep!(
+                sem_for_waiter.acquire_owned(),
+                "test.semaphore.waiter.acquire"
+            )
+            .await
+            .expect("waiter should eventually acquire permit");
+        });
+
+        let mut saw_expected_edges = false;
+        for _ in 0..60 {
+            let Some(holder_id) = entity_id_by_name("test.semaphore.holder.async") else {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                continue;
+            };
+            let Some(waiter_acquire_id) = entity_id_by_name("test.semaphore.waiter.acquire") else {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                continue;
+            };
+            let Some(sem_id) = entity_id_by_name("test.semaphore.shared.async") else {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                continue;
+            };
+
+            if edge_exists(&waiter_acquire_id, &sem_id, EdgeKind::Needs)
+                && edge_exists(&sem_id, &holder_id, EdgeKind::Holds)
+            {
+                saw_expected_edges = true;
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let _ = holder.await;
+        let _ = waiter.await;
+
+        assert!(
+            saw_expected_edges,
+            "expected waiter->semaphore needs edge and semaphore->holder holds edge while contention is active"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn semaphore_acquire_owned_uses_caller_source() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let sem = crate::semaphore!("test.semaphore.source", 0);
+        let marker_line = line!() + 1;
+        let waiter = tokio::spawn(async move {
+            let _ = sem.acquire_owned().await;
+        });
+
+        let mut source = None;
+        for _ in 0..64 {
+            tokio::task::yield_now().await;
+            source = entity_source_by_name("semaphore.acquire_owned");
+            if source.is_some() {
+                break;
+            }
+        }
+
+        waiter.abort();
+        let _ = waiter.await;
+
+        let source = source.expect("semaphore.acquire_owned future should be tracked");
+        assert!(
+            source.ends_with(&format!(":{}", marker_line))
+                || source.ends_with(&format!(":{}", marker_line + 1)),
+            "expected caller line {} (or {}), got source {}",
+            marker_line,
+            marker_line + 1,
+            source
         );
     }
 }

@@ -827,11 +827,9 @@ dependencies = [
 name = "roam-rpc-stuck-request"
 version = "0.1.0"
 dependencies = [
- "facet-postcard",
  "peeps",
  "roam",
- "roam-session",
- "roam-wire",
+ "roam-stream",
  "tokio",
 ]
 
@@ -879,6 +877,19 @@ dependencies = [
  "tokio",
  "ulid",
  "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "roam-stream"
+version = "3.0.0"
+dependencies = [
+ "facet",
+ "facet-postcard",
+ "facet-reflect",
+ "peeps",
+ "roam-session",
+ "roam-wire",
+ "tokio",
 ]
 
 [[package]]

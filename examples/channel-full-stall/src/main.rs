@@ -14,17 +14,15 @@ async fn main() {
 
     peeps::spawn_tracked!("bounded_sender", async move {
         for i in 0_u32..16 {
-            peeps::peep!(tx.send(i), "queue.send.prefill")
-            .await
-            .expect("channel is open while pre-filling buffer");
+            tx.send(i)
+                .await
+                .expect("channel is open while pre-filling buffer");
             println!("sent prefill item {i}");
         }
 
         println!("attempting 17th send; this should block because capacity is 16 and receiver is stalled");
 
-        peeps::peep!(tx.send(16), "queue.send.blocked")
-        .await
-        .expect("send unexpectedly unblocked");
+        tx.send(16).await.expect("send unexpectedly unblocked");
     });
 
     println!("example running. open peeps-web and inspect demo.work_queue");

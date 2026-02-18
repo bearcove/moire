@@ -1,85 +1,14 @@
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
 
-use roam_session::{accept_framed, HandshakeConfig, MessageTransport, NoDispatcher};
-use roam_wire::Message;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use roam_stream::{HandshakeConfig, NoDispatcher, accept};
 use tokio::process::{Child, Command};
-
-struct TcpMessageTransport {
-    stream: tokio::net::TcpStream,
-    last_decoded: Vec<u8>,
-}
-
-impl TcpMessageTransport {
-    fn new(stream: tokio::net::TcpStream) -> Self {
-        Self {
-            stream,
-            last_decoded: Vec::new(),
-        }
-    }
-
-    async fn recv_frame(&mut self) -> io::Result<Option<Vec<u8>>> {
-        let mut len_buf = [0_u8; 4];
-        match self.stream.read_exact(&mut len_buf).await {
-            Ok(_) => {}
-            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-            Err(err) => return Err(err),
-        }
-
-        let frame_len = u32::from_le_bytes(len_buf) as usize;
-        let mut payload = vec![0_u8; frame_len];
-        self.stream.read_exact(&mut payload).await?;
-        Ok(Some(payload))
-    }
-}
-
-impl MessageTransport for TcpMessageTransport {
-    async fn send(&mut self, msg: &Message) -> io::Result<()> {
-        let payload = facet_postcard::to_vec(msg)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
-        let frame_len = u32::try_from(payload.len()).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "message too large for u32 frame length",
-            )
-        })?;
-
-        self.stream.write_all(&frame_len.to_le_bytes()).await?;
-        self.stream.write_all(&payload).await?;
-        self.stream.flush().await
-    }
-
-    async fn recv_timeout(&mut self, timeout: Duration) -> io::Result<Option<Message>> {
-        match tokio::time::timeout(timeout, self.recv()).await {
-            Ok(result) => result,
-            Err(_) => Ok(None),
-        }
-    }
-
-    async fn recv(&mut self) -> io::Result<Option<Message>> {
-        let Some(payload) = self.recv_frame().await? else {
-            return Ok(None);
-        };
-
-        self.last_decoded = payload.clone();
-        let msg = facet_postcard::from_slice(&payload)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
-        Ok(Some(msg))
-    }
-
-    fn last_decoded(&self) -> &[u8] {
-        &self.last_decoded
-    }
-}
 
 fn swift_package_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("swift")
 }
 
-fn spawn_swift_peer(peer_addr: &str) -> io::Result<Child> {
+fn spawn_swift_peer(peer_addr: &str) -> std::io::Result<Child> {
     let mut cmd = Command::new("swift");
     cmd.arg("run")
         .arg("--package-path")
@@ -118,8 +47,7 @@ async fn main() {
     let mut config = HandshakeConfig::default();
     config.name = Some("rust-host".to_string());
 
-    let transport = TcpMessageTransport::new(stream);
-    let (handle, _incoming, driver) = accept_framed(transport, config, NoDispatcher)
+    let (handle, _incoming, driver) = accept(stream, config, NoDispatcher)
         .await
         .expect("roam handshake with swift peer should succeed");
 

@@ -9,9 +9,7 @@ publish = false
 [dependencies]
 peeps = { path = "../../crates/peeps", features = ["diagnostics"] }
 tokio = { version = "1.49", features = ["macros", "rt-multi-thread", "signal", "time", "net", "process", "io-util"] }
-roam-session = { path = "../../../roam/rust/roam-session", features = ["diagnostics"] }
-roam-wire = { path = "../../../roam/rust/roam-wire" }
-facet-postcard = { git = "https://github.com/facet-rs/facet", branch = "main" }
+roam-stream = { path = "../../../roam/rust/roam-stream", features = ["diagnostics"] }
 
 [patch."https://github.com/bearcove/peeps"]
 peeps = { path = "../../crates/peeps" }

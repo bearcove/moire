@@ -30,15 +30,15 @@ just ex oneshot-sender-lost-in-map
 
 Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect `demo.request_42.response`, `response_bus.recv`, and `request_42.await_response.blocked`.
 
-## 2) Mutex lock-order inversion (`std::sync` deadlock)
+## 2) Mutex lock-order inversion (`tokio` tasks + blocking mutex)
 
 Path: `examples/mutex-lock-order-inversion`
 
 What it does:
 - Creates two shared mutexes (`demo.shared.left`, `demo.shared.right`)
-- Starts two worker threads that intentionally acquire those mutexes in opposite order
-- Uses a barrier so both threads hold one lock before attempting the second lock, making the deadlock deterministic
-- Exposes async symptoms with tracked tasks waiting forever on worker completion signals
+- Starts two tracked Tokio tasks that intentionally acquire those mutexes in opposite order
+- Uses a Tokio barrier so both tasks hold one lock before attempting the second lock, making the deadlock deterministic
+- Exposes async symptoms with tracked observer tasks waiting forever on completion signals
 
 ### Run it
 

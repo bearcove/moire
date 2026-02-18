@@ -2,8 +2,8 @@ use compact_str::CompactString;
 use facet::Facet;
 
 use crate::{
-    caller_source, next_event_id, ChannelCloseCause, EntityId, EventId, MetaSerializeError, PTime,
-    ScopeId,
+    ChannelCloseCause, EntityId, EventId, MetaSerializeError, PTime, ScopeId, caller_source,
+    next_event_id,
 };
 
 /// Relationship between two entities.
@@ -47,6 +47,8 @@ pub enum EdgeKind {
     Polls,
     /// Waiting/blocked-on relationship.
     Needs,
+    /// Resource ownership relationship (resource -> current holder).
+    Holds,
     /// Closure/cancellation cause relationship.
     ClosedBy,
     /// Structural channel endpoint pairing (`tx -> rx`).

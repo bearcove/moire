@@ -348,6 +348,10 @@ pub struct OnceCell<T>(tokio::sync::OnceCell<T>);
 #[derive(Clone)]
 pub struct Semaphore(std::sync::Arc<tokio::sync::Semaphore>);
 
+pub struct SemaphorePermit<'a>(tokio::sync::SemaphorePermit<'a>);
+
+pub struct OwnedSemaphorePermit(tokio::sync::OwnedSemaphorePermit);
+
 #[cfg(not(target_arch = "wasm32"))]
 pub struct Command(tokio::process::Command);
 #[cfg(target_arch = "wasm32")]
@@ -874,56 +878,87 @@ impl Semaphore {
         self.0.add_permits(n)
     }
 
-    pub async fn acquire(
-        &self,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        self.0.acquire().await
+    pub async fn acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        self.0.acquire().await.map(SemaphorePermit)
     }
 
     pub async fn acquire_many(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        self.0.acquire_many(n).await
+    ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        self.0.acquire_many(n).await.map(SemaphorePermit)
     }
 
-    pub async fn acquire_owned(
-        &self,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        self.0.clone().acquire_owned().await
+    pub async fn acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        self.0
+            .clone()
+            .acquire_owned()
+            .await
+            .map(OwnedSemaphorePermit)
     }
 
     pub async fn acquire_many_owned(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        self.0.clone().acquire_many_owned(n).await
+    ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        self.0
+            .clone()
+            .acquire_many_owned(n)
+            .await
+            .map(OwnedSemaphorePermit)
     }
 
-    pub fn try_acquire(
-        &self,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
-        self.0.try_acquire()
+    pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+        self.0.try_acquire().map(SemaphorePermit)
     }
 
     pub fn try_acquire_many(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
-        self.0.try_acquire_many(n)
+    ) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+        self.0.try_acquire_many(n).map(SemaphorePermit)
     }
 
-    pub fn try_acquire_owned(
-        &self,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
-        self.0.clone().try_acquire_owned()
+    pub fn try_acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+        self.0.clone().try_acquire_owned().map(OwnedSemaphorePermit)
     }
 
     pub fn try_acquire_many_owned(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
-        self.0.clone().try_acquire_many_owned(n)
+    ) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+        self.0
+            .clone()
+            .try_acquire_many_owned(n)
+            .map(OwnedSemaphorePermit)
+    }
+}
+
+impl<'a> Deref for SemaphorePermit<'a> {
+    type Target = tokio::sync::SemaphorePermit<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a> DerefMut for SemaphorePermit<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Deref for OwnedSemaphorePermit {
+    type Target = tokio::sync::OwnedSemaphorePermit;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for OwnedSemaphorePermit {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
