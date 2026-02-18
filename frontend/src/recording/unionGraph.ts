@@ -94,6 +94,73 @@ export async function buildUnionLayout(
   };
 }
 
+// ── Change summaries ──────────────────────────────────────────
+
+export interface FrameChangeSummary {
+  nodesAdded: number;
+  nodesRemoved: number;
+  edgesAdded: number;
+  edgesRemoved: number;
+}
+
+export function computeFrameChangeSummary(
+  frameIndex: number,
+  unionLayout: UnionLayout,
+): FrameChangeSummary {
+  const prevIndex = frameIndex - 1;
+  let nodesAdded = 0;
+  let nodesRemoved = 0;
+  let edgesAdded = 0;
+  let edgesRemoved = 0;
+
+  for (const [, frames] of unionLayout.nodePresence) {
+    const inCurrent = frames.has(frameIndex);
+    const inPrev = prevIndex >= 0 && frames.has(prevIndex);
+    if (inCurrent && !inPrev) nodesAdded++;
+    if (!inCurrent && inPrev) nodesRemoved++;
+  }
+
+  for (const [, frames] of unionLayout.edgePresence) {
+    const inCurrent = frames.has(frameIndex);
+    const inPrev = prevIndex >= 0 && frames.has(prevIndex);
+    if (inCurrent && !inPrev) edgesAdded++;
+    if (!inCurrent && inPrev) edgesRemoved++;
+  }
+
+  return { nodesAdded, nodesRemoved, edgesAdded, edgesRemoved };
+}
+
+export function computeChangeSummaries(unionLayout: UnionLayout): FrameChangeSummary[] {
+  const frameCount = unionLayout.frameCache.size;
+  return Array.from({ length: frameCount }, (_, i) => computeFrameChangeSummary(i, unionLayout));
+}
+
+export function computeChangeFrames(unionLayout: UnionLayout): number[] {
+  const frameCount = unionLayout.frameCache.size;
+  const result: number[] = [0];
+
+  for (let i = 1; i < frameCount; i++) {
+    let changed = false;
+    for (const [, frames] of unionLayout.nodePresence) {
+      if (frames.has(i) !== frames.has(i - 1)) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) {
+      for (const [, frames] of unionLayout.edgePresence) {
+        if (frames.has(i) !== frames.has(i - 1)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) result.push(i);
+  }
+
+  return result;
+}
+
 // ── Per-frame rendering ───────────────────────────────────────
 
 export function renderFrameFromUnion(
@@ -102,6 +169,7 @@ export function renderFrameFromUnion(
   hiddenKrates: ReadonlySet<string>,
   hiddenProcesses: ReadonlySet<string>,
   focusedEntityId: string | null,
+  ghostMode?: boolean,
 ): LayoutResult {
   const frameData = unionLayout.frameCache.get(frameIndex);
   if (!frameData) return { nodes: [], edges: [] };
@@ -132,52 +200,76 @@ export function renderFrameFromUnion(
   // Build a lookup from frame entity/edge data for updating node data.
   const frameEntityById = new Map(filteredEntities.map((e) => [e.id, e]));
 
-  // Filter union layout nodes/edges to only those visible in this frame,
-  // and update each visible node's data from the frame's EntityDef.
+  // Track all rendered node IDs (present + ghost) for edge validity in ghost mode.
+  const renderedNodeIds = new Set<string>();
+
   const nodes: Node[] = [];
   for (const unionNode of unionLayout.nodes) {
-    if (!visibleNodeIds.has(unionNode.id)) continue;
-    const frameDef = frameEntityById.get(unionNode.id);
-    if (!frameDef) continue;
+    const isPresent = visibleNodeIds.has(unionNode.id);
 
-    // Rebuild node data from the frame's entity (body/status may change per frame)
-    // but keep the position from the union layout.
-    let data: Record<string, unknown>;
-    if (frameDef.channelPair) {
-      data = {
-        tx: frameDef.channelPair.tx,
-        rx: frameDef.channelPair.rx,
-        channelName: frameDef.name,
-        selected: false,
-        statTone: frameDef.statTone,
-      };
-    } else if (frameDef.rpcPair) {
-      data = {
-        req: frameDef.rpcPair.req,
-        resp: frameDef.rpcPair.resp,
-        rpcName: frameDef.name,
-        selected: false,
-      };
-    } else {
-      data = {
-        kind: frameDef.kind,
-        label: frameDef.name,
-        inCycle: frameDef.inCycle,
-        selected: false,
-        status: frameDef.status,
-        ageMs: frameDef.ageMs,
-        stat: frameDef.stat,
-        statTone: frameDef.statTone,
-      };
+    if (isPresent) {
+      const frameDef = frameEntityById.get(unionNode.id);
+      if (!frameDef) continue;
+
+      // Rebuild node data from the frame's entity (body/status may change per frame)
+      // but keep the position from the union layout.
+      let data: Record<string, unknown>;
+      if (frameDef.channelPair) {
+        data = {
+          tx: frameDef.channelPair.tx,
+          rx: frameDef.channelPair.rx,
+          channelName: frameDef.name,
+          selected: false,
+          statTone: frameDef.statTone,
+        };
+      } else if (frameDef.rpcPair) {
+        data = {
+          req: frameDef.rpcPair.req,
+          resp: frameDef.rpcPair.resp,
+          rpcName: frameDef.name,
+          selected: false,
+        };
+      } else {
+        data = {
+          kind: frameDef.kind,
+          label: frameDef.name,
+          inCycle: frameDef.inCycle,
+          selected: false,
+          status: frameDef.status,
+          ageMs: frameDef.ageMs,
+          stat: frameDef.stat,
+          statTone: frameDef.statTone,
+        };
+      }
+
+      nodes.push({ ...unionNode, data });
+      renderedNodeIds.add(unionNode.id);
+    } else if (ghostMode) {
+      nodes.push({
+        ...unionNode,
+        data: { ...unionNode.data, ghost: true, selected: false },
+        selectable: false,
+        style: { pointerEvents: "none" as const },
+      });
+      renderedNodeIds.add(unionNode.id);
     }
-
-    nodes.push({
-      ...unionNode,
-      data,
-    });
   }
 
-  const edges: Edge[] = unionLayout.edges.filter((e) => visibleEdgeIds.has(e.id));
+  const edges: Edge[] = [];
+  for (const unionEdge of unionLayout.edges) {
+    if (visibleEdgeIds.has(unionEdge.id)) {
+      edges.push(unionEdge);
+    } else if (
+      ghostMode &&
+      renderedNodeIds.has(unionEdge.source) &&
+      renderedNodeIds.has(unionEdge.target)
+    ) {
+      edges.push({
+        ...unionEdge,
+        data: { ...unionEdge.data, ghost: true },
+      });
+    }
+  }
 
   return { nodes, edges };
 }

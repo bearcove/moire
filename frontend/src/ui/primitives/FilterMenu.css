@@ -64,6 +64,22 @@
     outline: none;
 }
 
+.ui-filter-setting-row {
+    border-radius: 2px;
+    padding: 4px 6px;
+    margin-bottom: 1px;
+}
+
+.ui-filter-setting-row:hover {
+    background: var(--surface-hover);
+}
+
+.ui-filter-divider {
+    height: 1px;
+    margin: 3px 2px;
+    background: var(--border-subtle);
+}
+
 .ui-filter-list {
     list-style: none;
     display: flex;

@@ -43,6 +43,12 @@
     opacity: 0.4;
 }
 
+.recording-timeline-delta {
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 6px;
+}
+
 .recording-timeline-time {
     font-size: 11px;
     font-family: var(--font-mono);
@@ -50,4 +56,11 @@
     white-space: nowrap;
     min-width: 36px;
     text-align: right;
+}
+
+.recording-timeline-stats {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    white-space: nowrap;
 }

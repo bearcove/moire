@@ -19,6 +19,7 @@ pub struct RecordingSession {
     pub frame_count: u32,
     pub max_frames: u32,
     pub overflowed: bool,
+    pub approx_memory_bytes: u64,
 }
 
 /// A single recorded frame — a point-in-time snapshot of all processes.

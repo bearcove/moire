@@ -19,4 +19,6 @@ export interface ApiClient {
   stopRecording(): Promise<RecordingSessionInfo>;
   fetchRecordingCurrent(): Promise<RecordCurrentResponse>;
   fetchRecordingFrame(frameIndex: number): Promise<SnapshotCutResponse>;
+  exportRecording(): Promise<Blob>;
+  importRecording(file: File): Promise<RecordingSessionInfo>;
 }

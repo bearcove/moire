@@ -143,12 +143,14 @@ export interface SnapshotCutResponse {
 export interface RecordStartRequest {
   interval_ms?: number;
   max_frames?: number;
+  max_memory_bytes?: number;
 }
 
 export interface FrameSummary {
   frame_index: number;
   captured_at_unix_ms: number;
   process_count: number;
+  capture_duration_ms: number;
 }
 
 export interface RecordingSessionInfo {
@@ -159,10 +161,26 @@ export interface RecordingSessionInfo {
   stopped_at_unix_ms: number | null;
   frame_count: number;
   max_frames: number;
+  max_memory_bytes: number;
   overflowed: boolean;
+  approx_memory_bytes: number;
+  avg_capture_ms: number;
+  max_capture_ms: number;
+  total_capture_ms: number;
   frames: FrameSummary[];
 }
 
 export interface RecordCurrentResponse {
   session: RecordingSessionInfo | null;
+}
+
+export interface RecordingExportFrame {
+  frame_index: number;
+  snapshot: SnapshotCutResponse;
+}
+
+export interface RecordingExport {
+  version: number;
+  session: RecordingSessionInfo;
+  frames: RecordingExportFrame[];
 }

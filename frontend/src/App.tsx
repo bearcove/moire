@@ -27,7 +27,9 @@ import {
   CheckCircle,
   CircleNotch,
   CopySimple,
+  DownloadSimple,
   FileRs,
+  Ghost,
   LinkSimple,
   MagnifyingGlass,
   PaperPlaneTilt,
@@ -35,6 +37,7 @@ import {
   Stop,
   Timer,
   Crosshair,
+  UploadSimple,
 } from "@phosphor-icons/react";
 import { SplitLayout } from "./ui/layout/SplitLayout";
 import { Badge } from "./ui/primitives/Badge";
@@ -70,9 +73,18 @@ import {
 } from "./layout";
 import {
   buildUnionLayout,
+  computeChangeFrames,
+  computeChangeSummaries,
   renderFrameFromUnion,
+  type FrameChangeSummary,
   type UnionLayout,
 } from "./recording/unionGraph";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
 
 // Body type helpers used locally for the inspector
 type RequestBody = Extract<EntityBody, { request: unknown }>;
@@ -101,9 +113,13 @@ type MockNodeData = {
   ageMs: number;
   stat?: string;
   statTone?: Tone;
+  scopeHue?: number;
+  ghost?: boolean;
 };
 
 function MockNodeComponent({ data }: { data: MockNodeData }) {
+  const showScopeColor =
+    data.scopeHue !== undefined && !data.inCycle && data.statTone !== "crit" && data.statTone !== "warn";
   return (
     <>
       <Handle type="target" position={Position.Top} style={hiddenHandle} />
@@ -115,9 +131,18 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
           data.selected && "mockup-node--selected",
           data.statTone === "crit" && "mockup-node--stat-crit",
           data.statTone === "warn" && "mockup-node--stat-warn",
+          showScopeColor && "mockup-node--scope",
+          data.ghost && "mockup-node--ghost",
         ]
           .filter(Boolean)
           .join(" ")}
+        style={
+          showScopeColor
+            ? ({
+                "--scope-h": String(data.scopeHue),
+              } as React.CSSProperties)
+            : undefined
+        }
       >
         <span className="mockup-node-icon">{kindIcon(data.kind, 18)}</span>
         <div className="mockup-node-content">
@@ -158,6 +183,8 @@ type ChannelPairNodeData = {
   channelName: string;
   selected: boolean;
   statTone?: Tone;
+  scopeHue?: number;
+  ghost?: boolean;
 };
 
 const visibleHandleTop: React.CSSProperties = {
@@ -191,7 +218,7 @@ const visibleHandleBottom: React.CSSProperties = {
 };
 
 function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
-  const { tx, rx, channelName, selected, statTone } = data;
+  const { tx, rx, channelName, selected, statTone, scopeHue, ghost } = data;
   const txEp = typeof tx.body !== "string" && "channel_tx" in tx.body ? tx.body.channel_tx : null;
   const rxEp = typeof rx.body !== "string" && "channel_rx" in rx.body ? rx.body.channel_rx : null;
 
@@ -203,6 +230,7 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
   const rxTone: Tone = rxLifecycle === "open" ? "ok" : "neutral";
 
   const bufferStat = mpscBuffer ? `${mpscBuffer.occupancy}/${mpscBuffer.capacity ?? "∞"}` : tx.stat;
+  const showScopeColor = scopeHue !== undefined && statTone !== "crit" && statTone !== "warn";
 
   return (
     <>
@@ -214,9 +242,18 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
           selected && "mockup-channel-pair--selected",
           statTone === "crit" && "mockup-channel-pair--stat-crit",
           statTone === "warn" && "mockup-channel-pair--stat-warn",
+          showScopeColor && "mockup-channel-pair--scope",
+          ghost && "mockup-channel-pair--ghost",
         ]
           .filter(Boolean)
           .join(" ")}
+        style={
+          showScopeColor
+            ? ({
+                "--scope-h": String(scopeHue),
+              } as React.CSSProperties)
+            : undefined
+        }
       >
         <div className="mockup-channel-pair-header">
           <span className="mockup-channel-pair-icon">{kindIcon("channel_pair", 14)}</span>
@@ -270,10 +307,12 @@ type RpcPairNodeData = {
   resp: EntityDef;
   rpcName: string;
   selected: boolean;
+  scopeHue?: number;
+  ghost?: boolean;
 };
 
 function RpcPairNode({ data }: { data: RpcPairNodeData }) {
-  const { req, resp, rpcName, selected } = data;
+  const { req, resp, rpcName, selected, scopeHue, ghost } = data;
 
   const reqBody = typeof req.body !== "string" && "request" in req.body ? req.body.request : null;
   const respBody =
@@ -282,6 +321,7 @@ function RpcPairNode({ data }: { data: RpcPairNodeData }) {
   const respStatus = respBody ? respBody.status : "pending";
   const respTone: Tone = respStatus === "ok" ? "ok" : respStatus === "error" ? "crit" : "warn";
   const method = respBody?.method ?? reqBody?.method ?? "?";
+  const showScopeColor = scopeHue !== undefined && respStatus !== "error";
 
   return (
     <>
@@ -292,9 +332,18 @@ function RpcPairNode({ data }: { data: RpcPairNodeData }) {
           "mockup-channel-pair",
           selected && "mockup-channel-pair--selected",
           respStatus === "error" && "mockup-channel-pair--stat-crit",
+          showScopeColor && "mockup-channel-pair--scope",
+          ghost && "mockup-channel-pair--ghost",
         ]
           .filter(Boolean)
           .join(" ")}
+        style={
+          showScopeColor
+            ? ({
+                "--scope-h": String(scopeHue),
+              } as React.CSSProperties)
+            : undefined
+        }
       >
         <div className="mockup-channel-pair-header">
           <span className="mockup-channel-pair-icon">{kindIcon("rpc_pair", 14)}</span>
@@ -324,8 +373,9 @@ function RpcPairNode({ data }: { data: RpcPairNodeData }) {
 }
 
 function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
-  const edgeData = data as { points?: ElkPoint[]; tooltip?: string } | undefined;
+  const edgeData = data as { points?: ElkPoint[]; tooltip?: string; ghost?: boolean } | undefined;
   const points = edgeData?.points ?? [];
+  const ghost = edgeData?.ghost ?? false;
   if (points.length < 2) return null;
 
   const [start, ...rest] = points;
@@ -347,13 +397,13 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   }
 
   return (
-    <g>
+    <g style={ghost ? { opacity: 0.2, pointerEvents: "none" } : undefined}>
       <path
         d={d}
         fill="none"
         stroke="transparent"
         strokeWidth={14}
-        style={{ cursor: "pointer", pointerEvents: "all" }}
+        style={{ cursor: "pointer", pointerEvents: ghost ? "none" : "all" }}
       />
       {selected && (
         <>
@@ -455,6 +505,22 @@ const GRAPH_EMPTY_MESSAGES: Record<SnapPhase, string> = {
   error: "Snapshot failed",
 };
 
+type ScopeColorMode = "none" | "process" | "crate";
+
+const SCOPE_COLOR_HUES = [208, 158, 34, 276, 18, 124, 332, 248, 54, 188, 14, 300] as const;
+
+function hashString(value: string): number {
+  let h = 0;
+  for (let i = 0; i < value.length; i++) {
+    h = (h * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+function scopeHueForKey(scopeKey: string): number {
+  return SCOPE_COLOR_HUES[hashString(scopeKey) % SCOPE_COLOR_HUES.length];
+}
+
 function GraphFlow({
   nodes,
   edges,
@@ -535,6 +601,9 @@ function GraphPanel({
   hiddenProcesses,
   onProcessToggle,
   onProcessSolo,
+  scopeColorMode,
+  onToggleProcessColorBy,
+  onToggleCrateColorBy,
   unionFrameLayout,
 }: {
   entityDefs: EntityDef[];
@@ -553,6 +622,9 @@ function GraphPanel({
   hiddenProcesses: ReadonlySet<string>;
   onProcessToggle: (pid: string) => void;
   onProcessSolo: (pid: string) => void;
+  scopeColorMode: ScopeColorMode;
+  onToggleProcessColorBy: () => void;
+  onToggleCrateColorBy: () => void;
   /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
   unionFrameLayout?: LayoutResult;
 }) {
@@ -570,13 +642,28 @@ function GraphPanel({
 
   const effectiveLayout = unionFrameLayout ?? layout;
 
+  const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
+
   const nodesWithSelection = useMemo(
     () =>
-      effectiveLayout.nodes.map((n) => ({
-        ...n,
-        data: { ...n.data, selected: selection?.kind === "entity" && n.id === selection.id },
-      })),
-    [effectiveLayout.nodes, selection],
+      effectiveLayout.nodes.map((n) => {
+        const entity = entityById.get(n.id);
+        const scopeKey =
+          scopeColorMode === "process"
+            ? entity?.processId
+            : scopeColorMode === "crate"
+              ? (entity?.krate ?? "~no-crate")
+              : undefined;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            selected: selection?.kind === "entity" && n.id === selection.id,
+            scopeHue: scopeKey ? scopeHueForKey(scopeKey) : undefined,
+          },
+        };
+      }),
+    [effectiveLayout.nodes, entityById, scopeColorMode, selection],
   );
 
   const edgesWithSelection = useMemo(
@@ -609,6 +696,9 @@ function GraphPanel({
                 hiddenIds={hiddenProcesses}
                 onToggle={onProcessToggle}
                 onSolo={onProcessSolo}
+                colorByActive={scopeColorMode === "process"}
+                onToggleColorBy={onToggleProcessColorBy}
+                colorByLabel="Use process colors"
               />
             )}
             {crateItems.length > 1 && (
@@ -618,6 +708,9 @@ function GraphPanel({
                 hiddenIds={hiddenKrates}
                 onToggle={onKrateToggle}
                 onSolo={onKrateSolo}
+                colorByActive={scopeColorMode === "crate"}
+                onToggleColorBy={onToggleCrateColorBy}
+                colorByLabel="Use crate colors"
               />
             )}
           </div>
@@ -1282,6 +1375,8 @@ type RecordingState =
       startedAt: number;
       frameCount: number;
       elapsed: number;
+      approxMemoryBytes: number;
+      maxMemoryBytes: number;
     }
   | {
       phase: "stopped";
@@ -1291,6 +1386,9 @@ type RecordingState =
       unionLayout: UnionLayout | null;
       buildingUnion: boolean;
       buildProgress?: [number, number];
+      avgCaptureMs: number;
+      maxCaptureMs: number;
+      totalCaptureMs: number;
     }
   | {
       phase: "scrubbing";
@@ -1299,6 +1397,9 @@ type RecordingState =
       frames: FrameSummary[];
       currentFrameIndex: number;
       unionLayout: UnionLayout;
+      avgCaptureMs: number;
+      maxCaptureMs: number;
+      totalCaptureMs: number;
     };
 
 // ── Process modal ──────────────────────────────────────────────
@@ -1367,11 +1468,14 @@ export function App() {
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
+  const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("none");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
+  const [ghostMode, setGhostMode] = useState(false);
   const [unionFrameLayout, setUnionFrameLayout] = useState<LayoutResult | undefined>(undefined);
   const pollingRef = useRef<number | null>(null);
   const isLiveRef = useRef(isLive);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
@@ -1446,6 +1550,14 @@ export function App() {
     [processItems],
   );
 
+  const handleToggleProcessColorBy = useCallback(() => {
+    setScopeColorMode((prev) => (prev === "process" ? "none" : "process"));
+  }, []);
+
+  const handleToggleCrateColorBy = useCallback(() => {
+    setScopeColorMode((prev) => (prev === "crate" ? "none" : "crate"));
+  }, []);
+
   const { entities, edges } = useMemo(() => {
     const filtered = allEntities.filter(
       (e) =>
@@ -1486,6 +1598,8 @@ export function App() {
         startedAt,
         frameCount: session.frame_count,
         elapsed: 0,
+        approxMemoryBytes: session.approx_memory_bytes,
+        maxMemoryBytes: session.max_memory_bytes,
       });
       pollingRef.current = window.setInterval(() => {
         void (async () => {
@@ -1495,7 +1609,12 @@ export function App() {
             const elapsed = Date.now() - startedAt;
             setRecording((prev) => {
               if (prev.phase !== "recording") return prev;
-              return { ...prev, frameCount: current.session!.frame_count, elapsed };
+              return {
+                ...prev,
+                frameCount: current.session!.frame_count,
+                elapsed,
+                approxMemoryBytes: current.session!.approx_memory_bytes,
+              };
             });
             if (isLiveRef.current && current.session.frame_count > 0) {
               const frameIndex = current.session.frame_count - 1;
@@ -1528,6 +1647,9 @@ export function App() {
         unionLayout: null,
         buildingUnion: true,
         buildProgress: [0, session.frame_count],
+        avgCaptureMs: session.avg_capture_ms,
+        maxCaptureMs: session.max_capture_ms,
+        totalCaptureMs: session.total_capture_ms,
       });
       if (session.frame_count > 0) {
         // Show last frame while union builds.
@@ -1560,6 +1682,7 @@ export function App() {
           hiddenKrates,
           hiddenProcesses,
           focusedEntityId,
+          ghostMode,
         );
         setUnionFrameLayout(unionFrame);
       }
@@ -1568,11 +1691,86 @@ export function App() {
     }
   }, [hiddenKrates, hiddenProcesses, focusedEntityId]);
 
+  const handleExport = useCallback(async () => {
+    try {
+      const blob = await apiClient.exportRecording();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionId =
+        recording.phase === "stopped" || recording.phase === "scrubbing"
+          ? recording.sessionId.replace(/:/g, "_")
+          : "recording";
+      a.href = url;
+      a.download = `recording-${sessionId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [recording]);
+
+  const handleImportFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      e.target.value = "";
+      try {
+        const session = await apiClient.importRecording(file);
+        setRecording({
+          phase: "stopped",
+          sessionId: session.session_id,
+          frameCount: session.frame_count,
+          frames: session.frames,
+          unionLayout: null,
+          buildingUnion: true,
+          buildProgress: [0, session.frame_count],
+          avgCaptureMs: session.avg_capture_ms,
+          maxCaptureMs: session.max_capture_ms,
+          totalCaptureMs: session.total_capture_ms,
+        });
+        if (session.frames.length > 0) {
+          const lastFrameIndex = session.frames[session.frames.length - 1].frame_index;
+          const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
+          const converted = convertSnapshot(lastFrame);
+          setSnap({ phase: "ready", ...converted });
+
+          const union = await buildUnionLayout(
+            session.frames,
+            apiClient,
+            renderNodeForMeasure,
+            (loaded, total) => {
+              setRecording((prev) => {
+                if (prev.phase !== "stopped") return prev;
+                return { ...prev, buildProgress: [loaded, total] };
+              });
+            },
+          );
+          setRecording((prev) => {
+            if (prev.phase !== "stopped") return prev;
+            return { ...prev, unionLayout: union, buildingUnion: false };
+          });
+
+          const unionFrame = renderFrameFromUnion(
+            lastFrameIndex,
+            union,
+            hiddenKrates,
+            hiddenProcesses,
+            focusedEntityId,
+          );
+          setUnionFrameLayout(unionFrame);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    [hiddenKrates, hiddenProcesses, focusedEntityId],
+  );
+
   const handleScrub = useCallback(
     (frameIndex: number) => {
       setRecording((prev) => {
         if (prev.phase !== "stopped" && prev.phase !== "scrubbing") return prev;
-        const { frames, frameCount, sessionId } = prev;
+        const { frames, frameCount, sessionId, avgCaptureMs, maxCaptureMs, totalCaptureMs } = prev;
         // Both "stopped" and "scrubbing" have unionLayout. Narrow for TS:
         const unionLayout =
           prev.phase === "stopped" ? prev.unionLayout : prev.unionLayout;
@@ -1585,6 +1783,7 @@ export function App() {
           hiddenKrates,
           hiddenProcesses,
           focusedEntityId,
+          ghostMode,
         );
         setUnionFrameLayout(result);
 
@@ -1601,10 +1800,13 @@ export function App() {
           frames,
           currentFrameIndex: frameIndex,
           unionLayout,
+          avgCaptureMs,
+          maxCaptureMs,
+          totalCaptureMs,
         };
       });
     },
-    [hiddenKrates, hiddenProcesses, focusedEntityId],
+    [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode],
   );
 
   // Re-render union frame when filters change during playback.
@@ -1616,6 +1818,7 @@ export function App() {
         hiddenKrates,
         hiddenProcesses,
         focusedEntityId,
+        ghostMode,
       );
       setUnionFrameLayout(result);
     } else if (recording.phase === "stopped" && recording.unionLayout) {
@@ -1626,10 +1829,11 @@ export function App() {
         hiddenKrates,
         hiddenProcesses,
         focusedEntityId,
+        ghostMode,
       );
       setUnionFrameLayout(result);
     }
-  }, [hiddenKrates, hiddenProcesses, focusedEntityId, recording]);
+  }, [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, recording]);
 
   // Clear union frame layout when going back to idle or starting a new recording.
   useEffect(() => {
@@ -1703,6 +1907,39 @@ export function App() {
         ? recording.frames.length - 1
         : 0;
 
+  const changeSummaries = useMemo<FrameChangeSummary[] | null>(() => {
+    const unionLayout =
+      (recording.phase === "stopped" || recording.phase === "scrubbing") && recording.unionLayout
+        ? recording.unionLayout
+        : null;
+    return unionLayout ? computeChangeSummaries(unionLayout) : null;
+  }, [recording]);
+
+  const changeFrames = useMemo<number[] | null>(() => {
+    const unionLayout =
+      (recording.phase === "stopped" || recording.phase === "scrubbing") && recording.unionLayout
+        ? recording.unionLayout
+        : null;
+    return unionLayout ? computeChangeFrames(unionLayout) : null;
+  }, [recording]);
+
+  useEffect(() => {
+    if (recording.phase !== "stopped" && recording.phase !== "scrubbing") return;
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "[" && changeFrames) {
+        const prev = changeFrames.filter((f) => f < currentFrameIndex).at(-1);
+        if (prev !== undefined) handleScrub(prev);
+      } else if (e.key === "]" && changeFrames) {
+        const next = changeFrames.find((f) => f > currentFrameIndex);
+        if (next !== undefined) handleScrub(next);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [recording.phase, changeFrames, currentFrameIndex, handleScrub]);
+
   return (
     <div className="mockup-app">
       {showProcessModal && connections && (
@@ -1738,9 +1975,17 @@ export function App() {
         {snap.phase === "error" && <span className="mockup-header-error">{snap.message}</span>}
         <span className="mockup-header-spacer" />
         {recording.phase === "recording" && (
-          <span className="mockup-header-badge mockup-header-badge--recording">
+          <span
+            className={[
+              "mockup-header-badge",
+              recording.approxMemoryBytes >= recording.maxMemoryBytes * 0.75
+                ? "mockup-header-badge--recording-warn"
+                : "mockup-header-badge--recording",
+            ].join(" ")}
+          >
             <span className="recording-dot" />
-            {formatElapsed(recording.elapsed)} · {recording.frameCount} frames
+            {formatElapsed(recording.elapsed)} · {recording.frameCount} frames ·{" "}
+            {formatBytes(recording.approxMemoryBytes)}
           </span>
         )}
         {recording.phase === "recording" && (
@@ -1750,6 +1995,18 @@ export function App() {
           >
             Live
           </ActionButton>
+        )}
+        {(recording.phase === "stopped" || recording.phase === "scrubbing") && (
+          <>
+            <ActionButton variant="default" onPress={handleExport}>
+              <DownloadSimple size={14} weight="bold" />
+              Export
+            </ActionButton>
+            <ActionButton variant="default" onPress={() => fileInputRef.current?.click()}>
+              <UploadSimple size={14} weight="bold" />
+              Import
+            </ActionButton>
+          </>
         )}
         {recording.phase === "idle" ||
         recording.phase === "stopped" ||
@@ -1772,6 +2029,13 @@ export function App() {
           {isBusy ? <CircleNotch size={14} weight="bold" /> : <Camera size={14} weight="bold" />}
           {buttonLabel}
         </ActionButton>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          style={{ display: "none" }}
+          onChange={handleImportFile}
+        />
       </div>
       {(recording.phase === "stopped" || recording.phase === "scrubbing") &&
         recording.frames.length > 0 && (
@@ -1782,6 +2046,13 @@ export function App() {
             onScrub={handleScrub}
             buildingUnion={recording.phase === "stopped" && recording.buildingUnion}
             buildProgress={recording.phase === "stopped" ? recording.buildProgress : undefined}
+            changeSummary={changeSummaries?.[currentFrameIndex]}
+            changeFrames={changeFrames ?? undefined}
+            avgCaptureMs={recording.avgCaptureMs}
+            maxCaptureMs={recording.maxCaptureMs}
+            totalCaptureMs={recording.totalCaptureMs}
+            ghostMode={ghostMode}
+            onGhostToggle={() => setGhostMode((v) => !v)}
           />
         )}
       <SplitLayout
@@ -1803,6 +2074,9 @@ export function App() {
             hiddenProcesses={hiddenProcesses}
             onProcessToggle={handleProcessToggle}
             onProcessSolo={handleProcessSolo}
+            scopeColorMode={scopeColorMode}
+            onToggleProcessColorBy={handleToggleProcessColorBy}
+            onToggleCrateColorBy={handleToggleCrateColorBy}
             unionFrameLayout={unionFrameLayout}
           />
         }

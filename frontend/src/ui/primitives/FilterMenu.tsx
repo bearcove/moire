@@ -9,6 +9,7 @@ import {
 } from "react-aria-components";
 import { Checkbox as AriaCheckbox } from "react-aria-components";
 import { Check, Funnel, CaretDown } from "@phosphor-icons/react";
+import { Switch } from "./Switch";
 
 export type FilterMenuItem = {
   id: string;
@@ -24,6 +25,9 @@ export type FilterMenuProps = {
   hiddenIds: ReadonlySet<string>;
   onToggle: (id: string) => void;
   onSolo: (id: string) => void;
+  colorByActive?: boolean;
+  onToggleColorBy?: () => void;
+  colorByLabel?: React.ReactNode;
   className?: string;
 };
 
@@ -33,6 +37,9 @@ export function FilterMenu({
   hiddenIds,
   onToggle,
   onSolo,
+  colorByActive = false,
+  onToggleColorBy,
+  colorByLabel,
   className,
 }: FilterMenuProps) {
   const [open, setOpen] = useState(false);
@@ -73,6 +80,18 @@ export function FilterMenu({
         offset={0}
       >
         <Dialog className="ui-filter-dialog" aria-label={`Filter ${label}`}>
+          {onToggleColorBy && (
+            <>
+              <div className="ui-filter-setting-row">
+                <Switch
+                  checked={colorByActive}
+                  onChange={onToggleColorBy}
+                  label={colorByLabel ?? `Color by ${label}`}
+                />
+              </div>
+              <div className="ui-filter-divider" />
+            </>
+          )}
           <ul className="ui-filter-list" role="group">
             {items.map((item) => {
               const checked = !hiddenIds.has(item.id);

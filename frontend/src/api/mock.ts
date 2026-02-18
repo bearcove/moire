@@ -253,7 +253,12 @@ export function createMockApiClient(): ApiClient {
         stopped_at_unix_ms: null,
         frame_count: 0,
         max_frames: req?.max_frames ?? 100,
+        max_memory_bytes: req?.max_memory_bytes ?? 256 * 1024 * 1024,
         overflowed: false,
+        approx_memory_bytes: 0,
+        avg_capture_ms: 0,
+        max_capture_ms: 0,
+        total_capture_ms: 0,
         frames: [],
       };
       return delay(session);
@@ -261,9 +266,9 @@ export function createMockApiClient(): ApiClient {
     stopRecording: () => {
       const now = Date.now();
       const frames: FrameSummary[] = [
-        { frame_index: 0, captured_at_unix_ms: now - 3000, process_count: 2 },
-        { frame_index: 1, captured_at_unix_ms: now - 2000, process_count: 2 },
-        { frame_index: 2, captured_at_unix_ms: now - 1000, process_count: 2 },
+        { frame_index: 0, captured_at_unix_ms: now - 3000, process_count: 2, capture_duration_ms: 12 },
+        { frame_index: 1, captured_at_unix_ms: now - 2000, process_count: 2, capture_duration_ms: 10 },
+        { frame_index: 2, captured_at_unix_ms: now - 1000, process_count: 2, capture_duration_ms: 11 },
       ];
       const session: RecordingSessionInfo = {
         session_id: "mock-session-001",
@@ -273,7 +278,12 @@ export function createMockApiClient(): ApiClient {
         stopped_at_unix_ms: now,
         frame_count: frames.length,
         max_frames: 100,
+        max_memory_bytes: 256 * 1024 * 1024,
         overflowed: false,
+        approx_memory_bytes: 0,
+        avg_capture_ms: 11,
+        max_capture_ms: 12,
+        total_capture_ms: 33,
         frames,
       };
       return delay(session);
@@ -283,5 +293,7 @@ export function createMockApiClient(): ApiClient {
       return delay(response);
     },
     fetchRecordingFrame: (_frameIndex) => delay(MOCK_SNAPSHOT, 300),
+    exportRecording: () => Promise.resolve(new Blob(["{}"], { type: "application/json" })),
+    importRecording: () => Promise.reject(new Error("import not supported in mock")),
   };
 }

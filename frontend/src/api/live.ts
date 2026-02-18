@@ -76,5 +76,26 @@ export function createLiveApiClient(): ApiClient {
       ),
     fetchRecordingCurrent: () => getJson<RecordCurrentResponse>("/api/record/current"),
     fetchRecordingFrame: (frameIndex: number) => getJson<SnapshotCutResponse>(`/api/record/current/frame/${frameIndex}`),
+    exportRecording: async () => {
+      const res = await fetch("/api/record/current/export");
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res));
+      }
+      return res.blob();
+    },
+    importRecording: async (file: File) => {
+      const res = await fetch("/api/record/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: file,
+      });
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res));
+      }
+      return expectRecordingSession(
+        (await res.json()) as RecordCurrentResponse,
+        "/api/record/import",
+      );
+    },
   };
 }

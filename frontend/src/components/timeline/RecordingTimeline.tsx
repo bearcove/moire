@@ -1,12 +1,32 @@
 import "./RecordingTimeline.css";
 import type { FrameSummary } from "../../api/types";
-import { CircleNotch } from "@phosphor-icons/react";
+import type { FrameChangeSummary } from "../../recording/unionGraph";
+import { CircleNotch, SkipBack, SkipForward } from "@phosphor-icons/react";
+import { ActionButton } from "../../ui/primitives/ActionButton";
 
 export function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(Math.abs(ms) / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatMs(ms: number): string {
+  if (ms >= 1000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+  return `${ms.toFixed(1)}ms`;
+}
+
+function formatChangeSummary(s: FrameChangeSummary): string {
+  const parts: string[] = [];
+  if (s.nodesAdded > 0) parts.push(`+${s.nodesAdded} ${s.nodesAdded === 1 ? "node" : "nodes"}`);
+  if (s.nodesRemoved > 0)
+    parts.push(`-${s.nodesRemoved} ${s.nodesRemoved === 1 ? "node" : "nodes"}`);
+  if (s.edgesAdded > 0) parts.push(`+${s.edgesAdded} ${s.edgesAdded === 1 ? "edge" : "edges"}`);
+  if (s.edgesRemoved > 0)
+    parts.push(`-${s.edgesRemoved} ${s.edgesRemoved === 1 ? "edge" : "edges"}`);
+  return parts.join(", ");
 }
 
 interface RecordingTimelineProps {
@@ -18,6 +38,13 @@ interface RecordingTimelineProps {
   buildingUnion?: boolean;
   /** [loaded, total] progress for union build. */
   buildProgress?: [number, number];
+  /** Change summary for the current frame. */
+  changeSummary?: FrameChangeSummary;
+  /** Sorted list of frame indices where the graph changed. */
+  changeFrames?: number[];
+  avgCaptureMs?: number;
+  maxCaptureMs?: number;
+  totalCaptureMs?: number;
 }
 
 export function RecordingTimeline({
@@ -27,10 +54,27 @@ export function RecordingTimeline({
   onScrub,
   buildingUnion,
   buildProgress,
+  changeSummary,
+  changeFrames,
+  avgCaptureMs,
+  maxCaptureMs,
+  totalCaptureMs,
 }: RecordingTimelineProps) {
   const firstMs = frames[0]?.captured_at_unix_ms ?? 0;
   const currentMs = frames[currentFrameIndex]?.captured_at_unix_ms ?? firstMs;
   const elapsedMs = currentMs - firstMs;
+  const deltaText = changeSummary ? formatChangeSummary(changeSummary) : "";
+  const hasStats =
+    avgCaptureMs !== undefined &&
+    maxCaptureMs !== undefined &&
+    totalCaptureMs !== undefined;
+
+  const prevChangeFrame = changeFrames
+    ? changeFrames.filter((f) => f < currentFrameIndex).at(-1)
+    : undefined;
+  const nextChangeFrame = changeFrames
+    ? changeFrames.find((f) => f > currentFrameIndex)
+    : undefined;
 
   return (
     <div className="recording-timeline">
@@ -47,8 +91,20 @@ export function RecordingTimeline({
       ) : (
         <span className="recording-timeline-label">
           Frame {currentFrameIndex + 1} / {frameCount}
+          {deltaText && (
+            <span className="recording-timeline-delta">{deltaText}</span>
+          )}
         </span>
       )}
+      <ActionButton
+        size="sm"
+        variant="ghost"
+        isDisabled={buildingUnion || prevChangeFrame === undefined}
+        onPress={() => prevChangeFrame !== undefined && onScrub(prevChangeFrame)}
+        aria-label="Prev change"
+      >
+        <SkipBack size={14} weight="bold" />
+      </ActionButton>
       <input
         type="range"
         min={0}
@@ -58,9 +114,24 @@ export function RecordingTimeline({
         className="recording-timeline-slider"
         disabled={buildingUnion}
       />
+      <ActionButton
+        size="sm"
+        variant="ghost"
+        isDisabled={buildingUnion || nextChangeFrame === undefined}
+        onPress={() => nextChangeFrame !== undefined && onScrub(nextChangeFrame)}
+        aria-label="Next change"
+      >
+        <SkipForward size={14} weight="bold" />
+      </ActionButton>
       <span className="recording-timeline-time">
         {formatElapsed(elapsedMs)}
       </span>
+      {hasStats && (
+        <span className="recording-timeline-stats">
+          Avg {formatMs(avgCaptureMs!)} · Max {formatMs(maxCaptureMs!)} · Total{" "}
+          {formatMs(totalCaptureMs!)}
+        </span>
+      )}
     </div>
   );
 }

@@ -893,6 +893,11 @@
     color: light-dark(#c62828, #ef9a9a);
 }
 
+.mockup-header-badge--recording-warn {
+    background: light-dark(#fff3e0, #3a2a0a);
+    color: light-dark(#e65100, #ffab40);
+}
+
 .recording-dot {
     display: inline-block;
     width: 6px;
@@ -1290,6 +1295,15 @@
     outline-offset: 2px;
 }
 
+.mockup-node--scope {
+    border-color: hsl(var(--scope-h) 70% 45% / 0.58);
+    background: hsl(var(--scope-h) 90% 54% / 0.1);
+}
+
+.mockup-node--scope .mockup-node-icon {
+    color: hsl(var(--scope-h) 70% 40%);
+}
+
 .mockup-node-label {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1361,6 +1375,15 @@
 .mockup-channel-pair--selected {
     outline: 2px solid light-dark(#3b82f6, #60a5fa);
     outline-offset: 2px;
+}
+
+.mockup-channel-pair--scope {
+    border-color: hsl(var(--scope-h) 70% 45% / 0.58);
+    background: hsl(var(--scope-h) 90% 54% / 0.1);
+}
+
+.mockup-channel-pair--scope .mockup-channel-pair-icon {
+    color: hsl(var(--scope-h) 70% 40%);
 }
 
 .mockup-channel-pair--stat-crit {
