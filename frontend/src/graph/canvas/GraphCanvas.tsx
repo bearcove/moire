@@ -8,6 +8,7 @@ interface CameraContextValue {
   camera: Camera;
   setCamera: (c: Camera) => void;
   fitView: () => void;
+  clientToGraph: (clientX: number, clientY: number) => { x: number; y: number } | null;
   viewportWidth: number;
   viewportHeight: number;
 }
@@ -34,6 +35,7 @@ export function GraphCanvas({
   onBackgroundClick,
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const worldRef = useRef<SVGGElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
 
   useEffect(() => {
@@ -108,6 +110,15 @@ export function GraphCanvas({
 
   const transform = cameraTransform(camera, viewportSize.width, viewportSize.height);
   const dotPatternTransform = `translate(${viewportSize.width / 2 - camera.x * camera.zoom}, ${viewportSize.height / 2 - camera.y * camera.zoom}) scale(${camera.zoom})`;
+  const clientToGraph = useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    const world = worldRef.current;
+    if (!svg || !world) return null;
+    const ctm = world.getScreenCTM();
+    if (!ctm) return null;
+    const point = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    return { x: point.x, y: point.y };
+  }, []);
 
   return (
     <CameraContext.Provider
@@ -115,6 +126,7 @@ export function GraphCanvas({
         camera,
         setCamera,
         fitView,
+        clientToGraph,
         viewportWidth: viewportSize.width,
         viewportHeight: viewportSize.height,
       }}
@@ -153,7 +165,7 @@ export function GraphCanvas({
             fill="url(#graph-canvas-dots)"
             data-background="true"
           />
-          <g transform={transform}>{children}</g>
+          <g ref={worldRef} transform={transform}>{children}</g>
         </svg>
       </div>
     </CameraContext.Provider>

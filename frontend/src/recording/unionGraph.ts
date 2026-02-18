@@ -325,6 +325,7 @@ export function renderFrameFromUnion(
       let data: Record<string, unknown>;
       if (frameDef.channelPair) {
         data = {
+          nodeId: frameDef.id,
           tx: frameDef.channelPair.tx,
           rx: frameDef.channelPair.rx,
           channelName: frameDef.name,
@@ -333,6 +334,7 @@ export function renderFrameFromUnion(
         };
       } else if (frameDef.rpcPair) {
         data = {
+          nodeId: frameDef.id,
           req: frameDef.rpcPair.req,
           resp: frameDef.rpcPair.resp,
           rpcName: frameDef.name,

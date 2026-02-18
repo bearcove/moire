@@ -6,6 +6,7 @@
 }
 
 .channel-pair {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -16,14 +17,18 @@
     background: var(--surface-raised);
     border: 1px solid var(--border);
     color: var(--text-primary);
-    min-width: 196px;
+    min-width: 0;
+    overflow: visible;
 }
 
 .channel-pair--compact {
+    position: relative;
     flex-direction: row;
     align-items: center;
     gap: 8px;
     padding: 8px 10px;
+    width: fit-content;
+    max-width: 100%;
 }
 
 .channel-pair-compact-main {
@@ -74,13 +79,12 @@
 }
 
 .channel-pair-icon {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
     color: var(--text-secondary);
     flex-shrink: 0;
-    line-height: 1;
 }
 
 .channel-pair-name {
@@ -121,20 +125,50 @@
 }
 
 .channel-pair-port {
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 999px;
-    border: 1.5px solid light-dark(#8a8d94, #a0a4ad);
-    background: light-dark(#f7f8fa, #16191d);
+    border: 1.5px solid light-dark(#6f737b, #b8bdc7);
+    background: light-dark(#f5f7fa, #12161c);
+    box-shadow: 0 0 0 1px light-dark(rgba(255, 255, 255, 0.8), rgba(10, 11, 13, 0.75));
     align-self: center;
     flex-shrink: 0;
+    z-index: 2;
 }
 
 .channel-pair-port--in {
-    margin-right: 4px;
+    margin-left: -7px;
+    margin-right: 5px;
 }
 
 .channel-pair-port--out {
-    margin-left: auto;
-    margin-right: 4px;
+    margin-left: 5px;
+    margin-right: -7px;
+}
+
+.channel-pair--compact .channel-pair-port {
+    position: absolute;
+    margin: 0;
+    align-self: auto;
+}
+
+.channel-pair-port--top {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translate(-50%, -50%);
+}
+
+.channel-pair-port--bottom {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translate(-50%, 50%);
+}
+
+.channel-pair--compact .channel-pair-port--top,
+.channel-pair--compact .channel-pair-port--bottom {
+    position: absolute;
+    margin: 0;
+    align-self: auto;
 }

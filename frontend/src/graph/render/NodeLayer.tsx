@@ -56,6 +56,7 @@ export async function measureEntityDefs(
       card = (
         <RpcPairNode
           data={{
+            nodeId: def.id,
             req: def.rpcPair.req,
             resp: def.rpcPair.resp,
             rpcName: def.name,

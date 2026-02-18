@@ -6,6 +6,7 @@ import "./ChannelPairNode.css";
 import { kindIcon } from "../../nodeKindSpec";
 
 export type RpcPairNodeData = {
+  nodeId: string;
   req: EntityDef;
   resp: EntityDef;
   rpcName: string;
@@ -15,7 +16,7 @@ export type RpcPairNodeData = {
 };
 
 export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
-  const { req, resp, rpcName, selected, scopeHue, ghost } = data;
+  const { nodeId, req, resp, rpcName, selected, scopeHue, ghost } = data;
 
   const reqBody = typeof req.body !== "string" && "request" in req.body ? req.body.request : null;
   const respBody =
@@ -45,8 +46,14 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
           : undefined
       }
     >
+      <span
+        className="channel-pair-port channel-pair-port--top graph-port-anchor"
+        data-node-id={nodeId}
+        data-port-id={`${nodeId}:resp`}
+        aria-hidden="true"
+      />
       <div className="channel-pair-header">
-        <span className="channel-pair-icon">{kindIcon("rpc_pair", 14)}</span>
+        <span className="channel-pair-icon">{kindIcon("rpc_pair", 18)}</span>
         <span className="channel-pair-name">{rpcName}</span>
       </div>
       <div className="channel-pair-rows">
@@ -55,10 +62,8 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
           <span className="inspector-mono" style={{ fontSize: "11px" }}>
             {method}
           </span>
-          <span className="channel-pair-port channel-pair-port--out" aria-hidden="true" />
         </div>
         <div className="channel-pair-row channel-pair-row--in">
-          <span className="channel-pair-port channel-pair-port--in" aria-hidden="true" />
           <span className="channel-pair-row-label">RESP</span>
           <Badge tone={respTone}>{respStatus}</Badge>
           {resp.ageMs > 3000 && (
@@ -69,6 +74,12 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
           )}
         </div>
       </div>
+      <span
+        className="channel-pair-port channel-pair-port--bottom graph-port-anchor"
+        data-node-id={nodeId}
+        data-port-id={`${nodeId}:req`}
+        aria-hidden="true"
+      />
     </div>
   );
 }

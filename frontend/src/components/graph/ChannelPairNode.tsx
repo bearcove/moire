@@ -41,17 +41,17 @@ export function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
       }
     >
       <span
-        className="channel-pair-port channel-pair-port--in graph-port-anchor"
+        className="channel-pair-port channel-pair-port--top graph-port-anchor"
         data-node-id={nodeId}
         data-port-id={`${nodeId}:rx`}
         aria-hidden="true"
       />
       <div className="channel-pair-compact-main">
-        <span className="channel-pair-icon">{kindIcon("channel_pair", 14)}</span>
+        <span className="channel-pair-icon">{kindIcon("channel_pair", 18)}</span>
         <span className="channel-pair-name">{channelName}</span>
       </div>
       <span
-        className="channel-pair-port channel-pair-port--out graph-port-anchor"
+        className="channel-pair-port channel-pair-port--bottom graph-port-anchor"
         data-node-id={nodeId}
         data-port-id={`${nodeId}:tx`}
         aria-hidden="true"

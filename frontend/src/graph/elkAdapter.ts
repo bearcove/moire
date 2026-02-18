@@ -9,7 +9,7 @@ const elk = new ELK({ workerUrl: elkWorkerUrl });
 
 const elkOptions = {
   "elk.algorithm": "layered",
-  "elk.direction": "RIGHT",
+  "elk.direction": "DOWN",
   "elk.spacing.nodeNode": "36",
   "elk.spacing.edgeNode": "20",
   "elk.layered.spacing.nodeNodeBetweenLayers": "56",
@@ -28,26 +28,23 @@ export type EdgeStyle = {
 };
 
 export function edgeStyle(edge: EdgeDef): EdgeStyle {
-  const isPendingOp = edge.kind === "needs" && edge.state === "pending";
-  if (isPendingOp) {
-    return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.8 };
-  }
+  const stroke = "light-dark(#111111, #d7d9df)";
   const kind = edge.kind;
   switch (kind) {
     case "touches":
-      return { stroke: "light-dark(#4f8f8f, #78b8b8)", strokeWidth: 1.2, strokeDasharray: "4 4" };
+      return { stroke, strokeWidth: 1.1, strokeDasharray: "4 4" };
     case "needs":
-      return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
+      return { stroke, strokeWidth: 1.4 };
     case "holds":
-      return { stroke: "light-dark(#2f6fed, #7aa2ff)", strokeWidth: 2 };
+      return { stroke, strokeWidth: 1.2 };
     case "polls":
-      return { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" };
+      return { stroke, strokeWidth: 1.1, strokeDasharray: "2 3" };
     case "closed_by":
-      return { stroke: "light-dark(#e08614, #f0a840)", strokeWidth: 1.5 };
+      return { stroke, strokeWidth: 1.2 };
     case "channel_link":
-      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
+      return { stroke, strokeWidth: 1.0, strokeDasharray: "6 3" };
     case "rpc_link":
-      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
+      return { stroke, strokeWidth: 1.0, strokeDasharray: "6 3" };
   }
 }
 
@@ -115,20 +112,20 @@ export async function layoutGraph(
     if (entity.channelPair) {
       const mergedId = entity.id;
       return [
-        { id: `${mergedId}:tx`, layoutOptions: { "elk.port.side": "EAST" } },
-        { id: `${mergedId}:rx`, layoutOptions: { "elk.port.side": "WEST" } },
+        { id: `${mergedId}:tx`, layoutOptions: { "elk.port.side": "SOUTH" } },
+        { id: `${mergedId}:rx`, layoutOptions: { "elk.port.side": "NORTH" } },
       ];
     }
     if (entity.rpcPair) {
       const mergedId = entity.id;
       return [
-        { id: `${mergedId}:req`, layoutOptions: { "elk.port.side": "EAST" } },
-        { id: `${mergedId}:resp`, layoutOptions: { "elk.port.side": "WEST" } },
+        { id: `${mergedId}:req`, layoutOptions: { "elk.port.side": "SOUTH" } },
+        { id: `${mergedId}:resp`, layoutOptions: { "elk.port.side": "NORTH" } },
       ];
     }
     return [
-      { id: defaultInPortId(entity.id), layoutOptions: { "elk.port.side": "WEST" } },
-      { id: defaultOutPortId(entity.id), layoutOptions: { "elk.port.side": "EAST" } },
+      { id: defaultInPortId(entity.id), layoutOptions: { "elk.port.side": "NORTH" } },
+      { id: defaultOutPortId(entity.id), layoutOptions: { "elk.port.side": "SOUTH" } },
     ];
   };
 
@@ -243,6 +240,7 @@ export async function layoutGraph(
       return {
         kind: "rpcPairNode",
         data: {
+          nodeId: def.id,
           req: def.rpcPair.req,
           resp: def.rpcPair.resp,
           rpcName: def.name,
@@ -523,6 +521,8 @@ export async function layoutGraph(
       data: {
         style: edgeStyle(def),
         tooltip: edgeTooltip(def, srcName, dstName),
+        sourcePortRef: expectedSourceRef,
+        targetPortRef: expectedTargetRef,
         markerSize,
       },
     };

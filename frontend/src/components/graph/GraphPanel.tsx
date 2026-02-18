@@ -9,7 +9,7 @@ import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
-import type { GraphGeometry } from "../../graph/geometry";
+import type { GraphGeometry, Point } from "../../graph/geometry";
 import { scopeHueForKey } from "./scopeColors";
 import type { FrameRenderResult } from "../../recording/unionGraph";
 import "./GraphPanel.css";
@@ -86,6 +86,7 @@ export function GraphPanel({
   unionFrameLayout?: FrameRenderResult;
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
+  const [portAnchors, setPortAnchors] = useState<Map<string, Point>>(new Map());
 
   // In snapshot mode (no unionFrameLayout), measure and lay out from scratch.
   React.useEffect(() => {
@@ -237,10 +238,15 @@ export function GraphPanel({
             {effectiveGeometry && (
               <>
                 <GroupLayer groups={effectiveGeometry.groups} />
+                <GraphPortAnchors
+                  geometryKey={geometryKey}
+                  onAnchorsChange={setPortAnchors}
+                />
                 <EdgeLayer
                   edges={effectiveGeometry.edges}
                   selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
                   ghostEdgeIds={ghostEdgeIds}
+                  portAnchors={portAnchors}
                   onEdgeClick={(id) => onSelect({ kind: "edge", id })}
                 />
                 <NodeLayer
@@ -296,6 +302,41 @@ function GraphAutoFit({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fitView]);
+
+  return null;
+}
+
+function GraphPortAnchors({
+  geometryKey,
+  onAnchorsChange,
+}: {
+  geometryKey: string;
+  onAnchorsChange: (anchors: Map<string, Point>) => void;
+}) {
+  const { clientToGraph } = useCameraContext();
+
+  useEffect(() => {
+    if (!geometryKey) {
+      onAnchorsChange(new Map());
+      return;
+    }
+    const raf = window.requestAnimationFrame(() => {
+      const anchors = new Map<string, Point>();
+      const nodes = document.querySelectorAll<HTMLElement>(".graph-port-anchor[data-port-id]");
+      nodes.forEach((node) => {
+        const portId = node.dataset.portId;
+        if (!portId) return;
+        const rect = node.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const world = clientToGraph(centerX, centerY);
+        if (!world) return;
+        anchors.set(portId, world);
+      });
+      onAnchorsChange(anchors);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [clientToGraph, geometryKey, onAnchorsChange]);
 
   return null;
 }
