@@ -6,7 +6,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-dialoguer = { version = "0.12", features = ["fuzzy-select"] }
+compact_str.workspace = true
+facet.workspace = true
+figue.workspace = true
 libc.workspace = true
+peeps = { workspace = true, features = ["diagnostics"] }
+tokio.workspace = true
 ureq.workspace = true
-ctrlc = "3.4"
+roam = { path = "../../../roam/rust/roam" }
+roam-stream = { path = "../../../roam/rust/roam-stream", features = ["diagnostics"] }
