@@ -101,7 +101,6 @@ function entityMatchesScopeFilter(entity: EntityDef, scopeEntityIds: ReadonlySet
 }
 
 const INSPECTOR_MARGIN = 12;
-const INSPECTOR_DEFAULT_TOP = 132;
 
 // ── App ────────────────────────────────────────────────────────
 
@@ -146,6 +145,36 @@ export function App() {
       y: Math.min(Math.max(y, INSPECTOR_MARGIN), maxY),
     };
   }, []);
+
+  const computeDefaultInspectorPosition = useCallback(() => {
+    const main = mainPaneRef.current;
+    const overlay = inspectorOverlayRef.current;
+    if (!main || !overlay) return null;
+
+    const mainRect = main.getBoundingClientRect();
+    const graphFlow = main.querySelector(".graph-flow") as HTMLElement | null;
+    if (leftPaneTab === "graph") {
+      if (!graphFlow) return null;
+      const flowRect = graphFlow.getBoundingClientRect();
+      const flowLeft = flowRect.left - mainRect.left;
+      const flowTop = flowRect.top - mainRect.top;
+      const flowRight = flowRect.right - mainRect.left;
+      const flowBottom = flowRect.bottom - mainRect.top;
+      const preferredX = flowRight - overlay.offsetWidth - INSPECTOR_MARGIN;
+      const preferredY = flowTop + INSPECTOR_MARGIN;
+      const clamped = clampInspectorPosition(preferredX, preferredY);
+      const minY = flowTop + INSPECTOR_MARGIN;
+      const maxY = Math.max(minY, flowBottom - overlay.offsetHeight - INSPECTOR_MARGIN);
+      return {
+        x: Math.max(clamped.x, flowLeft + INSPECTOR_MARGIN),
+        y: Math.max(minY, Math.min(clamped.y, maxY)),
+      };
+    }
+
+    const startX = main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN;
+    const startY = INSPECTOR_MARGIN;
+    return clampInspectorPosition(startX, startY);
+  }, [clampInspectorPosition, leftPaneTab]);
 
   const handleInspectorHeaderPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -787,16 +816,10 @@ where l.conn_id = ${connId}
 
   useEffect(() => {
     if (!inspectorOpen || inspectorPosition) return;
-    const main = mainPaneRef.current;
-    const overlay = inspectorOverlayRef.current;
-    if (!main || !overlay) return;
-    const startX = main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN;
-    const startY = Math.min(
-      INSPECTOR_DEFAULT_TOP,
-      Math.max(INSPECTOR_MARGIN, main.clientHeight - overlay.offsetHeight - INSPECTOR_MARGIN),
-    );
-    setInspectorPosition(clampInspectorPosition(startX, startY));
-  }, [inspectorOpen, inspectorPosition, clampInspectorPosition]);
+    const start = computeDefaultInspectorPosition();
+    if (!start) return;
+    setInspectorPosition(start);
+  }, [inspectorOpen, inspectorPosition, computeDefaultInspectorPosition, leftPaneTab, entities.length]);
 
   useEffect(() => {
     if (!inspectorOpen) return;
@@ -1030,7 +1053,11 @@ where l.conn_id = ${connId}
           <div
             className="app-inspector-overlay"
             ref={inspectorOverlayRef}
-            style={inspectorPosition ? { left: inspectorPosition.x, top: inspectorPosition.y } : undefined}
+            style={
+              inspectorPosition
+                ? { left: inspectorPosition.x, top: inspectorPosition.y }
+                : { visibility: "hidden", pointerEvents: "none" }
+            }
           >
             <InspectorPanel
               onClose={() => setInspectorOpen(false)}

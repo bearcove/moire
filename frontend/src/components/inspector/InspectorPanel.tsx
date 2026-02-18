@@ -72,7 +72,12 @@ export function InspectorPanel({
         <div className="inspector-header-drag-handle" onPointerDown={onHeaderPointerDown}>
           <span className="inspector-header-title">Inspector</span>
         </div>
-        <ActionButton size="sm" onPress={onClose} aria-label="Close inspector">
+        <ActionButton
+          variant="ghost"
+          onPress={onClose}
+          aria-label="Close inspector"
+          className="inspector-close-button"
+        >
           <X size={14} weight="bold" />
         </ActionButton>
       </div>
