@@ -1,5 +1,5 @@
 import React from "react";
-import { Timer, FileRs, Crosshair } from "@phosphor-icons/react";
+import { Timer, File, Crosshair } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
@@ -14,6 +14,7 @@ import {
   bufferTone,
 } from "../../channelHelpers";
 import type { EntityDef } from "../../snapshot";
+import { Source } from "./Source";
 import "./InspectorPanel.css";
 
 export function ChannelPairInspectorContent({
@@ -79,14 +80,8 @@ export function ChannelPairInspectorContent({
         <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
           <DurationDisplay ms={tx.ageMs} />
         </KeyValueRow>
-        <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
-          <a
-            className="inspector-source-link"
-            href={`zed://file${tx.source}`}
-            title="Open in Zed"
-          >
-            {tx.source}
-          </a>
+        <KeyValueRow label="Source" icon={<File size={12} weight="bold" />}>
+          <Source source={tx.source} />
         </KeyValueRow>
         {tx.krate && (
           <KeyValueRow label="Crate">
@@ -103,14 +98,8 @@ export function ChannelPairInspectorContent({
         <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
           <DurationDisplay ms={rx.ageMs} />
         </KeyValueRow>
-        <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
-          <a
-            className="inspector-source-link"
-            href={`zed://file${rx.source}`}
-            title="Open in Zed"
-          >
-            {rx.source}
-          </a>
+        <KeyValueRow label="Source" icon={<File size={12} weight="bold" />}>
+          <Source source={rx.source} />
         </KeyValueRow>
         {rx.krate && (
           <KeyValueRow label="Crate">

@@ -1,5 +1,5 @@
 import React from "react";
-import { Timer, FileRs, Crosshair } from "@phosphor-icons/react";
+import { Timer, File, Crosshair } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
@@ -11,6 +11,7 @@ import type { EntityDiff } from "../../recording/unionGraph";
 import { ChannelPairInspectorContent } from "./ChannelPairInspectorContent";
 import { EntityBodySection } from "./EntityBodySection";
 import { MetaSection } from "./MetaTree";
+import { Source } from "./Source";
 import "./InspectorPanel.css";
 
 export function EntityInspectorContent({
@@ -82,14 +83,8 @@ export function EntityInspectorContent({
         <KeyValueRow label="Process">
           <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
         </KeyValueRow>
-        <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
-          <a
-            className="inspector-source-link"
-            href={`zed://file${entity.source}`}
-            title="Open in Zed"
-          >
-            {entity.source}
-          </a>
+        <KeyValueRow label="Source" icon={<File size={12} weight="bold" />}>
+          <Source source={entity.source} />
         </KeyValueRow>
         {entity.krate && (
           <KeyValueRow label="Crate">
