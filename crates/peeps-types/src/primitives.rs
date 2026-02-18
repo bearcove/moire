@@ -129,17 +129,29 @@ pub(crate) fn caller_source() -> CompactString {
     CompactString::from(format!("{}:{}", location.file(), location.line()))
 }
 
-pub(crate) fn infer_krate_from_source(source: &str) -> Option<CompactString> {
+pub fn infer_krate_from_source(source: &str) -> Option<CompactString> {
+    infer_krate_from_source_with_manifest_dir(source, None)
+}
+
+pub fn infer_krate_from_source_with_manifest_dir(
+    source: &str,
+    manifest_dir: Option<&str>,
+) -> Option<CompactString> {
+    let cache_key = SourceKrateCacheKey {
+        source: CompactString::from(source),
+        manifest_dir: manifest_dir.map(CompactString::from),
+    };
+
     if let Ok(cache) = source_krate_cache().read() {
-        if let Some(cached) = cache.get(source) {
+        if let Some(cached) = cache.get(&cache_key) {
             return cached.clone();
         }
     }
 
-    let inferred = infer_krate_from_source_uncached(source);
+    let inferred = infer_krate_from_source_uncached(source, manifest_dir.map(Path::new));
 
     if let Ok(mut cache) = source_krate_cache().write() {
-        cache.insert(CompactString::from(source), inferred.clone());
+        cache.insert(cache_key, inferred.clone());
     }
 
     inferred
@@ -158,21 +170,26 @@ fn source_root() -> &'static OnceLock<PathBuf> {
     &SOURCE_ROOT
 }
 
-fn infer_krate_from_source_uncached(source: &str) -> Option<CompactString> {
-    let file = source_file_path(source)?;
+fn infer_krate_from_source_uncached(
+    source: &str,
+    manifest_dir: Option<&Path>,
+) -> Option<CompactString> {
+    let file = source_file_path(source, manifest_dir)?;
     let mut dir = file.parent()?.to_path_buf();
 
     loop {
-        if let Some(cached) = cached_dir_krate(&dir) {
-            return cached;
-        }
-
-        let inferred = infer_krate_from_dir(&dir);
-        if let Ok(mut cache) = dir_krate_cache().write() {
-            cache.insert(dir.clone(), inferred.clone());
-        }
-        if inferred.is_some() {
-            return inferred;
+        match cached_dir_krate(&dir) {
+            Some(Some(cached)) => return Some(cached),
+            Some(None) => {}
+            None => {
+                let inferred = infer_krate_from_dir(&dir);
+                if let Ok(mut cache) = dir_krate_cache().write() {
+                    cache.insert(dir.clone(), inferred.clone());
+                }
+                if let Some(krate) = inferred {
+                    return Some(krate);
+                }
+            }
         }
 
         if !dir.pop() {
@@ -181,7 +198,7 @@ fn infer_krate_from_source_uncached(source: &str) -> Option<CompactString> {
     }
 }
 
-fn source_file_path(source: &str) -> Option<PathBuf> {
+fn source_file_path(source: &str, manifest_dir: Option<&Path>) -> Option<PathBuf> {
     let source = source.trim();
     if source.is_empty() {
         return None;
@@ -193,12 +210,23 @@ fn source_file_path(source: &str) -> Option<PathBuf> {
     };
 
     if path.is_absolute() {
-        Some(path.to_path_buf())
-    } else {
-        inference_source_root()
-            .map(|root| root.join(path))
-            .or_else(|| std::env::current_dir().ok().map(|cwd| cwd.join(path)))
+        return Some(path.to_path_buf());
     }
+
+    manifest_dir
+        .map(|dir| dir.join(path))
+        .filter(|candidate| candidate.is_file())
+        .or_else(|| {
+            inference_source_root()
+                .map(|root| root.join(path))
+                .filter(|candidate| candidate.is_file())
+        })
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|cwd| cwd.join(path))
+                .filter(|candidate| candidate.is_file())
+        })
 }
 
 fn infer_krate_from_dir(dir: &Path) -> Option<CompactString> {
@@ -241,8 +269,16 @@ fn cargo_package_name(cargo_toml: &Path) -> Option<CompactString> {
     None
 }
 
-fn source_krate_cache() -> &'static RwLock<HashMap<CompactString, Option<CompactString>>> {
-    static SOURCE_KRATE_CACHE: OnceLock<RwLock<HashMap<CompactString, Option<CompactString>>>> =
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct SourceKrateCacheKey {
+    source: CompactString,
+    manifest_dir: Option<CompactString>,
+}
+
+fn source_krate_cache() -> &'static RwLock<HashMap<SourceKrateCacheKey, Option<CompactString>>> {
+    static SOURCE_KRATE_CACHE: OnceLock<
+        RwLock<HashMap<SourceKrateCacheKey, Option<CompactString>>>,
+    > =
         OnceLock::new();
     SOURCE_KRATE_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
 }
@@ -277,7 +313,7 @@ impl fmt::Display for PeepsHex {
 
 #[cfg(test)]
 mod tests {
-    use super::{caller_source, infer_krate_from_source, source_file_path};
+    use super::{caller_source, infer_krate_from_source, infer_krate_from_source_with_manifest_dir};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -323,11 +359,78 @@ mod tests {
     }
 
     #[test]
-    fn relative_source_uses_current_dir_by_default() {
-        let resolved = source_file_path("src/lib.rs:42").expect("source path should resolve");
-        assert!(
-            resolved.is_absolute(),
-            "resolved relative source path should be absolute"
+    fn relative_source_uses_manifest_dir_context() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "peeps_types_manifest_ctx_{}_{}",
+            std::process::id(),
+            nonce
+        ));
+        let src = root.join("src");
+        std::fs::create_dir_all(&src).expect("should create temp source tree");
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"peeps_types_manifest_ctx\"\nversion = \"0.0.0\"\n",
+        )
+        .expect("should write Cargo.toml");
+        std::fs::write(src.join("lib.rs"), "pub fn hello() {}\n").expect("should write source file");
+
+        let inferred = infer_krate_from_source_with_manifest_dir(
+            "src/lib.rs:42",
+            Some(root.to_str().expect("temp path should be utf-8")),
         );
+        assert_eq!(inferred.as_deref(), Some("peeps_types_manifest_ctx"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn source_cache_key_includes_manifest_dir() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+
+        let root_a = std::env::temp_dir().join(format!(
+            "peeps_types_manifest_cache_a_{}_{}",
+            std::process::id(),
+            nonce
+        ));
+        let root_b = std::env::temp_dir().join(format!(
+            "peeps_types_manifest_cache_b_{}_{}",
+            std::process::id(),
+            nonce
+        ));
+
+        for (root, name) in [(&root_a, "peeps_types_cache_a"), (&root_b, "peeps_types_cache_b")] {
+            let src = root.join("src");
+            std::fs::create_dir_all(&src).expect("should create temp source tree");
+            std::fs::write(
+                root.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.0.0\"\n"),
+            )
+            .expect("should write Cargo.toml");
+            std::fs::write(src.join("lib.rs"), "pub fn hello() {}\n")
+                .expect("should write source file");
+        }
+
+        let source = "src/lib.rs:1";
+        let inferred_a = infer_krate_from_source_with_manifest_dir(
+            source,
+            Some(root_a.to_str().expect("temp path should be utf-8")),
+        );
+        let inferred_b = infer_krate_from_source_with_manifest_dir(
+            source,
+            Some(root_b.to_str().expect("temp path should be utf-8")),
+        );
+
+        assert_eq!(inferred_a.as_deref(), Some("peeps_types_cache_a"));
+        assert_eq!(inferred_b.as_deref(), Some("peeps_types_cache_b"));
+
+        let _ = std::fs::remove_dir_all(root_a);
+        let _ = std::fs::remove_dir_all(root_b);
     }
 }

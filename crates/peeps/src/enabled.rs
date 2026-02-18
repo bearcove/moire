@@ -1,4 +1,5 @@
 use compact_str::CompactString;
+use peeps_types::infer_krate_from_source_with_manifest_dir;
 use peeps_types::set_inference_source_root;
 use peeps_types::PTime;
 use peeps_types::{
@@ -2086,10 +2087,21 @@ fn apply_channel_state(channel: &Arc<StdMutex<ChannelRuntimeState>>) {
     }
 }
 
-fn emit_channel_wait_started(target: &EntityId, kind: ChannelWaitKind) {
-    if let Ok(event) = Event::channel_wait_started(
+fn record_event_with_source(mut event: Event, source: Source, cx: PeepsContext) {
+    event.source = source.into_compact_string();
+    event.krate =
+        infer_krate_from_source_with_manifest_dir(event.source.as_str(), Some(cx.manifest_dir()));
+    if let Ok(mut db) = runtime_db().lock() {
+        db.record_event(event);
+    }
+}
+
+fn emit_channel_wait_started(target: &EntityId, kind: ChannelWaitKind, source: Source, cx: PeepsContext) {
+    if let Ok(event) = Event::channel_wait_started_with_source(
         EventTarget::Entity(target.clone()),
         &ChannelWaitStartedEvent { kind },
+        source.into_compact_string(),
+        Some(cx.manifest_dir()),
     ) {
         if let Ok(mut db) = runtime_db().lock() {
             db.record_event(event);
@@ -2097,11 +2109,19 @@ fn emit_channel_wait_started(target: &EntityId, kind: ChannelWaitKind) {
     }
 }
 
-fn emit_channel_wait_ended(target: &EntityId, kind: ChannelWaitKind, started: Instant) {
+fn emit_channel_wait_ended(
+    target: &EntityId,
+    kind: ChannelWaitKind,
+    started: Instant,
+    source: Source,
+    cx: PeepsContext,
+) {
     let wait_ns = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
-    if let Ok(event) = Event::channel_wait_ended(
+    if let Ok(event) = Event::channel_wait_ended_with_source(
         EventTarget::Entity(target.clone()),
         &ChannelWaitEndedEvent { kind, wait_ns },
+        source.into_compact_string(),
+        Some(cx.manifest_dir()),
     ) {
         if let Ok(mut db) = runtime_db().lock() {
             db.record_event(event);
@@ -2352,7 +2372,7 @@ impl<T> Sender<T> {
         &self,
         value: T,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -2364,9 +2384,7 @@ impl<T> Sender<T> {
                             queue_len: Some(state.queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Some(ChannelWaitKind::SendFull)
                 } else {
@@ -2374,7 +2392,7 @@ impl<T> Sender<T> {
                 }
             });
             let wait_started = wait_kind.map(|kind| {
-                emit_channel_wait_started(self.handle.id(), kind);
+                emit_channel_wait_started(self.handle.id(), kind, source, cx);
                 Instant::now()
             });
 
@@ -2383,11 +2401,12 @@ impl<T> Sender<T> {
                 OperationKind::Send,
                 self.inner.send(value),
                 source,
+                cx,
             )
             .await;
 
             if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-                emit_channel_wait_ended(self.handle.id(), kind, started);
+                emit_channel_wait_ended(self.handle.id(), kind, started, source, cx);
             }
 
             match result {
@@ -2406,9 +2425,7 @@ impl<T> Sender<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Ok(())
                 }
@@ -2437,17 +2454,13 @@ impl<T> Sender<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
                         &ChannelClosedEvent { cause: close_cause },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Err(err)
                 }
@@ -2473,7 +2486,7 @@ impl<T> Receiver<T> {
     pub fn recv_with_source(
         &mut self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -2485,9 +2498,7 @@ impl<T> Receiver<T> {
                             queue_len: Some(state.queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Some(ChannelWaitKind::ReceiveEmpty)
                 } else {
@@ -2495,7 +2506,7 @@ impl<T> Receiver<T> {
                 }
             });
             let wait_started = wait_kind.map(|kind| {
-                emit_channel_wait_started(self.handle.id(), kind);
+                emit_channel_wait_started(self.handle.id(), kind, source, cx);
                 Instant::now()
             });
 
@@ -2504,11 +2515,12 @@ impl<T> Receiver<T> {
                 OperationKind::Recv,
                 self.inner.recv(),
                 source,
+                cx,
             )
             .await;
 
             if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-                emit_channel_wait_ended(self.handle.id(), kind, started);
+                emit_channel_wait_ended(self.handle.id(), kind, started, source, cx);
             }
 
             match result {
@@ -2527,9 +2539,7 @@ impl<T> Receiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Some(value)
                 }
@@ -2558,17 +2568,13 @@ impl<T> Receiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
                         &ChannelClosedEvent { cause: close_cause },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     None
                 }
@@ -2596,8 +2602,8 @@ impl<T> UnboundedSender<T> {
     pub fn send_with_source(
         &self,
         value: T,
-        _source: Source,
-        _cx: PeepsContext,
+        source: Source,
+        cx: PeepsContext,
     ) -> Result<(), mpsc::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
@@ -2615,9 +2621,7 @@ impl<T> UnboundedSender<T> {
                         queue_len: Some(queue_len),
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Ok(())
             }
@@ -2646,17 +2650,13 @@ impl<T> UnboundedSender<T> {
                         queue_len: Some(queue_len),
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
                     &ChannelClosedEvent { cause: close_cause },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Err(err)
             }
@@ -2686,7 +2686,7 @@ impl<T> UnboundedReceiver<T> {
     pub fn recv_with_source(
         &mut self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -2698,9 +2698,7 @@ impl<T> UnboundedReceiver<T> {
                             queue_len: Some(state.queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Some(ChannelWaitKind::ReceiveEmpty)
                 } else {
@@ -2708,7 +2706,7 @@ impl<T> UnboundedReceiver<T> {
                 }
             });
             let wait_started = wait_kind.map(|kind| {
-                emit_channel_wait_started(self.handle.id(), kind);
+                emit_channel_wait_started(self.handle.id(), kind, source, cx);
                 Instant::now()
             });
 
@@ -2717,11 +2715,12 @@ impl<T> UnboundedReceiver<T> {
                 OperationKind::Recv,
                 self.inner.recv(),
                 source,
+                cx,
             )
             .await;
 
             if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-                emit_channel_wait_ended(self.handle.id(), kind, started);
+                emit_channel_wait_ended(self.handle.id(), kind, started, source, cx);
             }
 
             match result {
@@ -2740,9 +2739,7 @@ impl<T> UnboundedReceiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Some(value)
                 }
@@ -2771,17 +2768,13 @@ impl<T> UnboundedReceiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
                         &ChannelClosedEvent { cause: close_cause },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     None
                 }
@@ -3073,8 +3066,8 @@ impl<T> OneshotSender<T> {
     pub fn send_with_source(
         mut self,
         value: T,
-        _source: Source,
-        _cx: PeepsContext,
+        source: Source,
+        cx: PeepsContext,
     ) -> Result<(), T> {
         let Some(inner) = self.inner.take() else {
             return Err(value);
@@ -3094,9 +3087,7 @@ impl<T> OneshotSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Ok(())
             }
@@ -3116,9 +3107,7 @@ impl<T> OneshotSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
@@ -3126,9 +3115,7 @@ impl<T> OneshotSender<T> {
                         cause: ChannelCloseCause::ReceiverDropped,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Err(value)
             }
@@ -3156,7 +3143,7 @@ impl<T> OneshotReceiver<T> {
     pub fn recv_with_source(
         mut self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
@@ -3165,6 +3152,7 @@ impl<T> OneshotReceiver<T> {
                 OperationKind::Recv,
                 inner,
                 source,
+                cx,
             )
             .await;
             match result {
@@ -3182,9 +3170,7 @@ impl<T> OneshotReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Ok(value)
                 }
@@ -3204,9 +3190,7 @@ impl<T> OneshotReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
@@ -3214,9 +3198,7 @@ impl<T> OneshotReceiver<T> {
                             cause: ChannelCloseCause::SenderDropped,
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Err(err)
                 }
@@ -3318,8 +3300,8 @@ impl<T: Clone> BroadcastSender<T> {
     pub fn send_with_source(
         &self,
         value: T,
-        _source: Source,
-        _cx: PeepsContext,
+        source: Source,
+        cx: PeepsContext,
     ) -> Result<usize, broadcast::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(receivers) => {
@@ -3330,9 +3312,7 @@ impl<T: Clone> BroadcastSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Ok(receivers)
             }
@@ -3353,9 +3333,7 @@ impl<T: Clone> BroadcastSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
@@ -3363,9 +3341,7 @@ impl<T: Clone> BroadcastSender<T> {
                         cause: ChannelCloseCause::ReceiverDropped,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Err(err)
             }
@@ -3393,7 +3369,7 @@ impl<T: Clone> BroadcastReceiver<T> {
     pub fn recv_with_source(
         &mut self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
@@ -3401,6 +3377,7 @@ impl<T: Clone> BroadcastReceiver<T> {
                 OperationKind::Recv,
                 self.inner.recv(),
                 source,
+                cx,
             )
             .await;
             match result {
@@ -3412,9 +3389,7 @@ impl<T: Clone> BroadcastReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Ok(value)
                 }
@@ -3435,9 +3410,7 @@ impl<T: Clone> BroadcastReceiver<T> {
                                 cause: ChannelCloseCause::SenderDropped,
                             },
                         ) {
-                            if let Ok(mut db) = runtime_db().lock() {
-                                db.record_event(event);
-                            }
+                            record_event_with_source(event, source, cx);
                         }
                     }
                     if let Ok(event) = Event::channel_received(
@@ -3447,9 +3420,7 @@ impl<T: Clone> BroadcastReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Err(err)
                 }
@@ -3477,8 +3448,8 @@ impl<T: Clone> WatchSender<T> {
     pub fn send_with_source(
         &self,
         value: T,
-        _source: Source,
-        _cx: PeepsContext,
+        source: Source,
+        cx: PeepsContext,
     ) -> Result<(), watch::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
@@ -3494,9 +3465,7 @@ impl<T: Clone> WatchSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Ok(())
             }
@@ -3517,9 +3486,7 @@ impl<T: Clone> WatchSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_source(event, source, cx);
                 }
                 Err(err)
             }
@@ -3575,7 +3542,7 @@ impl<T: Clone> WatchReceiver<T> {
     pub fn changed_with_source(
         &mut self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
@@ -3583,6 +3550,7 @@ impl<T: Clone> WatchReceiver<T> {
                 OperationKind::Recv,
                 self.inner.changed(),
                 source,
+                cx,
             )
             .await;
             match result {
@@ -3594,9 +3562,7 @@ impl<T: Clone> WatchReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Ok(())
                 }
@@ -3617,9 +3583,7 @@ impl<T: Clone> WatchReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        if let Ok(mut db) = runtime_db().lock() {
-                            db.record_event(event);
-                        }
+                        record_event_with_source(event, source, cx);
                     }
                     Err(err)
                 }
@@ -3808,7 +3772,7 @@ impl Notify {
     pub fn notified_with_source(
         &self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = ()> + '_ {
         async move {
             let waiters = self
@@ -3824,6 +3788,7 @@ impl Notify {
                 OperationKind::NotifyWait,
                 self.inner.notified(),
                 source,
+                cx,
             )
             .await;
 
@@ -3901,7 +3866,7 @@ impl<T> OnceCell<T> {
         &'a self,
         f: F,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = &'a T> + 'a
     where
         F: FnOnce() -> Fut + 'a,
@@ -3921,6 +3886,7 @@ impl<T> OnceCell<T> {
                 OperationKind::OncecellWait,
                 self.inner.get_or_init(f),
                 source,
+                cx,
             )
             .await;
 
@@ -3962,7 +3928,7 @@ impl<T> OnceCell<T> {
         &'a self,
         f: F,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<&'a T, E>> + 'a
     where
         F: FnOnce() -> Fut + 'a,
@@ -3982,6 +3948,7 @@ impl<T> OnceCell<T> {
                 OperationKind::OncecellWait,
                 self.inner.get_or_try_init(f),
                 source,
+                cx,
             )
             .await;
 
@@ -4093,7 +4060,7 @@ impl Semaphore {
     pub fn acquire_with_source(
         &self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -4102,6 +4069,7 @@ impl Semaphore {
                 OperationKind::Acquire,
                 self.inner.acquire(),
                 source,
+                cx,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {
@@ -4134,7 +4102,7 @@ impl Semaphore {
         &self,
         n: u32,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -4143,6 +4111,7 @@ impl Semaphore {
                 OperationKind::Acquire,
                 self.inner.acquire_many(n),
                 source,
+                cx,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {
@@ -4173,7 +4142,7 @@ impl Semaphore {
     pub fn acquire_owned_with_source(
         &self,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -4182,6 +4151,7 @@ impl Semaphore {
                 OperationKind::Acquire,
                 Arc::clone(&self.inner).acquire_owned(),
                 source,
+                cx,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {
@@ -4214,7 +4184,7 @@ impl Semaphore {
         &self,
         n: u32,
         source: Source,
-        _cx: PeepsContext,
+        cx: PeepsContext,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -4223,6 +4193,7 @@ impl Semaphore {
                 OperationKind::Acquire,
                 Arc::clone(&self.inner).acquire_many_owned(n),
                 source,
+                cx,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {
@@ -5077,16 +5048,20 @@ fn instrument_operation_on_with_source<F>(
     op_kind: OperationKind,
     fut: F,
     source: Source,
+    cx: PeepsContext,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
+    let source = source.into_compact_string();
+    let krate =
+        infer_krate_from_source_with_manifest_dir(source.as_str(), Some(cx.manifest_dir()));
     OperationFuture::new(
         fut.into_future(),
         EntityId::new(on.id().as_str()),
         op_kind,
-        source.into_compact_string(),
-        None,
+        source,
+        krate,
     )
 }
 

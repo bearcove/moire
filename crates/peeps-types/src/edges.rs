@@ -2,8 +2,8 @@ use compact_str::CompactString;
 use facet::Facet;
 
 use crate::{
-    caller_source, infer_krate_from_source, next_event_id, ChannelCloseCause, EntityId, EventId,
-    MetaSerializeError, PTime, ScopeId,
+    caller_source, infer_krate_from_source_with_manifest_dir, next_event_id, ChannelCloseCause,
+    EntityId, EventId, MetaSerializeError, PTime, ScopeId,
 };
 
 /// Relationship between two entities.
@@ -118,18 +118,19 @@ pub struct Event {
 }
 
 impl Event {
-    /// Builds an event with typed metadata and auto-generated id/timestamp/source.
-    #[track_caller]
-    pub fn new<M>(
+    /// Builds an event with typed metadata and explicit source context.
+    pub fn new_with_source<M>(
         target: EventTarget,
         kind: EventKind,
         meta: &M,
+        source: impl Into<CompactString>,
+        manifest_dir: Option<&str>,
     ) -> Result<Self, MetaSerializeError>
     where
         M: for<'facet> Facet<'facet>,
     {
-        let source = caller_source();
-        let krate = infer_krate_from_source(source.as_str());
+        let source = source.into();
+        let krate = infer_krate_from_source_with_manifest_dir(source.as_str(), manifest_dir);
 
         Ok(Self {
             id: next_event_id(),
@@ -142,6 +143,20 @@ impl Event {
         })
     }
 
+    /// Builds an event with typed metadata and auto-generated id/timestamp/source.
+    #[track_caller]
+    pub fn new<M>(
+        target: EventTarget,
+        kind: EventKind,
+        meta: &M,
+    ) -> Result<Self, MetaSerializeError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        let source = caller_source();
+        Self::new_with_source(target, kind, meta, source, None)
+    }
+
     /// Channel send event with typed payload metadata.
     #[track_caller]
     pub fn channel_sent(
@@ -149,6 +164,16 @@ impl Event {
         meta: &ChannelSendEvent,
     ) -> Result<Self, MetaSerializeError> {
         Self::new(target, EventKind::ChannelSent, meta)
+    }
+
+    /// Channel send event with typed payload metadata and explicit source context.
+    pub fn channel_sent_with_source(
+        target: EventTarget,
+        meta: &ChannelSendEvent,
+        source: impl Into<CompactString>,
+        manifest_dir: Option<&str>,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new_with_source(target, EventKind::ChannelSent, meta, source, manifest_dir)
     }
 
     /// Channel receive event with typed payload metadata.
@@ -160,6 +185,16 @@ impl Event {
         Self::new(target, EventKind::ChannelReceived, meta)
     }
 
+    /// Channel receive event with typed payload metadata and explicit source context.
+    pub fn channel_received_with_source(
+        target: EventTarget,
+        meta: &ChannelReceiveEvent,
+        source: impl Into<CompactString>,
+        manifest_dir: Option<&str>,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new_with_source(target, EventKind::ChannelReceived, meta, source, manifest_dir)
+    }
+
     /// Channel closure event with typed payload metadata.
     #[track_caller]
     pub fn channel_closed(
@@ -167,6 +202,16 @@ impl Event {
         meta: &ChannelClosedEvent,
     ) -> Result<Self, MetaSerializeError> {
         Self::new(target, EventKind::ChannelClosed, meta)
+    }
+
+    /// Channel closure event with typed payload metadata and explicit source context.
+    pub fn channel_closed_with_source(
+        target: EventTarget,
+        meta: &ChannelClosedEvent,
+        source: impl Into<CompactString>,
+        manifest_dir: Option<&str>,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new_with_source(target, EventKind::ChannelClosed, meta, source, manifest_dir)
     }
 
     /// Channel wait-start event with typed payload metadata.
@@ -178,6 +223,22 @@ impl Event {
         Self::new(target, EventKind::ChannelWaitStarted, meta)
     }
 
+    /// Channel wait-start event with typed payload metadata and explicit source context.
+    pub fn channel_wait_started_with_source(
+        target: EventTarget,
+        meta: &ChannelWaitStartedEvent,
+        source: impl Into<CompactString>,
+        manifest_dir: Option<&str>,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new_with_source(
+            target,
+            EventKind::ChannelWaitStarted,
+            meta,
+            source,
+            manifest_dir,
+        )
+    }
+
     /// Channel wait-end event with typed payload metadata.
     #[track_caller]
     pub fn channel_wait_ended(
@@ -185,6 +246,16 @@ impl Event {
         meta: &ChannelWaitEndedEvent,
     ) -> Result<Self, MetaSerializeError> {
         Self::new(target, EventKind::ChannelWaitEnded, meta)
+    }
+
+    /// Channel wait-end event with typed payload metadata and explicit source context.
+    pub fn channel_wait_ended_with_source(
+        target: EventTarget,
+        meta: &ChannelWaitEndedEvent,
+        source: impl Into<CompactString>,
+        manifest_dir: Option<&str>,
+    ) -> Result<Self, MetaSerializeError> {
+        Self::new_with_source(target, EventKind::ChannelWaitEnded, meta, source, manifest_dir)
     }
 }
 
