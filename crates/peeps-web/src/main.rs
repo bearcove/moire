@@ -50,9 +50,11 @@ struct ServerState {
     next_conn_id: u64,
     next_cut_id: u64,
     next_snapshot_id: i64,
+    next_session_id: u64,
     connections: HashMap<u64, ConnectedProcess>,
     cuts: BTreeMap<String, CutState>,
     pending_snapshots: HashMap<i64, SnapshotPending>,
+    recording: Option<RecordingState>,
 }
 
 struct ConnectedProcess {
@@ -71,6 +73,28 @@ struct SnapshotPending {
     pending_conn_ids: BTreeSet<u64>,
     replies: HashMap<u64, peeps_wire::SnapshotReply>,
     notify: Arc<Notify>,
+}
+
+struct RecordingState {
+    session_id: String,
+    interval_ms: u32,
+    started_at_unix_ms: i64,
+    stopped_at_unix_ms: Option<i64>,
+    /// Each frame is stored as pre-serialized JSON (SnapshotCutResponse shape)
+    /// so we avoid needing Clone on Snapshot and its contained types.
+    frames: Vec<StoredFrame>,
+    max_frames: u32,
+    overflowed: bool,
+    total_frames_captured: u32,
+    stop_signal: Arc<Notify>,
+}
+
+struct StoredFrame {
+    frame_index: u32,
+    captured_at_unix_ms: i64,
+    process_count: u32,
+    /// Pre-serialized JSON of the SnapshotCutResponse for this frame.
+    json: String,
 }
 
 #[derive(Facet)]
@@ -163,6 +187,39 @@ struct TimedOutProcess {
     pid: u32,
 }
 
+#[derive(Facet)]
+struct RecordStartRequest {
+    #[facet(default)]
+    interval_ms: Option<u32>,
+    #[facet(default)]
+    max_frames: Option<u32>,
+}
+
+#[derive(Facet)]
+struct RecordCurrentResponse {
+    session: Option<RecordingSessionInfo>,
+}
+
+#[derive(Facet)]
+struct RecordingSessionInfo {
+    session_id: String,
+    status: String,
+    interval_ms: u32,
+    started_at_unix_ms: i64,
+    stopped_at_unix_ms: Option<i64>,
+    frame_count: u32,
+    max_frames: u32,
+    overflowed: bool,
+    frames: Vec<FrameSummary>,
+}
+
+#[derive(Facet)]
+struct FrameSummary {
+    frame_index: u32,
+    captured_at_unix_ms: i64,
+    process_count: u32,
+}
+
 #[derive(Facet, Debug)]
 struct Cli {
     #[facet(flatten)]
@@ -217,9 +274,11 @@ async fn run() -> Result<(), String> {
             next_conn_id: 1,
             next_cut_id: 1,
             next_snapshot_id: 1,
+            next_session_id: 1,
             connections: HashMap::new(),
             cuts: BTreeMap::new(),
             pending_snapshots: HashMap::new(),
+            recording: None,
         })),
         db_path: Arc::new(db_path),
         dev_proxy,
@@ -251,7 +310,14 @@ async fn run() -> Result<(), String> {
         .route("/api/cuts/{cut_id}", get(api_cut_status))
         .route("/api/sql", post(api_sql))
         .route("/api/query", post(api_query))
-        .route("/api/snapshot", post(api_snapshot));
+        .route("/api/snapshot", post(api_snapshot))
+        .route("/api/record/start", post(api_record_start))
+        .route("/api/record/stop", post(api_record_stop))
+        .route("/api/record/current", get(api_record_current))
+        .route(
+            "/api/record/current/frame/{frame_index}",
+            get(api_record_frame),
+        );
     if state.dev_proxy.is_some() {
         app = app.fallback(any(proxy_vite));
     }
@@ -420,6 +486,10 @@ async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoRespo
 }
 
 async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
+    json_ok(&take_snapshot_internal(&state).await)
+}
+
+async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     const SNAPSHOT_TIMEOUT_MS: u64 = 5000;
 
     // Assign a snapshot id and register a pending entry before sending requests,
@@ -453,11 +523,11 @@ async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
     }
 
     if txs.is_empty() {
-        return json_ok(&SnapshotCutResponse {
+        return SnapshotCutResponse {
             captured_at_unix_ms: now_ms(),
             processes: vec![],
             timed_out_processes: vec![],
-        });
+        };
     }
 
     let request_frame =
@@ -467,16 +537,18 @@ async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
         })) {
             Ok(frame) => frame,
             Err(e) => {
+                error!(%e, "encode snapshot request");
                 state
                     .inner
                     .lock()
                     .await
                     .pending_snapshots
                     .remove(&snapshot_id);
-                return json_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("encode snapshot request: {e}"),
-                );
+                return SnapshotCutResponse {
+                    captured_at_unix_ms: now_ms(),
+                    processes: vec![],
+                    timed_out_processes: vec![],
+                };
             }
         };
 
@@ -549,11 +621,202 @@ async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
         }
     };
 
-    json_ok(&SnapshotCutResponse {
+    SnapshotCutResponse {
         captured_at_unix_ms,
         processes,
         timed_out_processes,
+    }
+}
+
+async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
+    let req: RecordStartRequest = if body.is_empty() {
+        RecordStartRequest {
+            interval_ms: None,
+            max_frames: None,
+        }
+    } else {
+        match facet_json::from_slice(&body) {
+            Ok(req) => req,
+            Err(e) => {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("invalid request json: {e}"),
+                )
+            }
+        }
+    };
+
+    let (session_id, stop_signal) = {
+        let mut guard = state.inner.lock().await;
+        if guard
+            .recording
+            .as_ref()
+            .map_or(false, |r| r.stopped_at_unix_ms.is_none())
+        {
+            return json_error(StatusCode::CONFLICT, "recording already in progress");
+        }
+
+        let session_num = guard.next_session_id;
+        guard.next_session_id += 1;
+        let session_id = format!("session:{session_num}");
+        let interval_ms = req.interval_ms.unwrap_or(500);
+        let max_frames = req.max_frames.unwrap_or(1000);
+        let stop_signal = Arc::new(Notify::new());
+
+        guard.recording = Some(RecordingState {
+            session_id: session_id.clone(),
+            interval_ms,
+            started_at_unix_ms: now_ms(),
+            stopped_at_unix_ms: None,
+            frames: Vec::new(),
+            max_frames,
+            overflowed: false,
+            total_frames_captured: 0,
+            stop_signal: stop_signal.clone(),
+        });
+
+        (session_id, stop_signal)
+    };
+
+    let loop_state = state.clone();
+    let loop_session_id = session_id.clone();
+    tokio::spawn(async move {
+        let interval_ms = {
+            let guard = loop_state.inner.lock().await;
+            guard
+                .recording
+                .as_ref()
+                .map_or(500, |r| r.interval_ms)
+        };
+        loop {
+            tokio::select! {
+                _ = stop_signal.notified() => break,
+                _ = tokio::time::sleep(Duration::from_millis(interval_ms as u64)) => {
+                    let snapshot = take_snapshot_internal(&loop_state).await;
+                    // Pre-serialize the snapshot as JSON so we can serve it
+                    // directly from the frame endpoint without needing Clone.
+                    let json = match facet_json::to_string(&snapshot) {
+                        Ok(json) => json,
+                        Err(e) => {
+                            warn!(%e, "failed to serialize recording frame");
+                            continue;
+                        }
+                    };
+                    let process_count = snapshot.processes.len() as u32;
+                    let captured_at_unix_ms = snapshot.captured_at_unix_ms;
+                    let mut guard = loop_state.inner.lock().await;
+                    let Some(recording) = &mut guard.recording else { break };
+                    if recording.session_id != loop_session_id || recording.stopped_at_unix_ms.is_some() {
+                        break;
+                    }
+                    if recording.frames.len() as u32 >= recording.max_frames {
+                        recording.overflowed = true;
+                        recording.frames.remove(0);
+                    }
+                    let frame_index = recording.total_frames_captured;
+                    recording.total_frames_captured += 1;
+                    recording.frames.push(StoredFrame {
+                        frame_index,
+                        captured_at_unix_ms,
+                        process_count,
+                        json,
+                    });
+                }
+            }
+        }
+    });
+
+    let guard = state.inner.lock().await;
+    let rec = guard.recording.as_ref().unwrap();
+    json_ok(&RecordCurrentResponse {
+        session: Some(recording_session_info(rec)),
     })
+}
+
+async fn api_record_stop(State(state): State<AppState>) -> impl IntoResponse {
+    let stop_signal = {
+        let mut guard = state.inner.lock().await;
+        match &mut guard.recording {
+            None => return json_error(StatusCode::NOT_FOUND, "no recording in progress"),
+            Some(rec) if rec.stopped_at_unix_ms.is_some() => {
+                return json_error(StatusCode::NOT_FOUND, "no recording in progress")
+            }
+            Some(rec) => {
+                rec.stopped_at_unix_ms = Some(now_ms());
+                rec.stop_signal.clone()
+            }
+        }
+    };
+
+    stop_signal.notify_one();
+
+    let guard = state.inner.lock().await;
+    let rec = guard.recording.as_ref().unwrap();
+    json_ok(&RecordCurrentResponse {
+        session: Some(recording_session_info(rec)),
+    })
+}
+
+async fn api_record_current(State(state): State<AppState>) -> impl IntoResponse {
+    let guard = state.inner.lock().await;
+    let session = guard.recording.as_ref().map(recording_session_info);
+    json_ok(&RecordCurrentResponse { session })
+}
+
+async fn api_record_frame(
+    State(state): State<AppState>,
+    Path(frame_index): Path<u32>,
+) -> impl IntoResponse {
+    let guard = state.inner.lock().await;
+    let Some(recording) = &guard.recording else {
+        return json_error(StatusCode::NOT_FOUND, "no recording");
+    };
+    if recording.frames.is_empty() {
+        return json_error(StatusCode::NOT_FOUND, "frame not found");
+    }
+    let first_index = recording.frames[0].frame_index;
+    if frame_index < first_index {
+        return json_error(StatusCode::NOT_FOUND, "frame not found (dropped)");
+    }
+    let vec_index = (frame_index - first_index) as usize;
+    let Some(frame) = recording.frames.get(vec_index) else {
+        return json_error(StatusCode::NOT_FOUND, "frame not found");
+    };
+    // Serve the pre-serialized JSON directly.
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+        frame.json.clone(),
+    )
+        .into_response()
+}
+
+fn recording_session_info(rec: &RecordingState) -> RecordingSessionInfo {
+    let status = if rec.stopped_at_unix_ms.is_none() {
+        "recording"
+    } else {
+        "stopped"
+    };
+    let frames = rec
+        .frames
+        .iter()
+        .map(|f| FrameSummary {
+            frame_index: f.frame_index,
+            captured_at_unix_ms: f.captured_at_unix_ms,
+            process_count: f.process_count,
+        })
+        .collect();
+    RecordingSessionInfo {
+        session_id: rec.session_id.clone(),
+        status: status.to_string(),
+        interval_ms: rec.interval_ms,
+        started_at_unix_ms: rec.started_at_unix_ms,
+        stopped_at_unix_ms: rec.stopped_at_unix_ms,
+        frame_count: rec.frames.len() as u32,
+        max_frames: rec.max_frames,
+        overflowed: rec.overflowed,
+        frames,
+    }
 }
 
 fn parse_cli() -> Result<Cli, String> {

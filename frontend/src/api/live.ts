@@ -2,6 +2,9 @@ import type { ApiClient } from "./client";
 import type {
   ConnectionsResponse,
   CutStatusResponse,
+  RecordCurrentResponse,
+  RecordingSessionInfo,
+  RecordStartRequest,
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types";
@@ -51,5 +54,9 @@ export function createLiveApiClient(): ApiClient {
     fetchCutStatus: (cutId: string) =>
       getJson<CutStatusResponse>(`/api/cuts/${encodeURIComponent(cutId)}`),
     fetchSnapshot: () => postJson<SnapshotCutResponse>("/api/snapshot", {}),
+    startRecording: (req?: RecordStartRequest) => postJson<RecordingSessionInfo>("/api/record/start", req ?? {}),
+    stopRecording: () => postJson<RecordingSessionInfo>("/api/record/stop", {}),
+    fetchRecordingCurrent: () => getJson<RecordCurrentResponse>("/api/record/current"),
+    fetchRecordingFrame: (frameIndex: number) => getJson<SnapshotCutResponse>(`/api/record/current/frame/${frameIndex}`),
   };
 }

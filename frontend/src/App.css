@@ -888,6 +888,21 @@
     color: light-dark(#2e7d32, #66bb6a);
 }
 
+.mockup-header-badge--recording {
+    background: light-dark(#ffebee, #3a1b1b);
+    color: light-dark(#c62828, #ef9a9a);
+}
+
+.recording-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: light-dark(#d30000, #ff6b6b);
+    flex-shrink: 0;
+    animation: pulse-danger 1.5s ease-in-out infinite;
+}
+
 .mockup-header-spacer {
     flex: 1;
 }

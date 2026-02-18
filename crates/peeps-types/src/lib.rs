@@ -14,6 +14,7 @@ pub(crate) mod diff;
 pub(crate) mod edges;
 pub(crate) mod entities;
 pub(crate) mod primitives;
+pub(crate) mod recording;
 pub(crate) mod scopes;
 pub(crate) mod snapshots;
 
@@ -21,5 +22,6 @@ pub use diff::*;
 pub use edges::*;
 pub use entities::*;
 pub use primitives::*;
+pub use recording::*;
 pub use scopes::*;
 pub use snapshots::*;

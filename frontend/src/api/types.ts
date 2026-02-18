@@ -131,3 +131,32 @@ export interface SnapshotCutResponse {
   processes: ProcessSnapshotView[];
   timed_out_processes: TimedOutProcess[];
 }
+
+// ── Recording types ─────────────────────────────────────────
+
+export interface RecordStartRequest {
+  interval_ms?: number;
+  max_frames?: number;
+}
+
+export interface FrameSummary {
+  frame_index: number;
+  captured_at_unix_ms: number;
+  process_count: number;
+}
+
+export interface RecordingSessionInfo {
+  session_id: string;
+  status: "recording" | "stopped";
+  interval_ms: number;
+  started_at_unix_ms: number;
+  stopped_at_unix_ms: number | null;
+  frame_count: number;
+  max_frames: number;
+  overflowed: boolean;
+  frames: FrameSummary[];
+}
+
+export interface RecordCurrentResponse {
+  session: RecordingSessionInfo | null;
+}

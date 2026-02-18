@@ -2,6 +2,9 @@ import type { ApiClient } from "./client";
 import type {
   ConnectionsResponse,
   CutStatusResponse,
+  FrameSummary,
+  RecordCurrentResponse,
+  RecordingSessionInfo,
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types";
@@ -241,5 +244,44 @@ export function createMockApiClient(): ApiClient {
       return delay(activeCut);
     },
     fetchSnapshot: () => delay(MOCK_SNAPSHOT, 300),
+    startRecording: (req) => {
+      const session: RecordingSessionInfo = {
+        session_id: "mock-session-001",
+        status: "recording",
+        interval_ms: req?.interval_ms ?? 1000,
+        started_at_unix_ms: Date.now(),
+        stopped_at_unix_ms: null,
+        frame_count: 0,
+        max_frames: req?.max_frames ?? 100,
+        overflowed: false,
+        frames: [],
+      };
+      return delay(session);
+    },
+    stopRecording: () => {
+      const now = Date.now();
+      const frames: FrameSummary[] = [
+        { frame_index: 0, captured_at_unix_ms: now - 3000, process_count: 2 },
+        { frame_index: 1, captured_at_unix_ms: now - 2000, process_count: 2 },
+        { frame_index: 2, captured_at_unix_ms: now - 1000, process_count: 2 },
+      ];
+      const session: RecordingSessionInfo = {
+        session_id: "mock-session-001",
+        status: "stopped",
+        interval_ms: 1000,
+        started_at_unix_ms: now - 3000,
+        stopped_at_unix_ms: now,
+        frame_count: frames.length,
+        max_frames: 100,
+        overflowed: false,
+        frames,
+      };
+      return delay(session);
+    },
+    fetchRecordingCurrent: () => {
+      const response: RecordCurrentResponse = { session: null };
+      return delay(response);
+    },
+    fetchRecordingFrame: (_frameIndex) => delay(MOCK_SNAPSHOT, 300),
   };
 }

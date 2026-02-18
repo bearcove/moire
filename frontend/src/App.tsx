@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import "./App.css";
@@ -36,6 +36,8 @@ import {
   LinkSimple,
   MagnifyingGlass,
   PaperPlaneTilt,
+  Record,
+  Stop,
   Timer,
   Crosshair,
 } from "@phosphor-icons/react";
@@ -47,8 +49,16 @@ import { ActionButton } from "./ui/primitives/ActionButton";
 import { FilterMenu, type FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { kindIcon, kindDisplayName } from "./nodeKindSpec";
 import { apiClient, apiMode } from "./api";
-import type { ConnectedProcessInfo, ConnectionsResponse, EntityBody, SnapshotEdgeKind, SnapshotCutResponse } from "./api/types";
+import type {
+  ConnectedProcessInfo,
+  ConnectionsResponse,
+  EntityBody,
+  FrameSummary,
+  SnapshotEdgeKind,
+  SnapshotCutResponse,
+} from "./api/types";
 import { Table, type Column } from "./ui/primitives/Table";
+import { RecordingTimeline, formatElapsed } from "./components/timeline/RecordingTimeline";
 
 // ── Body type helpers ──────────────────────────────────────────
 
@@ -129,7 +139,10 @@ function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
   if ("semaphore" in body) {
     const { max_permits, handed_out_permits } = body.semaphore;
     const available = max_permits - handed_out_permits;
-    return { label: `${available}/${max_permits} permits`, tone: handed_out_permits > 0 ? "warn" : "ok" };
+    return {
+      label: `${available}/${max_permits} permits`,
+      tone: handed_out_permits > 0 ? "warn" : "ok",
+    };
   }
   if ("notify" in body) return { label: "waiting", tone: "neutral" };
   if ("once_cell" in body) {
@@ -245,9 +258,7 @@ function mergeChannelPairs(
     removedIds.add(link.source);
     removedIds.add(link.target);
 
-    const channelName = txEntity.name.endsWith(":tx")
-      ? txEntity.name.slice(0, -3)
-      : txEntity.name;
+    const channelName = txEntity.name.endsWith(":tx") ? txEntity.name.slice(0, -3) : txEntity.name;
 
     const mergedStatus =
       txEntity.status.tone === "ok" && rxEntity.status.tone === "ok"
@@ -316,13 +327,12 @@ function mergeRpcPairs(
     removedIds.add(link.source);
     removedIds.add(link.target);
 
-    const rpcName = reqEntity.name.endsWith(":req")
-      ? reqEntity.name.slice(0, -4)
-      : reqEntity.name;
+    const rpcName = reqEntity.name.endsWith(":req") ? reqEntity.name.slice(0, -4) : reqEntity.name;
 
-    const respBody = typeof respEntity.body !== "string" && "response" in respEntity.body
-      ? respEntity.body.response
-      : null;
+    const respBody =
+      typeof respEntity.body !== "string" && "response" in respEntity.body
+        ? respEntity.body.response
+        : null;
     const mergedStatus = respBody
       ? deriveStatus(respEntity.body)
       : { label: "in_flight", tone: "warn" as Tone };
@@ -357,7 +367,10 @@ function mergeRpcPairs(
   return { entities: newEntities, edges: newEdges };
 }
 
-function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]; edges: EdgeDef[] } {
+function convertSnapshot(snapshot: SnapshotCutResponse): {
+  entities: EntityDef[];
+  edges: EdgeDef[];
+} {
   const allEntities: EntityDef[] = [];
   const allEdges: EdgeDef[] = [];
 
@@ -404,9 +417,8 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
     for (let i = 0; i < proc.snapshot.edges.length; i++) {
       const e = proc.snapshot.edges[i];
       const localSrc = `${process_id}/${e.src}`;
-      const srcComposite = e.kind === "rpc_link"
-        ? (rawToCompositeId.get(e.src) ?? localSrc)
-        : localSrc;
+      const srcComposite =
+        e.kind === "rpc_link" ? (rawToCompositeId.get(e.src) ?? localSrc) : localSrc;
       const dstComposite = `${process_id}/${e.dst}`;
       allEdges.push({
         id: `e${i}-${srcComposite}-${dstComposite}-${e.kind}`,
@@ -418,7 +430,10 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
   }
 
   const { entities: channelMerged, edges: channelEdges } = mergeChannelPairs(allEntities, allEdges);
-  const { entities: mergedEntities, edges: mergedEdges } = mergeRpcPairs(channelMerged, channelEdges);
+  const { entities: mergedEntities, edges: mergedEdges } = mergeRpcPairs(
+    channelMerged,
+    channelEdges,
+  );
 
   const cycleIds = detectCycleNodes(mergedEntities, mergedEdges);
   for (const entity of mergedEntities) {
@@ -441,12 +456,15 @@ const elkOptions = {
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
 
-async function measureNodeDefs(defs: EntityDef[]): Promise<Map<string, { width: number; height: number }>> {
+async function measureNodeDefs(
+  defs: EntityDef[],
+): Promise<Map<string, { width: number; height: number }>> {
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
   await Promise.resolve();
 
   const container = document.createElement("div");
-  container.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
+  container.style.cssText =
+    "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
   document.body.appendChild(container);
 
   const sizes = new Map<string, { width: number; height: number }>();
@@ -459,35 +477,41 @@ async function measureNodeDefs(defs: EntityDef[]): Promise<Map<string, { width: 
     let node: React.ReactNode;
     if (def.channelPair) {
       node = (
-        <ChannelPairNode data={{
-          tx: def.channelPair.tx,
-          rx: def.channelPair.rx,
-          channelName: def.name,
-          selected: false,
-          statTone: def.statTone,
-        }} />
+        <ChannelPairNode
+          data={{
+            tx: def.channelPair.tx,
+            rx: def.channelPair.rx,
+            channelName: def.name,
+            selected: false,
+            statTone: def.statTone,
+          }}
+        />
       );
     } else if (def.rpcPair) {
       node = (
-        <RpcPairNode data={{
-          req: def.rpcPair.req,
-          resp: def.rpcPair.resp,
-          rpcName: def.name,
-          selected: false,
-        }} />
+        <RpcPairNode
+          data={{
+            req: def.rpcPair.req,
+            resp: def.rpcPair.resp,
+            rpcName: def.name,
+            selected: false,
+          }}
+        />
       );
     } else {
       node = (
-        <MockNodeComponent data={{
-          kind: def.kind,
-          label: def.name,
-          inCycle: def.inCycle,
-          selected: false,
-          status: def.status,
-          ageMs: def.ageMs,
-          stat: def.stat,
-          statTone: def.statTone,
-        }} />
+        <MockNodeComponent
+          data={{
+            kind: def.kind,
+            label: def.name,
+            inCycle: def.inCycle,
+            selected: false,
+            status: def.status,
+            ageMs: def.ageMs,
+            stat: def.stat,
+            statTone: def.statTone,
+          }}
+        />
       );
     }
 
@@ -523,11 +547,16 @@ function edgeStyle(kind: EdgeDef["kind"]) {
 
 function edgeTooltip(kind: EdgeDef["kind"], sourceName: string, targetName: string): string {
   switch (kind) {
-    case "needs": return `${sourceName} is blocked waiting for ${targetName}`;
-    case "polls": return `${sourceName} polls ${targetName} (non-blocking)`;
-    case "closed_by": return `${sourceName} was closed by ${targetName}`;
-    case "channel_link": return `Channel endpoint: ${sourceName} → ${targetName}`;
-    case "rpc_link": return `RPC pair: ${sourceName} → ${targetName}`;
+    case "needs":
+      return `${sourceName} is blocked waiting for ${targetName}`;
+    case "polls":
+      return `${sourceName} polls ${targetName} (non-blocking)`;
+    case "closed_by":
+      return `${sourceName} was closed by ${targetName}`;
+    case "channel_link":
+      return `Channel endpoint: ${sourceName} → ${targetName}`;
+    case "rpc_link":
+      return `RPC pair: ${sourceName} → ${targetName}`;
   }
 }
 
@@ -561,12 +590,8 @@ async function layoutGraph(
     })),
   });
 
-  const posMap = new Map(
-    (result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]),
-  );
-  const elkEdgeMap = new Map(
-    (result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]),
-  );
+  const posMap = new Map((result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
+  const elkEdgeMap = new Map((result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]));
 
   const nodes: Node[] = entityDefs.map((def) => {
     const position = posMap.get(def.id) ?? { x: 0, y: 0 };
@@ -643,8 +668,15 @@ async function layoutGraph(
 // ── Custom node component ──────────────────────────────────────
 
 const hiddenHandle: React.CSSProperties = {
-  opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0,
-  position: "absolute", top: "50%", left: "50%", pointerEvents: "none",
+  opacity: 0,
+  width: 0,
+  height: 0,
+  minWidth: 0,
+  minHeight: 0,
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  pointerEvents: "none",
 };
 
 type MockNodeData = {
@@ -663,13 +695,17 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
     <>
       <Handle type="target" position={Position.Top} style={hiddenHandle} />
       <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
-      <div className={[
-        "mockup-node",
-        data.inCycle && "mockup-node--cycle",
-        data.selected && "mockup-node--selected",
-        data.statTone === "crit" && "mockup-node--stat-crit",
-        data.statTone === "warn" && "mockup-node--stat-warn",
-      ].filter(Boolean).join(" ")}>
+      <div
+        className={[
+          "mockup-node",
+          data.inCycle && "mockup-node--cycle",
+          data.selected && "mockup-node--selected",
+          data.statTone === "crit" && "mockup-node--stat-crit",
+          data.statTone === "warn" && "mockup-node--stat-warn",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <span className="mockup-node-icon">{kindIcon(data.kind, 18)}</span>
         <div className="mockup-node-content">
           <div className="mockup-node-main">
@@ -683,11 +719,17 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
             {data.stat && (
               <>
                 <span className="mockup-node-dot">&middot;</span>
-                <span className={[
-                  "mockup-node-stat",
-                  data.statTone === "crit" && "mockup-node-stat--crit",
-                  data.statTone === "warn" && "mockup-node-stat--warn",
-                ].filter(Boolean).join(" ")}>{data.stat}</span>
+                <span
+                  className={[
+                    "mockup-node-stat",
+                    data.statTone === "crit" && "mockup-node-stat--crit",
+                    data.statTone === "warn" && "mockup-node-stat--warn",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {data.stat}
+                </span>
               </>
             )}
           </div>
@@ -706,19 +748,31 @@ type ChannelPairNodeData = {
 };
 
 const visibleHandleTop: React.CSSProperties = {
-  width: 10, height: 6, minWidth: 0, minHeight: 0,
+  width: 10,
+  height: 6,
+  minWidth: 0,
+  minHeight: 0,
   background: "var(--text-tertiary)",
-  border: "none", borderRadius: "0 0 3px 3px",
-  opacity: 0.5, top: 0, left: "50%",
+  border: "none",
+  borderRadius: "0 0 3px 3px",
+  opacity: 0.5,
+  top: 0,
+  left: "50%",
   transform: "translateX(-50%)",
   pointerEvents: "none",
 };
 
 const visibleHandleBottom: React.CSSProperties = {
-  width: 10, height: 6, minWidth: 0, minHeight: 0,
+  width: 10,
+  height: 6,
+  minWidth: 0,
+  minHeight: 0,
   background: "var(--text-tertiary)",
-  border: "none", borderRadius: "3px 3px 0 0",
-  opacity: 0.5, bottom: 0, left: "50%",
+  border: "none",
+  borderRadius: "3px 3px 0 0",
+  opacity: 0.5,
+  bottom: 0,
+  left: "50%",
   transform: "translateX(-50%)",
   pointerEvents: "none",
 };
@@ -735,24 +789,24 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
   const txTone: Tone = txLifecycle === "open" ? "ok" : "neutral";
   const rxTone: Tone = rxLifecycle === "open" ? "ok" : "neutral";
 
-  const bufferStat = mpscBuffer
-    ? `${mpscBuffer.occupancy}/${mpscBuffer.capacity ?? "∞"}`
-    : tx.stat;
+  const bufferStat = mpscBuffer ? `${mpscBuffer.occupancy}/${mpscBuffer.capacity ?? "∞"}` : tx.stat;
 
   return (
     <>
       <Handle type="target" position={Position.Top} style={visibleHandleTop} />
       <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />
-      <div className={[
-        "mockup-channel-pair",
-        selected && "mockup-channel-pair--selected",
-        statTone === "crit" && "mockup-channel-pair--stat-crit",
-        statTone === "warn" && "mockup-channel-pair--stat-warn",
-      ].filter(Boolean).join(" ")}>
+      <div
+        className={[
+          "mockup-channel-pair",
+          selected && "mockup-channel-pair--selected",
+          statTone === "crit" && "mockup-channel-pair--stat-crit",
+          statTone === "warn" && "mockup-channel-pair--stat-warn",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <div className="mockup-channel-pair-header">
-          <span className="mockup-channel-pair-icon">
-            {kindIcon("channel_pair", 14)}
-          </span>
+          <span className="mockup-channel-pair-icon">{kindIcon("channel_pair", 14)}</span>
           <span className="mockup-channel-pair-name">{channelName}</span>
         </div>
         <div className="mockup-channel-pair-rows">
@@ -768,11 +822,17 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
             {bufferStat && (
               <>
                 <span className="mockup-node-dot">&middot;</span>
-                <span className={[
-                  "mockup-node-stat",
-                  statTone === "crit" && "mockup-node-stat--crit",
-                  statTone === "warn" && "mockup-node-stat--warn",
-                ].filter(Boolean).join(" ")}>{bufferStat}</span>
+                <span
+                  className={[
+                    "mockup-node-stat",
+                    statTone === "crit" && "mockup-node-stat--crit",
+                    statTone === "warn" && "mockup-node-stat--warn",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {bufferStat}
+                </span>
               </>
             )}
           </div>
@@ -803,7 +863,8 @@ function RpcPairNode({ data }: { data: RpcPairNodeData }) {
   const { req, resp, rpcName, selected } = data;
 
   const reqBody = typeof req.body !== "string" && "request" in req.body ? req.body.request : null;
-  const respBody = typeof resp.body !== "string" && "response" in resp.body ? resp.body.response : null;
+  const respBody =
+    typeof resp.body !== "string" && "response" in resp.body ? resp.body.response : null;
 
   const respStatus = respBody ? respBody.status : "pending";
   const respTone: Tone = respStatus === "ok" ? "ok" : respStatus === "error" ? "crit" : "warn";
@@ -813,21 +874,25 @@ function RpcPairNode({ data }: { data: RpcPairNodeData }) {
     <>
       <Handle type="target" position={Position.Top} style={visibleHandleTop} />
       <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />
-      <div className={[
-        "mockup-channel-pair",
-        selected && "mockup-channel-pair--selected",
-        respStatus === "error" && "mockup-channel-pair--stat-crit",
-      ].filter(Boolean).join(" ")}>
+      <div
+        className={[
+          "mockup-channel-pair",
+          selected && "mockup-channel-pair--selected",
+          respStatus === "error" && "mockup-channel-pair--stat-crit",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <div className="mockup-channel-pair-header">
-          <span className="mockup-channel-pair-icon">
-            {kindIcon("rpc_pair", 14)}
-          </span>
+          <span className="mockup-channel-pair-icon">{kindIcon("rpc_pair", 14)}</span>
           <span className="mockup-channel-pair-name">{rpcName}</span>
         </div>
         <div className="mockup-channel-pair-rows">
           <div className="mockup-channel-pair-row">
             <span className="mockup-channel-pair-row-label">fn</span>
-            <span className="mockup-inspector-mono" style={{ fontSize: "11px" }}>{method}</span>
+            <span className="mockup-inspector-mono" style={{ fontSize: "11px" }}>
+              {method}
+            </span>
           </div>
           <div className="mockup-channel-pair-row">
             <span className="mockup-channel-pair-row-label">→</span>
@@ -870,11 +935,32 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
 
   return (
     <g>
-      <path d={d} fill="none" stroke="transparent" strokeWidth={14} style={{ cursor: "pointer", pointerEvents: "all" }} />
+      <path
+        d={d}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={14}
+        style={{ cursor: "pointer", pointerEvents: "all" }}
+      />
       {selected && (
         <>
-          <path d={d} fill="none" stroke="var(--accent, #3b82f6)" strokeWidth={10} strokeLinecap="round" opacity={0.18} className="mockup-edge-glow" />
-          <path d={d} fill="none" stroke="var(--accent, #3b82f6)" strokeWidth={5} strokeLinecap="round" opacity={0.45} />
+          <path
+            d={d}
+            fill="none"
+            stroke="var(--accent, #3b82f6)"
+            strokeWidth={10}
+            strokeLinecap="round"
+            opacity={0.18}
+            className="mockup-edge-glow"
+          />
+          <path
+            d={d}
+            fill="none"
+            stroke="var(--accent, #3b82f6)"
+            strokeWidth={5}
+            strokeLinecap="round"
+            opacity={0.45}
+          />
         </>
       )}
       <path
@@ -892,7 +978,11 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   );
 }
 
-const mockNodeTypes = { mockNode: MockNodeComponent, channelPairNode: ChannelPairNode, rpcPairNode: RpcPairNode };
+const mockNodeTypes = {
+  mockNode: MockNodeComponent,
+  channelPairNode: ChannelPairNode,
+  rpcPairNode: RpcPairNode,
+};
 const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Graph panel ────────────────────────────────────────────────
@@ -965,7 +1055,11 @@ function GraphFlow({
   );
 }
 
-function getConnectedSubgraph(entityId: string, entities: EntityDef[], edges: EdgeDef[]): { entities: EntityDef[]; edges: EdgeDef[] } {
+function getConnectedSubgraph(
+  entityId: string,
+  entities: EntityDef[],
+  edges: EdgeDef[],
+): { entities: EntityDef[]; edges: EdgeDef[] } {
   const connectedIds = new Set<string>();
   const queue = [entityId];
   while (queue.length > 0) {
@@ -1022,24 +1116,27 @@ function GraphPanel({
 
   React.useEffect(() => {
     if (entityDefs.length === 0) return;
-    measureNodeDefs(entityDefs).then((sizes) =>
-      layoutGraph(entityDefs, edgeDefs, sizes)
-    ).then(setLayout).catch(console.error);
+    measureNodeDefs(entityDefs)
+      .then((sizes) => layoutGraph(entityDefs, edgeDefs, sizes))
+      .then(setLayout)
+      .catch(console.error);
   }, [entityDefs, edgeDefs]);
 
-  const nodesWithSelection = useMemo(() =>
-    layout.nodes.map((n) => ({
-      ...n,
-      data: { ...n.data, selected: selection?.kind === "entity" && n.id === selection.id },
-    })),
+  const nodesWithSelection = useMemo(
+    () =>
+      layout.nodes.map((n) => ({
+        ...n,
+        data: { ...n.data, selected: selection?.kind === "entity" && n.id === selection.id },
+      })),
     [layout.nodes, selection],
   );
 
-  const edgesWithSelection = useMemo(() =>
-    layout.edges.map((e) => ({
-      ...e,
-      selected: selection?.kind === "edge" && e.id === selection.id,
-    })),
+  const edgesWithSelection = useMemo(
+    () =>
+      layout.edges.map((e) => ({
+        ...e,
+        selected: selection?.kind === "edge" && e.id === selection.id,
+      })),
     [layout.edges, selection],
   );
 
@@ -1088,34 +1185,32 @@ function GraphPanel({
       )}
       {entityDefs.length === 0 ? (
         <div className="mockup-graph-empty">
-          {isBusy
-            ? <><CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" /> {GRAPH_EMPTY_MESSAGES[snapPhase]}</>
-            : snapPhase === "idle" && waitingForProcesses
-              ? (
-                <>
-                  <CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" />
-                  <span>Waiting for a process to connect…</span>
-                </>
-              )
-              : snapPhase === "idle"
-                ? (
-                  <>
-                    <Camera size={32} weight="thin" className="mockup-graph-empty-icon" />
-                    <span>{GRAPH_EMPTY_MESSAGES[snapPhase]}</span>
-                    <span className="mockup-graph-empty-hint">Press "Take Snapshot" to capture the current state of all connected processes</span>
-                  </>
-                )
-                : GRAPH_EMPTY_MESSAGES[snapPhase]
-          }
+          {isBusy ? (
+            <>
+              <CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" />{" "}
+              {GRAPH_EMPTY_MESSAGES[snapPhase]}
+            </>
+          ) : snapPhase === "idle" && waitingForProcesses ? (
+            <>
+              <CircleNotch size={24} weight="bold" className="spinning mockup-graph-empty-icon" />
+              <span>Waiting for a process to connect…</span>
+            </>
+          ) : snapPhase === "idle" ? (
+            <>
+              <Camera size={32} weight="thin" className="mockup-graph-empty-icon" />
+              <span>{GRAPH_EMPTY_MESSAGES[snapPhase]}</span>
+              <span className="mockup-graph-empty-hint">
+                Press "Take Snapshot" to capture the current state of all connected processes
+              </span>
+            </>
+          ) : (
+            GRAPH_EMPTY_MESSAGES[snapPhase]
+          )}
         </div>
       ) : (
         <div className="mockup-graph-flow">
           <ReactFlowProvider>
-            <GraphFlow
-              nodes={nodesWithSelection}
-              edges={edgesWithSelection}
-              onSelect={onSelect}
-            />
+            <GraphFlow nodes={nodesWithSelection} edges={edgesWithSelection} onSelect={onSelect} />
           </ReactFlowProvider>
         </div>
       )}
@@ -1132,7 +1227,9 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
     return (
       <div className="mockup-inspector-section">
         <KeyValueRow label="Body">
-          <span className="mockup-inspector-mono mockup-inspector-muted">Future (no body fields)</span>
+          <span className="mockup-inspector-mono mockup-inspector-muted">
+            Future (no body fields)
+          </span>
         </KeyValueRow>
       </div>
     );
@@ -1143,7 +1240,9 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
     return (
       <div className="mockup-inspector-section">
         <KeyValueRow label="Args">
-          <span className={`mockup-inspector-mono${req.args_preview === "(no args)" ? " mockup-inspector-muted" : ""}`}>
+          <span
+            className={`mockup-inspector-mono${req.args_preview === "(no args)" ? " mockup-inspector-muted" : ""}`}
+          >
             {req.args_preview}
           </span>
         </KeyValueRow>
@@ -1182,10 +1281,14 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
     const lc = ep.lifecycle;
     const lifecycleLabel = typeof lc === "string" ? lc : `closed (${Object.values(lc)[0]})`;
     const lifecycleTone: Tone = lc === "open" ? "ok" : "neutral";
-    const channelKind = "mpsc" in ep.details ? "mpsc"
-      : "broadcast" in ep.details ? "broadcast"
-      : "watch" in ep.details ? "watch"
-      : "oneshot";
+    const channelKind =
+      "mpsc" in ep.details
+        ? "mpsc"
+        : "broadcast" in ep.details
+          ? "broadcast"
+          : "watch" in ep.details
+            ? "watch"
+            : "oneshot";
     const mpscBuffer = "mpsc" in ep.details ? ep.details.mpsc.buffer : null;
     return (
       <div className="mockup-inspector-section">
@@ -1214,7 +1317,9 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
     return (
       <div className="mockup-inspector-section">
         <KeyValueRow label="Permits available">
-          <span className="mockup-inspector-mono">{max_permits - handed_out_permits} / {max_permits}</span>
+          <span className="mockup-inspector-mono">
+            {max_permits - handed_out_permits} / {max_permits}
+          </span>
         </KeyValueRow>
       </div>
     );
@@ -1289,16 +1394,25 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
   return null;
 }
 
-function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocus: (id: string) => void }) {
+function ChannelPairInspectorContent({
+  entity,
+  onFocus,
+}: {
+  entity: EntityDef;
+  onFocus: (id: string) => void;
+}) {
   const { tx, rx } = entity.channelPair!;
   const txEp = typeof tx.body !== "string" && "channel_tx" in tx.body ? tx.body.channel_tx : null;
   const rxEp = typeof rx.body !== "string" && "channel_rx" in rx.body ? rx.body.channel_rx : null;
 
   const channelKind = txEp
-    ? "mpsc" in txEp.details ? "mpsc"
-    : "broadcast" in txEp.details ? "broadcast"
-    : "watch" in txEp.details ? "watch"
-    : "oneshot"
+    ? "mpsc" in txEp.details
+      ? "mpsc"
+      : "broadcast" in txEp.details
+        ? "broadcast"
+        : "watch" in txEp.details
+          ? "watch"
+          : "oneshot"
     : null;
 
   const mpscBuffer = txEp && "mpsc" in txEp.details ? txEp.details.mpsc.buffer : null;
@@ -1313,14 +1427,18 @@ function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; o
     return ep.lifecycle === "open" ? "ok" : "neutral";
   }
 
-  const bufferFill = mpscBuffer && mpscBuffer.capacity != null
-    ? Math.min(100, (mpscBuffer.occupancy / mpscBuffer.capacity) * 100)
-    : null;
-  const bufferTone: Tone = mpscBuffer && mpscBuffer.capacity != null
-    ? mpscBuffer.occupancy >= mpscBuffer.capacity ? "crit"
-    : mpscBuffer.occupancy / mpscBuffer.capacity >= 0.75 ? "warn"
-    : "ok"
-    : "ok";
+  const bufferFill =
+    mpscBuffer && mpscBuffer.capacity != null
+      ? Math.min(100, (mpscBuffer.occupancy / mpscBuffer.capacity) * 100)
+      : null;
+  const bufferTone: Tone =
+    mpscBuffer && mpscBuffer.capacity != null
+      ? mpscBuffer.occupancy >= mpscBuffer.capacity
+        ? "crit"
+        : mpscBuffer.occupancy / mpscBuffer.capacity >= 0.75
+          ? "warn"
+          : "ok"
+      : "ok";
 
   return (
     <>
@@ -1373,7 +1491,11 @@ function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; o
           <DurationDisplay ms={tx.ageMs} />
         </KeyValueRow>
         <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
-          <a className="mockup-inspector-source-link" href={`zed://file${tx.source}`} title="Open in Zed">
+          <a
+            className="mockup-inspector-source-link"
+            href={`zed://file${tx.source}`}
+            title="Open in Zed"
+          >
             {tx.source}
           </a>
         </KeyValueRow>
@@ -1393,7 +1515,11 @@ function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; o
           <DurationDisplay ms={rx.ageMs} />
         </KeyValueRow>
         <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
-          <a className="mockup-inspector-source-link" href={`zed://file${rx.source}`} title="Open in Zed">
+          <a
+            className="mockup-inspector-source-link"
+            href={`zed://file${rx.source}`}
+            title="Open in Zed"
+          >
             {rx.source}
           </a>
         </KeyValueRow>
@@ -1407,12 +1533,19 @@ function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; o
   );
 }
 
-function EntityInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocus: (id: string) => void }) {
+function EntityInspectorContent({
+  entity,
+  onFocus,
+}: {
+  entity: EntityDef;
+  onFocus: (id: string) => void;
+}) {
   if (entity.channelPair) {
     return <ChannelPairInspectorContent entity={entity} onFocus={onFocus} />;
   }
 
-  const ageTone: Tone = entity.ageMs > 600_000 ? "crit" : entity.ageMs > 60_000 ? "warn" : "neutral";
+  const ageTone: Tone =
+    entity.ageMs > 600_000 ? "crit" : entity.ageMs > 60_000 ? "warn" : "neutral";
 
   return (
     <>
@@ -1439,10 +1572,16 @@ function EntityInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocu
       <div className="mockup-inspector-section">
         <KeyValueRow label="Process">
           <span className="mockup-inspector-mono">{entity.processName}</span>
-          <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>{entity.processId}</span>
+          <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>
+            {entity.processId}
+          </span>
         </KeyValueRow>
         <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
-          <a className="mockup-inspector-source-link" href={`zed://file${entity.source}`} title="Open in Zed">
+          <a
+            className="mockup-inspector-source-link"
+            href={`zed://file${entity.source}`}
+            title="Open in Zed"
+          >
             {entity.source}
           </a>
         </KeyValueRow>
@@ -1483,13 +1622,19 @@ const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
 function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs: EntityDef[] }) {
   const srcEntity = entityDefs.find((e) => e.id === edge.source);
   const dstEntity = entityDefs.find((e) => e.id === edge.target);
-  const tooltip = edgeTooltip(edge.kind, srcEntity?.name ?? edge.source, dstEntity?.name ?? edge.target);
+  const tooltip = edgeTooltip(
+    edge.kind,
+    srcEntity?.name ?? edge.source,
+    dstEntity?.name ?? edge.target,
+  );
   const isStructural = edge.kind === "rpc_link" || edge.kind === "channel_link";
 
   return (
     <>
       <div className="mockup-inspector-node-header">
-        <span className={`mockup-inspector-node-icon${isStructural ? "" : " mockup-inspector-node-icon--causal"}`}>
+        <span
+          className={`mockup-inspector-node-icon${isStructural ? "" : " mockup-inspector-node-icon--causal"}`}
+        >
           <LinkSimple size={16} weight="bold" />
         </span>
         <div className="mockup-inspector-node-header-text">
@@ -1503,11 +1648,19 @@ function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs:
       <div className="mockup-inspector-section">
         <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
           <span className="mockup-inspector-mono">{srcEntity?.name ?? edge.source}</span>
-          {srcEntity && <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>{srcEntity.processName}</span>}
+          {srcEntity && (
+            <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>
+              {srcEntity.processName}
+            </span>
+          )}
         </KeyValueRow>
         <KeyValueRow label="To" icon={dstEntity ? kindIcon(dstEntity.kind, 12) : undefined}>
           <span className="mockup-inspector-mono">{dstEntity?.name ?? edge.target}</span>
-          {dstEntity && <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>{dstEntity.processName}</span>}
+          {dstEntity && (
+            <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>
+              {dstEntity.processName}
+            </span>
+          )}
         </KeyValueRow>
       </div>
 
@@ -1573,14 +1726,20 @@ function InspectorPanel({
           <CaretRight size={14} weight="bold" />
         </ActionButton>
       </div>
-      <div className="mockup-inspector-body">
-        {content}
-      </div>
+      <div className="mockup-inspector-body">{content}</div>
     </div>
   );
 }
 
-function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaValue; depth?: number }) {
+function MetaTreeNode({
+  name,
+  value,
+  depth = 0,
+}: {
+  name: string;
+  value: MetaValue;
+  depth?: number;
+}) {
   const [expanded, setExpanded] = useState(depth < 1);
   const isObject = value !== null && typeof value === "object" && !Array.isArray(value);
   const isArray = Array.isArray(value);
@@ -1611,16 +1770,18 @@ function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaVal
         <CaretDown
           size={10}
           weight="bold"
-          style={{ transform: expanded ? undefined : "rotate(-90deg)", transition: "transform 0.15s" }}
+          style={{
+            transform: expanded ? undefined : "rotate(-90deg)",
+            transition: "transform 0.15s",
+          }}
         />
         <span className="mockup-meta-key">{name}</span>
         <span className="mockup-meta-hint">
           {isArray ? `[${entries.length}]` : `{${entries.length}}`}
         </span>
       </button>
-      {expanded && entries.map(([k, v]) => (
-        <MetaTreeNode key={k} name={k} value={v} depth={depth + 1} />
-      ))}
+      {expanded &&
+        entries.map(([k, v]) => <MetaTreeNode key={k} name={k} value={v} depth={depth + 1} />)}
     </div>
   );
 }
@@ -1652,6 +1813,26 @@ type SnapshotState =
   | { phase: "loading" }
   | { phase: "ready"; entities: EntityDef[]; edges: EdgeDef[] }
   | { phase: "error"; message: string };
+
+// ── Recording state ────────────────────────────────────────────
+
+type RecordingState =
+  | { phase: "idle" }
+  | {
+      phase: "recording";
+      sessionId: string;
+      startedAt: number;
+      frameCount: number;
+      elapsed: number;
+    }
+  | { phase: "stopped"; sessionId: string; frameCount: number; frames: FrameSummary[] }
+  | {
+      phase: "scrubbing";
+      sessionId: string;
+      frameCount: number;
+      frames: FrameSummary[];
+      currentFrameIndex: number;
+    };
 
 // ── Process modal ──────────────────────────────────────────────
 
@@ -1687,7 +1868,9 @@ function ProcessModal({
       >
         <div className="mockup-modal-header">
           <span className="mockup-modal-title">Connected processes</span>
-          <ActionButton size="sm" onPress={onClose}>✕</ActionButton>
+          <ActionButton size="sm" onPress={onClose}>
+            ✕
+          </ActionButton>
         </div>
         <div className="mockup-modal-body">
           <Table
@@ -1717,6 +1900,10 @@ export function App() {
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
+  const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
+  const [isLive, setIsLive] = useState(true);
+  const pollingRef = useRef<number | null>(null);
+  const isLiveRef = useRef(isLive);
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
@@ -1727,11 +1914,13 @@ export function App() {
       const k = e.krate ?? "~no-crate";
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
-    return Array.from(counts.keys()).sort().map((k) => ({
-      id: k,
-      label: k === "~no-crate" ? "(no crate)" : k,
-      meta: counts.get(k),
-    }));
+    return Array.from(counts.keys())
+      .sort()
+      .map((k) => ({
+        id: k,
+        label: k === "~no-crate" ? "(no crate)" : k,
+        meta: counts.get(k),
+      }));
   }, [allEntities]);
 
   const processItems = useMemo<FilterMenuItem[]>(() => {
@@ -1739,40 +1928,51 @@ export function App() {
     for (const e of allEntities) {
       counts.set(e.processId, (counts.get(e.processId) ?? 0) + 1);
     }
-    return Array.from(counts.keys()).sort().map((pid) => {
-      const name = allEntities.find((e) => e.processId === pid)?.processName ?? pid;
-      return { id: pid, label: name, meta: counts.get(pid) };
-    });
+    return Array.from(counts.keys())
+      .sort()
+      .map((pid) => {
+        const name = allEntities.find((e) => e.processId === pid)?.processName ?? pid;
+        return { id: pid, label: name, meta: counts.get(pid) };
+      });
   }, [allEntities]);
 
   const handleKrateToggle = useCallback((krate: string) => {
     setHiddenKrates((prev) => {
       const next = new Set(prev);
-      if (next.has(krate)) next.delete(krate); else next.add(krate);
+      if (next.has(krate)) next.delete(krate);
+      else next.add(krate);
       return next;
     });
   }, []);
 
-  const handleKrateSolo = useCallback((krate: string) => {
-    setHiddenKrates(new Set(crateItems.filter((i) => i.id !== krate).map((i) => i.id)));
-  }, [crateItems]);
+  const handleKrateSolo = useCallback(
+    (krate: string) => {
+      setHiddenKrates(new Set(crateItems.filter((i) => i.id !== krate).map((i) => i.id)));
+    },
+    [crateItems],
+  );
 
   const handleProcessToggle = useCallback((pid: string) => {
     setHiddenProcesses((prev) => {
       const next = new Set(prev);
-      if (next.has(pid)) next.delete(pid); else next.add(pid);
+      if (next.has(pid)) next.delete(pid);
+      else next.add(pid);
       return next;
     });
   }, []);
 
-  const handleProcessSolo = useCallback((pid: string) => {
-    setHiddenProcesses(new Set(processItems.filter((i) => i.id !== pid).map((i) => i.id)));
-  }, [processItems]);
+  const handleProcessSolo = useCallback(
+    (pid: string) => {
+      setHiddenProcesses(new Set(processItems.filter((i) => i.id !== pid).map((i) => i.id)));
+    },
+    [processItems],
+  );
 
   const { entities, edges } = useMemo(() => {
-    const filtered = allEntities.filter((e) =>
-      (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
-      (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId))
+    const filtered = allEntities.filter(
+      (e) =>
+        (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
+        (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)),
     );
     if (!focusedEntityId) return { entities: filtered, edges: allEdges };
     return getConnectedSubgraph(focusedEntityId, filtered, allEdges);
@@ -1798,6 +1998,82 @@ export function App() {
     }
   }, []);
 
+  const handleStartRecording = useCallback(async () => {
+    try {
+      const session = await apiClient.startRecording();
+      const startedAt = Date.now();
+      setRecording({
+        phase: "recording",
+        sessionId: session.session_id,
+        startedAt,
+        frameCount: session.frame_count,
+        elapsed: 0,
+      });
+      pollingRef.current = window.setInterval(() => {
+        void (async () => {
+          try {
+            const current = await apiClient.fetchRecordingCurrent();
+            if (!current.session) return;
+            const elapsed = Date.now() - startedAt;
+            setRecording((prev) => {
+              if (prev.phase !== "recording") return prev;
+              return { ...prev, frameCount: current.session!.frame_count, elapsed };
+            });
+            if (isLiveRef.current && current.session.frame_count > 0) {
+              const frameIndex = current.session.frame_count - 1;
+              const frame = await apiClient.fetchRecordingFrame(frameIndex);
+              const converted = convertSnapshot(frame);
+              setSnap({ phase: "ready", ...converted });
+            }
+          } catch (e) {
+            console.error(e);
+          }
+        })();
+      }, 1000);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  const handleStopRecording = useCallback(async () => {
+    if (pollingRef.current !== null) {
+      window.clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    try {
+      const session = await apiClient.stopRecording();
+      setRecording({
+        phase: "stopped",
+        sessionId: session.session_id,
+        frameCount: session.frame_count,
+        frames: session.frames,
+      });
+      if (session.frame_count > 0) {
+        const frameIndex = session.frame_count - 1;
+        const frame = await apiClient.fetchRecordingFrame(frameIndex);
+        const converted = convertSnapshot(frame);
+        setSnap({ phase: "ready", ...converted });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  const handleScrub = useCallback(async (frameIndex: number) => {
+    setRecording((prev) => {
+      if (prev.phase !== "stopped" && prev.phase !== "scrubbing") return prev;
+      const { frames, frameCount, sessionId } = prev;
+      return { phase: "scrubbing", sessionId, frameCount, frames, currentFrameIndex: frameIndex };
+    });
+    try {
+      const frame = await apiClient.fetchRecordingFrame(frameIndex);
+      const converted = convertSnapshot(frame);
+      setSnap({ phase: "ready", ...converted });
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function poll() {
@@ -1817,8 +2093,22 @@ export function App() {
       }
     }
     poll();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [takeSnapshot]);
+
+  useEffect(() => {
+    isLiveRef.current = isLive;
+  }, [isLive]);
+
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current !== null) {
+        window.clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1837,12 +2127,17 @@ export function App() {
   const isBusy = snap.phase === "cutting" || snap.phase === "loading";
 
   const buttonLabel =
-    snap.phase === "cutting" ? "Syncing…"
-    : snap.phase === "loading" ? "Loading…"
-    : "Take Snapshot";
+    snap.phase === "cutting" ? "Syncing…" : snap.phase === "loading" ? "Loading…" : "Take Snapshot";
 
   const connCount = connections?.connected_processes ?? 0;
   const waitingForProcesses = connCount === 0 && snap.phase === "idle";
+
+  const currentFrameIndex =
+    recording.phase === "scrubbing"
+      ? recording.currentFrameIndex
+      : recording.phase === "stopped"
+        ? recording.frames.length - 1
+        : 0;
 
   return (
     <div className="mockup-app">
@@ -1858,10 +2153,15 @@ export function App() {
           onClick={() => setShowProcessModal(true)}
           title="Click to see connected processes"
         >
-          {waitingForProcesses
-            ? <><CircleNotch size={11} weight="bold" className="spinning" /> waiting…</>
-            : <>{connCount} {connCount === 1 ? "process" : "processes"}</>
-          }
+          {waitingForProcesses ? (
+            <>
+              <CircleNotch size={11} weight="bold" className="spinning" /> waiting…
+            </>
+          ) : (
+            <>
+              {connCount} {connCount === 1 ? "process" : "processes"}
+            </>
+          )}
         </button>
         {apiMode === "lab" ? (
           <span className="mockup-header-badge">mock data</span>
@@ -1871,18 +2171,53 @@ export function App() {
             snapshot
           </span>
         ) : null}
-        {snap.phase === "error" && (
-          <span className="mockup-header-error">{snap.message}</span>
+        {recording.phase === "recording" && (
+          <span className="mockup-header-badge mockup-header-badge--recording">
+            <span className="recording-dot" />
+            {formatElapsed(recording.elapsed)} · {recording.frameCount} frames
+          </span>
         )}
+        {snap.phase === "error" && <span className="mockup-header-error">{snap.message}</span>}
         <span className="mockup-header-spacer" />
+        {recording.phase === "recording" && (
+          <ActionButton
+            variant={isLive ? "primary" : "default"}
+            onPress={() => setIsLive((v) => !v)}
+          >
+            Live
+          </ActionButton>
+        )}
+        {recording.phase === "idle" ||
+        recording.phase === "stopped" ||
+        recording.phase === "scrubbing" ? (
+          <ActionButton
+            variant="default"
+            onPress={handleStartRecording}
+            isDisabled={isBusy || connCount === 0}
+          >
+            <Record size={14} weight="fill" />
+            Record
+          </ActionButton>
+        ) : (
+          <ActionButton variant="default" onPress={handleStopRecording}>
+            <Stop size={14} weight="fill" />
+            Stop
+          </ActionButton>
+        )}
         <ActionButton variant="primary" onPress={takeSnapshot} isDisabled={isBusy}>
-          {isBusy
-            ? <CircleNotch size={14} weight="bold" />
-            : <Camera size={14} weight="bold" />
-          }
+          {isBusy ? <CircleNotch size={14} weight="bold" /> : <Camera size={14} weight="bold" />}
           {buttonLabel}
         </ActionButton>
       </div>
+      {(recording.phase === "stopped" || recording.phase === "scrubbing") &&
+        recording.frames.length > 0 && (
+          <RecordingTimeline
+            frames={recording.frames}
+            frameCount={recording.frameCount}
+            currentFrameIndex={currentFrameIndex}
+            onScrub={handleScrub}
+          />
+        )}
       <SplitLayout
         left={
           <GraphPanel
