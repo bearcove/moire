@@ -2171,14 +2171,14 @@ export function App() {
             snapshot
           </span>
         ) : null}
+        {snap.phase === "error" && <span className="mockup-header-error">{snap.message}</span>}
+        <span className="mockup-header-spacer" />
         {recording.phase === "recording" && (
           <span className="mockup-header-badge mockup-header-badge--recording">
             <span className="recording-dot" />
             {formatElapsed(recording.elapsed)} · {recording.frameCount} frames
           </span>
         )}
-        {snap.phase === "error" && <span className="mockup-header-error">{snap.message}</span>}
-        <span className="mockup-header-spacer" />
         {recording.phase === "recording" && (
           <ActionButton
             variant={isLive ? "primary" : "default"}

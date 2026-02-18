@@ -47,6 +47,16 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function expectRecordingSession(
+  response: RecordCurrentResponse,
+  endpoint: string,
+): RecordingSessionInfo {
+  if (!response.session) {
+    throw new Error(`${endpoint} returned no recording session`);
+  }
+  return response.session;
+}
+
 export function createLiveApiClient(): ApiClient {
   return {
     fetchConnections: () => getJson<ConnectionsResponse>("/api/connections"),
@@ -54,8 +64,16 @@ export function createLiveApiClient(): ApiClient {
     fetchCutStatus: (cutId: string) =>
       getJson<CutStatusResponse>(`/api/cuts/${encodeURIComponent(cutId)}`),
     fetchSnapshot: () => postJson<SnapshotCutResponse>("/api/snapshot", {}),
-    startRecording: (req?: RecordStartRequest) => postJson<RecordingSessionInfo>("/api/record/start", req ?? {}),
-    stopRecording: () => postJson<RecordingSessionInfo>("/api/record/stop", {}),
+    startRecording: async (req?: RecordStartRequest) =>
+      expectRecordingSession(
+        await postJson<RecordCurrentResponse>("/api/record/start", req ?? {}),
+        "/api/record/start",
+      ),
+    stopRecording: async () =>
+      expectRecordingSession(
+        await postJson<RecordCurrentResponse>("/api/record/stop", {}),
+        "/api/record/stop",
+      ),
     fetchRecordingCurrent: () => getJson<RecordCurrentResponse>("/api/record/current"),
     fetchRecordingFrame: (frameIndex: number) => getJson<SnapshotCutResponse>(`/api/record/current/frame/${frameIndex}`),
   };
