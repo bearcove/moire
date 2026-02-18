@@ -273,8 +273,6 @@ async fn read_server_message(
         .map_err(|e| format!("decode server message: {e}"))?;
     Ok(Some(message))
 }
-
-#[deprecated(note = "use the spawn_tracked! macro instead")]
 #[track_caller]
 pub fn spawn_tracked<F>(
     name: impl Into<CompactString>,
@@ -295,8 +293,6 @@ macro_rules! spawn_tracked {
         $crate::spawn_tracked($name, $fut)
     };
 }
-
-#[deprecated(note = "use the spawn_blocking_tracked! macro instead")]
 #[track_caller]
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<CompactString>,
@@ -319,8 +315,6 @@ macro_rules! spawn_blocking_tracked {
         $crate::spawn_blocking_tracked($name, $f)
     };
 }
-
-#[deprecated(note = "use the sleep! macro instead")]
 #[track_caller]
 pub fn sleep(duration: std::time::Duration, label: impl Into<String>) -> impl Future<Output = ()> {
     instrument_future_named(label.into(), tokio::time::sleep(duration))
@@ -332,8 +326,6 @@ macro_rules! sleep {
         $crate::sleep($duration, $label)
     };
 }
-
-#[deprecated(note = "use the timeout! macro instead")]
 #[track_caller]
 #[allow(clippy::manual_async_fn)]
 pub fn timeout<F>(
@@ -1359,7 +1351,6 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 }
 
 impl<T> Mutex<T> {
-    #[deprecated(note = "use the mutex! macro instead")]
     #[track_caller]
     pub fn new(name: &'static str, value: T) -> Self {
         let handle = EntityHandle::new(
@@ -1480,7 +1471,6 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
-    #[deprecated(note = "use the rwlock! macro instead")]
     #[track_caller]
     pub fn new(name: &'static str, value: T) -> Self {
         let handle = EntityHandle::new(
@@ -1610,8 +1600,6 @@ impl RpcResponseHandle {
         self.set_status(ResponseStatus::Cancelled);
     }
 }
-
-#[deprecated(note = "use the rpc_request! macro instead")]
 #[track_caller]
 pub fn rpc_request(
     method: impl Into<CompactString>,
@@ -1633,8 +1621,6 @@ macro_rules! rpc_request {
         $crate::rpc_request($method, $args_preview)
     };
 }
-
-#[deprecated(note = "use the rpc_response! macro instead")]
 #[track_caller]
 pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     let method = method.into();
@@ -1653,8 +1639,6 @@ macro_rules! rpc_response {
         $crate::rpc_response($method)
     };
 }
-
-#[deprecated(note = "use the rpc_response_for! macro instead")]
 #[track_caller]
 pub fn rpc_response_for(
     method: impl Into<CompactString>,
@@ -2669,8 +2653,6 @@ impl<T> UnboundedReceiver<T> {
         }
     }
 }
-
-#[deprecated(note = "use the channel! macro instead")]
 #[track_caller]
 pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     let name: CompactString = name.into().into();
@@ -2737,8 +2719,6 @@ macro_rules! channel {
         $crate::channel($name, $capacity)
     };
 }
-
-#[deprecated(note = "use the unbounded_channel! macro instead")]
 #[track_caller]
 pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let name: CompactString = name.into().into();
@@ -3083,8 +3063,6 @@ impl<T> OneshotReceiver<T> {
         }
     }
 }
-
-#[deprecated(note = "use the oneshot! macro instead")]
 #[track_caller]
 pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let name: CompactString = name.into().into();
@@ -3131,8 +3109,6 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
         },
     )
 }
-
-#[deprecated(note = "use the oneshot! macro instead")]
 #[track_caller]
 pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     #[allow(deprecated)]
@@ -3450,8 +3426,6 @@ impl<T: Clone> WatchReceiver<T> {
         self.inner.has_changed()
     }
 }
-
-#[deprecated(note = "use the broadcast! macro instead")]
 #[track_caller]
 pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
@@ -3519,8 +3493,6 @@ macro_rules! broadcast {
         $crate::broadcast($name, $capacity)
     };
 }
-
-#[deprecated(note = "use the watch! macro instead")]
 #[track_caller]
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
@@ -3574,8 +3546,6 @@ pub fn watch<T: Clone>(
         },
     )
 }
-
-#[deprecated(note = "use the watch! macro instead")]
 #[track_caller]
 pub fn watch_channel<T: Clone>(
     name: impl Into<CompactString>,
@@ -3593,7 +3563,6 @@ macro_rules! watch {
 }
 
 impl Notify {
-    #[deprecated(note = "use the notify! macro instead")]
     #[track_caller]
     pub fn new(name: impl Into<String>) -> Self {
         let name = name.into();
@@ -3655,7 +3624,6 @@ macro_rules! notify {
 }
 
 impl<T> OnceCell<T> {
-    #[deprecated(note = "use the once_cell! macro instead")]
     #[track_caller]
     pub fn new(name: impl Into<String>) -> Self {
         let handle = EntityHandle::new(
@@ -3805,7 +3773,6 @@ macro_rules! once_cell {
 }
 
 impl Semaphore {
-    #[deprecated(note = "use the semaphore! macro instead")]
     #[track_caller]
     pub fn new(name: impl Into<String>, permits: usize) -> Self {
         let max_permits = permits.min(u32::MAX as usize) as u32;
@@ -4459,7 +4426,6 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    #[deprecated(note = "use the join_set! macro instead")]
     #[track_caller]
     pub fn named(name: impl Into<String>) -> Self {
         let name = name.into();
@@ -4469,8 +4435,6 @@ where
             handle,
         }
     }
-
-    #[deprecated(note = "use the join_set! macro instead")]
     #[track_caller]
     pub fn with_name(name: impl Into<String>) -> Self {
         #[allow(deprecated)]

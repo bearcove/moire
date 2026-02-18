@@ -46,7 +46,6 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 }
 
 impl<T> Mutex<T> {
-    #[deprecated(note = "use the mutex! macro instead")]
     pub fn new(_name: &'static str, value: T) -> Self {
         Self {
             inner: parking_lot::Mutex::new(value),
@@ -69,7 +68,6 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
-    #[deprecated(note = "use the rwlock! macro instead")]
     pub fn new(_name: &'static str, value: T) -> Self {
         Self {
             inner: parking_lot::RwLock::new(value),

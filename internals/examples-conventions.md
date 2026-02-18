@@ -20,8 +20,8 @@ No second terminal should be required for normal use.
 
 Every example must satisfy this:
 
-- `cargo run --manifest-path examples/<name>/Cargo.toml` runs the full scenario.
-- If the scenario needs multiple roles (client/server, caller/callee, etc.), the example binary itself is responsible for launching and coordinating them.
+- `cargo run --bin peeps-examples -- <subcommand>` runs the full scenario.
+- If the scenario needs multiple roles (client/server, caller/callee, etc.), the scenario module itself is responsible for launching and coordinating them.
 - Example startup should fail fast with a clear error if one required role cannot start.
 - Example shutdown should terminate all child work it started.
 
@@ -32,8 +32,8 @@ The runner may set environment (`PEEPS_DASHBOARD`, ports), but it should not con
 `peeps-examples` (`cargo run --bin peeps-examples`, used by `just ex`) is responsible for top-level lifecycle:
 
 - It starts `peeps-web` in one process group.
-- It starts the chosen example (`cargo run`) in another process group.
-- On exit or interrupt, it sends a group kill to both groups and waits for them.
+- It runs the chosen scenario in-process.
+- On exit or interrupt, it tears down the `peeps-web` process group and returns.
 
 This is required to avoid zombie/orphaned children when examples spawn subprocesses.
 
@@ -41,9 +41,9 @@ This is required to avoid zombie/orphaned children when examples spawn subproces
 
 When an example needs multiple processes:
 
-- Keep orchestration inside the example crate.
+- Keep orchestration inside the scenario module.
 - Prefer explicit supervised child handles over detached subprocesses.
 - Propagate cancellation and wait for child exit paths.
 - Treat partial startup as an error; tear down anything already started.
 
-If a scenario cannot be expressed as a single `cargo run` entrypoint, it does not meet this repo's examples contract yet.
+If a scenario cannot be expressed as a single `peeps-examples` subcommand, it does not meet this repo's examples contract yet.

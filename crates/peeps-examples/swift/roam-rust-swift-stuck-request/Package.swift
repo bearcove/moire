@@ -7,7 +7,7 @@ let package = Package(
         .macOS(.v14)
     ],
     dependencies: [
-        .package(path: "../../../../roam/swift/roam-runtime")
+        .package(path: "../../../../../roam/swift/roam-runtime")
     ],
     targets: [
         .executableTarget(

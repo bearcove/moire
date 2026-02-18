@@ -1,13 +1,12 @@
 # Peeps examples
 
-These examples live in-repo but outside the workspace crates so they are easy to run and tweak.
+Scenarios are implemented in `crates/peeps-examples/src/scenarios`.
 
 ## Runner
 
-Use the helper launcher to run dashboard backend + frontend + any example in one command:
+Use the helper launcher to run peeps-web (`--dev`) and one scenario in one command:
 
 ```bash
-just ex --list
 just ex channel-full-stall
 ```
 
@@ -15,7 +14,7 @@ When you stop the runner (`Ctrl+C`), all child processes are stopped too.
 
 ## 1) Oneshot sender lost in map (`tokio::sync::oneshot`)
 
-Path: `examples/oneshot-sender-lost-in-map`
+Path: `crates/peeps-examples/src/scenarios/oneshot_sender_lost_in_map.rs`
 
 What it does:
 - Creates a request/response oneshot pair
@@ -32,7 +31,7 @@ Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect `demo.reque
 
 ## 2) Mutex lock-order inversion (`tokio` tasks + blocking mutex)
 
-Path: `examples/mutex-lock-order-inversion`
+Path: `crates/peeps-examples/src/scenarios/mutex_lock_order_inversion.rs`
 
 What it does:
 - Creates two shared mutexes (`demo.shared.left`, `demo.shared.right`)
@@ -48,7 +47,7 @@ just ex mutex-lock-order-inversion
 
 ## 3) Channel full stall (`tokio::sync::mpsc` behavior)
 
-Path: `examples/channel-full-stall`
+Path: `crates/peeps-examples/src/scenarios/channel_full_stall.rs`
 
 What it does:
 - Creates a bounded channel with capacity `16`
@@ -57,30 +56,13 @@ What it does:
 
 ### Run it
 
-Terminal 1:
-
 ```bash
-cargo run -p peeps-web
+just ex channel-full-stall
 ```
-
-Terminal 2:
-
-```bash
-pnpm --dir crates/peeps-web/frontend dev
-```
-
-Terminal 3:
-
-```bash
-PEEPS_DASHBOARD=127.0.0.1:9119 \
-  cargo run --manifest-path examples/channel-full-stall/Cargo.toml
-```
-
-Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect the `demo.work_queue` channel nodes plus the `queue.send.blocked` task.
 
 ## 4) Roam RPC stuck request
 
-Path: `examples/roam-rpc-stuck-request`
+Path: `crates/peeps-examples/src/scenarios/roam_rpc_stuck_request.rs`
 
 What it does:
 - Starts an in-memory Roam client/server connection
@@ -96,30 +78,9 @@ Single-command runner:
 just ex roam-rpc-stuck-request
 ```
 
-Manual mode:
-
-Terminal 1:
-
-```bash
-cargo run -p peeps-web
-```
-
-Terminal 2:
-
-```bash
-pnpm --dir crates/peeps-web/frontend dev
-```
-
-Terminal 3:
-
-```bash
-PEEPS_DASHBOARD=127.0.0.1:9119 \
-  cargo run --manifest-path examples/roam-rpc-stuck-request/Cargo.toml
-```
-
 ## 5) Semaphore starvation (`tokio::sync::Semaphore`)
 
-Path: `examples/semaphore-starvation`
+Path: `crates/peeps-examples/src/scenarios/semaphore_starvation.rs`
 
 What it does:
 - Creates a semaphore with one permit
@@ -134,7 +95,7 @@ just ex semaphore-starvation
 
 ## 6) Roam Rust↔Swift stuck request
 
-Path: `examples/roam-rust-swift-stuck-request`
+Path: `crates/peeps-examples/src/scenarios/roam_rust_swift_stuck_request.rs`
 
 What it does:
 - Rust host starts a TCP listener and spawns a Swift roam-runtime peer (`swift run`)
@@ -149,4 +110,5 @@ just ex roam-rust-swift-stuck-request
 
 Requirements:
 - Swift toolchain (`swift`) installed locally
-- Local `../roam/swift/roam-runtime` checkout available (used as a path dependency by the peer package)
+- Local `../roam/swift/roam-runtime` checkout available
+- Swift package files live in `crates/peeps-examples/swift/roam-rust-swift-stuck-request`

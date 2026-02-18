@@ -5,7 +5,7 @@ use roam_stream::{accept, HandshakeConfig, NoDispatcher};
 use tokio::process::{Child, Command};
 
 fn swift_package_path(workspace_root: &Path) -> PathBuf {
-    workspace_root.join("examples/roam-rust-swift-stuck-request/swift")
+    workspace_root.join("crates/peeps-examples/swift/roam-rust-swift-stuck-request")
 }
 
 fn spawn_swift_peer(workspace_root: &Path, peer_addr: &str) -> std::io::Result<Child> {

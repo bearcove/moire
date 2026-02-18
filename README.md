@@ -19,13 +19,11 @@ Low-overhead instrumentation for production Rust systems.
 ### Live push mode
 
 ```rust
-use peeps::tasks;
-
 #[tokio::main]
 async fn main() {
-    peeps::init_named("my-service");
+    peeps::init!();
 
-    tasks::spawn_tracked("connection_handler", async {
+    peeps::spawn_tracked!("connection_handler", async {
         // Task execution is instrumented
     });
 }
@@ -61,10 +59,12 @@ PEEPS_DASHBOARD=127.0.0.1:9119 <your-binary>
 
 ## Examples
 
-Runnable scenarios are available in `examples/`.
+Runnable scenarios are implemented as subcommands in `crates/peeps-examples`.
 
 Current scenarios:
 - `channel-full-stall` — bounded mpsc sender blocks on a full queue
+- `mutex-lock-order-inversion` — two tasks deadlock by acquiring mutexes in opposite order
+- `oneshot-sender-lost-in-map` — sender stored under wrong key, receiver waits forever
 - `roam-rpc-stuck-request` — Rust Roam request stays pending forever
 - `semaphore-starvation` — one task holds the only permit forever
 - `roam-rust-swift-stuck-request` — Rust host + Swift peer, request intentionally never answered
@@ -72,7 +72,6 @@ Current scenarios:
 Run it with:
 
 ```bash
-just ex --list
 just ex <example-name>
 ```
 

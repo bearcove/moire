@@ -29,7 +29,6 @@ struct Cli {
 #[derive(Facet, Debug)]
 #[repr(u8)]
 enum CommandKind {
-    List,
     ChannelFullStall,
     MutexLockOrderInversion,
     OneshotSenderLostInMap,
@@ -56,11 +55,6 @@ async fn main() {
 
 async fn run() -> AnyResult<()> {
     let cli = parse_cli()?;
-
-    if matches!(cli.command, CommandKind::List) {
-        print_examples();
-        return Ok(());
-    }
 
     let cfg = config_from_cli(&cli);
 
@@ -143,7 +137,6 @@ fn workspace_root() -> PathBuf {
 
 async fn dispatch_command(root_dir: &std::path::Path, command: CommandKind) -> AnyResult<()> {
     match command {
-        CommandKind::List => Ok(()),
         CommandKind::ChannelFullStall => scenarios::channel_full_stall::run().await,
         CommandKind::MutexLockOrderInversion => scenarios::mutex_lock_order_inversion::run().await,
         CommandKind::OneshotSenderLostInMap => scenarios::oneshot_sender_lost_in_map::run().await,
@@ -153,15 +146,6 @@ async fn dispatch_command(root_dir: &std::path::Path, command: CommandKind) -> A
         }
         CommandKind::SemaphoreStarvation => scenarios::semaphore_starvation::run().await,
     }
-}
-
-fn print_examples() {
-    println!("channel-full-stall");
-    println!("mutex-lock-order-inversion");
-    println!("oneshot-sender-lost-in-map");
-    println!("roam-rpc-stuck-request");
-    println!("roam-rust-swift-stuck-request");
-    println!("semaphore-starvation");
 }
 
 fn ensure_backend_not_running(peeps_http: &str) -> AnyResult<()> {
