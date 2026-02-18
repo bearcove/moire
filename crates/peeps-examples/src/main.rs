@@ -6,6 +6,8 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::Duration;
 
+::peeps::facade!();
+
 mod scenarios;
 
 type AnyResult<T> = Result<T, String>;

@@ -82,10 +82,6 @@ impl<T> Mutex<T> {
         }
     }
 
-    pub fn lock(&self) -> MutexGuard<'_, T> {
-        self.lock_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
     #[track_caller]
     pub fn lock_with_cx(&self, cx: PeepsContext) -> MutexGuard<'_, T> {
         self.lock_with_source(Source::caller(), cx)
@@ -95,10 +91,6 @@ impl<T> Mutex<T> {
         MutexGuard {
             inner: self.inner.lock(),
         }
-    }
-
-    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
-        self.try_lock_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -127,11 +119,6 @@ impl<T> RwLock<T> {
     }
 
     #[track_caller]
-    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
-        self.read_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn read_with_cx(&self, cx: PeepsContext) -> parking_lot::RwLockReadGuard<'_, T> {
         self.read_with_source(Source::caller(), cx)
     }
@@ -142,11 +129,6 @@ impl<T> RwLock<T> {
         _cx: PeepsContext,
     ) -> parking_lot::RwLockReadGuard<'_, T> {
         self.inner.read()
-    }
-
-    #[track_caller]
-    pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
-        self.write_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -163,11 +145,6 @@ impl<T> RwLock<T> {
     }
 
     #[track_caller]
-    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
-        self.try_read_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn try_read_with_cx(
         &self,
         cx: PeepsContext,
@@ -181,11 +158,6 @@ impl<T> RwLock<T> {
         _cx: PeepsContext,
     ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
         self.inner.try_read()
-    }
-
-    #[track_caller]
-    pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
-        self.try_write_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
