@@ -118,8 +118,7 @@ export async function measureGraphLayout(
     const el = document.createElement("div");
     container.appendChild(el);
     const root = createRoot(el);
-    const sampleLabel =
-      subgraphScopeMode === "process" ? "peeps-examples(27139)" : "peeps-example";
+    const sampleLabel = subgraphScopeMode === "process" ? "peeps-examples(27139)" : "peeps-example";
 
     flushSync(() =>
       root.render(
@@ -127,9 +126,11 @@ export async function measureGraphLayout(
           <div className="scope-group-header">
             <span className="scope-group-label">
               <span className="scope-group-icon">
-                {subgraphScopeMode === "process"
-                  ? <ProcessIdenticon name={sampleLabel} seed={sampleLabel} size={12} />
-                  : scopeKindIcon(subgraphScopeMode, 12)}
+                {subgraphScopeMode === "process" ? (
+                  <ProcessIdenticon name={sampleLabel} seed={sampleLabel} size={12} />
+                ) : (
+                  scopeKindIcon(subgraphScopeMode, 12)
+                )}
               </span>
               <span>{sampleLabel}</span>
             </span>
@@ -175,15 +176,11 @@ export function NodeLayer({
           );
         } else if (node.kind === "rpcPairNode") {
           cardContent = (
-            <RpcPairNode
-              data={{ ...(node.data as RpcPairNodeData), selected, ghost: isGhost }}
-            />
+            <RpcPairNode data={{ ...(node.data as RpcPairNodeData), selected, ghost: isGhost }} />
           );
         } else {
           cardContent = (
-            <GraphNode
-              data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }}
-            />
+            <GraphNode data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }} />
           );
         }
 

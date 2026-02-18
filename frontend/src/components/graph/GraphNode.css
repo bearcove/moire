@@ -43,7 +43,7 @@
 .graph-node {
     display: flex;
     gap: 8px;
-    padding: 6px 8px;
+    padding: 4px 6px;
     align-items: center;
 }
 

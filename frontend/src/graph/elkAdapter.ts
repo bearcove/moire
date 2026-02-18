@@ -35,21 +35,23 @@ export type EdgeStyle = {
 export function edgeStyle(edge: EdgeDef): EdgeStyle {
   const stroke = "var(--edge-stroke-default)";
   const kind = edge.kind;
+
+  let strokeWidth = 2;
   switch (kind) {
     case "touches":
-      return { stroke, strokeWidth: 1.1, strokeDasharray: "4 4" };
+      return { stroke, strokeWidth, strokeDasharray: "4 4" };
     case "needs":
-      return { stroke, strokeWidth: 1.4 };
+      return { stroke, strokeWidth };
     case "holds":
-      return { stroke, strokeWidth: 1.2 };
+      return { stroke, strokeWidth };
     case "polls":
-      return { stroke, strokeWidth: 1.1, strokeDasharray: "2 3" };
+      return { stroke, strokeWidth, strokeDasharray: "2 3" };
     case "closed_by":
-      return { stroke, strokeWidth: 1.2 };
+      return { stroke, strokeWidth };
     case "channel_link":
-      return { stroke, strokeWidth: 1.0, strokeDasharray: "6 3" };
+      return { stroke, strokeWidth, strokeDasharray: "6 3" };
     case "rpc_link":
-      return { stroke, strokeWidth: 1.0, strokeDasharray: "6 3" };
+      return { stroke, strokeWidth, strokeDasharray: "6 3" };
   }
 }
 

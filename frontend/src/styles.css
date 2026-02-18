@@ -11,25 +11,35 @@
     line-height: 1.4;
 
     /* Role tokens */
-    --bg-base: light-dark(#f7f9fc, #0F131A);
-    --bg-surface: light-dark(#ffffff, #151A23);
-    --bg-elevated: light-dark(#f1f5fb, #1C2230);
+    --gray: #332222;
+    --bg-base: light-dark(
+        color-mix(in srgb, #f7f9fc 80%, var(--gray)),
+        color-mix(in srgb, #0f131a 80%, var(--gray))
+    );
+    --bg-surface: light-dark(
+        color-mix(in srgb, #ffffff 80%, var(--gray)),
+        color-mix(in srgb, #151a23 80%, var(--gray))
+    );
+    --bg-elevated: light-dark(
+        color-mix(in srgb, #f1f5fb 80%, var(--gray)),
+        color-mix(in srgb, #1c2230 80%, var(--gray))
+    );
 
-    --border-subtle: light-dark(#d7e0ec, #232B3A);
-    --border-default: light-dark(#c0cad9, #2E384A);
+    --border-subtle: light-dark(#d7e0ec, #232b3a);
+    --border-default: light-dark(#c0cad9, #2e384a);
 
-    --text-primary: light-dark(#1b2432, #E6EDF3);
-    --text-secondary: light-dark(#4d5b71, #A8B3C2);
-    --text-muted: light-dark(#728099, #6B7789);
+    --text-primary: light-dark(#1b2432, #e6edf3);
+    --text-secondary: light-dark(#4d5b71, #a8b3c2);
+    --text-muted: light-dark(#728099, #6b7789);
     --text-tertiary: var(--text-muted);
 
-    --accent: light-dark(#516F88, #5F7D96);
-    --accent-hover: light-dark(#5F7D96, #6D8BA4);
-    --accent-active: light-dark(#435F78, #516F88);
+    --accent: light-dark(#516f88, color-mix(in srgb, #5f7d96, #332222));
+    --accent-hover: light-dark(#5f7d96, #6d8ba4);
+    --accent-active: light-dark(#435f78, #516f88);
 
-    --status-success: light-dark(#2f9f45, #3FB950);
-    --status-warning: light-dark(#b37f1c, #D29922);
-    --status-danger: light-dark(#d24640, #F85149);
+    --status-success: light-dark(#2f9f45, #3fb950);
+    --status-warning: light-dark(#b37f1c, #d29922);
+    --status-danger: light-dark(#d24640, #f85149);
 
     --focus-ring: color-mix(in srgb, var(--accent) 30%, transparent);
 
@@ -37,8 +47,8 @@
     --shadow-strong: rgba(0, 0, 0, 0.45);
     --shadow-popover: 0 14px 30px var(--shadow-strong);
 
-    --edge-stroke-default: light-dark(#111111, #d7d9df);
-    --edge-stroke-muted: light-dark(#666666, #999999);
+    --edge-stroke-default: var(--border-default);
+    --edge-stroke-muted: var(--border-subtle);
 
     --pulse-danger-shadow-rest: color-mix(in srgb, var(--status-danger) 24%, transparent);
     --pulse-danger-shadow-peak: color-mix(in srgb, var(--status-danger) 14%, transparent);
@@ -63,7 +73,9 @@ body {
     background: var(--bg-base);
     color: var(--text-primary);
     font-variant-ligatures: common-ligatures contextual;
-    font-feature-settings: "liga" 1, "calt" 1;
+    font-feature-settings:
+        "liga" 1,
+        "calt" 1;
 }
 
 .spinning {
@@ -71,16 +83,30 @@ body {
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 @keyframes pulse-danger {
-    0%, 100% { box-shadow: 0 0 0 0 var(--pulse-danger-shadow-rest); }
-    50% { box-shadow: 0 0 0 4px var(--pulse-danger-shadow-peak); }
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 var(--pulse-danger-shadow-rest);
+    }
+    50% {
+        box-shadow: 0 0 0 4px var(--pulse-danger-shadow-peak);
+    }
 }
 
 @keyframes edge-glow-pulse {
-    0%, 100% { opacity: 0.18; }
-    50% { opacity: 0.32; }
+    0%,
+    100% {
+        opacity: 0.18;
+    }
+    50% {
+        opacity: 0.32;
+    }
 }
