@@ -34,7 +34,7 @@ impl Connector for TcpConnector {
 }
 
 async fn run_server(addr: &str) {
-    peeps::init("example-roam-rpc-stuck-request.server");
+    peeps::init!();
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -75,7 +75,7 @@ async fn run_server(addr: &str) {
 }
 
 async fn run_client(addr: &str) {
-    peeps::init("example-roam-rpc-stuck-request.client");
+    peeps::init!();
 
     let mut config = HandshakeConfig::default();
     config.name = Some("stuck-client".to_string());

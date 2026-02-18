@@ -1,5 +1,7 @@
 use compact_str::CompactString;
-use peeps_types::{EdgeKind, EntityBody, EntityId, ResponseStatus, ScopeBody};
+use peeps_types::{
+    set_inference_source_root, EdgeKind, EntityBody, EntityId, ResponseStatus, ScopeBody,
+};
 use std::ffi::OsStr;
 use std::future::{Future, IntoFuture};
 use std::io;
@@ -1073,7 +1075,9 @@ pub fn interval_at(
 
 static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
 
-pub fn init(_process_name: &str) {
+#[doc(hidden)]
+pub fn __init_from_macro(manifest_dir: &str) {
+    set_inference_source_root(std::path::PathBuf::from(manifest_dir));
     maybe_warn_dashboard_ignored();
 }
 

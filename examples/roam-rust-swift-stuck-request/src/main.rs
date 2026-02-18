@@ -24,7 +24,7 @@ fn spawn_swift_peer(peer_addr: &str) -> std::io::Result<Child> {
 
 #[tokio::main]
 async fn main() {
-    peeps::init("example-roam-rust-swift-stuck-request.rust");
+    peeps::init!();
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

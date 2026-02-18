@@ -31,7 +31,7 @@ fn spawn_lock_order_worker(
 
 #[tokio::main]
 async fn main() {
-    peeps::init("example-mutex-lock-order-inversion");
+    peeps::init!();
 
     let left = Arc::new(peeps::mutex!("demo.shared.left", ()));
     let right = Arc::new(peeps::mutex!("demo.shared.right", ()));

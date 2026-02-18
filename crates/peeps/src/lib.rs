@@ -27,3 +27,10 @@ mod enabled;
 pub use disabled::*;
 #[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
 pub use enabled::*;
+
+#[macro_export]
+macro_rules! init {
+    () => {{
+        $crate::__init_from_macro(env!("CARGO_MANIFEST_DIR"));
+    }};
+}

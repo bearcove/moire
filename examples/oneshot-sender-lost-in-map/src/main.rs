@@ -16,7 +16,7 @@ fn lookup_key_for_response(response_id: RequestId) -> RequestId {
 
 #[tokio::main]
 async fn main() {
-    peeps::init("example-oneshot-sender-lost-in-map");
+    peeps::init!();
 
     let pending_by_request_id: PendingMap = Arc::new(peeps::mutex!(
         "demo.pending_oneshot_senders",

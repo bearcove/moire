@@ -2,7 +2,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    peeps::init("example-channel-full-stall");
+    peeps::init!();
 
     let (tx, mut rx) = peeps::channel!("demo.work_queue", 16);
     let (_idle_tx, mut idle_rx) = peeps::channel!("demo.idle_queue", 1);

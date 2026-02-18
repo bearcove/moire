@@ -1,4 +1,5 @@
 use compact_str::CompactString;
+use peeps_types::set_inference_source_root;
 use peeps_types::PTime;
 use peeps_types::{
     BufferState, Change, ChannelCloseCause, ChannelClosedEvent, ChannelDetails,
@@ -48,13 +49,26 @@ thread_local! {
 }
 
 #[track_caller]
-pub fn init(process_name: &str) {
-    ensure_process_scope(process_name);
-    init_dashboard_push_loop(process_name);
+#[doc(hidden)]
+pub fn __init_from_macro(manifest_dir: &str) {
+    set_inference_source_root(std::path::PathBuf::from(manifest_dir));
+    let process_name = process_name_auto();
+    ensure_process_scope(&process_name);
+    init_dashboard_push_loop(&process_name);
 }
 
 fn ensure_process_scope(process_name: &str) {
     PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process));
+}
+
+fn process_name_auto() -> CompactString {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_stem().map(|name| name.to_owned()))
+        .and_then(|name| name.into_string().ok())
+        .filter(|name| !name.is_empty())
+        .map(CompactString::from)
+        .unwrap_or_else(|| CompactString::from("process"))
 }
 
 fn current_process_scope_id() -> Option<ScopeId> {

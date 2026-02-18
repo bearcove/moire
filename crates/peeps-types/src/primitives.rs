@@ -145,6 +145,19 @@ pub(crate) fn infer_krate_from_source(source: &str) -> Option<CompactString> {
     inferred
 }
 
+pub fn set_inference_source_root(path: impl Into<PathBuf>) {
+    let _ = source_root().set(path.into());
+}
+
+fn inference_source_root() -> Option<&'static PathBuf> {
+    source_root().get()
+}
+
+fn source_root() -> &'static OnceLock<PathBuf> {
+    static SOURCE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+    &SOURCE_ROOT
+}
+
 fn infer_krate_from_source_uncached(source: &str) -> Option<CompactString> {
     let file = source_file_path(source)?;
     let mut dir = file.parent()?.to_path_buf();
@@ -182,7 +195,9 @@ fn source_file_path(source: &str) -> Option<PathBuf> {
     if path.is_absolute() {
         Some(path.to_path_buf())
     } else {
-        std::env::current_dir().ok().map(|cwd| cwd.join(path))
+        inference_source_root()
+            .map(|root| root.join(path))
+            .or_else(|| std::env::current_dir().ok().map(|cwd| cwd.join(path)))
     }
 }
 
@@ -262,7 +277,7 @@ impl fmt::Display for PeepsHex {
 
 #[cfg(test)]
 mod tests {
-    use super::{caller_source, infer_krate_from_source};
+    use super::{caller_source, infer_krate_from_source, source_file_path};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -305,5 +320,14 @@ mod tests {
         assert_eq!(inferred.as_deref(), Some("peeps_types_krate_lookup"));
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn relative_source_uses_current_dir_by_default() {
+        let resolved = source_file_path("src/lib.rs:42").expect("source path should resolve");
+        assert!(
+            resolved.is_absolute(),
+            "resolved relative source path should be absolute"
+        );
     }
 }

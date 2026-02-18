@@ -3,7 +3,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    peeps::init("example-semaphore-starvation");
+    peeps::init!();
 
     let gate = Arc::new(peeps::semaphore!("demo.api_gate", 1));
 
