@@ -1,9 +1,7 @@
 use compact_str::CompactString;
 use peeps_types::{
-    BroadcastChannelDetails, BufferState, ChannelDetails, ChannelEndpointEntity,
-    ChannelEndpointLifecycle, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
-    OneshotChannelDetails, OneshotState, PullChangesResponse, RequestEntity, ResponseEntity,
-    ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId, WatchChannelDetails,
+    CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PullChangesResponse,
+    ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId,
 };
 use std::ffi::OsStr;
 use std::future::{Future, IntoFuture};
@@ -11,7 +9,7 @@ use std::io;
 use std::ops::{Deref, DerefMut};
 #[cfg(not(target_arch = "wasm32"))]
 use std::process::{ExitStatus, Output, Stdio};
-use std::sync::Once;
+use std::sync::{LazyLock, Once};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 #[derive(Clone, Debug, Default)]
@@ -226,45 +224,48 @@ impl<T: Clone> AsEntityRef for WatchReceiver<T> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct RpcRequestHandle {
-    handle: EntityHandle,
-    id: EntityId,
-}
+#[derive(Clone, Debug, Default)]
+pub struct RpcRequestHandle;
+
+static DISABLED_ENTITY_HANDLE: EntityHandle = EntityHandle;
+static DISABLED_RPC_REQUEST_ID: LazyLock<EntityId> =
+    LazyLock::new(|| EntityId::new("disabled-request"));
+static DISABLED_RPC_RESPONSE_ID: LazyLock<EntityId> =
+    LazyLock::new(|| EntityId::new("disabled-response"));
+static DISABLED_RPC_REQUEST_WIRE_ID: CompactString = CompactString::const_new("disabled-request");
+static DISABLED_STREAM_ID: StreamId = StreamId(CompactString::const_new("disabled"));
+static DISABLED_EMPTY_SOURCE: CompactString = CompactString::const_new("");
 
 impl RpcRequestHandle {
     pub fn id(&self) -> &EntityId {
-        &self.id
+        LazyLock::force(&DISABLED_RPC_REQUEST_ID)
     }
 
     pub fn id_for_wire(&self) -> CompactString {
-        CompactString::from(self.id.as_str())
+        DISABLED_RPC_REQUEST_WIRE_ID.clone()
     }
 
     pub fn entity_ref(&self) -> EntityRef {
-        self.handle.entity_ref()
+        EntityRef
     }
 
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
-        &self.handle
+        &DISABLED_ENTITY_HANDLE
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct RpcResponseHandle {
-    handle: EntityHandle,
-    id: EntityId,
-}
+#[derive(Clone, Debug, Default)]
+pub struct RpcResponseHandle;
 
 impl RpcResponseHandle {
     pub fn id(&self) -> &EntityId {
-        &self.id
+        LazyLock::force(&DISABLED_RPC_RESPONSE_ID)
     }
 
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
-        &self.handle
+        &DISABLED_ENTITY_HANDLE
     }
 
     pub fn set_status(&self, _status: ResponseStatus) {}
@@ -623,35 +624,16 @@ pub fn unbounded_channel_with_krate<T>(
 }
 
 pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let name: CompactString = name.into().into();
+    let _ = name;
     let (tx, rx) = oneshot::channel();
-    let tx_handle = EntityHandle::new(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details: ChannelDetails::Oneshot(OneshotChannelDetails {
-                state: OneshotState::Pending,
-            }),
-        }),
-    );
-    let rx_handle = EntityHandle::new(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details: ChannelDetails::Oneshot(OneshotChannelDetails {
-                state: OneshotState::Pending,
-            }),
-        }),
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     (
         OneshotSender {
             inner: Some(tx),
-            handle: tx_handle,
+            handle: EntityHandle,
         },
         OneshotReceiver {
             inner: Some(rx),
-            handle: rx_handle,
+            handle: EntityHandle,
         },
     )
 }
@@ -672,42 +654,17 @@ pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
     capacity: usize,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    let name = name.into();
+    let _ = name;
     let (tx, rx) = broadcast::channel(capacity);
-    let tx_handle = EntityHandle::new(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details: ChannelDetails::Broadcast(BroadcastChannelDetails {
-                buffer: Some(BufferState {
-                    occupancy: 0,
-                    capacity: Some(capacity.min(u32::MAX as usize) as u32),
-                }),
-            }),
-        }),
-    );
-    let rx_handle = EntityHandle::new(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details: ChannelDetails::Broadcast(BroadcastChannelDetails {
-                buffer: Some(BufferState {
-                    occupancy: 0,
-                    capacity: Some(capacity.min(u32::MAX as usize) as u32),
-                }),
-            }),
-        }),
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     (
         BroadcastSender {
             inner: tx,
-            handle: tx_handle,
-            receiver_handle: rx_handle.clone(),
+            handle: EntityHandle,
+            receiver_handle: EntityHandle,
         },
         BroadcastReceiver {
             inner: rx,
-            handle: rx_handle,
+            handle: EntityHandle,
         },
     )
 }
@@ -725,36 +682,17 @@ pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
-    let name = name.into();
+    let _ = name;
     let (tx, rx) = watch::channel(initial);
-    let tx_handle = EntityHandle::new(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details: ChannelDetails::Watch(WatchChannelDetails {
-                last_update_at: None,
-            }),
-        }),
-    );
-    let rx_handle = EntityHandle::new(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details: ChannelDetails::Watch(WatchChannelDetails {
-                last_update_at: None,
-            }),
-        }),
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     (
         WatchSender {
             inner: tx,
-            handle: tx_handle,
-            receiver_handle: rx_handle.clone(),
+            handle: EntityHandle,
+            receiver_handle: EntityHandle,
         },
         WatchReceiver {
             inner: rx,
-            handle: rx_handle,
+            handle: EntityHandle,
         },
     )
 }
@@ -1056,21 +994,14 @@ impl Command {
     }
 
     pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
-        let std_cmd = self.0.as_std();
-        let program = CompactString::from(std_cmd.get_program().to_string_lossy().as_ref());
-        let args = std_cmd
-            .get_args()
-            .map(|arg| CompactString::from(arg.to_string_lossy().as_ref()))
-            .collect::<Vec<_>>();
-        let env = std_cmd
-            .get_envs()
-            .filter_map(|(k, v)| {
-                v.map(|v| {
-                    CompactString::from(format!("{}={}", k.to_string_lossy(), v.to_string_lossy()))
-                })
-            })
-            .collect::<Vec<_>>();
-        (self.0, CommandDiagnostics { program, args, env })
+        (
+            self.0,
+            CommandDiagnostics {
+                program: CompactString::default(),
+                args: Vec::new(),
+                env: Vec::new(),
+            },
+        )
     }
 }
 
@@ -1362,22 +1293,10 @@ pub fn entity_ref_from_wire(_id: impl Into<CompactString>) -> EntityRef {
 }
 
 pub fn rpc_request(
-    method: impl Into<CompactString>,
-    args_preview: impl Into<CompactString>,
+    _method: impl Into<CompactString>,
+    _args_preview: impl Into<CompactString>,
 ) -> RpcRequestHandle {
-    let method = method.into();
-    let args_preview = args_preview.into();
-    let handle = EntityHandle::new(
-        format!("rpc.request.{method}"),
-        EntityBody::Request(RequestEntity {
-            method: method.clone(),
-            args_preview,
-        }),
-    );
-    RpcRequestHandle {
-        handle,
-        id: EntityId::new(format!("disabled-request-{method}")),
-    }
+    RpcRequestHandle
 }
 
 pub fn rpc_request_with_krate(
@@ -1389,19 +1308,8 @@ pub fn rpc_request_with_krate(
     rpc_request(method, args_preview)
 }
 
-pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
-    let method = method.into();
-    let handle = EntityHandle::new(
-        format!("rpc.response.{method}"),
-        EntityBody::Response(ResponseEntity {
-            method: method.clone(),
-            status: ResponseStatus::Pending,
-        }),
-    );
-    RpcResponseHandle {
-        handle,
-        id: EntityId::new(format!("disabled-response-{method}")),
-    }
+pub fn rpc_response(_method: impl Into<CompactString>) -> RpcResponseHandle {
+    RpcResponseHandle
 }
 
 pub fn rpc_response_with_krate(
@@ -1443,7 +1351,7 @@ where
 
 pub fn pull_changes_since(from_seq_no: SeqNo, _max_changes: u32) -> PullChangesResponse {
     PullChangesResponse {
-        stream_id: StreamId(CompactString::from("disabled")),
+        stream_id: DISABLED_STREAM_ID.clone(),
         from_seq_no,
         next_seq_no: from_seq_no,
         changes: Vec::new(),
@@ -1454,7 +1362,7 @@ pub fn pull_changes_since(from_seq_no: SeqNo, _max_changes: u32) -> PullChangesR
 
 pub fn current_cursor() -> StreamCursor {
     StreamCursor {
-        stream_id: StreamId(CompactString::from("disabled")),
+        stream_id: DISABLED_STREAM_ID.clone(),
         next_seq_no: SeqNo::ZERO,
     }
 }
@@ -1534,11 +1442,8 @@ where
 
 #[doc(hidden)]
 pub fn source_from_file_line(manifest_dir: &str, file: &str, line: u32) -> CompactString {
-    let path = std::path::Path::new(file);
-    if path.is_absolute() {
-        return CompactString::from(format!("{file}:{line}"));
-    }
-    CompactString::from(format!("{manifest_dir}/{file}:{line}"))
+    let _ = (manifest_dir, file, line);
+    DISABLED_EMPTY_SOURCE.clone()
 }
 
 #[macro_export]
