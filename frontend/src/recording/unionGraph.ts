@@ -94,6 +94,52 @@ export async function buildUnionLayout(
   };
 }
 
+// ── Entity diffs ──────────────────────────────────────────────
+
+export interface EntityDiff {
+  appeared: boolean;
+  disappeared: boolean;
+  statusChanged: { from: string; to: string } | null;
+  statChanged: { from: string | undefined; to: string | undefined } | null;
+  ageChange: number;
+}
+
+export function diffEntityBetweenFrames(
+  entityId: string,
+  currentFrameIndex: number,
+  prevFrameIndex: number,
+  unionLayout: UnionLayout,
+): EntityDiff | null {
+  const currentData = unionLayout.frameCache.get(currentFrameIndex);
+  const prevData = unionLayout.frameCache.get(prevFrameIndex);
+
+  const currentEntity = currentData?.entities.find((e) => e.id === entityId) ?? null;
+  const prevEntity = prevData?.entities.find((e) => e.id === entityId) ?? null;
+
+  if (!currentEntity && !prevEntity) return null;
+
+  const appeared = !!currentEntity && !prevEntity;
+  const disappeared = !currentEntity && !!prevEntity;
+
+  let statusChanged: { from: string; to: string } | null = null;
+  let statChanged: { from: string | undefined; to: string | undefined } | null = null;
+  let ageChange = 0;
+
+  if (currentEntity && prevEntity) {
+    const fromStatus = prevEntity.status?.label ?? "?";
+    const toStatus = currentEntity.status?.label ?? "?";
+    if (fromStatus !== toStatus) {
+      statusChanged = { from: fromStatus, to: toStatus };
+    }
+    if (currentEntity.stat !== prevEntity.stat) {
+      statChanged = { from: prevEntity.stat, to: currentEntity.stat };
+    }
+    ageChange = currentEntity.ageMs - prevEntity.ageMs;
+  }
+
+  return { appeared, disappeared, statusChanged, statChanged, ageChange };
+}
+
 // ── Change summaries ──────────────────────────────────────────
 
 export interface FrameChangeSummary {

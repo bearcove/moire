@@ -851,7 +851,12 @@ async fn api_record_export(State(state): State<AppState>) -> impl IntoResponse {
         let frames_json: Vec<String> = recording
             .frames
             .iter()
-            .map(|f| format!(r#"{{"frame_index":{},"snapshot":{}}}"#, f.frame_index, f.json))
+            .map(|f| {
+                format!(
+                    r#"{{"frame_index":{},"snapshot":{}}}"#,
+                    f.frame_index, f.json
+                )
+            })
             .collect();
         (session_info, frames_json)
     };
@@ -885,7 +890,9 @@ async fn api_record_export(State(state): State<AppState>) -> impl IntoResponse {
     if let Ok(value) =
         header::HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
     {
-        response.headers_mut().insert(header::CONTENT_DISPOSITION, value);
+        response
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, value);
     }
     response
 }
@@ -893,12 +900,7 @@ async fn api_record_export(State(state): State<AppState>) -> impl IntoResponse {
 async fn api_record_import(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
     let import: RecordingImportBody = match facet_json::from_slice(&body) {
         Ok(v) => v,
-        Err(e) => {
-            return json_error(
-                StatusCode::BAD_REQUEST,
-                format!("invalid import json: {e}"),
-            )
-        }
+        Err(e) => return json_error(StatusCode::BAD_REQUEST, format!("invalid import json: {e}")),
     };
 
     if import.version != 1 {

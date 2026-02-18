@@ -1356,6 +1356,14 @@
     color: light-dark(#bf5600, #ffa94d);
 }
 
+/* ── Ghost nodes ─────────────────────────────────────────── */
+
+.mockup-node--ghost,
+.mockup-channel-pair--ghost {
+    opacity: 0.25;
+    filter: saturate(0);
+}
+
 /* ── Channel pair node ───────────────────────────────────── */
 
 .mockup-channel-pair {
@@ -1501,6 +1509,51 @@
     text-align: center;
     color: var(--text-tertiary);
     font-size: 12px;
+}
+
+/* ── Inspector diff section ──────────────────────────────── */
+
+.mockup-inspector-diff {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: light-dark(#f0f4ff, #14193a);
+    border: 1px solid light-dark(#c7d7f9, #253672);
+    font-size: 11px;
+}
+
+.mockup-inspector-diff-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+}
+
+.mockup-inspector-diff-label {
+    color: var(--text-muted);
+    font-weight: 600;
+    min-width: 44px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.mockup-inspector-diff-from {
+    color: var(--text-secondary);
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.mockup-inspector-diff-arrow {
+    color: var(--text-tertiary);
+    font-size: 10px;
+}
+
+.mockup-inspector-diff-to {
+    color: light-dark(#1a56db, #7aadff);
+    font-weight: 600;
 }
 
 /* ── Source link style ───────────────────────────────────── */

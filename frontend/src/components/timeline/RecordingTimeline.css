@@ -64,3 +64,30 @@
     color: var(--text-muted);
     white-space: nowrap;
 }
+
+.recording-timeline-ghost-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.recording-timeline-ghost-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text-secondary);
+}
+
+.recording-timeline-ghost-btn--active {
+    background: light-dark(#e8f0fe, #1a2544);
+    color: light-dark(#1a56db, #7aadff);
+    border-color: light-dark(#b4cef9, #2f4a8a);
+}

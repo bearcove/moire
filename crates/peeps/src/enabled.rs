@@ -28,7 +28,7 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
 
 use peeps_wire::{
-    ClientMessage, ServerMessage, decode_server_message_default, encode_client_message_default,
+    decode_server_message_default, encode_client_message_default, ClientMessage, ServerMessage,
 };
 
 const MAX_EVENTS: usize = 16_384;

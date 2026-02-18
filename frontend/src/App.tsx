@@ -75,7 +75,9 @@ import {
   buildUnionLayout,
   computeChangeFrames,
   computeChangeSummaries,
+  diffEntityBetweenFrames,
   renderFrameFromUnion,
+  type EntityDiff,
   type FrameChangeSummary,
   type UnionLayout,
 } from "./recording/unionGraph";
@@ -1082,9 +1084,11 @@ function ChannelPairInspectorContent({
 function EntityInspectorContent({
   entity,
   onFocus,
+  entityDiff,
 }: {
   entity: EntityDef;
   onFocus: (id: string) => void;
+  entityDiff?: EntityDiff | null;
 }) {
   if (entity.channelPair) {
     return <ChannelPairInspectorContent entity={entity} onFocus={onFocus} />;
@@ -1114,6 +1118,33 @@ function EntityInspectorContent({
           </div>
         )}
       </div>
+
+      {entityDiff && (entityDiff.appeared || entityDiff.disappeared || entityDiff.statusChanged || entityDiff.statChanged) && (
+        <div className="mockup-inspector-diff">
+          {entityDiff.appeared && (
+            <Badge tone="ok">appeared this frame</Badge>
+          )}
+          {entityDiff.disappeared && (
+            <Badge tone="warn">disappeared this frame</Badge>
+          )}
+          {entityDiff.statusChanged && (
+            <div className="mockup-inspector-diff-row">
+              <span className="mockup-inspector-diff-label">Status</span>
+              <span className="mockup-inspector-diff-from">{entityDiff.statusChanged.from}</span>
+              <span className="mockup-inspector-diff-arrow">→</span>
+              <span className="mockup-inspector-diff-to">{entityDiff.statusChanged.to}</span>
+            </div>
+          )}
+          {entityDiff.statChanged && (
+            <div className="mockup-inspector-diff-row">
+              <span className="mockup-inspector-diff-label">Stat</span>
+              <span className="mockup-inspector-diff-from">{entityDiff.statChanged.from ?? "—"}</span>
+              <span className="mockup-inspector-diff-arrow">→</span>
+              <span className="mockup-inspector-diff-to">{entityDiff.statChanged.to ?? "—"}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mockup-inspector-section">
         <KeyValueRow label="Process">
@@ -1236,6 +1267,8 @@ function InspectorPanel({
   entityDefs,
   edgeDefs,
   onFocusEntity,
+  scrubbingUnionLayout,
+  currentFrameIndex,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -1243,6 +1276,8 @@ function InspectorPanel({
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
   onFocusEntity: (id: string) => void;
+  scrubbingUnionLayout?: UnionLayout;
+  currentFrameIndex?: number;
 }) {
   if (collapsed) {
     return (
@@ -1260,7 +1295,11 @@ function InspectorPanel({
   let content: React.ReactNode;
   if (selection?.kind === "entity") {
     const entity = entityDefs.find((e) => e.id === selection.id);
-    content = entity ? <EntityInspectorContent entity={entity} onFocus={onFocusEntity} /> : null;
+    const entityDiff =
+      entity && scrubbingUnionLayout && currentFrameIndex !== undefined && currentFrameIndex > 0
+        ? diffEntityBetweenFrames(entity.id, currentFrameIndex, currentFrameIndex - 1, scrubbingUnionLayout)
+        : null;
+    content = entity ? <EntityInspectorContent entity={entity} onFocus={onFocusEntity} entityDiff={entityDiff} /> : null;
   } else if (selection?.kind === "edge") {
     const edge = edgeDefs.find((e) => e.id === selection.id);
     content = edge ? <EdgeInspectorContent edge={edge} entityDefs={entityDefs} /> : null;
@@ -2088,6 +2127,8 @@ export function App() {
             entityDefs={allEntities}
             edgeDefs={allEdges}
             onFocusEntity={setFocusedEntityId}
+            scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
+            currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
           />
         }
         rightWidth={inspectorWidth}

@@ -6,17 +6,20 @@ export function Switch({
   checked,
   onChange,
   label,
+  isDisabled = false,
   className,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label: React.ReactNode;
+  isDisabled?: boolean;
   className?: string;
 }) {
   return (
     <AriaSwitch
       className={["ui-switch", className].filter(Boolean).join(" ")}
       isSelected={checked}
+      isDisabled={isDisabled}
       onChange={onChange}
     >
       <span className="ui-switch-label">{label}</span>

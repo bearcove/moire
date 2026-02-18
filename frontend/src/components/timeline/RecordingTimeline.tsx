@@ -1,7 +1,7 @@
 import "./RecordingTimeline.css";
 import type { FrameSummary } from "../../api/types";
 import type { FrameChangeSummary } from "../../recording/unionGraph";
-import { CircleNotch, SkipBack, SkipForward } from "@phosphor-icons/react";
+import { CircleNotch, Ghost, SkipBack, SkipForward } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 
 export function formatElapsed(ms: number): string {
@@ -45,6 +45,8 @@ interface RecordingTimelineProps {
   avgCaptureMs?: number;
   maxCaptureMs?: number;
   totalCaptureMs?: number;
+  ghostMode?: boolean;
+  onGhostToggle?: () => void;
 }
 
 export function RecordingTimeline({
@@ -59,6 +61,8 @@ export function RecordingTimeline({
   avgCaptureMs,
   maxCaptureMs,
   totalCaptureMs,
+  ghostMode,
+  onGhostToggle,
 }: RecordingTimelineProps) {
   const firstMs = frames[0]?.captured_at_unix_ms ?? 0;
   const currentMs = frames[currentFrameIndex]?.captured_at_unix_ms ?? firstMs;
@@ -123,6 +127,16 @@ export function RecordingTimeline({
       >
         <SkipForward size={14} weight="bold" />
       </ActionButton>
+      {!buildingUnion && onGhostToggle && (
+        <button
+          type="button"
+          className={`recording-timeline-ghost-btn${ghostMode ? " recording-timeline-ghost-btn--active" : ""}`}
+          onClick={onGhostToggle}
+          title="Ghost mode: dim non-active nodes"
+        >
+          <Ghost size={14} weight={ghostMode ? "fill" : "regular"} />
+        </button>
+      )}
       <span className="recording-timeline-time">
         {formatElapsed(elapsedMs)}
       </span>
