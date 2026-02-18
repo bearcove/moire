@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowsClockwise, CircleNotch } from "@phosphor-icons/react";
+import { ArrowsClockwise, CircleNotch, WarningCircle } from "@phosphor-icons/react";
 import { apiClient } from "../../api";
 import { Table, type Column } from "../../ui/primitives/Table";
 import { ActionButton } from "../../ui/primitives/ActionButton";
@@ -132,11 +132,13 @@ function sortRows(rows: ScopeTableRow[], key: SortKey, dir: SortDir): ScopeTable
 const ALL_KINDS_VALUE = "__all_scope_kinds__";
 
 export function ScopeTablePanel({
+  connCount,
   selectedKind,
   onSelectKind,
   selectedScopeKey,
   onSelectScope,
 }: {
+  connCount: number;
   selectedKind: string | null;
   onSelectKind: (kind: string | null) => void;
   selectedScopeKey: string | null;
@@ -286,6 +288,13 @@ export function ScopeTablePanel({
           </ActionButton>
         </div>
       </div>
+
+      {connCount === 0 && (
+        <div className="scope-table-alert">
+          <WarningCircle size={14} weight="fill" />
+          No connected processes. Scope data will appear after a process connects.
+        </div>
+      )}
 
       {error && <div className="scope-table-error">{error}</div>}
 

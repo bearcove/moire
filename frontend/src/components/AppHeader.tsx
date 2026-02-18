@@ -2,7 +2,6 @@ import React from "react";
 import {
   Aperture,
   Camera,
-  CheckCircle,
   CircleNotch,
   DownloadSimple,
   Record,
@@ -73,7 +72,15 @@ export function AppHeader({
         onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes")}
         options={[
           { value: "graph", label: "Graph" },
-          { value: "scopes", label: "Scopes" },
+          {
+            value: "scopes",
+            label: (
+              <span className="app-header-tab-label">
+                Scopes
+                {connCount === 0 && <span className="app-header-tab-warning">⚠</span>}
+              </span>
+            ),
+          },
         ]}
       />
       <button
@@ -94,11 +101,6 @@ export function AppHeader({
       </button>
       {apiMode === "lab" ? (
         <span className="app-header-badge">mock data</span>
-      ) : snap.phase === "ready" ? (
-        <span className="app-header-badge app-header-badge--active">
-          <CheckCircle size={12} weight="bold" />
-          snapshot
-        </span>
       ) : null}
       {snap.phase === "error" && <span className="app-header-error">{snap.message}</span>}
       <span className="app-header-spacer" />

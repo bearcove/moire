@@ -16,6 +16,18 @@
     margin-right: 4px;
 }
 
+.app-header-tab-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.app-header-tab-warning {
+    color: light-dark(#b35a00, #ffb267);
+    font-size: 10px;
+    line-height: 1;
+}
+
 .app-header-badge {
     display: inline-flex;
     align-items: center;

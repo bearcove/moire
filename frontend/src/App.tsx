@@ -832,6 +832,7 @@ export function App() {
                 />
               ) : (
                 <ScopeTablePanel
+                  connCount={connCount}
                   selectedKind={selectedScopeKind}
                   selectedScopeKey={selectedScope?.key ?? null}
                   onSelectKind={(kind) => {

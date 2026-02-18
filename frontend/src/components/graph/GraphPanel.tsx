@@ -211,7 +211,7 @@ export function GraphPanel({
               />
             )}
             {focusedEntityId && (
-              <ActionButton onPress={onExitFocus}>
+              <ActionButton size="sm" onPress={onExitFocus}>
                 <Crosshair size={14} weight="bold" />
                 Exit Focus
               </ActionButton>

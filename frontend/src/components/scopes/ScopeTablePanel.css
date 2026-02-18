@@ -11,9 +11,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 6px 8px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-raised);
+    font-size: 11px;
     flex-shrink: 0;
 }
 
@@ -26,7 +27,7 @@
 .scope-table-toolbar-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .scope-table-search {
@@ -41,6 +42,19 @@
     border-radius: 4px;
     padding: 8px;
     font-size: var(--font-size-sm);
+}
+
+.scope-table-alert {
+    margin: 8px 8px 0;
+    border: 1px solid color-mix(in oklab, var(--warning) 45%, transparent);
+    background: color-mix(in oklab, var(--warning) 12%, transparent);
+    color: color-mix(in oklab, var(--warning) 78%, var(--text-primary));
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .scope-table-body {
