@@ -48,19 +48,19 @@ Frontend-only approach: union graph is built client-side from fetched frames, no
 - [ ] Backend: compute activity intervals per node/edge — deferred
 - [ ] Backend: expose union graph + frame-indexed visibility metadata — deferred
 
-### M3 - Temporal Diagnostics UX
+### M3 - Temporal Diagnostics UX ✓
 
-- [ ] Add change summary per frame (`nodes +/-, edges +/-`)
-- [ ] Add inspector diffs against previous frame
-- [ ] Add optional ghost mode (dim non-active nodes)
-- [ ] Add jump controls (`next change`, `prev change`)
+- [x] Add change summary per frame (`nodes +/-, edges +/-`) — shown in timeline bar during scrubbing
+- [x] Add inspector diffs against previous frame — appeared/disappeared badges, status/stat change indicators
+- [x] Add optional ghost mode (dim non-active nodes) — toggle in timeline bar, dims with opacity+desaturate
+- [x] Add jump controls (`next change`, `prev change`) — buttons + `[`/`]` keyboard shortcuts
 
-### M4 - Scale + Export
+### M4 - Scale + Export ✓
 
-- [ ] Add frame downsampling options for long sessions
-- [ ] Add max memory guardrails + overflow behavior
-- [ ] Add export/import for recording sessions
-- [ ] Add perf telemetry for recording overhead
+- [x] Add frame downsampling options for long sessions — auto-downsample for >100 frames, configurable interval
+- [x] Add max memory guardrails + overflow behavior — 256MB default, approx_memory_bytes tracking
+- [x] Add export/import for recording sessions — GET/POST `/api/record/current/export`, download/upload in UI
+- [x] Add perf telemetry for recording overhead — per-frame capture_duration_ms, avg/max/total in timeline
 
 ## Final Data Model (Target)
 
@@ -135,8 +135,13 @@ This is the target model we should design toward, even if V1 only implements a s
   - response: `RecordCurrentResponse { session: RecordingSessionInfo | null }`
 - [x] `GET /api/record/current/frame/{frame_index}`
   - response: `SnapshotCutResponse` (pre-serialized, same shape as `/api/snapshot`)
+- [x] `GET /api/record/current/export`
+  - response: `{ version: 1, session, frames: [{ frame_index, snapshot }] }` — M4
+- [x] `POST /api/record/import`
+  - request: same export format
+  - response: `RecordCurrentResponse` — M4
 - [ ] `GET /api/record/:session_id/union`
-  - response: union graph + intervals (+ layout if precomputed) — M2
+  - response: union graph + intervals (+ layout if precomputed) — deferred
 
 ## UI Interaction Model
 
@@ -145,13 +150,13 @@ This is the target model we should design toward, even if V1 only implements a s
 - [x] Scrubber selects frame index (range slider in RecordingTimeline component)
 - [x] `Live` mode auto-follows newest frame while recording
 - [x] Frame label shows frame N/total + relative elapsed
-- [ ] Optional ghost toggle for non-active nodes — M3
+- [x] Optional ghost toggle for non-active nodes
 
 ## Risks
 
 - [x] Layout jitter if we re-run ELK per frame instead of union graph — solved by union graph approach
-- [ ] Memory growth for long sessions with full attr history
-- [ ] Snapshot latency drift at small intervals
+- [x] Memory growth for long sessions with full attr history — 256MB guardrail + frame eviction
+- [x] Snapshot latency drift at small intervals — capture timing telemetry now visible
 - [ ] UX overload if we show too much temporal detail by default
 
 ## Decisions Log
