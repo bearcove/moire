@@ -37,12 +37,11 @@
     border: 1px solid light-dark(rgba(20, 30, 46, 0.1), rgba(255, 255, 255, 0.08));
     border-radius: 22px;
     padding: 32px 36px;
-    background:
-        linear-gradient(
-            180deg,
-            light-dark(rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.03)),
-            light-dark(rgba(250, 252, 255, 0.82), rgba(255, 255, 255, 0.01))
-        );
+    background: linear-gradient(
+        180deg,
+        light-dark(rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.03)),
+        light-dark(rgba(250, 252, 255, 0.82), rgba(255, 255, 255, 0.01))
+    );
     background-color: light-dark(#eef3ff, #0b1118);
     display: flex;
     flex-direction: column;
@@ -113,7 +112,9 @@
 .app-empty-transition {
     margin-top: 12px;
     width: min(540px, 100%);
-    transition: opacity 180ms ease, transform 180ms ease;
+    transition:
+        opacity 180ms ease,
+        transform 180ms ease;
 }
 
 .app-empty-transition--connected {
@@ -372,11 +373,7 @@
     top: 0;
     bottom: 0;
     border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      light-dark(#0f5132, #4caf7a),
-      light-dark(#34c759, #75b798)
-    );
+    background: linear-gradient(90deg, light-dark(#0f5132, #4caf7a), light-dark(#34c759, #75b798));
     animation: indeterminate 1.2s ease-in-out infinite;
 }
 
@@ -613,7 +610,11 @@
     font-size: var(--font-size-sm);
     cursor: pointer;
     white-space: nowrap;
-    transition: transform 120ms ease, filter 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+    transition:
+        transform 120ms ease,
+        filter 120ms ease,
+        background-color 120ms ease,
+        box-shadow 120ms ease;
 }
 
 .btn:hover {
@@ -657,7 +658,11 @@
     box-shadow:
         0 10px 25px rgba(59, 130, 246, 0.35),
         inset 0 1px 0 rgba(255, 255, 255, 0.25);
-    transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, opacity 180ms ease;
+    transition:
+        transform 120ms ease,
+        filter 120ms ease,
+        box-shadow 120ms ease,
+        opacity 180ms ease;
 }
 
 .btn--hero:hover:not(:disabled) {
@@ -781,7 +786,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 16px 48px light-dark(rgba(0,0,0,0.12), rgba(0,0,0,0.5));
+    box-shadow: 0 16px 48px light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5));
 }
 
 .mockup-modal-header {
@@ -1285,6 +1290,7 @@
     color: var(--text-tertiary);
     font-size: 11px;
     line-height: 1;
+    padding: 0 0.4em;
 }
 
 .mockup-node-stat {
@@ -1474,34 +1480,34 @@
 
 /* ---- Live mode scaffold styles ---- */
 .page {
-  color: #111827;
-  font-family: var(--font-ui);
-  background: radial-gradient(circle at top left, #eef6ff, #f9fafb 44%);
-  margin: 0 auto;
-  max-width: 1400px;
-  padding: 1.5rem;
+    color: #111827;
+    font-family: var(--font-ui);
+    background: radial-gradient(circle at top left, #eef6ff, #f9fafb 44%);
+    margin: 0 auto;
+    max-width: 1400px;
+    padding: 1.5rem;
 }
 
 .topbar {
-  align-items: flex-start;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  margin-bottom: 1rem;
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-bottom: 1rem;
 }
 
 .topbar h1 {
-  margin: 0;
-  font-size: 1.6rem;
+    margin: 0;
+    font-size: 1.6rem;
 }
 
 .topbar p {
-  margin: 0.4rem 0 0;
-  color: #475569;
+    margin: 0.4rem 0 0;
+    color: #475569;
 }
 
 .topbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
 }

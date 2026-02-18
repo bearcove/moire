@@ -13,7 +13,40 @@ scripts/run-example channel-full-stall
 
 When you stop the runner (`Ctrl+C`), all child processes are stopped too.
 
-## 1) Channel full stall (`tokio::sync::mpsc` behavior)
+## 1) Oneshot sender lost in map (`tokio::sync::oneshot`)
+
+Path: `examples/oneshot-sender-lost-in-map`
+
+What it does:
+- Creates a request/response oneshot pair
+- Stores the sender in a pending map under the wrong key
+- Receives a response but misses lookup, so the sender stays alive in the map and the receiver waits forever
+
+### Run it
+
+```bash
+scripts/run-example oneshot-sender-lost-in-map
+```
+
+Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect `demo.request_42.response`, `response_bus.recv`, and `request_42.await_response.blocked`.
+
+## 2) Mutex lock-order inversion (`std::sync` deadlock)
+
+Path: `examples/mutex-lock-order-inversion`
+
+What it does:
+- Creates two shared mutexes (`demo.shared.left`, `demo.shared.right`)
+- Starts two worker threads that intentionally acquire those mutexes in opposite order
+- Uses a barrier so both threads hold one lock before attempting the second lock, making the deadlock deterministic
+- Exposes async symptoms with tracked tasks waiting forever on worker completion signals
+
+### Run it
+
+```bash
+scripts/run-example mutex-lock-order-inversion
+```
+
+## 3) Channel full stall (`tokio::sync::mpsc` behavior)
 
 Path: `examples/channel-full-stall`
 
@@ -45,7 +78,7 @@ PEEPS_DASHBOARD=127.0.0.1:9119 \
 
 Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect the `demo.work_queue` channel nodes plus the `queue.send.blocked` task.
 
-## 2) Roam RPC stuck request
+## 4) Roam RPC stuck request
 
 Path: `examples/roam-rpc-stuck-request`
 
@@ -84,7 +117,7 @@ PEEPS_DASHBOARD=127.0.0.1:9119 \
   cargo run --manifest-path examples/roam-rpc-stuck-request/Cargo.toml
 ```
 
-## 3) Semaphore starvation (`tokio::sync::Semaphore`)
+## 5) Semaphore starvation (`tokio::sync::Semaphore`)
 
 Path: `examples/semaphore-starvation`
 
@@ -99,7 +132,7 @@ What it does:
 scripts/run-example semaphore-starvation
 ```
 
-## 4) Roam Rust↔Swift stuck request
+## 6) Roam Rust↔Swift stuck request
 
 Path: `examples/roam-rust-swift-stuck-request`
 
