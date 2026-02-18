@@ -9,7 +9,7 @@ import {
   type EntityDef,
   type EdgeDef,
 } from "../snapshot";
-import { measureEntityDefs } from "../graph/render/NodeLayer";
+import { measureGraphLayout } from "../graph/render/NodeLayer";
 import { layoutGraph } from "../graph/elkAdapter";
 import type { GraphGeometry, GeometryNode, GeometryEdge } from "../graph/geometry";
 
@@ -102,8 +102,10 @@ export async function buildUnionLayout(
   const unionEdges = Array.from(unionEdgesById.values());
 
   // Measure and layout the full union graph.
-  const sizes = await measureEntityDefs(unionEntities);
-  const geometry = await layoutGraph(unionEntities, unionEdges, sizes);
+  const measurements = await measureGraphLayout(unionEntities, groupMode);
+  const geometry = await layoutGraph(unionEntities, unionEdges, measurements.nodeSizes, groupMode, {
+    subgraphHeaderHeight: measurements.subgraphHeaderHeight,
+  });
 
   return {
     geometry,

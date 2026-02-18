@@ -1,26 +1,52 @@
+.graph-card {
+    --graph-card-bg: var(--surface-raised);
+    --graph-card-border-color: var(--border);
+    --graph-card-border-width: 1px;
+    font-family: var(--font-ui);
+    white-space: nowrap;
+    background: var(--graph-card-bg);
+    border: var(--graph-card-border-width) solid var(--graph-card-border-color);
+    color: var(--text-primary);
+    position: relative;
+    border-radius: 8px;
+}
+
+.graph-card--selected {
+    outline: 2px solid light-dark(#3b82f6, #60a5fa);
+    outline-offset: 2px;
+}
+
+.graph-card--scope {
+    --graph-card-border-color: hsl(var(--scope-h) 70% 45% / 0.72);
+    --graph-card-bg: hsl(var(--scope-h) 90% 54% / 0.24);
+}
+
+.graph-card--stat-crit {
+    --graph-card-border-color: light-dark(#d30000, #ff6b6b);
+}
+
+.graph-card--stat-warn {
+    --graph-card-border-color: light-dark(#bf5600, #ffa94d);
+}
+
+.graph-card--ghost {
+    opacity: 0.68;
+    filter: saturate(0);
+}
+
 .graph-node {
-    --graph-node-bg: var(--surface-raised);
-    --graph-node-border-color: var(--border);
-    --graph-node-border-width: 1px;
     display: flex;
     gap: 8px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-family: var(--font-mono);
-    white-space: nowrap;
-    background: var(--graph-node-bg);
-    border: var(--graph-node-border-width) solid var(--graph-node-border-color);
-    color: var(--text-primary);
+    padding: 6px 8px;
     align-items: center;
-    position: relative;
 }
 
 .graph-node-icon {
     display: grid;
     place-items: center;
     flex-shrink: 0;
-    width: 20px;
-    color: var(--text-secondary);
+    width: 18px;
+    color: inherit;
 }
 
 .graph-node-content {
@@ -36,27 +62,13 @@
 }
 
 .graph-node--cycle {
-    --graph-node-border-width: 2px;
-    --graph-node-border-color: light-dark(#d7263d, #ff6b81);
-    --graph-node-bg: light-dark(#fff5f5, #2a1414);
+    --graph-card-border-width: 2px;
+    --graph-card-border-color: light-dark(#d7263d, #ff6b81);
+    --graph-card-bg: light-dark(#fff5f5, #2a1414);
 }
 
 .graph-node--cycle .graph-node-icon {
     color: light-dark(#d7263d, #ff6b81);
-}
-
-.graph-node--selected {
-    outline: 2px solid light-dark(#3b82f6, #60a5fa);
-    outline-offset: 2px;
-}
-
-.graph-node--scope {
-    --graph-node-border-color: hsl(var(--scope-h) 70% 45% / 0.58);
-    --graph-node-bg: hsl(var(--scope-h) 90% 54% / 0.1);
-}
-
-.graph-node--scope .graph-node-icon {
-    color: hsl(var(--scope-h) 70% 40%);
 }
 
 .graph-node-label {
@@ -93,23 +105,7 @@
     font-weight: 700;
 }
 
-.graph-node--stat-crit {
-    --graph-node-border-color: light-dark(#d30000, #ff6b6b);
-}
-
-.graph-node--stat-crit .graph-node-icon {
+.graph-card--stat-crit .graph-node-icon,
+.graph-card--stat-warn .graph-node-icon {
     color: var(--text-secondary);
-}
-
-.graph-node--stat-warn {
-    --graph-node-border-color: light-dark(#bf5600, #ffa94d);
-}
-
-.graph-node--stat-warn .graph-node-icon {
-    color: var(--text-secondary);
-}
-
-.graph-node--ghost {
-    opacity: 0.25;
-    filter: saturate(0);
 }

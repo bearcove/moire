@@ -22,13 +22,14 @@ export function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
   return (
     <div
       className={[
+        "graph-card",
         "channel-pair",
         "channel-pair--compact",
-        selected && "channel-pair--selected",
-        statTone === "crit" && "channel-pair--stat-crit",
-        statTone === "warn" && "channel-pair--stat-warn",
-        showScopeColor && "channel-pair--scope",
-        ghost && "channel-pair--ghost",
+        selected && "graph-card--selected",
+        statTone === "crit" && "graph-card--stat-crit",
+        statTone === "warn" && "graph-card--stat-warn",
+        showScopeColor && "graph-card--scope",
+        ghost && "graph-card--ghost",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -47,7 +48,7 @@ export function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
         aria-hidden="true"
       />
       <div className="channel-pair-compact-main">
-        <span className="channel-pair-icon">{kindIcon("channel_pair", 18)}</span>
+        <span className="channel-pair-icon">{kindIcon("channel_pair", 16)}</span>
         <span className="channel-pair-name">{channelName}</span>
       </div>
       <span

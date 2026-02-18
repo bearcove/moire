@@ -23,13 +23,14 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
   return (
     <div
         className={[
+          "graph-card",
           "graph-node",
           data.inCycle && "graph-node--cycle",
-          data.selected && "graph-node--selected",
-          data.statTone === "crit" && "graph-node--stat-crit",
-          data.statTone === "warn" && "graph-node--stat-warn",
-          showScopeColor && "graph-node--scope",
-          data.ghost && "graph-node--ghost",
+          data.selected && "graph-card--selected",
+          data.statTone === "crit" && "graph-card--stat-crit",
+          data.statTone === "warn" && "graph-card--stat-warn",
+          showScopeColor && "graph-card--scope",
+          data.ghost && "graph-card--ghost",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -41,7 +42,7 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
             : undefined
         }
       >
-        <span className="graph-node-icon">{kindIcon(data.kind, 18)}</span>
+        <span className="graph-node-icon">{kindIcon(data.kind, 16)}</span>
         <div className="graph-node-content">
           <div className="graph-node-main">
             <span className="graph-node-label">{data.label}</span>

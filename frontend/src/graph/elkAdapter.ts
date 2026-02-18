@@ -17,7 +17,12 @@ const elkOptions = {
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
 
-const subgraphElkPadding = "[top=30,left=12,bottom=12,right=12]";
+const subgraphPaddingBase = {
+  top: 30,
+  left: 12,
+  bottom: 12,
+  right: 12,
+};
 
 // ── Edge styling ──────────────────────────────────────────────
 
@@ -83,6 +88,10 @@ export function edgeMarkerSize(edge: EdgeDef): number {
 
 export type SubgraphScopeMode = "none" | "process" | "crate";
 
+export type LayoutGraphOptions = {
+  subgraphHeaderHeight?: number;
+};
+
 // ── Layout ────────────────────────────────────────────────────
 
 export async function layoutGraph(
@@ -90,6 +99,7 @@ export async function layoutGraph(
   edgeDefs: EdgeDef[],
   nodeSizes: Map<string, { width: number; height: number }>,
   subgraphScopeMode: SubgraphScopeMode = "none",
+  options: LayoutGraphOptions = {},
 ): Promise<GraphGeometry> {
   const nodeIds = new Set(entityDefs.map((n) => n.id));
   const validEdges = edgeDefs.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
@@ -102,6 +112,8 @@ export async function layoutGraph(
   };
 
   const hasSubgraphs = subgraphScopeMode !== "none";
+  const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
+  const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.left},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
 
   const defaultInPortId = (entityId: string) => `${entityId}:in`;
   const defaultOutPortId = (entityId: string) => `${entityId}:out`;

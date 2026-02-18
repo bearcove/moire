@@ -3,21 +3,22 @@
     height: 100%;
     border: 1px solid var(--border-subtle);
     border-radius: 10px;
-    background: light-dark(rgba(31, 41, 55, 0.03), rgba(255, 255, 255, 0.02));
+    background: light-dark(rgba(31, 41, 55, 0.04), rgba(255, 255, 255, 0.03));
     box-shadow: inset 0 1px 0 light-dark(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.03));
 }
 
 .scope-group-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 6px 8px;
-    border-bottom: 1px dashed var(--border-subtle);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-muted);
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: light-dark(rgba(31, 41, 55, 0.09), rgba(255, 255, 255, 0.09));
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
 }
 
 .scope-group-label {
@@ -33,11 +34,5 @@
     display: inline-flex;
     align-items: center;
     color: var(--text-tertiary);
-    flex-shrink: 0;
-}
-
-.scope-group-meta {
-    color: var(--text-tertiary);
-    font-weight: 600;
     flex-shrink: 0;
 }

@@ -6,6 +6,9 @@ import type { EntityDef } from "../../snapshot";
 import { GraphNode, type GraphNodeData } from "../../components/graph/GraphNode";
 import { ChannelPairNode, type ChannelPairNodeData } from "../../components/graph/ChannelPairNode";
 import { RpcPairNode, type RpcPairNodeData } from "../../components/graph/RpcPairNode";
+import { ProcessIdenticon } from "../../ui/primitives/ProcessIdenticon";
+import { scopeKindIcon } from "../../scopeKindSpec";
+import "../../components/graph/ScopeGroupNode.css";
 import "./NodeLayer.css";
 
 export interface NodeLayerProps {
@@ -17,12 +20,28 @@ export interface NodeLayerProps {
   ghostNodeIds?: Set<string>;
 }
 
+type SubgraphScopeMode = "none" | "process" | "crate";
+
+export type GraphMeasureResult = {
+  nodeSizes: Map<string, { width: number; height: number }>;
+  subgraphHeaderHeight: number;
+};
+
 // ── Measurement ───────────────────────────────────────────────
 
 /** Render each entity's card in a hidden off-screen container and return measured sizes. */
 export async function measureEntityDefs(
   defs: EntityDef[],
 ): Promise<Map<string, { width: number; height: number }>> {
+  const measurements = await measureGraphLayout(defs, "none");
+  return measurements.nodeSizes;
+}
+
+/** Measure node cards plus subgraph header height (for ELK top padding). */
+export async function measureGraphLayout(
+  defs: EntityDef[],
+  subgraphScopeMode: SubgraphScopeMode = "none",
+): Promise<GraphMeasureResult> {
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
   await Promise.resolve();
 
@@ -86,8 +105,38 @@ export async function measureEntityDefs(
     root.unmount();
   }
 
+  let subgraphHeaderHeight = 0;
+  if (subgraphScopeMode !== "none") {
+    const el = document.createElement("div");
+    container.appendChild(el);
+    const root = createRoot(el);
+    const sampleLabel =
+      subgraphScopeMode === "process" ? "peeps-examples(27139)" : "peeps-example";
+
+    flushSync(() =>
+      root.render(
+        <div className="scope-group" style={{ width: 320 }}>
+          <div className="scope-group-header">
+            <span className="scope-group-label">
+              <span className="scope-group-icon">
+                {subgraphScopeMode === "process"
+                  ? <ProcessIdenticon name={sampleLabel} seed={sampleLabel} size={12} />
+                  : scopeKindIcon(subgraphScopeMode, 12)}
+              </span>
+              <span>{sampleLabel}</span>
+            </span>
+          </div>
+        </div>,
+      ),
+    );
+
+    const headerEl = el.querySelector(".scope-group-header");
+    if (headerEl instanceof HTMLElement) subgraphHeaderHeight = headerEl.offsetHeight;
+    root.unmount();
+  }
+
   document.body.removeChild(container);
-  return sizes;
+  return { nodeSizes: sizes, subgraphHeaderHeight };
 }
 
 // ── NodeLayer ──────────────────────────────────────────────────

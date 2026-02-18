@@ -2,6 +2,7 @@ import React from "react";
 import { Badge } from "../../ui/primitives/Badge";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import type { EntityDef, Tone } from "../../snapshot";
+import "./GraphNode.css";
 import "./ChannelPairNode.css";
 import { kindIcon } from "../../nodeKindSpec";
 
@@ -30,11 +31,12 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
   return (
     <div
       className={[
+        "graph-card",
         "channel-pair",
-        selected && "channel-pair--selected",
-        respStatus === "error" && "channel-pair--stat-crit",
-        showScopeColor && "channel-pair--scope",
-        ghost && "channel-pair--ghost",
+        selected && "graph-card--selected",
+        respStatus === "error" && "graph-card--stat-crit",
+        showScopeColor && "graph-card--scope",
+        ghost && "graph-card--ghost",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -53,7 +55,7 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
         aria-hidden="true"
       />
       <div className="channel-pair-header">
-        <span className="channel-pair-icon">{kindIcon("rpc_pair", 18)}</span>
+        <span className="channel-pair-icon">{kindIcon("rpc_pair", 16)}</span>
         <span className="channel-pair-name">{rpcName}</span>
       </div>
       <div className="channel-pair-rows">

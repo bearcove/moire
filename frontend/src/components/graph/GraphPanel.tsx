@@ -6,7 +6,7 @@ import { FilterMenu, type FilterMenuItem } from "../../ui/primitives/FilterMenu"
 import { Switch } from "../../ui/primitives/Switch";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import { layoutGraph, type SubgraphScopeMode } from "../../graph/elkAdapter";
-import { measureEntityDefs } from "../../graph/render/NodeLayer";
+import { measureGraphLayout } from "../../graph/render/NodeLayer";
 import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
@@ -106,8 +106,12 @@ export function GraphPanel({
   React.useEffect(() => {
     if (unionFrameLayout) return; // skip — union mode provides layout directly
     if (entityDefs.length === 0) return;
-    measureEntityDefs(entityDefs)
-      .then((sizes) => layoutGraph(entityDefs, edgeDefs, sizes, subgraphScopeMode))
+    measureGraphLayout(entityDefs, subgraphScopeMode)
+      .then((measurements) =>
+        layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
+          subgraphHeaderHeight: measurements.subgraphHeaderHeight,
+        }),
+      )
       .then(setLayout)
       .catch(console.error);
   }, [entityDefs, edgeDefs, subgraphScopeMode, unionFrameLayout]);

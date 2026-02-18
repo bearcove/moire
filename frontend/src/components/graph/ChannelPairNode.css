@@ -1,22 +1,11 @@
 /* ── Channel pair node ───────────────────────────────────── */
 
-.channel-pair--ghost {
-    opacity: 0.25;
-    filter: saturate(0);
-}
-
 .channel-pair {
     position: relative;
     display: flex;
     flex-direction: column;
     gap: 5px;
-    padding: 7px 10px;
-    border-radius: 8px;
-    font-family: var(--font-mono);
-    white-space: nowrap;
-    background: var(--surface-raised);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
+    padding: 6px 8px;
     min-width: 0;
     overflow: visible;
 }
@@ -26,7 +15,7 @@
     flex-direction: row;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
+    padding: 6px 8px;
     width: fit-content;
     max-width: 100%;
 }
@@ -44,28 +33,6 @@
     font-weight: 600;
 }
 
-.channel-pair--selected {
-    outline: 2px solid light-dark(#3b82f6, #60a5fa);
-    outline-offset: 2px;
-}
-
-.channel-pair--scope {
-    border-color: hsl(var(--scope-h) 70% 45% / 0.58);
-    background: hsl(var(--scope-h) 90% 54% / 0.1);
-}
-
-.channel-pair--scope .channel-pair-icon {
-    color: hsl(var(--scope-h) 70% 40%);
-}
-
-.channel-pair--stat-crit {
-    border-color: light-dark(#d30000, #ff6b6b);
-}
-
-.channel-pair--stat-warn {
-    border-color: light-dark(#bf5600, #ffa94d);
-}
-
 .channel-pair-header {
     display: flex;
     align-items: center;
@@ -81,9 +48,9 @@
 .channel-pair-icon {
     display: grid;
     place-items: center;
-    width: 20px;
-    height: 20px;
-    color: var(--text-secondary);
+    width: 18px;
+    height: 18px;
+    color: inherit;
     flex-shrink: 0;
 }
 
@@ -128,9 +95,10 @@
     width: 9px;
     height: 9px;
     border-radius: 999px;
-    border: 1.5px solid light-dark(#6f737b, #b8bdc7);
-    background: light-dark(#f5f7fa, #12161c);
-    box-shadow: 0 0 0 1px light-dark(rgba(255, 255, 255, 0.8), rgba(10, 11, 13, 0.75));
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    opacity: 0;
     align-self: center;
     flex-shrink: 0;
     z-index: 2;

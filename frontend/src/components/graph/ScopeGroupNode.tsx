@@ -12,7 +12,6 @@ export function ScopeGroupNode({ data }: { data: ScopeGroupNodeData }) {
     <div className="scope-group">
       <div className="scope-group-header">
         <span className="scope-group-label">{data.label}</span>
-        <span className="scope-group-meta">{data.count}</span>
       </div>
     </div>
   );
