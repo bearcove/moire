@@ -4,7 +4,7 @@ CSS is co-located with components. Each component has a `.css` file next to its 
 
 ## Rules
 
-- `styles.css` contains **only**: `:root` design tokens, global resets (`*`, `html`, `body`, `#app`), and `@keyframes`. Do **not** add component styles here.
+- `styles.css` contains **only**: `:root` design tokens, global resets (`*`, `html`, `body`, `#app`), global utility classes (`.spinning`), and `@keyframes`. Do **not** add component styles here.
 - Every component's styles live in a `.css` file next to the `.tsx` file.
 - To add styles for `Foo.tsx`, put them in `Foo.css` (create it if it doesn't exist) and add `import "./Foo.css";` to `Foo.tsx`.
 - Class names use the existing prefix convention — keep the same prefix as the component (`.ui-action-button*`, `.badge*`, `.panel*`, etc.).
@@ -13,8 +13,21 @@ CSS is co-located with components. Each component has a `.css` file next to its 
 
 | CSS file | What goes in it |
 |---|---|
-| `styles.css` | `:root` tokens, `*`/`html`/`body`/`#app` resets, all `@keyframes` |
-| `App.css` | App shell, header, snapshot UI, empty state |
+| `styles.css` | `:root` tokens, `*`/`html`/`body`/`#app` resets, `.spinning`, all `@keyframes` |
+| `App.css` | `.app` shell layout |
+| **Graph components** | |
+| `components/graph/GraphNode.css` | `.graph-node*` |
+| `components/graph/ChannelPairNode.css` | `.channel-pair*` (shared by ChannelPairNode + RpcPairNode) |
+| `components/graph/ScopeGroupNode.css` | `.scope-group*` |
+| `components/graph/ElkRoutedEdge.css` | `.edge-glow`, `.edge-label*` |
+| `components/graph/GraphPanel.css` | `.graph-*` (toolbar, panel, flow overrides, empty state) |
+| **Inspector components** | |
+| `components/inspector/InspectorPanel.css` | `.inspector-*` (shared by all inspector sub-components) |
+| `components/inspector/MetaTree.css` | `.meta-*` |
+| **App-level components** | |
+| `components/AppHeader.css` | `.app-header*`, `.proc-pill*`, `.recording-dot` |
+| `components/ProcessModal.css` | `.modal-*` |
+| **UI primitives** | |
 | `ui/layout/Panel.css` | `.panel*`, `.panel-header*`, `.panel-collapse*` |
 | `ui/layout/Row.css` | `.ui-row*` |
 | `ui/layout/Section.css` | `.ui-section*` |
@@ -29,8 +42,4 @@ CSS is co-located with components. Each component has a `.css` file next to its 
 | `ui/primitives/Slider.css` | `.ui-slider*` |
 | `ui/primitives/Table.css` | `.ui-table*` |
 | `ui/primitives/TextInput.css` | `.ui-input*`, `.ui-text-field*` |
-| `components/graph/graph.css` | Graph panel, node cards, resources, filter dropdowns |
-| `components/inspector/inspector.css` | Inspector panel |
-| `components/requests/requests.css` | Request and suspect cards |
-| `components/timeline/timeline.css` | Timeline panel |
 | `pages/StorybookPage.css` | Storybook/lab page |

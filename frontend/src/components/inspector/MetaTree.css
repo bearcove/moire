@@ -1,0 +1,63 @@
+/* ── Metadata tree ────────────────────────────────────────── */
+
+.meta-tree {
+    padding: 4px 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.meta-leaf {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 1px 0;
+}
+
+.meta-key {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.meta-value {
+    color: var(--text-primary);
+}
+
+.meta-value--string {
+    color: light-dark(#2a7e4f, #7ec699);
+}
+
+.meta-value--number {
+    color: light-dark(#1a5fb4, #7aadff);
+}
+
+.meta-value--boolean {
+    color: light-dark(#a0522d, #e6a86c);
+}
+
+.meta-hint {
+    color: var(--text-tertiary);
+    font-size: 10px;
+}
+
+.meta-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 1px 0;
+    width: 100%;
+    text-align: left;
+}
+
+.meta-toggle:hover .meta-key {
+    color: var(--text-primary);
+}
+
+.meta-branch {
+    /* nesting container */
+}

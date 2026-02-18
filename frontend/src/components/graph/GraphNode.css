@@ -1,0 +1,110 @@
+.graph-node {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    align-items: center;
+}
+
+.graph-node-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 20px;
+    color: var(--text-secondary);
+}
+
+.graph-node-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.graph-node-main {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.graph-node--cycle {
+    border: 2px solid light-dark(#d7263d, #ff6b81);
+    background: light-dark(#fff5f5, #2a1414);
+}
+
+.graph-node--cycle .graph-node-icon {
+    color: light-dark(#d7263d, #ff6b81);
+}
+
+.graph-node--selected {
+    outline: 2px solid light-dark(#3b82f6, #60a5fa);
+    outline-offset: 2px;
+}
+
+.graph-node--scope {
+    border-color: hsl(var(--scope-h) 70% 45% / 0.58);
+    background: hsl(var(--scope-h) 90% 54% / 0.1);
+}
+
+.graph-node--scope .graph-node-icon {
+    color: hsl(var(--scope-h) 70% 40%);
+}
+
+.graph-node-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.graph-node-details {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.graph-node-dot {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    line-height: 1;
+    padding: 0 0.4em;
+}
+
+.graph-node-stat {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.graph-node-stat--crit {
+    color: light-dark(#d30000, #ff6b6b);
+    font-weight: 700;
+}
+
+.graph-node-stat--warn {
+    color: light-dark(#bf5600, #ffa94d);
+    font-weight: 700;
+}
+
+.graph-node--stat-crit {
+    border-color: light-dark(#d30000, #ff6b6b);
+}
+
+.graph-node--stat-crit .graph-node-icon {
+    color: var(--text-secondary);
+}
+
+.graph-node--stat-warn {
+    border-color: light-dark(#bf5600, #ffa94d);
+}
+
+.graph-node--stat-warn .graph-node-icon {
+    color: var(--text-secondary);
+}
+
+.graph-node--ghost {
+    opacity: 0.25;
+    filter: saturate(0);
+}

@@ -1,0 +1,95 @@
+.app-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-raised);
+    font-size: var(--font-size-sm);
+    flex-shrink: 0;
+}
+
+.app-header-title {
+    font-weight: 800;
+    font-size: var(--font-size-md);
+    letter-spacing: -0.02em;
+}
+
+.app-header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--surface-sunken);
+    color: var(--text-secondary);
+}
+
+.app-header-badge--active {
+    background: light-dark(#e8f5e9, #1b3a1b);
+    color: light-dark(#2e7d32, #66bb6a);
+}
+
+.app-header-badge--recording {
+    background: light-dark(#ffebee, #3a1b1b);
+    color: light-dark(#c62828, #ef9a9a);
+}
+
+.app-header-badge--recording-warn {
+    background: light-dark(#fff3e0, #3a2a0a);
+    color: light-dark(#e65100, #ffab40);
+}
+
+.app-header-error {
+    font-size: 11px;
+    color: light-dark(#c62828, #ef9a9a);
+    font-weight: 600;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-header-spacer {
+    flex: 1;
+}
+
+.proc-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: opacity 120ms ease;
+}
+
+.proc-pill:hover {
+    opacity: 0.8;
+}
+
+.proc-pill--connected {
+    background: light-dark(#e8f5e9, #1b3a1b);
+    color: light-dark(#2e7d32, #66bb6a);
+}
+
+.proc-pill--disconnected {
+    background: light-dark(#ffebee, #3a1b1b);
+    color: light-dark(#c62828, #ef9a9a);
+}
+
+.recording-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: light-dark(#d30000, #ff6b6b);
+    flex-shrink: 0;
+    animation: pulse-danger 1.5s ease-in-out infinite;
+}

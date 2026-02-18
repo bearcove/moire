@@ -309,7 +309,7 @@ export async function layoutGraph(
     }
     return {
       id: def.id,
-      type: "mockNode",
+      type: "graphNode",
       position,
       parentId,
       extent: parentId ? "parent" : undefined,
