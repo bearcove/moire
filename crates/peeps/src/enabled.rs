@@ -1411,7 +1411,12 @@ impl<T> Mutex<T> {
         self.lock_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
-    pub fn lock_with_cx(&self, _cx: PeepsContext) -> MutexGuard<'_, T> {
+    #[track_caller]
+    pub fn lock_with_cx(&self, cx: PeepsContext) -> MutexGuard<'_, T> {
+        self.lock_with_source(Source::caller(), cx)
+    }
+
+    pub fn lock_with_source(&self, _source: Source, _cx: PeepsContext) -> MutexGuard<'_, T> {
         if let Some(inner) = self.inner.try_lock() {
             return self.wrap_guard(inner);
         }
@@ -1427,7 +1432,16 @@ impl<T> Mutex<T> {
         self.try_lock_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
-    pub fn try_lock_with_cx(&self, _cx: PeepsContext) -> Option<MutexGuard<'_, T>> {
+    #[track_caller]
+    pub fn try_lock_with_cx(&self, cx: PeepsContext) -> Option<MutexGuard<'_, T>> {
+        self.try_lock_with_source(Source::caller(), cx)
+    }
+
+    pub fn try_lock_with_source(
+        &self,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> Option<MutexGuard<'_, T>> {
         self.inner.try_lock().map(|inner| self.wrap_guard(inner))
     }
 
@@ -1536,19 +1550,81 @@ impl<T> RwLock<T> {
         }
     }
 
+    #[track_caller]
     pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
+        self.read_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn read_with_cx(&self, cx: PeepsContext) -> parking_lot::RwLockReadGuard<'_, T> {
+        self.read_with_source(Source::caller(), cx)
+    }
+
+    pub fn read_with_source(
+        &self,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> parking_lot::RwLockReadGuard<'_, T> {
         self.inner.read()
     }
 
+    #[track_caller]
     pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
+        self.write_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn write_with_cx(&self, cx: PeepsContext) -> parking_lot::RwLockWriteGuard<'_, T> {
+        self.write_with_source(Source::caller(), cx)
+    }
+
+    pub fn write_with_source(
+        &self,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> parking_lot::RwLockWriteGuard<'_, T> {
         self.inner.write()
     }
 
+    #[track_caller]
     pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+        self.try_read_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn try_read_with_cx(
+        &self,
+        cx: PeepsContext,
+    ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+        self.try_read_with_source(Source::caller(), cx)
+    }
+
+    pub fn try_read_with_source(
+        &self,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
         self.inner.try_read()
     }
 
+    #[track_caller]
     pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+        self.try_write_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn try_write_with_cx(
+        &self,
+        cx: PeepsContext,
+    ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+        self.try_write_with_source(Source::caller(), cx)
+    }
+
+    pub fn try_write_with_source(
+        &self,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
         self.inner.try_write()
     }
 }
@@ -2297,7 +2373,26 @@ impl<T> Sender<T> {
         &self,
         value: T,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
-        let source = Source::caller();
+        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn send_with_cx(
+        &self,
+        value: T,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
+        self.send_with_source(value, Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn send_with_source(
+        &self,
+        value: T,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_send_full() {
@@ -2410,7 +2505,21 @@ impl<T> Receiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
-        let source = Source::caller();
+        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_cx(&mut self, cx: PeepsContext) -> impl Future<Output = Option<T>> + '_ {
+        self.recv_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -2522,6 +2631,24 @@ impl<T> UnboundedSender<T> {
 
     #[track_caller]
     pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn send_with_cx(
+        &self,
+        value: T,
+        cx: PeepsContext,
+    ) -> Result<(), mpsc::error::SendError<T>> {
+        self.send_with_source(value, Source::caller(), cx)
+    }
+
+    pub fn send_with_source(
+        &self,
+        value: T,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> Result<(), mpsc::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
                 let queue_len = if let Ok(mut state) = self.channel.lock() {
@@ -2602,7 +2729,21 @@ impl<T> UnboundedReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
-        let source = Source::caller();
+        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_cx(&mut self, cx: PeepsContext) -> impl Future<Output = Option<T>> + '_ {
+        self.recv_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -2981,7 +3122,21 @@ impl<T> OneshotSender<T> {
     }
 
     #[track_caller]
-    pub fn send(mut self, value: T) -> Result<(), T> {
+    pub fn send(self, value: T) -> Result<(), T> {
+        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn send_with_cx(self, value: T, cx: PeepsContext) -> Result<(), T> {
+        self.send_with_source(value, Source::caller(), cx)
+    }
+
+    pub fn send_with_source(
+        mut self,
+        value: T,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> Result<(), T> {
         let Some(inner) = self.inner.take() else {
             return Err(value);
         };
@@ -3051,8 +3206,25 @@ impl<T> OneshotReceiver<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn recv(mut self) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
-        let source = Source::caller();
+    pub fn recv(self) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
+        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_cx(
+        self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
+        self.recv_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_source(
+        mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
             let result = instrument_operation_on_with_source(
@@ -3203,6 +3375,24 @@ impl<T: Clone> BroadcastSender<T> {
 
     #[track_caller]
     pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
+        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn send_with_cx(
+        &self,
+        value: T,
+        cx: PeepsContext,
+    ) -> Result<usize, broadcast::error::SendError<T>> {
+        self.send_with_source(value, Source::caller(), cx)
+    }
+
+    pub fn send_with_source(
+        &self,
+        value: T,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> Result<usize, broadcast::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(receivers) => {
                 if let Ok(event) = Event::channel_sent(
@@ -3265,7 +3455,24 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
-        let source = Source::caller();
+        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_cx(
+        &mut self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
+        self.recv_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn recv_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
                 &self.handle,
@@ -3338,6 +3545,24 @@ impl<T: Clone> WatchSender<T> {
 
     #[track_caller]
     pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
+        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn send_with_cx(
+        &self,
+        value: T,
+        cx: PeepsContext,
+    ) -> Result<(), watch::error::SendError<T>> {
+        self.send_with_source(value, Source::caller(), cx)
+    }
+
+    pub fn send_with_source(
+        &self,
+        value: T,
+        _source: Source,
+        _cx: PeepsContext,
+    ) -> Result<(), watch::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
                 let now = peeps_types::PTime::now();
@@ -3386,6 +3611,15 @@ impl<T: Clone> WatchSender<T> {
 
     #[track_caller]
     pub fn send_replace(&self, value: T) -> T {
+        self.send_replace_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn send_replace_with_cx(&self, value: T, cx: PeepsContext) -> T {
+        self.send_replace_with_source(value, Source::caller(), cx)
+    }
+
+    pub fn send_replace_with_source(&self, value: T, _source: Source, _cx: PeepsContext) -> T {
         let old = self.inner.send_replace(value);
         let now = peeps_types::PTime::now();
         if let Ok(mut state) = self.channel.lock() {
@@ -3419,7 +3653,24 @@ impl<T: Clone> WatchReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn changed(&mut self) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
-        let source = Source::caller();
+        self.changed_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn changed_with_cx(
+        &mut self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
+        self.changed_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn changed_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
                 &self.handle,
@@ -3644,7 +3895,21 @@ impl Notify {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn notified(&self) -> impl Future<Output = ()> + '_ {
-        let source = Source::caller();
+        self.notified_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn notified_with_cx(&self, cx: PeepsContext) -> impl Future<Output = ()> + '_ {
+        self.notified_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn notified_with_source(
+        &self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = ()> + '_ {
         async move {
             let waiters = self
                 .waiter_count
@@ -3724,7 +3989,34 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-        let source = Source::caller();
+        self.get_or_init_with_cx(f, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn get_or_init_with_cx<'a, F, Fut>(
+        &'a self,
+        f: F,
+        cx: PeepsContext,
+    ) -> impl Future<Output = &'a T> + 'a
+    where
+        F: FnOnce() -> Fut + 'a,
+        Fut: Future<Output = T> + 'a,
+    {
+        self.get_or_init_with_source(f, Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn get_or_init_with_source<'a, F, Fut>(
+        &'a self,
+        f: F,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = &'a T> + 'a
+    where
+        F: FnOnce() -> Fut + 'a,
+        Fut: Future<Output = T> + 'a,
+    {
         async move {
             let waiters = self
                 .waiter_count
@@ -3771,7 +4063,34 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-        let source = Source::caller();
+        self.get_or_try_init_with_cx(f, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn get_or_try_init_with_cx<'a, F, Fut, E>(
+        &'a self,
+        f: F,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<&'a T, E>> + 'a
+    where
+        F: FnOnce() -> Fut + 'a,
+        Fut: Future<Output = Result<T, E>> + 'a,
+    {
+        self.get_or_try_init_with_source(f, Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn get_or_try_init_with_source<'a, F, Fut, E>(
+        &'a self,
+        f: F,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<&'a T, E>> + 'a
+    where
+        F: FnOnce() -> Fut + 'a,
+        Fut: Future<Output = Result<T, E>> + 'a,
+    {
         async move {
             let waiters = self
                 .waiter_count
@@ -3889,7 +4208,24 @@ impl Semaphore {
     pub fn acquire(
         &self,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        let source = Source::caller();
+        self.acquire_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_with_cx(
+        &self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
+        self.acquire_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_with_source(
+        &self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -3920,7 +4256,26 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        let source = Source::caller();
+        self.acquire_many_with_cx(n, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_many_with_cx(
+        &self,
+        n: u32,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
+        self.acquire_many_with_source(n, Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_many_with_source(
+        &self,
+        n: u32,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -3950,7 +4305,24 @@ impl Semaphore {
     pub fn acquire_owned(
         &self,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        let source = Source::caller();
+        self.acquire_owned_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_owned_with_cx(
+        &self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
+        self.acquire_owned_with_source(Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_owned_with_source(
+        &self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -3981,7 +4353,26 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        let source = Source::caller();
+        self.acquire_many_owned_with_cx(n, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_many_owned_with_cx(
+        &self,
+        n: u32,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
+        self.acquire_many_owned_with_source(n, Source::caller(), cx)
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    pub fn acquire_many_owned_with_source(
+        &self,
+        n: u32,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -4337,8 +4728,17 @@ impl Command {
 
     #[track_caller]
     pub fn spawn(&mut self) -> io::Result<Child> {
+        self.spawn_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn spawn_with_cx(&mut self, cx: PeepsContext) -> io::Result<Child> {
+        self.spawn_with_source(Source::caller(), cx)
+    }
+
+    pub fn spawn_with_source(&mut self, source: Source, _cx: PeepsContext) -> io::Result<Child> {
         let child = self.inner.spawn()?;
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), Source::caller());
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         Ok(Child {
             inner: Some(child),
             handle,
@@ -4347,14 +4747,43 @@ impl Command {
 
     #[track_caller]
     pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), Source::caller());
-        instrument_future_on("command.status", &handle, self.inner.status(), Source::caller())
+        self.status_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn status_with_cx(
+        &mut self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+        self.status_with_source(Source::caller(), cx)
+    }
+
+    pub fn status_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
+        instrument_future_on_with_source("command.status", &handle, self.inner.status(), source)
     }
 
     #[track_caller]
     pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), Source::caller());
-        instrument_future_on("command.output", &handle, self.inner.output(), Source::caller())
+        self.output_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn output_with_cx(&mut self, cx: PeepsContext) -> impl Future<Output = io::Result<Output>> + '_ {
+        self.output_with_source(Source::caller(), cx)
+    }
+
+    pub fn output_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<Output>> + '_ {
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
+        instrument_future_on_with_source("command.output", &handle, self.inner.output(), source)
     }
 
     #[track_caller]
@@ -4433,19 +4862,51 @@ impl Child {
 
     #[track_caller]
     pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        let handle = self.handle.clone();
-        let wait_fut = self.inner_mut().wait();
-        instrument_future_on("command.wait", &handle, wait_fut, Source::caller())
+        self.wait_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
-    pub fn wait_with_output(mut self) -> impl Future<Output = io::Result<Output>> {
+    pub fn wait_with_cx(
+        &mut self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+        self.wait_with_source(Source::caller(), cx)
+    }
+
+    pub fn wait_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+        let handle = self.handle.clone();
+        let wait_fut = self.inner_mut().wait();
+        instrument_future_on_with_source("command.wait", &handle, wait_fut, source)
+    }
+
+    #[track_caller]
+    pub fn wait_with_output(self) -> impl Future<Output = io::Result<Output>> {
+        self.wait_with_output_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn wait_with_output_with_cx(
+        self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<Output>> {
+        self.wait_with_output_with_source(Source::caller(), cx)
+    }
+
+    pub fn wait_with_output_with_source(
+        mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<Output>> {
         let child = self.inner.take().expect("child already consumed");
-        instrument_future_on(
+        instrument_future_on_with_source(
             "command.wait_with_output",
             &self.handle,
             child.wait_with_output(),
-            Source::caller(),
+            source,
         )
     }
 
@@ -4512,8 +4973,27 @@ where
     where
         F: Future<Output = T> + Send + 'static,
     {
+        self.spawn_with_cx(label, future, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")));
+    }
+
+    #[track_caller]
+    pub fn spawn_with_cx<F>(&mut self, label: &'static str, future: F, cx: PeepsContext)
+    where
+        F: Future<Output = T> + Send + 'static,
+    {
+        self.spawn_with_source(label, future, Source::caller(), cx);
+    }
+
+    pub fn spawn_with_source<F>(
+        &mut self,
+        label: &'static str,
+        future: F,
+        source: Source,
+        _cx: PeepsContext,
+    ) where
+        F: Future<Output = T> + Send + 'static,
+    {
         let joinset_handle = self.handle.clone();
-        let source = Source::caller();
         self.inner.spawn(
             FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
                 instrument_future_on_with_source(label, &joinset_handle, future, source).await
@@ -4540,9 +5020,25 @@ where
     pub fn join_next(
         &mut self,
     ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
+        self.join_next_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    #[track_caller]
+    pub fn join_next_with_cx(
+        &mut self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
+        self.join_next_with_source(Source::caller(), cx)
+    }
+
+    pub fn join_next_with_source(
+        &mut self,
+        source: Source,
+        _cx: PeepsContext,
+    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
         let handle = self.handle.clone();
         let fut = self.inner.join_next();
-        instrument_future_on("joinset.join_next", &handle, fut, Source::caller())
+        instrument_future_on_with_source("joinset.join_next", &handle, fut, source)
     }
 }
 
