@@ -1191,6 +1191,7 @@ dependencies = [
  "roam",
  "roam-stream",
  "tokio",
+ "ur-taking-me-with-you",
  "ureq",
 ]
 
@@ -1232,6 +1233,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "ur-taking-me-with-you",
  "ureq",
 ]
 
@@ -2036,6 +2038,15 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "ur-taking-me-with-you"
+version = "3.0.0"
+dependencies = [
+ "libc",
+ "tokio",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "ureq"

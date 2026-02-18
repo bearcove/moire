@@ -257,6 +257,7 @@ const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 
 #[tokio::main]
 async fn main() {
+    ur_taking_me_with_you::die_with_parent();
     if let Err(err) = run().await {
         eprintln!("{err}");
         std::process::exit(1);

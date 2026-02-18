@@ -64,6 +64,7 @@ async fn run() -> AnyResult<()> {
     let child_mode = std::env::var_os(EXAMPLE_CHILD_MODE_ENV).is_some();
 
     if child_mode {
+        ur_taking_me_with_you::die_with_parent();
         return dispatch_command(&cfg.root_dir, cli.command).await;
     }
 
@@ -217,7 +218,7 @@ fn spawn_backend(cfg: &Config) -> AnyResult<Child> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
     configure_process_group(&mut cmd);
-    cmd.spawn()
+    ur_taking_me_with_you::spawn_dying_with_parent(cmd)
         .map_err(|e| format!("failed to spawn peeps-web: {e}"))
 }
 
@@ -235,8 +236,11 @@ fn run_scenario_in_subprocess(cfg: &Config, command: &CommandKind) -> AnyResult<
         cmd.arg(arg);
     }
 
-    cmd.status()
-        .map_err(|e| format!("failed to run scenario subprocess: {e}"))
+    let mut child = ur_taking_me_with_you::spawn_dying_with_parent(cmd)
+        .map_err(|e| format!("failed to run scenario subprocess: {e}"))?;
+    child
+        .wait()
+        .map_err(|e| format!("failed waiting for scenario subprocess: {e}"))
 }
 
 fn command_cli_args(command: &CommandKind) -> Vec<String> {

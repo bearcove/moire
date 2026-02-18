@@ -19,7 +19,7 @@ fn spawn_swift_peer(workspace_root: &Path, peer_addr: &str) -> std::io::Result<C
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    cmd.spawn()
+    ur_taking_me_with_you::spawn_dying_with_parent_async(cmd)
 }
 
 pub async fn run(workspace_root: &Path) -> Result<(), String> {

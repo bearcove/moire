@@ -100,7 +100,7 @@ fn spawn_client_process(addr: &str) -> Result<Child, String> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    cmd.spawn()
+    ur_taking_me_with_you::spawn_dying_with_parent_async(cmd)
         .map_err(|e| format!("failed to spawn roam rpc client process: {e}"))
 }
 

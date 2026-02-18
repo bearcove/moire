@@ -37,6 +37,7 @@ libc = "0.2"
 parking_lot = "0.12"
 roam-session = { path = "../roam/rust/roam-session" }
 roam-shm = { path = "../roam/rust/roam-shm" }
+ur-taking-me-with-you = { path = "../roam/rust/ur-taking-me-with-you", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.49", features = ["full"] }

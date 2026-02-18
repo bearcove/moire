@@ -15,3 +15,4 @@ tokio.workspace = true
 ureq.workspace = true
 roam = { path = "../../../roam/rust/roam" }
 roam-stream = { path = "../../../roam/rust/roam-stream", features = ["diagnostics"] }
+ur-taking-me-with-you.workspace = true

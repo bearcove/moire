@@ -19,3 +19,4 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 ureq.workspace = true
+ur-taking-me-with-you.workspace = true
