@@ -58,6 +58,7 @@ function markerIdForEdge(edge: GeometryEdge, isSelected: boolean): string {
   const kind = edge.kind;
   if (kind === "needs" && edge.data?.edgePending) return "el-arrow-needs-pending";
   switch (kind) {
+    case "touches":      return "el-arrow-touches";
     case "needs":        return "el-arrow-needs";
     case "holds":        return "el-arrow-holds";
     case "polls":        return "el-arrow-polls";
@@ -101,6 +102,7 @@ function EdgeMarkerDefs() {
     <defs>
       <ArrowMarker id="el-arrow-needs"         fill="light-dark(#d7263d, #ff6b81)" size={10} />
       <ArrowMarker id="el-arrow-needs-pending" fill="light-dark(#d7263d, #ff6b81)" size={14} />
+      <ArrowMarker id="el-arrow-touches"       fill="light-dark(#4f8f8f, #78b8b8)" size={8}  />
       <ArrowMarker id="el-arrow-holds"         fill="light-dark(#2f6fed, #7aa2ff)" size={8}  />
       <ArrowMarker id="el-arrow-polls"         fill="light-dark(#8e7cc3, #b4a7d6)" size={8}  />
       <ArrowMarker id="el-arrow-closed-by"     fill="light-dark(#e08614, #f0a840)" size={8}  />

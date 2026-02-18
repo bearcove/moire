@@ -1388,6 +1388,7 @@ impl<T> Mutex<T> {
             current_causal_target().map(|target| EntityId::new(target.id().as_str()));
         if let Some(owner_id) = owner_future_id.as_ref() {
             if let Ok(mut db) = runtime_db().lock() {
+                db.upsert_edge(owner_id, &lock_id, EdgeKind::Touches);
                 db.upsert_edge(&lock_id, owner_id, EdgeKind::Needs);
             }
         }
@@ -1424,6 +1425,7 @@ impl<T> Mutex<T> {
 
         if let Ok(mut db) = runtime_db().lock() {
             for (src, dst) in &edges {
+                db.upsert_edge(src, dst, EdgeKind::Touches);
                 db.upsert_edge(src, dst, EdgeKind::Needs);
             }
         }
@@ -4612,9 +4614,15 @@ impl<F> OperationFuture<F> {
         source: CompactString,
         krate: Option<CompactString>,
     ) -> Self {
+        let actor_id = current_causal_target().map(|target| target.id().clone());
+        if let Some(actor_id) = actor_id.as_ref() {
+            if let Ok(mut db) = runtime_db().lock() {
+                db.upsert_edge(actor_id, &resource_id, EdgeKind::Touches);
+            }
+        }
         Self {
             inner,
-            actor_id: current_causal_target().map(|target| target.id().clone()),
+            actor_id,
             resource_id,
             op_kind,
             source,
@@ -5258,6 +5266,36 @@ mod tests {
         assert!(entity_exists(&fut_id));
         assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Needs));
         assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Polls));
+    }
+
+    #[test]
+    fn dropping_pending_operation_future_clears_needs_but_keeps_touches() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let sem = crate::semaphore!("test.semaphore.touch.resource", 0);
+        let sem_id = entity_id_by_name("test.semaphore.touch.resource")
+            .expect("semaphore entity should exist");
+
+        let fut = crate::peep!(
+            sem.acquire_owned(),
+            "test.semaphore.touch.acquire"
+        );
+        let fut_handle = fut.future_handle.clone();
+        let fut_id = EntityId::new(fut_handle.id().as_str());
+
+        let waker = Waker::from(Arc::new(NoopWake));
+        let mut cx = Context::from_waker(&waker);
+        let mut fut = Box::pin(fut);
+
+        assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Pending));
+        assert!(edge_exists(&fut_id, &sem_id, EdgeKind::Needs));
+        assert!(edge_exists(&fut_id, &sem_id, EdgeKind::Touches));
+
+        drop(fut);
+        assert!(entity_exists(&fut_id));
+        assert!(!edge_exists(&fut_id, &sem_id, EdgeKind::Needs));
+        assert!(edge_exists(&fut_id, &sem_id, EdgeKind::Touches));
     }
 
     #[tokio::test(flavor = "current_thread")]

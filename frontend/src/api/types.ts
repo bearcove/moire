@@ -80,6 +80,7 @@ export interface SnapshotEntity {
 }
 
 export type SnapshotEdgeKind =
+  | "touches"
   | "needs"
   | "holds"
   | "polls"

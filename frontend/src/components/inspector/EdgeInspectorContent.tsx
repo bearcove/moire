@@ -8,6 +8,7 @@ import { edgeTooltip } from "../../graph/elkAdapter";
 import "./InspectorPanel.css";
 
 const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
+  touches: "Resource context",
   needs: "Causal dependency",
   holds: "Permit ownership",
   polls: "Non-blocking observation",

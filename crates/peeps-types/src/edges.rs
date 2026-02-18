@@ -43,6 +43,8 @@ impl Edge {
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum EdgeKind {
+    /// Contextual resource-touch relationship (actor has interacted with resource).
+    Touches,
     /// Polled relationship (non-blocking observation of dependency).
     Polls,
     /// Waiting/blocked-on relationship.

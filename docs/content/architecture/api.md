@@ -192,7 +192,7 @@ Notes:
 2. `ptime_now_ms` is milliseconds since that process started (process-relative, not wall clock). Entity `birth` fields are in the same unit. To convert a `birth` to an approximate wall-clock time: `captured_at_unix_ms - ptime_now_ms + birth`.
 3. Entity identity is scoped per process: the globally unique key for an entity is `(process_id, entity.id)`.
 4. `body` mirrors the `EntityBody` Rust enum via facet-json: unit variants as a plain string (e.g. `"future"`), data variants as `{ "variant_name": { ... } }`.
-5. `edge.kind` is snake_case `EdgeKind`: `"needs"`, `"polls"`, `"closed_by"`, `"channel_link"`, `"rpc_link"`.
+5. `edge.kind` is snake_case `EdgeKind`: `"touches"`, `"needs"`, `"polls"`, `"holds"`, `"closed_by"`, `"channel_link"`, `"rpc_link"`.
 6. `timed_out_processes` lists processes that were connected when the request arrived but did not reply within the timeout. The `pid` field can be passed directly to `sample <pid>` or `spindump <pid>` for OS-level stack sampling.
 7. For a consistent multi-process view, trigger a cut first and wait for `pending_connections == 0`, then call this endpoint.
 

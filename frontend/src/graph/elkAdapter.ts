@@ -31,6 +31,8 @@ export function edgeStyle(edge: EdgeDef): EdgeStyle {
   }
   const kind = edge.kind;
   switch (kind) {
+    case "touches":
+      return { stroke: "light-dark(#4f8f8f, #78b8b8)", strokeWidth: 1.2, strokeDasharray: "4 4" };
     case "needs":
       return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
     case "holds":
@@ -56,6 +58,8 @@ export function edgeTooltip(edge: EdgeDef, sourceName: string, targetName: strin
     return `${sourceName} is performing ${op} on ${targetName}`;
   }
   switch (kind) {
+    case "touches":
+      return `${sourceName} has touched ${targetName}`;
     case "needs":
       return `${sourceName} is blocked waiting for ${targetName}`;
     case "holds":
