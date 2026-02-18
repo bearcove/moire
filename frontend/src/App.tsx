@@ -119,6 +119,7 @@ type MockNodeData = {
   statTone?: Tone;
   scopeHue?: number;
   ghost?: boolean;
+  measureMode?: boolean;
 };
 
 function MockNodeComponent({ data }: { data: MockNodeData }) {
@@ -126,8 +127,8 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
     data.scopeHue !== undefined && !data.inCycle && data.statTone !== "crit" && data.statTone !== "warn";
   return (
     <>
-      <Handle type="target" position={Position.Top} style={hiddenHandle} />
-      <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
+      {!data.measureMode && <Handle type="target" position={Position.Top} style={hiddenHandle} />}
+      {!data.measureMode && <Handle type="source" position={Position.Bottom} style={hiddenHandle} />}
       <div
         className={[
           "mockup-node",
@@ -189,6 +190,7 @@ type ChannelPairNodeData = {
   statTone?: Tone;
   scopeHue?: number;
   ghost?: boolean;
+  measureMode?: boolean;
 };
 
 const visibleHandleTop: React.CSSProperties = {
@@ -238,8 +240,8 @@ function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
 
   return (
     <>
-      <Handle type="target" position={Position.Top} style={visibleHandleTop} />
-      <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />
+      {!data.measureMode && <Handle type="target" position={Position.Top} style={visibleHandleTop} />}
+      {!data.measureMode && <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />}
       <div
         className={[
           "mockup-channel-pair",
@@ -313,6 +315,7 @@ type RpcPairNodeData = {
   selected: boolean;
   scopeHue?: number;
   ghost?: boolean;
+  measureMode?: boolean;
 };
 
 function RpcPairNode({ data }: { data: RpcPairNodeData }) {
@@ -329,8 +332,8 @@ function RpcPairNode({ data }: { data: RpcPairNodeData }) {
 
   return (
     <>
-      <Handle type="target" position={Position.Top} style={visibleHandleTop} />
-      <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />
+      {!data.measureMode && <Handle type="target" position={Position.Top} style={visibleHandleTop} />}
+      {!data.measureMode && <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />}
       <div
         className={[
           "mockup-channel-pair",
@@ -396,11 +399,18 @@ function ScopeGroupNode({ data }: { data: ScopeGroupNodeData }) {
 
 function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   const edgeData = data as
-    | { points?: ElkPoint[]; tooltip?: string; ghost?: boolean; edgeLabel?: string }
+    | {
+        points?: ElkPoint[];
+        tooltip?: string;
+        ghost?: boolean;
+        edgeLabel?: string;
+        edgePending?: boolean;
+      }
     | undefined;
   const points = edgeData?.points ?? [];
   const ghost = edgeData?.ghost ?? false;
   const edgeLabel = edgeData?.edgeLabel;
+  const edgePending = edgeData?.edgePending ?? false;
   if (points.length < 2) return null;
 
   const [start, ...rest] = points;
@@ -459,12 +469,11 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
     const mid = points[Math.floor(points.length / 2)];
     return { x: mid.x, y: mid.y, dx: 0, dy: 1 };
   })();
-  const labelWidth = edgeLabel ? Math.max(36, edgeLabel.length * 6.2 + 12) : 0;
   const dirLen = Math.hypot(labelAnchor.dx, labelAnchor.dy) || 1;
   const nx = -labelAnchor.dy / dirLen;
   const ny = labelAnchor.dx / dirLen;
-  const labelX = labelAnchor.x + nx * 14;
-  const labelY = labelAnchor.y + ny * 14;
+  const labelX = labelAnchor.x + nx * 20;
+  const labelY = labelAnchor.y + ny * 20;
 
   return (
     <g style={ghost ? { opacity: 0.2, pointerEvents: "none" } : undefined}>
@@ -509,9 +518,9 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
       />
       {edgeLabel && (
         <g className="mockup-edge-label" transform={`translate(${labelX}, ${labelY})`}>
-          <rect className="mockup-edge-label-bg" x={-labelWidth / 2} y={-8} width={labelWidth} height={16} />
           <text className="mockup-edge-label-text" textAnchor="middle" dominantBaseline="middle">
             {edgeLabel}
+            {edgePending && <tspan className="mockup-edge-label-symbol"> ⏳</tspan>}
           </text>
         </g>
       )}
@@ -539,6 +548,7 @@ const renderNodeForMeasure: RenderNodeForMeasure = (def) => {
           channelName: def.name,
           selected: false,
           statTone: def.statTone,
+          measureMode: true,
         }}
       />
     );
@@ -551,6 +561,7 @@ const renderNodeForMeasure: RenderNodeForMeasure = (def) => {
           resp: def.rpcPair.resp,
           rpcName: def.name,
           selected: false,
+          measureMode: true,
         }}
       />
     );
@@ -566,6 +577,7 @@ const renderNodeForMeasure: RenderNodeForMeasure = (def) => {
         ageMs: def.ageMs,
         stat: def.stat,
         statTone: def.statTone,
+        measureMode: true,
       }}
     />
   );
@@ -1085,10 +1097,7 @@ function ChannelPairInspectorContent({
   return (
     <>
       <div className="mockup-inspector-node-header">
-        <span className="mockup-inspector-node-icon mockup-inspector-node-icon--channel-pair">
-          <span style={{ fontSize: 9, lineHeight: 1 }}>TX</span>
-          <span style={{ fontSize: 9, lineHeight: 1 }}>RX</span>
-        </span>
+        <span className="mockup-inspector-node-icon">{kindIcon("channel_pair", 16)}</span>
         <div className="mockup-inspector-node-header-text">
           <div className="mockup-inspector-node-kind">Channel</div>
           <div className="mockup-inspector-node-label">{entity.name}</div>
