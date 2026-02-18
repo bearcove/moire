@@ -9,6 +9,7 @@ use std::time::Duration;
 mod scenarios;
 
 type AnyResult<T> = Result<T, String>;
+pub(crate) const EXAMPLE_CHILD_MODE_ENV: &str = "PEEPS_EXAMPLES_CHILD_MODE";
 
 #[derive(Facet, Debug)]
 struct Cli {
@@ -59,8 +60,12 @@ async fn main() {
 
 async fn run() -> AnyResult<()> {
     let cli = parse_cli()?;
-
     let cfg = config_from_cli(&cli);
+    let child_mode = std::env::var_os(EXAMPLE_CHILD_MODE_ENV).is_some();
+
+    if child_mode {
+        return dispatch_command(&cfg.root_dir, cli.command).await;
+    }
 
     let mut backend = if cfg.no_web {
         None
@@ -79,13 +84,23 @@ async fn run() -> AnyResult<()> {
         Some(child)
     };
 
-    let run_result = dispatch_command(&cfg.root_dir, cli.command).await;
+    let scenario_status = run_scenario_in_subprocess(&cfg, &cli.command)?;
+    let scenario_result = scenario_status_to_result(&scenario_status);
 
     if let Some(child) = backend.as_mut() {
+        if should_wait_for_ctrl_c_after_scenario(&scenario_status) {
+            println!(
+                "Scenario exited; peeps-web is still running at http://{}. Press Ctrl+C to stop peeps-web.",
+                cfg.peeps_http
+            );
+            tokio::signal::ctrl_c()
+                .await
+                .map_err(|e| format!("failed waiting for Ctrl+C: {e}"))?;
+        }
         terminate_child_group(child);
     }
 
-    run_result
+    scenario_result
 }
 
 fn parse_cli() -> AnyResult<Cli> {
@@ -204,6 +219,66 @@ fn spawn_backend(cfg: &Config) -> AnyResult<Child> {
     configure_process_group(&mut cmd);
     cmd.spawn()
         .map_err(|e| format!("failed to spawn peeps-web: {e}"))
+}
+
+fn run_scenario_in_subprocess(cfg: &Config, command: &CommandKind) -> AnyResult<ExitStatus> {
+    let exe = std::env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
+    let mut cmd = Command::new(exe);
+    cmd.current_dir(&cfg.root_dir)
+        .arg("--no-web")
+        .env(EXAMPLE_CHILD_MODE_ENV, "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    for arg in command_cli_args(command) {
+        cmd.arg(arg);
+    }
+
+    cmd.status()
+        .map_err(|e| format!("failed to run scenario subprocess: {e}"))
+}
+
+fn command_cli_args(command: &CommandKind) -> Vec<String> {
+    match command {
+        CommandKind::ChannelFullStall => vec!["channel-full-stall".to_string()],
+        CommandKind::MutexLockOrderInversion => vec!["mutex-lock-order-inversion".to_string()],
+        CommandKind::OneshotSenderLostInMap => vec!["oneshot-sender-lost-in-map".to_string()],
+        CommandKind::RoamRpcStuckRequest => vec!["roam-rpc-stuck-request".to_string()],
+        CommandKind::RoamRpcStuckRequestClient { peer_addr } => vec![
+            "roam-rpc-stuck-request-client".to_string(),
+            "--peer-addr".to_string(),
+            peer_addr.to_string(),
+        ],
+        CommandKind::RoamRustSwiftStuckRequest => vec!["roam-rust-swift-stuck-request".to_string()],
+        CommandKind::SemaphoreStarvation => vec!["semaphore-starvation".to_string()],
+    }
+}
+
+fn scenario_status_to_result(status: &ExitStatus) -> AnyResult<()> {
+    if status.success() {
+        return Ok(());
+    }
+    Err(format!("scenario subprocess failed: {}", format_status(*status)))
+}
+
+fn should_wait_for_ctrl_c_after_scenario(status: &ExitStatus) -> bool {
+    !was_ctrl_c_exit(status)
+}
+
+fn was_ctrl_c_exit(status: &ExitStatus) -> bool {
+    if status.code() == Some(130) {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal() == Some(libc::SIGINT)
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
 }
 
 #[cfg(unix)]

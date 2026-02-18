@@ -95,6 +95,7 @@ fn spawn_client_process(addr: &str) -> Result<Child, String> {
         .arg("roam-rpc-stuck-request-client")
         .arg("--peer-addr")
         .arg(addr)
+        .env(crate::EXAMPLE_CHILD_MODE_ENV, "1")
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());

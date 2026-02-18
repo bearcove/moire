@@ -26,6 +26,7 @@ import { GraphPanel, type GraphSelection, type ScopeColorMode, type SnapPhase } 
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
+import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
 
 // ── Snapshot state machine ─────────────────────────────────────
 
@@ -157,7 +158,12 @@ export function App() {
         const hasDuplicateName = (duplicateNameCounts.get(row.name) ?? 0) > 1;
         const suffix = row.pid == null ? row.id : String(row.pid);
         const label = hasDuplicateName ? `${row.name}(${suffix})` : row.name;
-        return { id: row.id, label, meta: row.count };
+        return {
+          id: row.id,
+          label,
+          icon: <ProcessIdenticon name={row.name} seed={`${row.name}:${suffix}`} size={14} />,
+          meta: row.count,
+        };
       });
   }, [allEntities, connections]);
 

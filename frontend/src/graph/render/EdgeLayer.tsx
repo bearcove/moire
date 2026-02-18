@@ -51,6 +51,34 @@ function trimPolylineEnd(points: Point[], trim: number): Point[] {
   return [...points];
 }
 
+function pointAtDistanceFromEnd(points: Point[], distanceFromEnd: number): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  if (points.length === 1 || distanceFromEnd <= 0) return points[points.length - 1];
+
+  const total = polylineLength(points);
+  const targetFromStart = Math.max(0, total - distanceFromEnd);
+  let traversed = 0;
+
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    if (segLen <= 1e-6) continue;
+    if (traversed + segLen < targetFromStart - 1e-6) {
+      traversed += segLen;
+      continue;
+    }
+    const remain = targetFromStart - traversed;
+    const t = Math.max(0, Math.min(1, remain / segLen));
+    return {
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+    };
+  }
+
+  return points[0];
+}
+
 type ArrowGeom = {
   tip: Point;
   left: Point;
@@ -60,17 +88,10 @@ type ArrowGeom = {
 function computeArrow(points: Point[], size: number): ArrowGeom | null {
   if (points.length < 2) return null;
   const tip = points[points.length - 1];
-  let prevIndex = points.length - 2;
-  while (prevIndex >= 0) {
-    const prev = points[prevIndex];
-    if (Math.hypot(tip.x - prev.x, tip.y - prev.y) > 1e-6) break;
-    prevIndex -= 1;
-  }
-  if (prevIndex < 0) return null;
-
-  const prev = points[prevIndex];
-  const dx = tip.x - prev.x;
-  const dy = tip.y - prev.y;
+  const lookback = Math.max(36, size * 4);
+  const tail = pointAtDistanceFromEnd(points, lookback);
+  const dx = tip.x - tail.x;
+  const dy = tip.y - tail.y;
   const len = Math.hypot(dx, dy);
   if (len <= 1e-6) return null;
 

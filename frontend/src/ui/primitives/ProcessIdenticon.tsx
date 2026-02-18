@@ -21,12 +21,14 @@ function makeForegroundColor(processName: string): string {
 
 export type ProcessIdenticonProps = {
   name: string;
+  seed?: string;
   size?: number;
 }
 
-export function ProcessIdenticon({ name, size = 20 }: ProcessIdenticonProps) {
-  const hash = djb2(name);
-  const fill = makeForegroundColor(name);
+export function ProcessIdenticon({ name, seed, size = 20 }: ProcessIdenticonProps) {
+  const hashKey = seed ?? name;
+  const hash = djb2(hashKey);
+  const fill = makeForegroundColor(hashKey);
   const pixels: Array<{ x: number; y: number }> = [];
 
   for (let row = 0; row < 5; row++) {
