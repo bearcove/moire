@@ -4111,14 +4111,6 @@ impl Semaphore {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn acquire(
-        &self,
-    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
     pub fn acquire_with_cx(
         &self,
         cx: PeepsContext,
@@ -4154,15 +4146,6 @@ impl Semaphore {
                 max_permits: Arc::clone(&self.max_permits),
             })
         }
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_many(
-        &self,
-        n: u32,
-    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_with_cx(n, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -4208,14 +4191,6 @@ impl Semaphore {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn acquire_owned(
-        &self,
-    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_owned_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
     pub fn acquire_owned_with_cx(
         &self,
         cx: PeepsContext,
@@ -4251,15 +4226,6 @@ impl Semaphore {
                 max_permits: Arc::clone(&self.max_permits),
             })
         }
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_many_owned(
-        &self,
-        n: u32,
-    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_owned_with_cx(n, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -4875,14 +4841,6 @@ where
     }
 
     #[track_caller]
-    pub fn spawn<F>(&mut self, label: &'static str, future: F)
-    where
-        F: Future<Output = T> + Send + 'static,
-    {
-        self.spawn_with_cx(label, future, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")));
-    }
-
-    #[track_caller]
     pub fn spawn_with_cx<F>(&mut self, label: &'static str, future: F, cx: PeepsContext)
     where
         F: Future<Output = T> + Send + 'static,
@@ -4920,13 +4878,6 @@ where
     #[track_caller]
     pub fn abort_all(&mut self) {
         self.inner.abort_all();
-    }
-
-    #[track_caller]
-    pub fn join_next(
-        &mut self,
-    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
-        self.join_next_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]

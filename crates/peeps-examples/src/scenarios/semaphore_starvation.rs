@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::peeps::prelude::*;
+
 pub async fn run() -> Result<(), String> {
     peeps::init!();
 
