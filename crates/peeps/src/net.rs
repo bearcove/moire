@@ -19,9 +19,21 @@ where
 {
     let endpoint = CompactString::from(endpoint);
     let transport = CompactString::from(transport);
-    let op_handle = crate::EntityHandle::new(format!("net.{op}.{transport}.{endpoint}"), body);
+    let op_handle = crate::EntityHandle::new(
+        format!("net.{op}.{transport}.{endpoint}"),
+        body,
+        crate::Source::caller(),
+    );
     let wait_name = format!("net.{op}.wait");
-    async move { crate::instrument_future_on(wait_name, &op_handle, future.into_future()).await }
+    async move {
+        crate::instrument_future_on(
+            wait_name,
+            &op_handle,
+            future.into_future(),
+            crate::Source::caller(),
+        )
+        .await
+    }
 }
 
 #[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]

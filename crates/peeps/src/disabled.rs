@@ -23,6 +23,16 @@ pub struct ScopeRef;
 #[derive(Clone, Debug, Default)]
 pub struct ScopeHandle;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Source;
+
+impl Source {
+    #[track_caller]
+    pub const fn caller() -> Self {
+        Self
+    }
+}
+
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
 }
@@ -46,7 +56,7 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 }
 
 impl<T> Mutex<T> {
-    pub fn new(_name: &'static str, value: T) -> Self {
+    pub fn new(_name: &'static str, value: T, _source: Source) -> Self {
         Self {
             inner: parking_lot::Mutex::new(value),
         }
@@ -68,7 +78,7 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
-    pub fn new(_name: &'static str, value: T) -> Self {
+    pub fn new(_name: &'static str, value: T, _source: Source) -> Self {
         Self {
             inner: parking_lot::RwLock::new(value),
         }
@@ -92,7 +102,7 @@ impl<T> RwLock<T> {
 }
 
 impl EntityHandle {
-    pub fn new(_name: impl Into<CompactString>, _body: EntityBody) -> Self {
+    pub fn new(_name: impl Into<CompactString>, _body: EntityBody, _source: Source) -> Self {
         Self
     }
 
@@ -242,7 +252,7 @@ impl RpcResponseHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(_name: impl Into<CompactString>, _body: ScopeBody) -> Self {
+    pub fn new(_name: impl Into<CompactString>, _body: ScopeBody, _source: Source) -> Self {
         Self
     }
 
@@ -540,7 +550,7 @@ impl<T: Clone> WatchReceiver<T> {
     }
 }
 
-pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(_name: impl Into<String>, capacity: usize, _source: Source) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = mpsc::channel(capacity);
     (
         Sender {
@@ -556,6 +566,7 @@ pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Rece
 
 pub fn unbounded_channel<T>(
     _name: impl Into<String>,
+    _source: Source,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let (tx, rx) = mpsc::unbounded_channel();
     (
@@ -570,7 +581,7 @@ pub fn unbounded_channel<T>(
     )
 }
 
-pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot<T>(name: impl Into<String>, _source: Source) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let _ = name;
     let (tx, rx) = oneshot::channel();
     (
@@ -585,13 +596,14 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
     )
 }
 
-pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    oneshot(name)
+pub fn oneshot_channel<T>(name: impl Into<String>, source: Source) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    oneshot(name, source)
 }
 
 pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
     capacity: usize,
+    _source: Source,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
     let _ = name;
     let (tx, rx) = broadcast::channel(capacity);
@@ -611,6 +623,7 @@ pub fn broadcast<T: Clone>(
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
+    _source: Source,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     let _ = name;
     let (tx, rx) = watch::channel(initial);
@@ -630,12 +643,13 @@ pub fn watch<T: Clone>(
 pub fn watch_channel<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
+    source: Source,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
-    watch(name, initial)
+    watch(name, initial, source)
 }
 
 impl Notify {
-    pub fn new(_name: impl Into<String>) -> Self {
+    pub fn new(_name: impl Into<String>, _source: Source) -> Self {
         Self {
             inner: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
@@ -655,7 +669,7 @@ impl Notify {
 }
 
 impl<T> OnceCell<T> {
-    pub fn new(_name: impl Into<String>) -> Self {
+    pub fn new(_name: impl Into<String>, _source: Source) -> Self {
         Self(tokio::sync::OnceCell::new())
     }
 
@@ -692,7 +706,7 @@ impl<T> OnceCell<T> {
 }
 
 impl Semaphore {
-    pub fn new(_name: impl Into<String>, permits: usize) -> Self {
+    pub fn new(_name: impl Into<String>, permits: usize, _source: Source) -> Self {
         Self(std::sync::Arc::new(tokio::sync::Semaphore::new(permits)))
     }
 
@@ -1028,12 +1042,12 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    pub fn named(_name: impl Into<String>) -> Self {
+    pub fn named(_name: impl Into<String>, _source: Source) -> Self {
         Self(tokio::task::JoinSet::new())
     }
 
-    pub fn with_name(name: impl Into<String>) -> Self {
-        Self::named(name)
+    pub fn with_name(name: impl Into<String>, source: Source) -> Self {
+        Self::named(name, source)
     }
 
     pub fn spawn<F>(&mut self, _label: &'static str, future: F)
@@ -1060,13 +1074,14 @@ where
     }
 }
 
-pub fn interval(period: std::time::Duration) -> tokio::time::Interval {
+pub fn interval(period: std::time::Duration, _source: Source) -> tokio::time::Interval {
     tokio::time::interval(period)
 }
 
 pub fn interval_at(
     start: tokio::time::Instant,
     period: std::time::Duration,
+    _source: Source,
 ) -> tokio::time::Interval {
     tokio::time::interval_at(start, period)
 }
@@ -1099,7 +1114,11 @@ fn maybe_warn_dashboard_ignored() {
     });
 }
 
-pub fn spawn_tracked<F>(_: impl Into<CompactString>, fut: F) -> tokio::task::JoinHandle<F::Output>
+pub fn spawn_tracked<F>(
+    _: impl Into<CompactString>,
+    fut: F,
+    _source: Source,
+) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
@@ -1107,7 +1126,11 @@ where
     tokio::spawn(fut)
 }
 
-pub fn spawn_blocking_tracked<F, T>(_: impl Into<CompactString>, f: F) -> tokio::task::JoinHandle<T>
+pub fn spawn_blocking_tracked<F, T>(
+    _: impl Into<CompactString>,
+    f: F,
+    _source: Source,
+) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
@@ -1137,32 +1160,38 @@ pub fn entity_ref_from_wire(_id: impl Into<CompactString>) -> EntityRef {
 pub fn rpc_request(
     _method: impl Into<CompactString>,
     _args_preview: impl Into<CompactString>,
+    _source: Source,
 ) -> RpcRequestHandle {
     RpcRequestHandle
 }
 
-pub fn rpc_response(_method: impl Into<CompactString>) -> RpcResponseHandle {
+pub fn rpc_response(_method: impl Into<CompactString>, _source: Source) -> RpcResponseHandle {
     RpcResponseHandle
 }
 
 pub fn rpc_response_for(
     method: impl Into<CompactString>,
     _request: &EntityRef,
+    source: Source,
 ) -> RpcResponseHandle {
-    rpc_response(method)
+    rpc_response(method, source)
 }
 
-pub fn instrument_future_named<F>(_name: impl Into<CompactString>, fut: F) -> F::IntoFuture
+pub fn instrument_future_named<F>(
+    _name: impl Into<CompactString>,
+    fut: F,
+    _source: Source,
+) -> F::IntoFuture
 where
     F: IntoFuture,
 {
-    instrument_future_named_with_source(_name, fut, "")
+    instrument_future_named_with_source(_name, fut, _source)
 }
 
 pub fn instrument_future_named_with_source<F>(
     _name: impl Into<CompactString>,
     fut: F,
-    _source: impl Into<CompactString>,
+    _source: Source,
 ) -> F::IntoFuture
 where
     F: IntoFuture,
@@ -1174,18 +1203,19 @@ pub fn instrument_future_on<F>(
     _name: impl Into<CompactString>,
     _on: &impl AsEntityRef,
     fut: F,
+    _source: Source,
 ) -> F::IntoFuture
 where
     F: IntoFuture,
 {
-    instrument_future_on_with_source(_name, _on, fut, "")
+    instrument_future_on_with_source(_name, _on, fut, _source)
 }
 
 pub fn instrument_future_on_with_source<F>(
     _name: impl Into<CompactString>,
     _on: &impl AsEntityRef,
     fut: F,
-    _source: impl Into<CompactString>,
+    _source: Source,
 ) -> F::IntoFuture
 where
     F: IntoFuture,
@@ -1196,21 +1226,21 @@ where
 #[macro_export]
 macro_rules! peeps {
     (name = $name:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named($name, $fut, $crate::Source::caller())
     }};
     (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_on($name, &$on, $fut)
+        $crate::instrument_future_on($name, &$on, $fut, $crate::Source::caller())
     }};
 }
 
 #[macro_export]
 macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named($name, $fut, $crate::Source::caller())
     }};
     ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
         let _ = ($((&$k, &$v)),*);
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named($name, $fut, $crate::Source::caller())
     }};
     ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
         compile_error!("`level=` is deprecated");
@@ -1226,91 +1256,91 @@ macro_rules! peep {
 #[macro_export]
 macro_rules! mutex {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::Mutex::new($name, $value)
+        $crate::Mutex::new($name, $value, $crate::Source::caller())
     }};
 }
 
 #[macro_export]
 macro_rules! rwlock {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::RwLock::new($name, $value)
+        $crate::RwLock::new($name, $value, $crate::Source::caller())
     }};
 }
 
 #[macro_export]
 macro_rules! channel {
     ($name:expr, $capacity:expr $(,)?) => {
-        $crate::channel($name, $capacity)
+        $crate::channel($name, $capacity, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! unbounded_channel {
     ($name:expr $(,)?) => {
-        $crate::unbounded_channel($name)
+        $crate::unbounded_channel($name, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! oneshot {
     ($name:expr $(,)?) => {
-        $crate::oneshot($name)
+        $crate::oneshot($name, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! broadcast {
     ($name:expr, $capacity:expr $(,)?) => {
-        $crate::broadcast($name, $capacity)
+        $crate::broadcast($name, $capacity, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! watch {
     ($name:expr, $initial:expr $(,)?) => {
-        $crate::watch($name, $initial)
+        $crate::watch($name, $initial, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! notify {
     ($name:expr $(,)?) => {
-        $crate::Notify::new($name)
+        $crate::Notify::new($name, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! once_cell {
     ($name:expr $(,)?) => {
-        $crate::OnceCell::new($name)
+        $crate::OnceCell::new($name, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! semaphore {
     ($name:expr, $permits:expr $(,)?) => {
-        $crate::Semaphore::new($name, $permits)
+        $crate::Semaphore::new($name, $permits, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! join_set {
     ($name:expr $(,)?) => {
-        $crate::JoinSet::named($name)
+        $crate::JoinSet::named($name, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! spawn_tracked {
     ($name:expr, $fut:expr $(,)?) => {
-        $crate::spawn_tracked($name, $fut)
+        $crate::spawn_tracked($name, $fut, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! spawn_blocking_tracked {
     ($name:expr, $f:expr $(,)?) => {
-        $crate::spawn_blocking_tracked($name, $f)
+        $crate::spawn_blocking_tracked($name, $f, $crate::Source::caller())
     };
 }
 
@@ -1331,20 +1361,20 @@ macro_rules! timeout {
 #[macro_export]
 macro_rules! rpc_request {
     ($method:expr, $args_preview:expr $(,)?) => {
-        $crate::rpc_request($method, $args_preview)
+        $crate::rpc_request($method, $args_preview, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! rpc_response {
     ($method:expr $(,)?) => {
-        $crate::rpc_response($method)
+        $crate::rpc_response($method, $crate::Source::caller())
     };
 }
 
 #[macro_export]
 macro_rules! rpc_response_for {
     ($method:expr, $request:expr $(,)?) => {
-        $crate::rpc_response_for($method, $request)
+        $crate::rpc_response_for($method, $request, $crate::Source::caller())
     };
 }

@@ -48,6 +48,24 @@ thread_local! {
     static HELD_MUTEX_STACK: RefCell<Vec<EntityId>> = const { RefCell::new(Vec::new()) };
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Source {
+    location: &'static std::panic::Location<'static>,
+}
+
+impl Source {
+    #[track_caller]
+    pub fn caller() -> Self {
+        Self {
+            location: std::panic::Location::caller(),
+        }
+    }
+
+    fn into_compact_string(self) -> CompactString {
+        CompactString::from(format!("{}:{}", self.location.file(), self.location.line()))
+    }
+}
+
 #[track_caller]
 #[doc(hidden)]
 pub fn __init_from_macro(manifest_dir: &str) {
@@ -58,7 +76,7 @@ pub fn __init_from_macro(manifest_dir: &str) {
 }
 
 fn ensure_process_scope(process_name: &str) {
-    PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process));
+    PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process, Source::caller()));
 }
 
 fn process_name_auto() -> CompactString {
@@ -277,32 +295,37 @@ async fn read_server_message(
 pub fn spawn_tracked<F>(
     name: impl Into<CompactString>,
     fut: F,
+    source: Source,
 ) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
     tokio::spawn(
-        FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), instrument_future_named(name, fut)),
+        FUTURE_CAUSAL_STACK.scope(
+            RefCell::new(Vec::new()),
+            instrument_future_named(name, fut, source),
+        ),
     )
 }
 
 #[macro_export]
 macro_rules! spawn_tracked {
     ($name:expr, $fut:expr $(,)?) => {
-        $crate::spawn_tracked($name, $fut)
+        $crate::spawn_tracked($name, $fut, $crate::Source::caller())
     };
 }
 #[track_caller]
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<CompactString>,
     f: F,
+    source: Source,
 ) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    let handle = EntityHandle::new(name, EntityBody::Future);
+    let handle = EntityHandle::new(name, EntityBody::Future, source);
     tokio::task::spawn_blocking(move || {
         let _hold = handle;
         f()
@@ -312,7 +335,7 @@ where
 #[macro_export]
 macro_rules! spawn_blocking_tracked {
     ($name:expr, $f:expr $(,)?) => {
-        $crate::spawn_blocking_tracked($name, $f)
+        $crate::spawn_blocking_tracked($name, $f, $crate::Source::caller())
     };
 }
 #[track_caller]
@@ -1122,9 +1145,9 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    #[track_caller]
-    pub fn new(name: impl Into<CompactString>, body: ScopeBody) -> Self {
+    pub fn new(name: impl Into<CompactString>, body: ScopeBody, source: Source) -> Self {
         let scope = Scope::builder(name, body)
+            .source(source.into_compact_string())
             .build(&())
             .expect("scope construction with unit meta should be infallible");
         let id = ScopeId::new(scope.id.as_str());
@@ -1169,21 +1192,17 @@ pub struct EntityHandle {
 }
 
 impl EntityHandle {
-    #[track_caller]
-    pub fn new(name: impl Into<CompactString>, body: EntityBody) -> Self {
-        let entity = Entity::builder(name, body)
-            .build(&())
-            .expect("entity construction with unit meta should be infallible");
-        Self::from_entity(entity)
+    pub fn new(name: impl Into<CompactString>, body: EntityBody, source: Source) -> Self {
+        Self::new_with_source(name, body, source)
     }
 
     pub fn new_with_source(
         name: impl Into<CompactString>,
         body: EntityBody,
-        source: impl Into<CompactString>,
+        source: Source,
     ) -> Self {
         let entity = Entity::builder(name, body)
-            .source(source)
+            .source(source.into_compact_string())
             .build(&())
             .expect("entity construction with unit meta should be infallible");
         Self::from_entity(entity)
@@ -1353,13 +1372,13 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 }
 
 impl<T> Mutex<T> {
-    #[track_caller]
-    pub fn new(name: &'static str, value: T) -> Self {
+    pub fn new(name: &'static str, value: T, source: Source) -> Self {
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
                 kind: LockKind::Mutex,
             }),
+            source,
         );
         Self {
             inner: parking_lot::Mutex::new(value),
@@ -1475,13 +1494,13 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
-    #[track_caller]
-    pub fn new(name: &'static str, value: T) -> Self {
+    pub fn new(name: &'static str, value: T, source: Source) -> Self {
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
                 kind: LockKind::RwLock,
             }),
+            source,
         );
         Self {
             inner: parking_lot::RwLock::new(value),
@@ -1515,14 +1534,14 @@ impl<T> AsEntityRef for RwLock<T> {
 #[macro_export]
 macro_rules! mutex {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::Mutex::new($name, $value)
+        $crate::Mutex::new($name, $value, $crate::Source::caller())
     }};
 }
 
 #[macro_export]
 macro_rules! rwlock {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::RwLock::new($name, $value)
+        $crate::RwLock::new($name, $value, $crate::Source::caller())
     }};
 }
 
@@ -1608,6 +1627,7 @@ impl RpcResponseHandle {
 pub fn rpc_request(
     method: impl Into<CompactString>,
     args_preview: impl Into<CompactString>,
+    source: Source,
 ) -> RpcRequestHandle {
     let method = method.into();
     let body = EntityBody::Request(RequestEntity {
@@ -1615,41 +1635,40 @@ pub fn rpc_request(
         args_preview: args_preview.into(),
     });
     RpcRequestHandle {
-        handle: EntityHandle::new(method, body),
+        handle: EntityHandle::new(method, body, source),
     }
 }
 
 #[macro_export]
 macro_rules! rpc_request {
     ($method:expr, $args_preview:expr $(,)?) => {
-        $crate::rpc_request($method, $args_preview)
+        $crate::rpc_request($method, $args_preview, $crate::Source::caller())
     };
 }
-#[track_caller]
-pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
+pub fn rpc_response(method: impl Into<CompactString>, source: Source) -> RpcResponseHandle {
     let method = method.into();
     let body = EntityBody::Response(ResponseEntity {
         method: method.clone(),
         status: ResponseStatus::Pending,
     });
     RpcResponseHandle {
-        handle: EntityHandle::new(format!("{method}"), body),
+        handle: EntityHandle::new(format!("{method}"), body, source),
     }
 }
 
 #[macro_export]
 macro_rules! rpc_response {
     ($method:expr $(,)?) => {
-        $crate::rpc_response($method)
+        $crate::rpc_response($method, $crate::Source::caller())
     };
 }
-#[track_caller]
 pub fn rpc_response_for(
     method: impl Into<CompactString>,
     request: &EntityRef,
+    source: Source,
 ) -> RpcResponseHandle {
     #[allow(deprecated)]
-    let response = rpc_response(method);
+    let response = rpc_response(method, source);
     if let Ok(mut db) = runtime_db().lock() {
         db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
     }
@@ -1659,7 +1678,7 @@ pub fn rpc_response_for(
 #[macro_export]
 macro_rules! rpc_response_for {
     ($method:expr, $request:expr $(,)?) => {
-        $crate::rpc_response_for($method, $request)
+        $crate::rpc_response_for($method, $request, $crate::Source::caller())
     };
 }
 
@@ -2250,7 +2269,7 @@ impl<T> Sender<T> {
         &self,
         value: T,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_send_full() {
@@ -2363,7 +2382,7 @@ impl<T> Receiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -2555,7 +2574,7 @@ impl<T> UnboundedReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -2657,8 +2676,7 @@ impl<T> UnboundedReceiver<T> {
         }
     }
 }
-#[track_caller]
-pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(name: impl Into<String>, capacity: usize, source: Source) -> (Sender<T>, Receiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
@@ -2675,6 +2693,7 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     let details = ChannelDetails::Mpsc(MpscChannelDetails {
         buffer: Some(BufferState {
@@ -2688,6 +2707,7 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     let channel = Arc::new(StdMutex::new(ChannelRuntimeState {
@@ -2720,11 +2740,13 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
 #[macro_export]
 macro_rules! channel {
     ($name:expr, $capacity:expr $(,)?) => {
-        $crate::channel($name, $capacity)
+        $crate::channel($name, $capacity, $crate::Source::caller())
     };
 }
-#[track_caller]
-pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+pub fn unbounded_channel<T>(
+    name: impl Into<String>,
+    source: Source,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::unbounded_channel();
     let details = ChannelDetails::Mpsc(MpscChannelDetails {
@@ -2739,6 +2761,7 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     let details = ChannelDetails::Mpsc(MpscChannelDetails {
         buffer: Some(BufferState {
@@ -2752,6 +2775,7 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     let channel = Arc::new(StdMutex::new(ChannelRuntimeState {
@@ -2783,7 +2807,7 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
 #[macro_export]
 macro_rules! unbounded_channel {
     ($name:expr $(,)?) => {
-        $crate::unbounded_channel($name)
+        $crate::unbounded_channel($name, $crate::Source::caller())
     };
 }
 
@@ -3000,7 +3024,7 @@ impl<T> OneshotReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(mut self) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
             let result = instrument_operation_on_with_source(
@@ -3067,8 +3091,7 @@ impl<T> OneshotReceiver<T> {
         }
     }
 }
-#[track_caller]
-pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot<T>(name: impl Into<String>, source: Source) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = oneshot::channel();
     let details = ChannelDetails::Oneshot(OneshotChannelDetails {
@@ -3080,6 +3103,7 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     let details = ChannelDetails::Oneshot(OneshotChannelDetails {
         state: OneshotState::Pending,
@@ -3090,6 +3114,7 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     let channel = Arc::new(StdMutex::new(OneshotRuntimeState {
@@ -3113,16 +3138,18 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
         },
     )
 }
-#[track_caller]
-pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot_channel<T>(
+    name: impl Into<String>,
+    source: Source,
+) -> (OneshotSender<T>, OneshotReceiver<T>) {
     #[allow(deprecated)]
-    oneshot(name)
+    oneshot(name, source)
 }
 
 #[macro_export]
 macro_rules! oneshot {
     ($name:expr $(,)?) => {
-        $crate::oneshot($name)
+        $crate::oneshot($name, $crate::Source::caller())
     };
 }
 
@@ -3210,7 +3237,7 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let result = instrument_operation_on_with_source(
                 &self.handle,
@@ -3364,7 +3391,7 @@ impl<T: Clone> WatchReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn changed(&mut self) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let result = instrument_operation_on_with_source(
                 &self.handle,
@@ -3434,6 +3461,7 @@ impl<T: Clone> WatchReceiver<T> {
 pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
     capacity: usize,
+    source: Source,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
     let name = name.into();
     let (tx, rx) = broadcast::channel(capacity);
@@ -3450,6 +3478,7 @@ pub fn broadcast<T: Clone>(
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
         buffer: Some(BufferState {
@@ -3463,6 +3492,7 @@ pub fn broadcast<T: Clone>(
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     let channel = Arc::new(StdMutex::new(BroadcastRuntimeState {
@@ -3494,13 +3524,13 @@ pub fn broadcast<T: Clone>(
 #[macro_export]
 macro_rules! broadcast {
     ($name:expr, $capacity:expr $(,)?) => {
-        $crate::broadcast($name, $capacity)
+        $crate::broadcast($name, $capacity, $crate::Source::caller())
     };
 }
-#[track_caller]
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
+    source: Source,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     let name = name.into();
     let (tx, rx) = watch::channel(initial);
@@ -3513,6 +3543,7 @@ pub fn watch<T: Clone>(
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     let details = ChannelDetails::Watch(WatchChannelDetails {
         last_update_at: None,
@@ -3523,6 +3554,7 @@ pub fn watch<T: Clone>(
             lifecycle: ChannelEndpointLifecycle::Open,
             details,
         }),
+        source,
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
     let channel = Arc::new(StdMutex::new(WatchRuntimeState {
@@ -3550,27 +3582,30 @@ pub fn watch<T: Clone>(
         },
     )
 }
-#[track_caller]
 pub fn watch_channel<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
+    source: Source,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     #[allow(deprecated)]
-    watch(name, initial)
+    watch(name, initial, source)
 }
 
 #[macro_export]
 macro_rules! watch {
     ($name:expr, $initial:expr $(,)?) => {
-        $crate::watch($name, $initial)
+        $crate::watch($name, $initial, $crate::Source::caller())
     };
 }
 
 impl Notify {
-    #[track_caller]
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, source: Source) -> Self {
         let name = name.into();
-        let handle = EntityHandle::new(name, EntityBody::Notify(NotifyEntity { waiter_count: 0 }));
+        let handle = EntityHandle::new(
+            name,
+            EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
+            source,
+        );
         Self {
             inner: Arc::new(tokio::sync::Notify::new()),
             handle,
@@ -3581,7 +3616,7 @@ impl Notify {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn notified(&self) -> impl Future<Output = ()> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let waiters = self
                 .waiter_count
@@ -3623,19 +3658,19 @@ impl Notify {
 #[macro_export]
 macro_rules! notify {
     ($name:expr $(,)?) => {
-        $crate::Notify::new($name)
+        $crate::Notify::new($name, $crate::Source::caller())
     };
 }
 
 impl<T> OnceCell<T> {
-    #[track_caller]
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, source: Source) -> Self {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {
                 waiter_count: 0,
                 state: OnceCellState::Empty,
             }),
+            source,
         );
         Self {
             inner: tokio::sync::OnceCell::new(),
@@ -3661,7 +3696,7 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let waiters = self
                 .waiter_count
@@ -3708,7 +3743,7 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-        let source = caller_source();
+        let source = Source::caller();
         async move {
             let waiters = self
                 .waiter_count
@@ -3772,13 +3807,12 @@ impl<T> OnceCell<T> {
 #[macro_export]
 macro_rules! once_cell {
     ($name:expr $(,)?) => {
-        $crate::OnceCell::new($name)
+        $crate::OnceCell::new($name, $crate::Source::caller())
     };
 }
 
 impl Semaphore {
-    #[track_caller]
-    pub fn new(name: impl Into<String>, permits: usize) -> Self {
+    pub fn new(name: impl Into<String>, permits: usize, source: Source) -> Self {
         let max_permits = permits.min(u32::MAX as usize) as u32;
         let handle = EntityHandle::new(
             name.into(),
@@ -3786,6 +3820,7 @@ impl Semaphore {
                 max_permits,
                 handed_out_permits: 0,
             }),
+            source,
         );
         Self {
             inner: Arc::new(tokio::sync::Semaphore::new(permits)),
@@ -3826,7 +3861,7 @@ impl Semaphore {
     pub fn acquire(
         &self,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -3857,7 +3892,7 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -3887,7 +3922,7 @@ impl Semaphore {
     pub fn acquire_owned(
         &self,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -3918,7 +3953,7 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        let source = caller_source();
+        let source = Source::caller();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
             let permit = instrument_operation_on_with_source(
@@ -4156,7 +4191,7 @@ impl Drop for OwnedSemaphorePermit {
 #[macro_export]
 macro_rules! semaphore {
     ($name:expr, $permits:expr $(,)?) => {
-        $crate::Semaphore::new($name, $permits)
+        $crate::Semaphore::new($name, $permits, $crate::Source::caller())
     };
 }
 
@@ -4275,7 +4310,7 @@ impl Command {
     #[track_caller]
     pub fn spawn(&mut self) -> io::Result<Child> {
         let child = self.inner.spawn()?;
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), Source::caller());
         Ok(Child {
             inner: Some(child),
             handle,
@@ -4284,14 +4319,14 @@ impl Command {
 
     #[track_caller]
     pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
-        instrument_future_on("command.status", &handle, self.inner.status())
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), Source::caller());
+        instrument_future_on("command.status", &handle, self.inner.status(), Source::caller())
     }
 
     #[track_caller]
     pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
-        instrument_future_on("command.output", &handle, self.inner.output())
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), Source::caller());
+        instrument_future_on("command.output", &handle, self.inner.output(), Source::caller())
     }
 
     #[track_caller]
@@ -4348,7 +4383,7 @@ impl Child {
             env: diag.env.clone(),
         });
         let name = CompactString::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new(name, body);
+        let handle = EntityHandle::new(name, body, Source::caller());
         Self {
             inner: Some(child),
             handle,
@@ -4372,7 +4407,7 @@ impl Child {
     pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
-        instrument_future_on("command.wait", &handle, wait_fut)
+        instrument_future_on("command.wait", &handle, wait_fut, Source::caller())
     }
 
     #[track_caller]
@@ -4382,6 +4417,7 @@ impl Child {
             "command.wait_with_output",
             &self.handle,
             child.wait_with_output(),
+            Source::caller(),
         )
     }
 
@@ -4430,19 +4466,17 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    #[track_caller]
-    pub fn named(name: impl Into<String>) -> Self {
+    pub fn named(name: impl Into<String>, source: Source) -> Self {
         let name = name.into();
-        let handle = EntityHandle::new(format!("joinset.{name}"), EntityBody::Future);
+        let handle = EntityHandle::new(format!("joinset.{name}"), EntityBody::Future, source);
         Self {
             inner: tokio::task::JoinSet::new(),
             handle,
         }
     }
-    #[track_caller]
-    pub fn with_name(name: impl Into<String>) -> Self {
+    pub fn with_name(name: impl Into<String>, source: Source) -> Self {
         #[allow(deprecated)]
-        Self::named(name)
+        Self::named(name, source)
     }
 
     #[track_caller]
@@ -4451,7 +4485,7 @@ where
         F: Future<Output = T> + Send + 'static,
     {
         let joinset_handle = self.handle.clone();
-        let source = caller_source();
+        let source = Source::caller();
         self.inner.spawn(
             FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
                 instrument_future_on_with_source(label, &joinset_handle, future, source).await
@@ -4480,21 +4514,21 @@ where
     ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
         let handle = self.handle.clone();
         let fut = self.inner.join_next();
-        instrument_future_on("joinset.join_next", &handle, fut)
+        instrument_future_on("joinset.join_next", &handle, fut, Source::caller())
     }
 }
 
 #[macro_export]
 macro_rules! join_set {
     ($name:expr $(,)?) => {
-        $crate::JoinSet::named($name)
+        $crate::JoinSet::named($name, $crate::Source::caller())
     };
 }
 
 impl DiagnosticInterval {
     #[track_caller]
     pub fn tick(&mut self) -> impl Future<Output = tokio::time::Instant> + '_ {
-        instrument_future_on("interval.tick", &self.handle, self.inner.tick())
+        instrument_future_on("interval.tick", &self.handle, self.inner.tick(), Source::caller())
     }
 
     #[track_caller]
@@ -4513,21 +4547,19 @@ impl DiagnosticInterval {
     }
 }
 
-#[track_caller]
-pub fn interval(period: Duration) -> DiagnosticInterval {
+pub fn interval(period: Duration, source: Source) -> DiagnosticInterval {
     let label = format!("interval({}ms)", period.as_millis());
     DiagnosticInterval {
         inner: tokio::time::interval(period),
-        handle: EntityHandle::new(label, EntityBody::Future),
+        handle: EntityHandle::new(label, EntityBody::Future, source),
     }
 }
 
-#[track_caller]
-pub fn interval_at(start: tokio::time::Instant, period: Duration) -> DiagnosticInterval {
+pub fn interval_at(start: tokio::time::Instant, period: Duration, source: Source) -> DiagnosticInterval {
     let label = format!("interval({}ms)", period.as_millis());
     DiagnosticInterval {
         inner: tokio::time::interval_at(start, period),
-        handle: EntityHandle::new(label, EntityBody::Future),
+        handle: EntityHandle::new(label, EntityBody::Future, source),
     }
 }
 
@@ -4717,7 +4749,7 @@ fn instrument_operation_on_with_source<F>(
     on: &EntityHandle,
     op_kind: OperationKind,
     fut: F,
-    source: impl Into<CompactString>,
+    source: Source,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -4726,7 +4758,7 @@ where
         fut.into_future(),
         EntityId::new(on.id().as_str()),
         op_kind,
-        source.into(),
+        source.into_compact_string(),
         None,
     )
 }
@@ -4907,27 +4939,21 @@ impl<F> Drop for InstrumentedFuture<F> {
     }
 }
 
-#[track_caller]
-fn caller_source() -> CompactString {
-    let location = std::panic::Location::caller();
-    CompactString::from(format!("{}:{}", location.file(), location.line()))
-}
-
-#[track_caller]
 pub fn instrument_future_named<F>(
     name: impl Into<CompactString>,
     fut: F,
+    source: Source,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    instrument_future_named_with_source(name, fut, caller_source())
+    instrument_future_named_with_source(name, fut, source)
 }
 
 pub fn instrument_future_named_with_source<F>(
     name: impl Into<CompactString>,
     fut: F,
-    source: impl Into<CompactString>,
+    source: Source,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -4937,23 +4963,23 @@ where
     InstrumentedFuture::new(fut, handle, None)
 }
 
-#[track_caller]
 pub fn instrument_future_on<F>(
     name: impl Into<CompactString>,
     on: &impl AsEntityRef,
     fut: F,
+    source: Source,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    instrument_future_on_with_source(name, on, fut, caller_source())
+    instrument_future_on_with_source(name, on, fut, source)
 }
 
 pub fn instrument_future_on_with_source<F>(
     name: impl Into<CompactString>,
     on: &impl AsEntityRef,
     fut: F,
-    source: impl Into<CompactString>,
+    source: Source,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -4965,17 +4991,18 @@ where
 }
 
 #[doc(hidden)]
-#[track_caller]
 pub fn instrument_future_named_with_meta<F>(
     name: impl Into<CompactString>,
     fut: F,
     meta: &facet_value::Value,
+    source: Source,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
     let fut = fut.into_future();
     let mut entity = Entity::builder(name, EntityBody::Future)
+        .source(source.into_compact_string())
         .build(&())
         .expect("entity construction with unit meta should be infallible");
     entity.meta = meta.clone();
@@ -4986,17 +5013,17 @@ where
 #[macro_export]
 macro_rules! peeps {
     (name = $name:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named($name, $fut, $crate::Source::caller())
     }};
     (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_on($name, &$on, $fut)
+        $crate::instrument_future_on($name, &$on, $fut, $crate::Source::caller())
     }};
 }
 
 #[macro_export]
 macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut)
+        $crate::instrument_future_named($name, $fut, $crate::Source::caller())
     }};
     ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
         let mut __peeps_meta_pairs: Vec<(&'static str, $crate::facet_value::Value)> = Vec::new();
@@ -5008,7 +5035,12 @@ macro_rules! peep {
             ));
         )*
         let __peeps_meta: $crate::facet_value::Value = __peeps_meta_pairs.into_iter().collect();
-        $crate::instrument_future_named_with_meta($name, $fut, &__peeps_meta)
+        $crate::instrument_future_named_with_meta(
+            $name,
+            $fut,
+            &__peeps_meta,
+            $crate::Source::caller(),
+        )
     }};
     ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
         compile_error!("`level=` is deprecated");
@@ -5127,7 +5159,11 @@ mod tests {
         reset_runtime_db_for_test();
 
         let marker_line = line!() + 1;
-        let fut = instrument_future_named("test.future.source", std::future::ready(()));
+        let fut = instrument_future_named(
+            "test.future.source",
+            std::future::ready(()),
+            Source::caller(),
+        );
         let fut_id = EntityId::new(fut.future_handle.id().as_str());
         let source = {
             let db = runtime_db()
@@ -5230,6 +5266,7 @@ mod tests {
             "test.future.transition",
             &target,
             PendingOnceThenReady { pending: true },
+            Source::caller(),
         );
         let fut_id = EntityId::new(fut.future_handle.id().as_str());
 
@@ -5252,7 +5289,12 @@ mod tests {
         reset_runtime_db_for_test();
 
         let target = EntityHandle::new("test.target.drop", EntityBody::Future);
-        let fut = instrument_future_on("test.future.drop", &target, AlwaysPending);
+        let fut = instrument_future_on(
+            "test.future.drop",
+            &target,
+            AlwaysPending,
+            Source::caller(),
+        );
         let fut_handle = fut.future_handle.clone();
         let fut_id = EntityId::new(fut_handle.id().as_str());
 

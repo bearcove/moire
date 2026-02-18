@@ -1,4 +1,4 @@
-use crate::{instrument_future_on, EntityHandle};
+use crate::{instrument_future_on, EntityHandle, Source};
 use compact_str::CompactString;
 use peeps_types::{EntityBody, FileOpEntity, FileOpKind};
 use std::future::Future;
@@ -30,8 +30,15 @@ where
     let handle = EntityHandle::new(
         CompactString::from(format!("fs.{name}")),
         EntityBody::FileOp(FileOpEntity { op, path }),
+        Source::caller(),
     );
-    instrument_future_on(CompactString::from(format!("fs.{name}")), &handle, fut).await
+    instrument_future_on(
+        CompactString::from(format!("fs.{name}")),
+        &handle,
+        fut,
+        Source::caller(),
+    )
+    .await
 }
 
 pub struct OpenOptions {

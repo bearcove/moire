@@ -69,6 +69,10 @@ enum Command {
         #[facet(args::named, default)]
         limit: Option<u32>,
     },
+    Snapshot {
+        #[facet(args::named, default)]
+        url: Option<CompactString>,
+    },
 }
 
 fn main() {
@@ -101,6 +105,7 @@ fn run() -> Result<(), String> {
         } => run_cut(url, poll_ms, timeout_ms),
         Command::Sql { url, query } => run_sql(url, query),
         Command::Query { url, name, limit } => run_query_pack(url, name, limit),
+        Command::Snapshot { url } => run_snapshot(url),
     }
 }
 
@@ -187,6 +192,33 @@ fn run_query_pack(
             .map_err(|e| format!("decode query response as json: {e}"))?,
     )
     .map_err(|e| format!("pretty query response: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn run_snapshot(url: Option<CompactString>) -> Result<(), String> {
+    let base_url = url
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let base_url = base_url.trim_end_matches('/');
+    let current_url = format!("{base_url}/api/snapshot/current");
+
+    let response = match ureq::get(&current_url).call() {
+        Ok(response) => response
+            .into_string()
+            .map_err(|e| format!("read GET response body: {e}"))?,
+        Err(ureq::Error::Status(404, _)) => {
+            let snapshot_url = format!("{base_url}/api/snapshot");
+            http_post_json(&snapshot_url, "{}")?
+        }
+        Err(e) => return Err(format!("GET {current_url}: {e}")),
+    };
+
+    let pretty = facet_json::to_string_pretty(
+        &facet_json::from_str::<facet_value::Value>(&response)
+            .map_err(|e| format!("decode snapshot response as json: {e}"))?,
+    )
+    .map_err(|e| format!("pretty snapshot response: {e}"))?;
     println!("{pretty}");
     Ok(())
 }
