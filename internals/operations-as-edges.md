@@ -29,11 +29,11 @@ This keeps causality visible without flooding the graph with wrapper implementat
 
 ## Hard Invariants
 
-- [ ] Edges remain `Entity -> Entity` only.
-- [ ] Scopes are never edge endpoints.
-- [ ] Scopes are context/membership only (`entity_scope_links` + scope inspector/table).
+- [x] Edges remain `Entity -> Entity` only.
+- [x] Scopes are never edge endpoints.
+- [x] Scopes are context/membership only (`entity_scope_links` + scope inspector/table).
 - [ ] Primitive wrappers do not create wrapper-internal future nodes.
-- [ ] RPC `request`/`response` remain entities (not reduced to one edge).
+- [x] RPC `request`/`response` remain entities (not reduced to one edge).
 
 ## Canonical Model Rules
 
@@ -79,15 +79,15 @@ Operation edges should carry this metadata in `edge.meta`:
 
 Notes:
 
-- [ ] `age_ms` should be derived in UI/backend from `ptime_now_ms - pending_since_ptime_ms`, not stored redundantly.
-- [ ] `state=pending` is the canonical "blocked" signal for graph styling.
+- [x] `age_ms` should be derived in UI/backend from `ptime_now_ms - pending_since_ptime_ms`, not stored redundantly.
+- [x] `state=pending` is the canonical "blocked" signal for graph styling.
 
 ## RPC + Cross-Process Rules
 
-- [ ] Keep `Request` and `Response` as entities.
-- [ ] Keep `EdgeKind::RpcLink` for request/response pairing.
+- [x] Keep `Request` and `Response` as entities.
+- [x] Keep `EdgeKind::RpcLink` for request/response pairing.
 - [ ] Use scope membership to associate request/response with connection scope.
-- [ ] Do not add edges to scope nodes.
+- [x] Do not add edges to scope nodes.
 
 Cross-process correlation should come from metadata, not UI merge tricks:
 
@@ -99,9 +99,9 @@ Cross-process correlation should come from metadata, not UI merge tricks:
 
 Pairing is model-level. Merging is view-level.
 
-- [ ] Keep paired entities separate in storage.
-- [ ] Pairing source of truth includes `ChannelLink` (`tx -> rx`).
-- [ ] Pairing source of truth includes `RpcLink` (`request -> response`).
+- [x] Keep paired entities separate in storage.
+- [x] Pairing source of truth includes `ChannelLink` (`tx -> rx`).
+- [x] Pairing source of truth includes `RpcLink` (`request -> response`).
 - [ ] Merge paired cards only when both endpoints belong to the same process.
 - [ ] For cross-process pairs, do not merge; render both with a visible pair link.
 - [ ] Node color always follows owning process, even when paired.
@@ -112,16 +112,16 @@ No dual-write period. No compatibility mode. Land the new model and delete legac
 
 ### Cutover A - Model and runtime
 
-- [ ] Define operation-edge metadata schema in `peeps-types` docs/comments.
-- [ ] Add helper APIs in `peeps` registry for upsert/update/remove operation edges.
-- [ ] Channel wrappers emit operation edges (`send`, `recv`, etc.) and stop emitting wrapper-internal future nodes.
+- [x] Define operation-edge metadata schema in `peeps-types` docs/comments.
+- [x] Add helper APIs in `peeps` registry for upsert/update/remove operation edges.
+- [x] Channel wrappers emit operation edges (`send`, `recv`, etc.) and stop emitting wrapper-internal future nodes.
 - [ ] Lock/semaphore wrappers emit operation edges (`lock`, `acquire`) and stop emitting wrapper-internal future nodes.
-- [ ] Notify/oncecell wrappers emit operation edges for waits and stop emitting wrapper-internal future nodes.
+- [x] Notify/oncecell wrappers emit operation edges for waits and stop emitting wrapper-internal future nodes.
 - [ ] Keep only intentional actor futures + resource entities + RPC lifecycle entities.
 
 ### Cutover B - Frontend and queries
 
-- [ ] Frontend blocked styling keys off operation-edge pending state.
+- [x] Frontend blocked styling keys off operation-edge pending state.
 - [ ] Inspector shows operation-edge details (state, pending duration, source, crate).
 - [ ] Graph layout/ranking assumes no primitive wrapper-internal future nodes.
 - [ ] Query packs and any graph helpers stop relying on legacy wrapper-node shapes.
@@ -131,15 +131,15 @@ No dual-write period. No compatibility mode. Land the new model and delete legac
 - [ ] Remove dead code paths and helpers that only supported wrapper-internal primitive nodes.
 - [ ] Remove stale docs/examples that describe the old primitive-wrapper-node model.
 - [ ] Validation targets:
-- [ ] `channel-full-stall`: clear `actor --send(pending)--> channel_tx`.
-- [ ] `semaphore-starvation`: clear `waiter --acquire(pending)--> semaphore`, plus holder relation.
-- [ ] `oneshot-sender-lost-in-map`: wait edge remains pending with useful metadata.
-- [ ] `roam-rust-swift-stuck-request`: request/response remain first-class entities across processes.
+- [x] `channel-full-stall`: clear `actor --send(pending)--> channel_tx`.
+- [x] `semaphore-starvation`: clear `waiter --acquire(pending)--> semaphore`, plus holder relation.
+- [x] `oneshot-sender-lost-in-map`: wait edge remains pending with useful metadata.
+- [x] `roam-rust-swift-stuck-request`: request/response remain first-class entities across processes.
 
 ## Open Questions
 
-- [ ] Do we keep one generic `EdgeKind::Needs` + `op_kind` in meta, or add explicit operation edge kinds?
-- [ ] Should completed operation edges be removed immediately or kept for a short TTL for debuggability?
+- [x] Do we keep one generic `EdgeKind::Needs` + `op_kind` in meta, or add explicit operation edge kinds?
+- [x] Should completed operation edges be removed immediately or kept for a short TTL for debuggability?
 - [ ] Which operation details belong in edge meta vs events?
 - [ ] Do we need edge compaction rules for very high-frequency operations?
 

@@ -630,7 +630,7 @@ function GraphPanel({
   scopeColorMode,
   onToggleProcessColorBy,
   onToggleCrateColorBy,
-  useSubgraphs,
+  subgraphScopeMode,
   onToggleProcessSubgraphs,
   onToggleCrateSubgraphs,
   unionFrameLayout,
@@ -654,14 +654,13 @@ function GraphPanel({
   scopeColorMode: ScopeColorMode;
   onToggleProcessColorBy: () => void;
   onToggleCrateColorBy: () => void;
-  useSubgraphs: boolean;
+  subgraphScopeMode: SubgraphScopeMode;
   onToggleProcessSubgraphs: () => void;
   onToggleCrateSubgraphs: () => void;
   /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
   unionFrameLayout?: LayoutResult;
 }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
-  const subgraphScopeMode: SubgraphScopeMode = useSubgraphs ? scopeColorMode : "none";
 
   // In snapshot mode (no unionFrameLayout), measure and lay out from scratch.
   React.useEffect(() => {
@@ -736,7 +735,7 @@ function GraphPanel({
                 colorByActive={scopeColorMode === "process"}
                 onToggleColorBy={onToggleProcessColorBy}
                 colorByLabel="Use process colors"
-                subgraphsActive={scopeColorMode === "process" && useSubgraphs}
+                subgraphsActive={subgraphScopeMode === "process"}
                 onToggleSubgraphs={onToggleProcessSubgraphs}
                 subgraphsLabel="Use subgraphs"
               />
@@ -751,7 +750,7 @@ function GraphPanel({
                 colorByActive={scopeColorMode === "crate"}
                 onToggleColorBy={onToggleCrateColorBy}
                 colorByLabel="Use crate colors"
-                subgraphsActive={scopeColorMode === "crate" && useSubgraphs}
+                subgraphsActive={subgraphScopeMode === "crate"}
                 onToggleSubgraphs={onToggleCrateSubgraphs}
                 subgraphsLabel="Use subgraphs"
               />
@@ -1553,7 +1552,7 @@ export function App() {
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
   const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("none");
-  const [useSubgraphs, setUseSubgraphs] = useState(false);
+  const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("none");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
@@ -1638,33 +1637,19 @@ export function App() {
   );
 
   const handleToggleProcessColorBy = useCallback(() => {
-    setScopeColorMode((prev) => {
-      const next = prev === "process" ? "none" : "process";
-      if (next === "none") setUseSubgraphs(false);
-      return next;
-    });
+    setScopeColorMode((prev) => (prev === "process" ? "none" : "process"));
   }, []);
 
   const handleToggleCrateColorBy = useCallback(() => {
-    setScopeColorMode((prev) => {
-      const next = prev === "crate" ? "none" : "crate";
-      if (next === "none") setUseSubgraphs(false);
-      return next;
-    });
+    setScopeColorMode((prev) => (prev === "crate" ? "none" : "crate"));
   }, []);
 
   const handleToggleProcessSubgraphs = useCallback(() => {
-    setScopeColorMode((prevScope) => {
-      setUseSubgraphs((prevOn) => (prevScope === "process" ? !prevOn : true));
-      return "process";
-    });
+    setSubgraphScopeMode((prev) => (prev === "process" ? "none" : "process"));
   }, []);
 
   const handleToggleCrateSubgraphs = useCallback(() => {
-    setScopeColorMode((prevScope) => {
-      setUseSubgraphs((prevOn) => (prevScope === "crate" ? !prevOn : true));
-      return "crate";
-    });
+    setSubgraphScopeMode((prev) => (prev === "crate" ? "none" : "crate"));
   }, []);
 
   const { entities, edges } = useMemo(() => {
@@ -2261,7 +2246,7 @@ export function App() {
             scopeColorMode={scopeColorMode}
             onToggleProcessColorBy={handleToggleProcessColorBy}
             onToggleCrateColorBy={handleToggleCrateColorBy}
-            useSubgraphs={useSubgraphs}
+            subgraphScopeMode={subgraphScopeMode}
             onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
             onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
             unionFrameLayout={unionFrameLayout}
