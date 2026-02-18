@@ -995,6 +995,23 @@
     animation: mockup-edge-glow-pulse 2s ease-in-out infinite;
 }
 
+.mockup-edge-label {
+    pointer-events: none;
+}
+
+.mockup-edge-label-bg {
+    fill: light-dark(rgba(244, 246, 250, 0.92), rgba(20, 22, 26, 0.88));
+    stroke: none;
+}
+
+.mockup-edge-label-text {
+    fill: var(--text-muted);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    letter-spacing: 0.015em;
+}
+
 /* Inspector panel */
 .mockup-inspector {
     display: flex;

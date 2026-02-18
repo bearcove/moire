@@ -72,6 +72,12 @@ export function edgeMarkerSize(edge: EdgeDef): number {
   return edge.kind === "needs" ? (edge.state === "pending" ? 14 : 10) : 8;
 }
 
+export function edgeLabel(edge: EdgeDef): string | undefined {
+  if (edge.kind !== "needs" || !edge.opKind) return undefined;
+  const op = edge.opKind.replaceAll("_", " ");
+  return edge.state === "pending" ? `${op} ⏳` : op;
+}
+
 // ── Types ─────────────────────────────────────────────────────
 
 export type ElkPoint = { x: number; y: number };
@@ -189,15 +195,14 @@ export async function layoutGraph(
   const elkEdgeMap = new Map((result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]));
 
   const nodes: Node[] = [];
+  const absoluteNodePos = new Map<string, { x: number; y: number }>();
 
-  const makeEntityNode = (def: EntityDef, position: { x: number; y: number }, parentId?: string): Node => {
+  const makeEntityNode = (def: EntityDef, position: { x: number; y: number }): Node => {
     if (def.channelPair) {
       return {
         id: def.id,
         type: "channelPairNode",
         position,
-        parentId,
-        extent: parentId ? "parent" : undefined,
         data: {
           tx: def.channelPair.tx,
           rx: def.channelPair.rx,
@@ -212,8 +217,6 @@ export async function layoutGraph(
         id: def.id,
         type: "rpcPairNode",
         position,
-        parentId,
-        extent: parentId ? "parent" : undefined,
         data: {
           req: def.rpcPair.req,
           resp: def.rpcPair.resp,
@@ -226,8 +229,6 @@ export async function layoutGraph(
       id: def.id,
       type: "mockNode",
       position,
-      parentId,
-      extent: parentId ? "parent" : undefined,
       data: {
         kind: def.kind,
         label: def.name,
@@ -241,9 +242,13 @@ export async function layoutGraph(
     };
   };
 
-  const walkChildren = (children: any[] | undefined, parentId?: string) => {
+  const walkChildren = (children: any[] | undefined, parentOffset: { x: number; y: number } = { x: 0, y: 0 }) => {
     for (const child of children ?? []) {
       const isGroupNode = typeof child.id === "string" && child.id.startsWith("scope-group:");
+      const localX = child.x ?? 0;
+      const localY = child.y ?? 0;
+      const absX = parentOffset.x + localX;
+      const absY = parentOffset.y + localY;
       if (isGroupNode) {
         const groupId = String(child.id);
         const firstColon = groupId.indexOf(":");
@@ -254,7 +259,7 @@ export async function layoutGraph(
         nodes.push({
           id: child.id,
           type: "scopeGroupNode",
-          position: { x: child.x ?? 0, y: child.y ?? 0 },
+          position: { x: absX, y: absY },
           data: {
             isScopeGroup: true,
             scopeKind,
@@ -268,15 +273,17 @@ export async function layoutGraph(
           style: {
             width: child.width ?? 260,
             height: child.height ?? 180,
+            pointerEvents: "none",
           },
         });
-        walkChildren(child.children, child.id);
+        walkChildren(child.children, { x: absX, y: absY });
         continue;
       }
 
       const entity = entityById.get(child.id);
       if (!entity) continue;
-      nodes.push(makeEntityNode(entity, { x: child.x ?? 0, y: child.y ?? 0 }, parentId));
+      nodes.push(makeEntityNode(entity, { x: absX, y: absY }));
+      absoluteNodePos.set(entity.id, { x: absX, y: absY });
     }
   };
 
@@ -285,12 +292,24 @@ export async function layoutGraph(
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const edges: Edge[] = validEdges.map((def) => {
     const sz = edgeMarkerSize(def);
-    const sections = elkEdgeMap.get(def.id) ?? [];
     const points: ElkPoint[] = [];
+    const sections = elkEdgeMap.get(def.id) ?? [];
     for (const section of sections) {
       points.push(section.startPoint);
       if (section.bendPoints) points.push(...section.bendPoints);
       points.push(section.endPoint);
+    }
+    if (points.length === 0) {
+      const srcPos = absoluteNodePos.get(def.source);
+      const dstPos = absoluteNodePos.get(def.target);
+      const srcSize = nodeSizes.get(def.source) ?? { width: 150, height: 36 };
+      const dstSize = nodeSizes.get(def.target) ?? { width: 150, height: 36 };
+      if (srcPos && dstPos) {
+        points.push(
+          { x: srcPos.x + srcSize.width / 2, y: srcPos.y + srcSize.height / 2 },
+          { x: dstPos.x + dstSize.width / 2, y: dstPos.y + dstSize.height / 2 },
+        );
+      }
     }
     const srcName = entityNameMap.get(def.source) ?? def.source;
     const dstName = entityNameMap.get(def.target) ?? def.target;
@@ -299,7 +318,11 @@ export async function layoutGraph(
       source: def.source,
       target: def.target,
       type: "elkrouted",
-      data: { points, tooltip: edgeTooltip(def, srcName, dstName) },
+      data: {
+        points,
+        tooltip: edgeTooltip(def, srcName, dstName),
+        edgeLabel: edgeLabel(def),
+      },
       style: edgeStyle(def),
       markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
     };

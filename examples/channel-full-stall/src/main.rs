@@ -5,11 +5,17 @@ async fn main() {
     peeps::init("example-channel-full-stall");
 
     let (tx, mut rx) = peeps::channel!("demo.work_queue", 16);
+    let (_idle_tx, mut idle_rx) = peeps::channel!("demo.idle_queue", 1);
 
     peeps::spawn_tracked!("stalled_receiver", async move {
         println!("receiver started but is intentionally not draining the queue");
         tokio::time::sleep(Duration::from_secs(3600)).await;
         let _ = rx.recv().await;
+    });
+
+    peeps::spawn_tracked!("blocked_receiver", async move {
+        println!("blocked_receiver waits on demo.idle_queue.recv() forever (no sender activity)");
+        let _: Option<u32> = idle_rx.recv().await;
     });
 
     peeps::spawn_tracked!("bounded_sender", async move {

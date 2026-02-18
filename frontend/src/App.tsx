@@ -395,9 +395,12 @@ function ScopeGroupNode({ data }: { data: ScopeGroupNodeData }) {
 }
 
 function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
-  const edgeData = data as { points?: ElkPoint[]; tooltip?: string; ghost?: boolean } | undefined;
+  const edgeData = data as
+    | { points?: ElkPoint[]; tooltip?: string; ghost?: boolean; edgeLabel?: string }
+    | undefined;
   const points = edgeData?.points ?? [];
   const ghost = edgeData?.ghost ?? false;
+  const edgeLabel = edgeData?.edgeLabel;
   if (points.length < 2) return null;
 
   const [start, ...rest] = points;
@@ -417,6 +420,51 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
       }
     }
   }
+
+  const labelAnchor: { x: number; y: number; dx: number; dy: number } = (() => {
+    if (points.length < 2) {
+      const p = points[0] ?? { x: 0, y: 0 };
+      return { x: p.x, y: p.y, dx: 0, dy: 1 };
+    }
+    let totalLength = 0;
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i].x - points[i - 1].x;
+      const dy = points[i].y - points[i - 1].y;
+      totalLength += Math.hypot(dx, dy);
+    }
+    if (totalLength <= 0) {
+      const p = points[0];
+      return { x: p.x, y: p.y, dx: 0, dy: 1 };
+    }
+    const halfway = totalLength / 2;
+    let traversed = 0;
+    for (let i = 1; i < points.length; i++) {
+      const start = points[i - 1];
+      const end = points[i];
+      const segLength = Math.hypot(end.x - start.x, end.y - start.y);
+      if (traversed + segLength >= halfway) {
+        const remain = halfway - traversed;
+        const t = segLength <= 0 ? 0 : remain / segLength;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        return {
+          x: start.x + (end.x - start.x) * t,
+          y: start.y + (end.y - start.y) * t,
+          dx,
+          dy,
+        };
+      }
+      traversed += segLength;
+    }
+    const mid = points[Math.floor(points.length / 2)];
+    return { x: mid.x, y: mid.y, dx: 0, dy: 1 };
+  })();
+  const labelWidth = edgeLabel ? Math.max(36, edgeLabel.length * 6.2 + 12) : 0;
+  const dirLen = Math.hypot(labelAnchor.dx, labelAnchor.dy) || 1;
+  const nx = -labelAnchor.dy / dirLen;
+  const ny = labelAnchor.dx / dirLen;
+  const labelX = labelAnchor.x + nx * 14;
+  const labelY = labelAnchor.y + ny * 14;
 
   return (
     <g style={ghost ? { opacity: 0.2, pointerEvents: "none" } : undefined}>
@@ -459,6 +507,14 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
         fill="none"
         className="react-flow__edge-path"
       />
+      {edgeLabel && (
+        <g className="mockup-edge-label" transform={`translate(${labelX}, ${labelY})`}>
+          <rect className="mockup-edge-label-bg" x={-labelWidth / 2} y={-8} width={labelWidth} height={16} />
+          <text className="mockup-edge-label-text" textAnchor="middle" dominantBaseline="middle">
+            {edgeLabel}
+          </text>
+        </g>
+      )}
     </g>
   );
 }
