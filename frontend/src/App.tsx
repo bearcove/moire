@@ -1947,7 +1947,12 @@ export function App() {
 
   const handleKrateSolo = useCallback(
     (krate: string) => {
-      setHiddenKrates(new Set(crateItems.filter((i) => i.id !== krate).map((i) => i.id)));
+      setHiddenKrates((prev) => {
+        const otherKrates = crateItems.filter((i) => i.id !== krate).map((i) => i.id);
+        const alreadySolo = otherKrates.every((id) => prev.has(id)) && !prev.has(krate);
+        if (alreadySolo) return new Set();
+        return new Set(otherKrates);
+      });
     },
     [crateItems],
   );
@@ -1963,7 +1968,12 @@ export function App() {
 
   const handleProcessSolo = useCallback(
     (pid: string) => {
-      setHiddenProcesses(new Set(processItems.filter((i) => i.id !== pid).map((i) => i.id)));
+      setHiddenProcesses((prev) => {
+        const otherProcesses = processItems.filter((i) => i.id !== pid).map((i) => i.id);
+        const alreadySolo = otherProcesses.every((id) => prev.has(id)) && !prev.has(pid);
+        if (alreadySolo) return new Set();
+        return new Set(otherProcesses);
+      });
     },
     [processItems],
   );
