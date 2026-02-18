@@ -1,7 +1,6 @@
 use compact_str::CompactString;
 use peeps_types::{
-    CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PullChangesResponse,
-    ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId,
+    EdgeKind, EntityBody, EntityId, ResponseStatus, ScopeBody,
 };
 use std::ffi::OsStr;
 use std::future::{Future, IntoFuture};
@@ -233,7 +232,6 @@ static DISABLED_RPC_REQUEST_ID: LazyLock<EntityId> =
 static DISABLED_RPC_RESPONSE_ID: LazyLock<EntityId> =
     LazyLock::new(|| EntityId::new("disabled-response"));
 static DISABLED_RPC_REQUEST_WIRE_ID: CompactString = CompactString::const_new("disabled-request");
-static DISABLED_STREAM_ID: StreamId = StreamId(CompactString::const_new("disabled"));
 static DISABLED_EMPTY_SOURCE: CompactString = CompactString::const_new("");
 
 impl RpcRequestHandle {
@@ -1334,44 +1332,6 @@ pub fn rpc_response_for_with_krate(
     _krate: impl Into<CompactString>,
 ) -> RpcResponseHandle {
     rpc_response_for(method, request)
-}
-
-pub trait SnapshotSink {
-    fn entity(&mut self, _entity: &Entity) {}
-    fn scope(&mut self, _scope: &Scope) {}
-    fn edge(&mut self, _edge: &Edge) {}
-    fn event(&mut self, _event: &Event) {}
-}
-
-pub fn write_snapshot_to<S>(_sink: &mut S)
-where
-    S: SnapshotSink,
-{
-}
-
-pub fn pull_changes_since(from_seq_no: SeqNo, _max_changes: u32) -> PullChangesResponse {
-    PullChangesResponse {
-        stream_id: DISABLED_STREAM_ID.clone(),
-        from_seq_no,
-        next_seq_no: from_seq_no,
-        changes: Vec::new(),
-        truncated: false,
-        compacted_before_seq_no: None,
-    }
-}
-
-pub fn current_cursor() -> StreamCursor {
-    StreamCursor {
-        stream_id: DISABLED_STREAM_ID.clone(),
-        next_seq_no: SeqNo::ZERO,
-    }
-}
-
-pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
-    CutAck {
-        cut_id: CutId(cut_id.into()),
-        cursor: current_cursor(),
-    }
 }
 
 pub fn instrument_future_named<F>(_name: impl Into<CompactString>, fut: F) -> F::IntoFuture
