@@ -33,6 +33,10 @@ enum CommandKind {
     MutexLockOrderInversion,
     OneshotSenderLostInMap,
     RoamRpcStuckRequest,
+    RoamRpcStuckRequestClient {
+        #[facet(args::named)]
+        peer_addr: CompactString,
+    },
     RoamRustSwiftStuckRequest,
     SemaphoreStarvation,
 }
@@ -141,6 +145,9 @@ async fn dispatch_command(root_dir: &std::path::Path, command: CommandKind) -> A
         CommandKind::MutexLockOrderInversion => scenarios::mutex_lock_order_inversion::run().await,
         CommandKind::OneshotSenderLostInMap => scenarios::oneshot_sender_lost_in_map::run().await,
         CommandKind::RoamRpcStuckRequest => scenarios::roam_rpc_stuck_request::run().await,
+        CommandKind::RoamRpcStuckRequestClient { peer_addr } => {
+            scenarios::roam_rpc_stuck_request::run_client_process(peer_addr.to_string()).await
+        }
         CommandKind::RoamRustSwiftStuckRequest => {
             scenarios::roam_rust_swift_stuck_request::run(root_dir).await
         }

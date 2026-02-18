@@ -20,6 +20,7 @@ export type EntityDef = {
   rawEntityId: string;
   processId: string;
   processName: string;
+  processPid: number;
   name: string;
   kind: string;
   body: EntityBody;
@@ -320,7 +321,7 @@ export function convertSnapshot(snapshot: SnapshotCutResponse): {
 
   // First pass: collect all entities so we can do cross-process edge resolution.
   for (const proc of snapshot.processes) {
-    const { process_id, process_name, ptime_now_ms } = proc;
+    const { process_id, process_name, pid, ptime_now_ms } = proc;
     const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
 
     for (const e of proc.snapshot.entities) {
@@ -331,6 +332,7 @@ export function convertSnapshot(snapshot: SnapshotCutResponse): {
         rawEntityId: e.id,
         processId: String(process_id),
         processName: process_name,
+        processPid: pid,
         name: e.name,
         kind: bodyToKind(e.body),
         body: e.body,

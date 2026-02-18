@@ -12,6 +12,87 @@ export interface EdgeLayerProps {
   ghostEdgeIds?: Set<string>;
 }
 
+function polylineLength(points: Point[]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    total += Math.hypot(dx, dy);
+  }
+  return total;
+}
+
+function trimPolylineEnd(points: Point[], trim: number): Point[] {
+  if (points.length < 2 || trim <= 0) return [...points];
+  const total = polylineLength(points);
+  if (total <= trim + 1e-6) return [...points];
+  const keep = total - trim;
+
+  const out: Point[] = [points[0]];
+  let traversed = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    if (segLen <= 1e-6) continue;
+    if (traversed + segLen < keep - 1e-6) {
+      out.push(b);
+      traversed += segLen;
+      continue;
+    }
+    const remain = keep - traversed;
+    const t = Math.max(0, Math.min(1, remain / segLen));
+    out.push({
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+    });
+    return out;
+  }
+  return [...points];
+}
+
+type ArrowGeom = {
+  tip: Point;
+  left: Point;
+  right: Point;
+};
+
+function computeArrow(points: Point[], size: number): ArrowGeom | null {
+  if (points.length < 2) return null;
+  const tip = points[points.length - 1];
+  let prevIndex = points.length - 2;
+  while (prevIndex >= 0) {
+    const prev = points[prevIndex];
+    if (Math.hypot(tip.x - prev.x, tip.y - prev.y) > 1e-6) break;
+    prevIndex -= 1;
+  }
+  if (prevIndex < 0) return null;
+
+  const prev = points[prevIndex];
+  const dx = tip.x - prev.x;
+  const dy = tip.y - prev.y;
+  const len = Math.hypot(dx, dy);
+  if (len <= 1e-6) return null;
+
+  const ux = dx / len;
+  const uy = dy / len;
+  const nx = -uy;
+  const ny = ux;
+
+  const arrowLength = Math.max(6, size);
+  const halfWidth = arrowLength * 0.5;
+  const base = {
+    x: tip.x - ux * arrowLength,
+    y: tip.y - uy * arrowLength,
+  };
+
+  return {
+    tip,
+    left: { x: base.x + nx * halfWidth, y: base.y + ny * halfWidth },
+    right: { x: base.x - nx * halfWidth, y: base.y - ny * halfWidth },
+  };
+}
+
 // Compute the midpoint along the polyline with its local direction vector,
 // then offset the label perpendicularly by 20 units (matches App.tsx behavior).
 function computeLabelPos(points: Point[]): { x: number; y: number } {
@@ -53,66 +134,6 @@ function computeLabelPos(points: Point[]): { x: number; y: number } {
   return { x: mid.x, y: mid.y };
 }
 
-function markerIdForEdge(edge: GeometryEdge, isSelected: boolean): string {
-  if (isSelected) return "el-arrow-selected";
-  const kind = edge.kind;
-  if (kind === "needs" && edge.data?.edgePending) return "el-arrow-needs-pending";
-  switch (kind) {
-    case "touches":      return "el-arrow-touches";
-    case "needs":        return "el-arrow-needs";
-    case "holds":        return "el-arrow-holds";
-    case "polls":        return "el-arrow-polls";
-    case "closed_by":    return "el-arrow-closed-by";
-    case "channel_link": return "el-arrow-channel-link";
-    case "rpc_link":     return "el-arrow-rpc-link";
-    default:             return "el-arrow-holds";
-  }
-}
-
-// Closed arrowhead path in a normalized 10×10 viewBox, tip at (10,5).
-const ARROW_PATH = "M 0 0 L 10 5 L 0 10 Z";
-
-function ArrowMarker({
-  id,
-  fill,
-  size,
-}: {
-  id: string;
-  fill: string;
-  size: number;
-}) {
-  return (
-    <marker
-      id={id}
-      viewBox="0 0 10 10"
-      refX="10"
-      refY="5"
-      markerWidth={size}
-      markerHeight={size}
-      markerUnits="userSpaceOnUse"
-      orient="auto"
-    >
-      <path d={ARROW_PATH} style={{ fill }} />
-    </marker>
-  );
-}
-
-function EdgeMarkerDefs() {
-  return (
-    <defs>
-      <ArrowMarker id="el-arrow-needs"         fill="light-dark(#d7263d, #ff6b81)" size={10} />
-      <ArrowMarker id="el-arrow-needs-pending" fill="light-dark(#d7263d, #ff6b81)" size={14} />
-      <ArrowMarker id="el-arrow-touches"       fill="light-dark(#4f8f8f, #78b8b8)" size={8}  />
-      <ArrowMarker id="el-arrow-holds"         fill="light-dark(#2f6fed, #7aa2ff)" size={8}  />
-      <ArrowMarker id="el-arrow-polls"         fill="light-dark(#8e7cc3, #b4a7d6)" size={8}  />
-      <ArrowMarker id="el-arrow-closed-by"     fill="light-dark(#e08614, #f0a840)" size={8}  />
-      <ArrowMarker id="el-arrow-channel-link"  fill="light-dark(#888, #666)"       size={8}  />
-      <ArrowMarker id="el-arrow-rpc-link"      fill="light-dark(#888, #666)"       size={8}  />
-      <ArrowMarker id="el-arrow-selected"      fill="var(--accent, #3b82f6)"       size={10} />
-    </defs>
-  );
-}
-
 export function EdgeLayer({
   edges,
   selectedEdgeId,
@@ -123,23 +144,27 @@ export function EdgeLayer({
 }: EdgeLayerProps) {
   return (
     <g>
-      <EdgeMarkerDefs />
       {edges.map((edge) => {
         if (edge.polyline.length < 2) return null;
 
         const isSelected = selectedEdgeId === edge.id;
         const isGhost = ghostEdgeIds?.has(edge.id) ?? false;
-        const d = polylineToPath(edge.polyline);
+        const markerSize = (edge.data?.markerSize as number | undefined) ?? 8;
+        const shaftPoints = trimPolylineEnd(edge.polyline, markerSize * 0.55);
+        const d = polylineToPath(shaftPoints);
         const hitD = hitTestPath(edge.polyline);
-        const markerId = markerIdForEdge(edge, isSelected);
         const edgeStyle = edge.data?.style ?? {};
         const edgeLabel = edge.data?.edgeLabel as string | undefined;
         const edgePending = edge.data?.edgePending as boolean | undefined;
+        const stroke = isSelected
+          ? "var(--accent, #3b82f6)"
+          : (edgeStyle.stroke ?? "light-dark(#666, #999)");
+        const arrow = computeArrow(edge.polyline, markerSize);
 
         const visibleStyle: React.CSSProperties = isSelected
-          ? { stroke: "var(--accent, #3b82f6)", strokeWidth: 2.5 }
+          ? { stroke, strokeWidth: 2.5 }
           : {
-              stroke: edgeStyle.stroke,
+              stroke,
               strokeWidth: edgeStyle.strokeWidth,
               strokeDasharray: edgeStyle.strokeDasharray,
             };
@@ -193,8 +218,14 @@ export function EdgeLayer({
               d={d}
               fill="none"
               style={visibleStyle}
-              markerEnd={`url(#${markerId})`}
             />
+            {arrow && (
+              <path
+                d={`M ${arrow.tip.x} ${arrow.tip.y} L ${arrow.left.x} ${arrow.left.y} L ${arrow.right.x} ${arrow.right.y} Z`}
+                fill={stroke}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
 
             {/* Label at midpoint */}
             {edgeLabel && labelPos && (

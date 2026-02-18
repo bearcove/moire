@@ -117,16 +117,49 @@ export function App() {
 
   const processItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
+    const processMeta = new Map<string, { name: string; pid: number | null }>();
+
     for (const e of allEntities) {
       counts.set(e.processId, (counts.get(e.processId) ?? 0) + 1);
+      if (!processMeta.has(e.processId)) {
+        processMeta.set(e.processId, { name: e.processName, pid: e.processPid });
+      }
     }
-    return Array.from(counts.keys())
-      .sort()
-      .map((pid) => {
-        const name = allEntities.find((e) => e.processId === pid)?.processName ?? pid;
-        return { id: pid, label: name, meta: counts.get(pid) };
+
+    for (const proc of connections?.processes ?? []) {
+      const processId = String(proc.conn_id);
+      processMeta.set(processId, { name: proc.process_name, pid: proc.pid });
+      if (!counts.has(processId)) {
+        counts.set(processId, 0);
+      }
+    }
+
+    const rows = Array.from(processMeta.entries()).map(([id, meta]) => ({
+      id,
+      name: meta.name,
+      pid: meta.pid,
+      count: counts.get(id) ?? 0,
+    }));
+
+    const duplicateNameCounts = new Map<string, number>();
+    for (const row of rows) {
+      duplicateNameCounts.set(row.name, (duplicateNameCounts.get(row.name) ?? 0) + 1);
+    }
+
+    return rows
+      .sort(
+        (a, b) =>
+          a.name.localeCompare(b.name) ||
+          (a.pid ?? Number.MAX_SAFE_INTEGER) - (b.pid ?? Number.MAX_SAFE_INTEGER) ||
+          a.id.localeCompare(b.id),
+      )
+      .map((row) => {
+        const hasDuplicateName = (duplicateNameCounts.get(row.name) ?? 0) > 1;
+        const suffix = row.pid == null ? row.id : String(row.pid);
+        const label = hasDuplicateName ? `${row.name}(${suffix})` : row.name;
+        return { id: row.id, label, meta: row.count };
       });
-  }, [allEntities]);
+  }, [allEntities, connections]);
 
   const handleKrateToggle = useCallback((krate: string) => {
     setHiddenKrates((prev) => {

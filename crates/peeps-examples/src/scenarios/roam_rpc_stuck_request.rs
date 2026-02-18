@@ -1,9 +1,11 @@
 use std::io;
+use std::process::Stdio;
 use std::time::Duration;
 
 use roam::service;
 use roam_stream::{accept, connect, Connector, HandshakeConfig, NoDispatcher};
 use tokio::net::TcpStream;
+use tokio::process::{Child, Command};
 
 #[service]
 trait DemoRpc {
@@ -44,10 +46,7 @@ pub async fn run() -> Result<(), String> {
         .map_err(|e| format!("failed to get local addr: {e}"))?;
     println!("server listening on {bound_addr}");
 
-    let client_addr = bound_addr.to_string();
-    peeps::spawn_tracked!("roam.client.bootstrap", async move {
-        let _ = run_client(client_addr).await;
-    });
+    let mut client_child = spawn_client_process(&bound_addr.to_string())?;
 
     let (stream, peer_addr) = listener
         .accept()
@@ -70,10 +69,38 @@ pub async fn run() -> Result<(), String> {
 
     println!("server ready: requests to sleepy_forever will stall forever");
     println!("press Ctrl+C to exit");
-    tokio::signal::ctrl_c()
-        .await
-        .map_err(|e| format!("failed waiting for Ctrl+C: {e}"))?;
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            println!("received Ctrl+C, shutting down");
+        }
+        status = client_child.wait() => {
+            println!("client process exited early: {status:?}");
+        }
+    }
+
+    let _ = client_child.kill().await;
+    let _ = client_child.wait().await;
     Ok(())
+}
+
+pub async fn run_client_process(addr: String) -> Result<(), String> {
+    peeps::init!();
+    run_client(addr).await
+}
+
+fn spawn_client_process(addr: &str) -> Result<Child, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
+    let mut cmd = Command::new(exe);
+    cmd.arg("--no-web")
+        .arg("roam-rpc-stuck-request-client")
+        .arg("--peer-addr")
+        .arg(addr)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    cmd.spawn()
+        .map_err(|e| format!("failed to spawn roam rpc client process: {e}"))
 }
 
 async fn run_client(addr: String) -> Result<(), String> {
@@ -84,13 +111,9 @@ async fn run_client(addr: String) -> Result<(), String> {
     let client_transport = connect(connector, config, NoDispatcher);
 
     let client = DemoRpcClient::new(client_transport);
-    peeps::spawn_tracked!("roam.client.request_task", async move {
-        client
-            .sleepy_forever()
-            .await
-            .expect("request unexpectedly completed");
-    });
-
     println!("client: sent one sleepy_forever RPC request (intentionally stuck)");
-    Ok(())
+    let _ = peeps::peep!(client.sleepy_forever(), "roam.client.request_task")
+        .await
+        .map_err(|e| format!("client sleepy_forever request failed: {e}"))?;
+    Err("client request unexpectedly completed".to_string())
 }
