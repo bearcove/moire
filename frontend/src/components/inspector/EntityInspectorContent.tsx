@@ -1,5 +1,5 @@
 import React from "react";
-import { Timer, File, Crosshair } from "@phosphor-icons/react";
+import { Timer, File, Crosshair, CaretRight } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { ActionButton } from "../../ui/primitives/ActionButton";
@@ -17,6 +17,24 @@ type MergedSection = {
   label: string;
   entity: EntityDef;
 };
+
+function inspectorKindLabel(entity: EntityDef): string {
+  if (!entity.channelPair) return kindDisplayName(entity.kind);
+
+  const body = entity.channelPair.tx.body;
+  if (typeof body === "string") return kindDisplayName(entity.kind);
+  if (!("channel_tx" in body) && !("channel_rx" in body)) return kindDisplayName(entity.kind);
+
+  const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
+  const channelKind = "mpsc" in ep.details
+    ? "MPSC"
+    : "broadcast" in ep.details
+      ? "Broadcast"
+      : "watch" in ep.details
+        ? "Watch"
+        : "Oneshot";
+  return `${channelKind} Channel`;
+}
 
 function BirthTimestamp({
   birthPtime,
@@ -67,7 +85,7 @@ function EntityInspectorHeader({
     <div className="inspector-node-header">
       <span className="inspector-node-icon">{kindIcon(entity.kind, 16)}</span>
       <div className="inspector-node-header-text">
-        <div className="inspector-node-kind">{kindDisplayName(entity.kind)}</div>
+        <div className="inspector-node-kind">{inspectorKindLabel(entity)}</div>
         <div className="inspector-node-label">{entity.name}</div>
       </div>
       <ActionButton onPress={() => onToggleFocus(entity.id)}>
@@ -83,18 +101,19 @@ function MergedEntityInspectorContent({
   sections,
   focusedEntityId,
   onToggleFocus,
+  onOpenScopeKind,
   entityDiff,
 }: {
   merged: EntityDef;
   sections: readonly MergedSection[];
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
+  onOpenScopeKind?: (kind: string) => void;
   entityDiff?: EntityDiff | null;
 }) {
   return (
     <>
       <EntityInspectorHeader entity={merged} focusedEntityId={focusedEntityId} onToggleFocus={onToggleFocus} />
-      <div className="inspector-alert-slot" />
       {entityDiff && (entityDiff.appeared || entityDiff.disappeared || entityDiff.statusChanged || entityDiff.statChanged) && (
         <div className="inspector-diff">
           {entityDiff.appeared && (
@@ -124,7 +143,13 @@ function MergedEntityInspectorContent({
       {sections.map((section) => (
         <React.Fragment key={`${merged.id}:${section.label}`}>
           <div className="inspector-subsection-label">{section.label}</div>
-          <EntityInspectorBody entity={section.entity} focusedEntityId={focusedEntityId} onToggleFocus={onToggleFocus} showHeader={false} />
+          <EntityInspectorBody
+            entity={section.entity}
+            focusedEntityId={focusedEntityId}
+            onToggleFocus={onToggleFocus}
+            onOpenScopeKind={onOpenScopeKind}
+            showHeader={false}
+          />
         </React.Fragment>
       ))}
     </>
@@ -135,11 +160,13 @@ export function EntityInspectorContent({
   entity,
   focusedEntityId,
   onToggleFocus,
+  onOpenScopeKind,
   entityDiff,
 }: {
   entity: EntityDef;
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
+  onOpenScopeKind?: (kind: string) => void;
   entityDiff?: EntityDiff | null;
 }) {
   if (entity.channelPair) {
@@ -152,6 +179,7 @@ export function EntityInspectorContent({
         ]}
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocus}
+        onOpenScopeKind={onOpenScopeKind}
         entityDiff={entityDiff}
       />
     );
@@ -167,6 +195,7 @@ export function EntityInspectorContent({
         ]}
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocus}
+        onOpenScopeKind={onOpenScopeKind}
         entityDiff={entityDiff}
       />
     );
@@ -177,6 +206,7 @@ export function EntityInspectorContent({
       entity={entity}
       focusedEntityId={focusedEntityId}
       onToggleFocus={onToggleFocus}
+      onOpenScopeKind={onOpenScopeKind}
       entityDiff={entityDiff}
     />
   );
@@ -186,15 +216,18 @@ function EntityInspectorBody({
   entity,
   focusedEntityId,
   onToggleFocus,
+  onOpenScopeKind,
   entityDiff,
   showHeader = true,
 }: {
   entity: EntityDef;
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
+  onOpenScopeKind?: (kind: string) => void;
   entityDiff?: EntityDiff | null;
   showHeader?: boolean;
 }) {
+  const [detailsExpanded, setDetailsExpanded] = React.useState(false);
   const birthAbsolute = isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
     ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })
     : null;
@@ -209,13 +242,11 @@ function EntityInspectorBody({
         />
       )}
 
-      {showHeader && (
+      {showHeader && entity.inCycle && (
         <div className="inspector-alert-slot">
-          {entity.inCycle && (
-            <div className="inspector-alert inspector-alert--crit">
-              Part of <code>needs</code> cycle — possible deadlock
-            </div>
-          )}
+          <div className="inspector-alert inspector-alert--crit">
+            Part of <code>needs</code> cycle — possible deadlock
+          </div>
         </div>
       )}
 
@@ -247,27 +278,44 @@ function EntityInspectorBody({
       )}
 
       <div className="inspector-section">
-        <KeyValueRow label="Process">
-          <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
-        </KeyValueRow>
-        <KeyValueRow label="Source" icon={<File size={12} weight="bold" />}>
-          <Source source={entity.source} />
-        </KeyValueRow>
-        {entity.krate && (
-          <KeyValueRow label="Crate">
-            <span className="inspector-mono">{entity.krate}</span>
-          </KeyValueRow>
+        <button
+          type="button"
+          className="inspector-disclosure"
+          onClick={() => setDetailsExpanded((v) => !v)}
+          aria-expanded={detailsExpanded}
+        >
+          <CaretRight
+            size={12}
+            weight="bold"
+            className={detailsExpanded ? "inspector-disclosure-caret inspector-disclosure-caret--expanded" : "inspector-disclosure-caret"}
+          />
+          <span>Details</span>
+        </button>
+        {detailsExpanded && (
+          <div className="inspector-details">
+            <KeyValueRow label="Process">
+              <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
+            </KeyValueRow>
+            <KeyValueRow label="Source" icon={<File size={12} weight="bold" />}>
+              <Source source={entity.source} />
+            </KeyValueRow>
+            {entity.krate && (
+              <KeyValueRow label="Crate">
+                <span className="inspector-mono">{entity.krate}</span>
+              </KeyValueRow>
+            )}
+            <KeyValueRow label="Birth" icon={<Timer size={12} weight="bold" />}>
+              {birthAbsolute ? (
+                <BirthTimestamp birthPtime={entity.birthPtime} ageMs={entity.ageMs} birthAbsolute={birthAbsolute} />
+              ) : (
+                <span className="inspector-mono">P+{entity.birthPtime}ms ({entity.ageMs}ms old)</span>
+              )}
+            </KeyValueRow>
+          </div>
         )}
-        <KeyValueRow label="Birth" icon={<Timer size={12} weight="bold" />}>
-          {birthAbsolute ? (
-            <BirthTimestamp birthPtime={entity.birthPtime} ageMs={entity.ageMs} birthAbsolute={birthAbsolute} />
-          ) : (
-            <span className="inspector-mono">P+{entity.birthPtime}ms ({entity.ageMs}ms old)</span>
-          )}
-        </KeyValueRow>
       </div>
 
-      <EntityScopeLinksSection entity={entity} />
+      <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />
       <EntityBodySection entity={entity} />
       <MetaSection meta={entity.meta} />
     </>

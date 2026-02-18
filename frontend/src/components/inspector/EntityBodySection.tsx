@@ -70,32 +70,37 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
     const lc = ep.lifecycle;
     const lifecycleLabel = typeof lc === "string" ? lc : `closed (${Object.values(lc)[0]})`;
     const lifecycleTone: Tone = lc === "open" ? "ok" : "neutral";
-    const channelKind =
-      "mpsc" in ep.details
-        ? "mpsc"
-        : "broadcast" in ep.details
-          ? "broadcast"
-          : "watch" in ep.details
-            ? "watch"
-            : "oneshot";
     const mpscBuffer = "mpsc" in ep.details ? ep.details.mpsc.buffer : null;
     return (
       <div className="inspector-section">
         <KeyValueRow label="Lifecycle">
           <Badge tone={lifecycleTone}>{lifecycleLabel}</Badge>
         </KeyValueRow>
-        <KeyValueRow label="Channel kind">
-          <span className="inspector-mono">{channelKind}</span>
-        </KeyValueRow>
         {mpscBuffer && (
-          <>
-            <KeyValueRow label="Capacity">
-              <span className="inspector-mono">{mpscBuffer.capacity ?? "∞"}</span>
-            </KeyValueRow>
-            <KeyValueRow label="Queue length">
-              <span className="inspector-mono">{mpscBuffer.occupancy}</span>
-            </KeyValueRow>
-          </>
+          <KeyValueRow label="Queue">
+            <span className="inspector-queue-value">
+              <span className="inspector-mono">
+                {mpscBuffer.occupancy}/{mpscBuffer.capacity ?? "∞"}
+              </span>
+              {mpscBuffer.capacity != null && (
+                <span className="inspector-buffer-bar" aria-hidden="true">
+                  <span
+                    className={[
+                      "inspector-buffer-fill",
+                      mpscBuffer.occupancy >= mpscBuffer.capacity
+                        ? "inspector-buffer-fill--crit"
+                        : mpscBuffer.occupancy / mpscBuffer.capacity >= 0.75
+                          ? "inspector-buffer-fill--warn"
+                          : "inspector-buffer-fill--ok",
+                    ].join(" ")}
+                    style={{
+                      width: `${Math.min(100, (mpscBuffer.occupancy / mpscBuffer.capacity) * 100)}%`,
+                    }}
+                  />
+                </span>
+              )}
+            </span>
+          </KeyValueRow>
         )}
       </div>
     );

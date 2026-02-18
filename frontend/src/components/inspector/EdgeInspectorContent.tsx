@@ -38,8 +38,6 @@ export function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; enti
         </div>
       </div>
 
-      <div className="inspector-alert-slot" />
-
       <div className="inspector-section">
         <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
           <span className="inspector-mono">{srcEntity?.name ?? edge.source}</span>

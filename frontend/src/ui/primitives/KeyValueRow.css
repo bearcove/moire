@@ -12,16 +12,6 @@
     color: light-dark(#6e6e73, #98989d);
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-}
-
-.ui-key-value-row__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: 12px;
-    color: light-dark(#6e6e73, #98989d);
 }
 
 .ui-key-value-row__value {

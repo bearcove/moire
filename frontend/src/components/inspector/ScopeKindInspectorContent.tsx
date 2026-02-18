@@ -57,8 +57,6 @@ export function ScopeKindInspectorContent({ kind }: { kind: string }) {
         </div>
       </div>
 
-      <div className="inspector-alert-slot" />
-
       <div className="inspector-section">
         <KeyValueRow label="Kind">
           <span className="inspector-mono">{kind}</span>
