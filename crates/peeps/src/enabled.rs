@@ -275,31 +275,10 @@ where
     )
 }
 
-pub fn spawn_tracked_with_krate<F>(
-    name: impl Into<CompactString>,
-    fut: F,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> tokio::task::JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(FUTURE_CAUSAL_STACK.scope(
-        RefCell::new(Vec::new()),
-        instrument_future_named_with_krate(name, fut, source, krate),
-    ))
-}
-
 #[macro_export]
 macro_rules! spawn_tracked {
     ($name:expr, $fut:expr $(,)?) => {
-        $crate::spawn_tracked_with_krate(
-            $name,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::spawn_tracked($name, $fut)
     };
 }
 
@@ -320,32 +299,10 @@ where
     })
 }
 
-pub fn spawn_blocking_tracked_with_krate<F, T>(
-    name: impl Into<CompactString>,
-    f: F,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> tokio::task::JoinHandle<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    let handle = EntityHandle::new_with_krate(name, EntityBody::Future, source, krate);
-    tokio::task::spawn_blocking(move || {
-        let _hold = handle;
-        f()
-    })
-}
-
 #[macro_export]
 macro_rules! spawn_blocking_tracked {
     ($name:expr, $f:expr $(,)?) => {
-        $crate::spawn_blocking_tracked_with_krate(
-            $name,
-            $f,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::spawn_blocking_tracked($name, $f)
     };
 }
 
@@ -355,24 +312,10 @@ pub fn sleep(duration: std::time::Duration, label: impl Into<String>) -> impl Fu
     instrument_future_named(label.into(), tokio::time::sleep(duration))
 }
 
-pub fn sleep_with_krate(
-    duration: std::time::Duration,
-    label: impl Into<CompactString>,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> impl Future<Output = ()> {
-    instrument_future_named_with_krate(label, tokio::time::sleep(duration), source, krate)
-}
-
 #[macro_export]
 macro_rules! sleep {
     ($duration:expr, $label:expr $(,)?) => {
-        $crate::sleep_with_krate(
-            $duration,
-            $label,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::sleep($duration, $label)
     };
 }
 
@@ -390,34 +333,10 @@ where
     tokio::time::timeout(duration, instrument_future_named(label.into(), future))
 }
 
-#[track_caller]
-#[allow(clippy::manual_async_fn)]
-pub fn timeout_with_krate<F>(
-    duration: std::time::Duration,
-    future: F,
-    label: impl Into<CompactString>,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> impl Future<Output = Result<F::Output, tokio::time::error::Elapsed>>
-where
-    F: Future,
-{
-    tokio::time::timeout(
-        duration,
-        instrument_future_named_with_krate(label, future, source, krate),
-    )
-}
-
 #[macro_export]
 macro_rules! timeout {
     ($duration:expr, $future:expr, $label:expr $(,)?) => {
-        $crate::timeout_with_krate(
-            $duration,
-            $future,
-            $label,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::timeout($duration, $future, $label)
     };
 }
 
@@ -1262,20 +1181,6 @@ impl EntityHandle {
         Self::from_entity(entity)
     }
 
-    pub fn new_with_krate(
-        name: impl Into<CompactString>,
-        body: EntityBody,
-        source: impl Into<CompactString>,
-        krate: impl Into<CompactString>,
-    ) -> Self {
-        let entity = Entity::builder(name, body)
-            .source(source)
-            .krate(krate)
-            .build(&())
-            .expect("entity construction with unit meta should be infallible");
-        Self::from_entity(entity)
-    }
-
     fn from_entity(entity: Entity) -> Self {
         let id = EntityId::new(entity.id.as_str());
 
@@ -1455,26 +1360,6 @@ impl<T> Mutex<T> {
         }
     }
 
-    pub fn new_with_krate(
-        name: &'static str,
-        value: T,
-        source: impl Into<CompactString>,
-        krate: impl Into<CompactString>,
-    ) -> Self {
-        let handle = EntityHandle::new_with_krate(
-            name,
-            EntityBody::Lock(LockEntity {
-                kind: LockKind::Mutex,
-            }),
-            source,
-            krate,
-        );
-        Self {
-            inner: parking_lot::Mutex::new(value),
-            handle,
-        }
-    }
-
     #[track_caller]
     pub fn lock(&self) -> MutexGuard<'_, T> {
         if let Some(inner) = self.inner.try_lock() {
@@ -1596,26 +1481,6 @@ impl<T> RwLock<T> {
         }
     }
 
-    pub fn new_with_krate(
-        name: &'static str,
-        value: T,
-        source: impl Into<CompactString>,
-        krate: impl Into<CompactString>,
-    ) -> Self {
-        let handle = EntityHandle::new_with_krate(
-            name,
-            EntityBody::Lock(LockEntity {
-                kind: LockKind::RwLock,
-            }),
-            source,
-            krate,
-        );
-        Self {
-            inner: parking_lot::RwLock::new(value),
-            handle,
-        }
-    }
-
     pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
         self.inner.read()
     }
@@ -1642,24 +1507,14 @@ impl<T> AsEntityRef for RwLock<T> {
 #[macro_export]
 macro_rules! mutex {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::Mutex::new_with_krate(
-            $name,
-            $value,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::Mutex::new($name, $value)
     }};
 }
 
 #[macro_export]
 macro_rules! rwlock {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::RwLock::new_with_krate(
-            $name,
-            $value,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::RwLock::new($name, $value)
     }};
 }
 
@@ -1758,31 +1613,10 @@ pub fn rpc_request(
     }
 }
 
-pub fn rpc_request_with_krate(
-    method: impl Into<CompactString>,
-    args_preview: impl Into<CompactString>,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> RpcRequestHandle {
-    let method = method.into();
-    let body = EntityBody::Request(RequestEntity {
-        method: method.clone(),
-        args_preview: args_preview.into(),
-    });
-    RpcRequestHandle {
-        handle: EntityHandle::new_with_krate(method, body, source, krate),
-    }
-}
-
 #[macro_export]
 macro_rules! rpc_request {
     ($method:expr, $args_preview:expr $(,)?) => {
-        $crate::rpc_request_with_krate(
-            $method,
-            $args_preview,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::rpc_request($method, $args_preview)
     };
 }
 
@@ -1799,29 +1633,10 @@ pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     }
 }
 
-pub fn rpc_response_with_krate(
-    method: impl Into<CompactString>,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> RpcResponseHandle {
-    let method = method.into();
-    let body = EntityBody::Response(ResponseEntity {
-        method: method.clone(),
-        status: ResponseStatus::Pending,
-    });
-    RpcResponseHandle {
-        handle: EntityHandle::new_with_krate(format!("rpc.response.{method}"), body, source, krate),
-    }
-}
-
 #[macro_export]
 macro_rules! rpc_response {
     ($method:expr $(,)?) => {
-        $crate::rpc_response_with_krate(
-            $method,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::rpc_response($method)
     };
 }
 
@@ -1839,28 +1654,10 @@ pub fn rpc_response_for(
     response
 }
 
-pub fn rpc_response_for_with_krate(
-    method: impl Into<CompactString>,
-    request: &EntityRef,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> RpcResponseHandle {
-    let response = rpc_response_with_krate(method, source, krate);
-    if let Ok(mut db) = runtime_db().lock() {
-        db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
-    }
-    response
-}
-
 #[macro_export]
 macro_rules! rpc_response_for {
     ($method:expr, $request:expr $(,)?) => {
-        $crate::rpc_response_for_with_krate(
-            $method,
-            $request,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::rpc_response_for($method, $request)
     };
 }
 
@@ -2920,85 +2717,10 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
     )
 }
 
-pub fn channel_with_krate<T>(
-    name: impl Into<String>,
-    capacity: usize,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> (Sender<T>, Receiver<T>) {
-    let name: CompactString = name.into().into();
-    let source = source.into();
-    let krate = krate.into();
-    let (tx, rx) = mpsc::channel(capacity);
-    let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
-
-    let details = ChannelDetails::Mpsc(MpscChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: Some(capacity_u32),
-        }),
-    });
-    let tx_handle = EntityHandle::new_with_krate(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source.clone(),
-        krate.clone(),
-    );
-    let details = ChannelDetails::Mpsc(MpscChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: Some(capacity_u32),
-        }),
-    });
-    let rx_handle = EntityHandle::new_with_krate(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source,
-        krate,
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(StdMutex::new(ChannelRuntimeState {
-        tx_id: tx_handle.id().clone(),
-        rx_id: rx_handle.id().clone(),
-        tx_ref_count: 1,
-        rx_state: ReceiverState::Alive,
-        queue_len: 0,
-        capacity: Some(capacity_u32),
-        tx_close_cause: None,
-        rx_close_cause: None,
-    }));
-
-    (
-        Sender {
-            inner: tx,
-            handle: tx_handle,
-            channel: channel.clone(),
-            name: name.clone(),
-        },
-        Receiver {
-            inner: rx,
-            handle: rx_handle,
-            channel,
-            name,
-        },
-    )
-}
-
 #[macro_export]
 macro_rules! channel {
     ($name:expr, $capacity:expr $(,)?) => {
-        $crate::channel_with_krate(
-            $name,
-            $capacity,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::channel($name, $capacity)
     };
 }
 
@@ -3060,80 +2782,10 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
     )
 }
 
-pub fn unbounded_channel_with_krate<T>(
-    name: impl Into<String>,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    let name: CompactString = name.into().into();
-    let source = source.into();
-    let krate = krate.into();
-    let (tx, rx) = mpsc::unbounded_channel();
-    let details = ChannelDetails::Mpsc(MpscChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: None,
-        }),
-    });
-    let tx_handle = EntityHandle::new_with_krate(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source.clone(),
-        krate.clone(),
-    );
-    let details = ChannelDetails::Mpsc(MpscChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: None,
-        }),
-    });
-    let rx_handle = EntityHandle::new_with_krate(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source,
-        krate,
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(StdMutex::new(ChannelRuntimeState {
-        tx_id: tx_handle.id().clone(),
-        rx_id: rx_handle.id().clone(),
-        tx_ref_count: 1,
-        rx_state: ReceiverState::Alive,
-        queue_len: 0,
-        capacity: None,
-        tx_close_cause: None,
-        rx_close_cause: None,
-    }));
-    (
-        UnboundedSender {
-            inner: tx,
-            handle: tx_handle,
-            channel: channel.clone(),
-            name: name.clone(),
-        },
-        UnboundedReceiver {
-            inner: rx,
-            handle: rx_handle,
-            channel,
-            name,
-        },
-    )
-}
-
 #[macro_export]
 macro_rules! unbounded_channel {
     ($name:expr $(,)?) => {
-        $crate::unbounded_channel_with_krate(
-            $name,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::unbounded_channel($name)
     };
 }
 
@@ -3473,70 +3125,10 @@ pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, Oneshot
     oneshot(name)
 }
 
-pub fn oneshot_with_krate<T>(
-    name: impl Into<String>,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let name: CompactString = name.into().into();
-    let source = source.into();
-    let krate = krate.into();
-    let (tx, rx) = oneshot::channel();
-    let details = ChannelDetails::Oneshot(OneshotChannelDetails {
-        state: OneshotState::Pending,
-    });
-    let tx_handle = EntityHandle::new_with_krate(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source.clone(),
-        krate.clone(),
-    );
-    let details = ChannelDetails::Oneshot(OneshotChannelDetails {
-        state: OneshotState::Pending,
-    });
-    let rx_handle = EntityHandle::new_with_krate(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source,
-        krate,
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(StdMutex::new(OneshotRuntimeState {
-        tx_id: tx_handle.id().clone(),
-        rx_id: rx_handle.id().clone(),
-        tx_lifecycle: ChannelEndpointLifecycle::Open,
-        rx_lifecycle: ChannelEndpointLifecycle::Open,
-        state: OneshotState::Pending,
-    }));
-    (
-        OneshotSender {
-            inner: Some(tx),
-            handle: tx_handle,
-            channel: channel.clone(),
-        },
-        OneshotReceiver {
-            inner: Some(rx),
-            handle: rx_handle,
-            channel,
-            name,
-        },
-    )
-}
-
 #[macro_export]
 macro_rules! oneshot {
     ($name:expr $(,)?) => {
-        $crate::oneshot_with_krate(
-            $name,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::oneshot($name)
     };
 }
 
@@ -3907,83 +3499,10 @@ pub fn broadcast<T: Clone>(
     )
 }
 
-pub fn broadcast_with_krate<T: Clone>(
-    name: impl Into<CompactString>,
-    capacity: usize,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    let name = name.into();
-    let source = source.into();
-    let krate = krate.into();
-    let (tx, rx) = broadcast::channel(capacity);
-    let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
-    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: Some(capacity_u32),
-        }),
-    });
-    let tx_handle = EntityHandle::new_with_krate(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source.clone(),
-        krate.clone(),
-    );
-    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: Some(capacity_u32),
-        }),
-    });
-    let rx_handle = EntityHandle::new_with_krate(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source,
-        krate,
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(StdMutex::new(BroadcastRuntimeState {
-        tx_id: tx_handle.id().clone(),
-        rx_id: rx_handle.id().clone(),
-        tx_ref_count: 1,
-        rx_ref_count: 1,
-        capacity: capacity_u32,
-        tx_close_cause: None,
-        rx_close_cause: None,
-    }));
-    (
-        BroadcastSender {
-            inner: tx,
-            handle: tx_handle,
-            receiver_handle: rx_handle.clone(),
-            channel: channel.clone(),
-            name: name.clone(),
-        },
-        BroadcastReceiver {
-            inner: rx,
-            handle: rx_handle,
-            channel,
-            name,
-        },
-    )
-}
-
 #[macro_export]
 macro_rules! broadcast {
     ($name:expr, $capacity:expr $(,)?) => {
-        $crate::broadcast_with_krate(
-            $name,
-            $capacity,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::broadcast($name, $capacity)
     };
 }
 
@@ -4052,76 +3571,10 @@ pub fn watch_channel<T: Clone>(
     watch(name, initial)
 }
 
-pub fn watch_with_krate<T: Clone>(
-    name: impl Into<CompactString>,
-    initial: T,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> (WatchSender<T>, WatchReceiver<T>) {
-    let name = name.into();
-    let source = source.into();
-    let krate = krate.into();
-    let (tx, rx) = watch::channel(initial);
-    let details = ChannelDetails::Watch(WatchChannelDetails {
-        last_update_at: None,
-    });
-    let tx_handle = EntityHandle::new_with_krate(
-        format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source.clone(),
-        krate.clone(),
-    );
-    let details = ChannelDetails::Watch(WatchChannelDetails {
-        last_update_at: None,
-    });
-    let rx_handle = EntityHandle::new_with_krate(
-        format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
-        source,
-        krate,
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(StdMutex::new(WatchRuntimeState {
-        tx_id: tx_handle.id().clone(),
-        rx_id: rx_handle.id().clone(),
-        tx_ref_count: 1,
-        rx_ref_count: 1,
-        tx_close_cause: None,
-        rx_close_cause: None,
-        last_update_at: None,
-    }));
-    (
-        WatchSender {
-            inner: tx,
-            handle: tx_handle,
-            receiver_handle: rx_handle.clone(),
-            channel: channel.clone(),
-            name: name.clone(),
-        },
-        WatchReceiver {
-            inner: rx,
-            handle: rx_handle,
-            channel,
-            name,
-        },
-    )
-}
-
 #[macro_export]
 macro_rules! watch {
     ($name:expr, $initial:expr $(,)?) => {
-        $crate::watch_with_krate(
-            $name,
-            $initial,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::watch($name, $initial)
     };
 }
 
@@ -4131,25 +3584,6 @@ impl Notify {
     pub fn new(name: impl Into<String>) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(name, EntityBody::Notify(NotifyEntity { waiter_count: 0 }));
-        Self {
-            inner: Arc::new(tokio::sync::Notify::new()),
-            handle,
-            waiter_count: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
-    pub fn new_with_krate(
-        name: impl Into<String>,
-        source: impl Into<CompactString>,
-        krate: impl Into<CompactString>,
-    ) -> Self {
-        let name = name.into();
-        let handle = EntityHandle::new_with_krate(
-            name,
-            EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
-            source,
-            krate,
-        );
         Self {
             inner: Arc::new(tokio::sync::Notify::new()),
             handle,
@@ -4202,11 +3636,7 @@ impl Notify {
 #[macro_export]
 macro_rules! notify {
     ($name:expr $(,)?) => {
-        $crate::Notify::new_with_krate(
-            $name,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::Notify::new($name)
     };
 }
 
@@ -4220,27 +3650,6 @@ impl<T> OnceCell<T> {
                 waiter_count: 0,
                 state: OnceCellState::Empty,
             }),
-        );
-        Self {
-            inner: tokio::sync::OnceCell::new(),
-            handle,
-            waiter_count: AtomicU32::new(0),
-        }
-    }
-
-    pub fn new_with_krate(
-        name: impl Into<String>,
-        source: impl Into<CompactString>,
-        krate: impl Into<CompactString>,
-    ) -> Self {
-        let handle = EntityHandle::new_with_krate(
-            name.into(),
-            EntityBody::OnceCell(OnceCellEntity {
-                waiter_count: 0,
-                state: OnceCellState::Empty,
-            }),
-            source,
-            krate,
         );
         Self {
             inner: tokio::sync::OnceCell::new(),
@@ -4377,11 +3786,7 @@ impl<T> OnceCell<T> {
 #[macro_export]
 macro_rules! once_cell {
     ($name:expr $(,)?) => {
-        $crate::OnceCell::new_with_krate(
-            $name,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::OnceCell::new($name)
     };
 }
 
@@ -4396,30 +3801,6 @@ impl Semaphore {
                 max_permits,
                 handed_out_permits: 0,
             }),
-        );
-        Self {
-            inner: Arc::new(tokio::sync::Semaphore::new(permits)),
-            handle,
-            max_permits: Arc::new(AtomicU32::new(max_permits)),
-            holder_counts: Arc::new(StdMutex::new(BTreeMap::new())),
-        }
-    }
-
-    pub fn new_with_krate(
-        name: impl Into<String>,
-        permits: usize,
-        source: impl Into<CompactString>,
-        krate: impl Into<CompactString>,
-    ) -> Self {
-        let max_permits = permits.min(u32::MAX as usize) as u32;
-        let handle = EntityHandle::new_with_krate(
-            name.into(),
-            EntityBody::Semaphore(SemaphoreEntity {
-                max_permits,
-                handed_out_permits: 0,
-            }),
-            source,
-            krate,
         );
         Self {
             inner: Arc::new(tokio::sync::Semaphore::new(permits)),
@@ -4790,12 +4171,7 @@ impl Drop for OwnedSemaphorePermit {
 #[macro_export]
 macro_rules! semaphore {
     ($name:expr, $permits:expr $(,)?) => {
-        $crate::Semaphore::new_with_krate(
-            $name,
-            $permits,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::Semaphore::new($name, $permits)
     };
 }
 
@@ -5087,24 +4463,6 @@ where
         Self::named(name)
     }
 
-    pub fn named_with_krate(
-        name: impl Into<String>,
-        source: impl Into<CompactString>,
-        krate: impl Into<CompactString>,
-    ) -> Self {
-        let name = name.into();
-        let handle = EntityHandle::new_with_krate(
-            format!("joinset.{name}"),
-            EntityBody::Future,
-            source,
-            krate,
-        );
-        Self {
-            inner: tokio::task::JoinSet::new(),
-            handle,
-        }
-    }
-
     #[track_caller]
     pub fn spawn<F>(&mut self, label: &'static str, future: F)
     where
@@ -5147,11 +4505,7 @@ where
 #[macro_export]
 macro_rules! join_set {
     ($name:expr $(,)?) => {
-        $crate::JoinSet::named_with_krate(
-            $name,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::JoinSet::named($name)
     };
 }
 
@@ -5622,24 +4976,11 @@ where
     InstrumentedFuture::new(fut, handle, Some(on_ref))
 }
 
-pub fn instrument_future_named_with_krate<F>(
-    name: impl Into<CompactString>,
-    fut: F,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> InstrumentedFuture<F::IntoFuture>
-where
-    F: IntoFuture,
-{
-    instrument_future_named_with_krate_meta(name, fut, source, krate, &facet_value::Value::NULL)
-}
-
 #[doc(hidden)]
-pub fn instrument_future_named_with_krate_meta<F>(
+#[track_caller]
+pub fn instrument_future_named_with_meta<F>(
     name: impl Into<CompactString>,
     fut: F,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
     meta: &facet_value::Value,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
@@ -5647,8 +4988,6 @@ where
 {
     let fut = fut.into_future();
     let mut entity = Entity::builder(name, EntityBody::Future)
-        .source(source)
-        .krate(krate)
         .build(&())
         .expect("entity construction with unit meta should be infallible");
     entity.meta = meta.clone();
@@ -5656,60 +4995,20 @@ where
     InstrumentedFuture::new(fut, handle, None)
 }
 
-pub fn instrument_future_on_with_krate<F>(
-    name: impl Into<CompactString>,
-    on: &impl AsEntityRef,
-    fut: F,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
-) -> InstrumentedFuture<F::IntoFuture>
-where
-    F: IntoFuture,
-{
-    let fut = fut.into_future();
-    let handle = EntityHandle::new_with_krate(name, EntityBody::Future, source, krate);
-    InstrumentedFuture::new(fut, handle, Some(on.as_entity_ref()))
-}
-
-#[doc(hidden)]
-pub fn source_from_file_line(manifest_dir: &str, file: &str, line: u32) -> CompactString {
-    let path = std::path::Path::new(file);
-    if path.is_absolute() {
-        return CompactString::from(format!("{file}:{line}"));
-    }
-    CompactString::from(format!("{manifest_dir}/{file}:{line}"))
-}
-
 #[macro_export]
 macro_rules! peeps {
     (name = $name:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_named_with_krate(
-            $name,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::instrument_future_named($name, $fut)
     }};
     (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_on_with_krate(
-            $name,
-            &$on,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::instrument_future_on($name, &$on, $fut)
     }};
 }
 
 #[macro_export]
 macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
-        $crate::instrument_future_named_with_krate(
-            $name,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::instrument_future_named($name, $fut)
     }};
     ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
         let mut __peeps_meta_pairs: Vec<(&'static str, $crate::facet_value::Value)> = Vec::new();
@@ -5721,13 +5020,7 @@ macro_rules! peep {
             ));
         )*
         let __peeps_meta: $crate::facet_value::Value = __peeps_meta_pairs.into_iter().collect();
-        $crate::instrument_future_named_with_krate_meta(
-            $name,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-            &__peeps_meta,
-        )
+        $crate::instrument_future_named_with_meta($name, $fut, &__peeps_meta)
     }};
     ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
         compile_error!("`level=` is deprecated");
@@ -5868,7 +5161,7 @@ mod tests {
     }
 
     #[test]
-    fn peeps_macro_records_absolute_source() {
+    fn peeps_macro_tracks_caller_source() {
         let _guard = test_guard();
         reset_runtime_db_for_test();
 
@@ -5889,13 +5182,6 @@ mod tests {
                 .clone()
         };
 
-        let expected_prefix = format!("{}/", env!("CARGO_MANIFEST_DIR"));
-        assert!(
-            source.starts_with(&expected_prefix),
-            "expected absolute source starting with {}, got {}",
-            expected_prefix,
-            source
-        );
         assert!(
             source.ends_with(&format!(":{}", marker_line)),
             "expected caller line {}, got source {}",

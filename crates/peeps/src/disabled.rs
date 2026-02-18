@@ -1,7 +1,5 @@
 use compact_str::CompactString;
-use peeps_types::{
-    EdgeKind, EntityBody, EntityId, ResponseStatus, ScopeBody,
-};
+use peeps_types::{EdgeKind, EntityBody, EntityId, ResponseStatus, ScopeBody};
 use std::ffi::OsStr;
 use std::future::{Future, IntoFuture};
 use std::io;
@@ -53,17 +51,6 @@ impl<T> Mutex<T> {
         }
     }
 
-    pub fn new_with_krate(
-        _name: &'static str,
-        value: T,
-        _source: impl Into<CompactString>,
-        _krate: impl Into<CompactString>,
-    ) -> Self {
-        Self {
-            inner: parking_lot::Mutex::new(value),
-        }
-    }
-
     pub fn lock(&self) -> MutexGuard<'_, T> {
         MutexGuard {
             inner: self.inner.lock(),
@@ -82,17 +69,6 @@ pub struct RwLock<T> {
 impl<T> RwLock<T> {
     #[deprecated(note = "use the rwlock! macro instead")]
     pub fn new(_name: &'static str, value: T) -> Self {
-        Self {
-            inner: parking_lot::RwLock::new(value),
-        }
-    }
-
-    pub fn new_with_krate(
-        _name: &'static str,
-        value: T,
-        _source: impl Into<CompactString>,
-        _krate: impl Into<CompactString>,
-    ) -> Self {
         Self {
             inner: parking_lot::RwLock::new(value),
         }
@@ -117,15 +93,6 @@ impl<T> RwLock<T> {
 
 impl EntityHandle {
     pub fn new(_name: impl Into<CompactString>, _body: EntityBody) -> Self {
-        Self
-    }
-
-    pub fn new_with_krate(
-        _name: impl Into<CompactString>,
-        _body: EntityBody,
-        _source: impl Into<CompactString>,
-        _krate: impl Into<CompactString>,
-    ) -> Self {
         Self
     }
 
@@ -232,7 +199,6 @@ static DISABLED_RPC_REQUEST_ID: LazyLock<EntityId> =
 static DISABLED_RPC_RESPONSE_ID: LazyLock<EntityId> =
     LazyLock::new(|| EntityId::new("disabled-response"));
 static DISABLED_RPC_REQUEST_WIRE_ID: CompactString = CompactString::const_new("disabled-request");
-static DISABLED_EMPTY_SOURCE: CompactString = CompactString::const_new("");
 
 impl RpcRequestHandle {
     pub fn id(&self) -> &EntityId {
@@ -588,15 +554,6 @@ pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Rece
     )
 }
 
-pub fn channel_with_krate<T>(
-    name: impl Into<String>,
-    capacity: usize,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> (Sender<T>, Receiver<T>) {
-    channel(name, capacity)
-}
-
 pub fn unbounded_channel<T>(
     _name: impl Into<String>,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
@@ -611,14 +568,6 @@ pub fn unbounded_channel<T>(
             handle: EntityHandle,
         },
     )
-}
-
-pub fn unbounded_channel_with_krate<T>(
-    name: impl Into<String>,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    unbounded_channel(name)
 }
 
 pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
@@ -640,14 +589,6 @@ pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, Oneshot
     oneshot(name)
 }
 
-pub fn oneshot_with_krate<T>(
-    name: impl Into<String>,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    oneshot(name)
-}
-
 pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
     capacity: usize,
@@ -665,15 +606,6 @@ pub fn broadcast<T: Clone>(
             handle: EntityHandle,
         },
     )
-}
-
-pub fn broadcast_with_krate<T: Clone>(
-    name: impl Into<CompactString>,
-    capacity: usize,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    broadcast(name, capacity)
 }
 
 pub fn watch<T: Clone>(
@@ -702,28 +634,11 @@ pub fn watch_channel<T: Clone>(
     watch(name, initial)
 }
 
-pub fn watch_with_krate<T: Clone>(
-    name: impl Into<CompactString>,
-    initial: T,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> (WatchSender<T>, WatchReceiver<T>) {
-    watch(name, initial)
-}
-
 impl Notify {
     pub fn new(_name: impl Into<String>) -> Self {
         Self {
             inner: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
-    }
-
-    pub fn new_with_krate(
-        name: impl Into<String>,
-        _source: impl Into<CompactString>,
-        _krate: impl Into<CompactString>,
-    ) -> Self {
-        Self::new(name)
     }
 
     pub async fn notified(&self) {
@@ -742,14 +657,6 @@ impl Notify {
 impl<T> OnceCell<T> {
     pub fn new(_name: impl Into<String>) -> Self {
         Self(tokio::sync::OnceCell::new())
-    }
-
-    pub fn new_with_krate(
-        name: impl Into<String>,
-        _source: impl Into<CompactString>,
-        _krate: impl Into<CompactString>,
-    ) -> Self {
-        Self::new(name)
     }
 
     pub fn get(&self) -> Option<&T> {
@@ -787,15 +694,6 @@ impl<T> OnceCell<T> {
 impl Semaphore {
     pub fn new(_name: impl Into<String>, permits: usize) -> Self {
         Self(std::sync::Arc::new(tokio::sync::Semaphore::new(permits)))
-    }
-
-    pub fn new_with_krate(
-        name: impl Into<String>,
-        permits: usize,
-        _source: impl Into<CompactString>,
-        _krate: impl Into<CompactString>,
-    ) -> Self {
-        Self::new(name, permits)
     }
 
     pub fn available_permits(&self) -> usize {
@@ -1134,14 +1032,6 @@ where
         Self(tokio::task::JoinSet::new())
     }
 
-    pub fn named_with_krate(
-        name: impl Into<String>,
-        _source: impl Into<CompactString>,
-        _krate: impl Into<CompactString>,
-    ) -> Self {
-        Self::named(name)
-    }
-
     pub fn with_name(name: impl Into<String>) -> Self {
         Self::named(name)
     }
@@ -1215,19 +1105,6 @@ where
     tokio::spawn(fut)
 }
 
-pub fn spawn_tracked_with_krate<F>(
-    name: impl Into<CompactString>,
-    fut: F,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    spawn_tracked(name, fut)
-}
-
 pub fn spawn_blocking_tracked<F, T>(_: impl Into<CompactString>, f: F) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
@@ -1236,30 +1113,8 @@ where
     tokio::task::spawn_blocking(f)
 }
 
-pub fn spawn_blocking_tracked_with_krate<F, T>(
-    name: impl Into<CompactString>,
-    f: F,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> tokio::task::JoinHandle<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    spawn_blocking_tracked(name, f)
-}
-
 pub fn sleep(duration: std::time::Duration, _label: impl Into<String>) -> impl Future<Output = ()> {
     tokio::time::sleep(duration)
-}
-
-pub fn sleep_with_krate(
-    duration: std::time::Duration,
-    label: impl Into<String>,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> impl Future<Output = ()> {
-    sleep(duration, label)
 }
 
 pub async fn timeout<F>(
@@ -1273,19 +1128,6 @@ where
     tokio::time::timeout(duration, future).await
 }
 
-pub async fn timeout_with_krate<F>(
-    duration: std::time::Duration,
-    future: F,
-    label: impl Into<String>,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> Result<F::Output, tokio::time::error::Elapsed>
-where
-    F: Future,
-{
-    timeout(duration, future, label).await
-}
-
 pub fn entity_ref_from_wire(_id: impl Into<CompactString>) -> EntityRef {
     EntityRef
 }
@@ -1297,25 +1139,8 @@ pub fn rpc_request(
     RpcRequestHandle
 }
 
-pub fn rpc_request_with_krate(
-    method: impl Into<CompactString>,
-    args_preview: impl Into<CompactString>,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> RpcRequestHandle {
-    rpc_request(method, args_preview)
-}
-
 pub fn rpc_response(_method: impl Into<CompactString>) -> RpcResponseHandle {
     RpcResponseHandle
-}
-
-pub fn rpc_response_with_krate(
-    method: impl Into<CompactString>,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> RpcResponseHandle {
-    rpc_response(method)
 }
 
 pub fn rpc_response_for(
@@ -1323,15 +1148,6 @@ pub fn rpc_response_for(
     _request: &EntityRef,
 ) -> RpcResponseHandle {
     rpc_response(method)
-}
-
-pub fn rpc_response_for_with_krate(
-    method: impl Into<CompactString>,
-    request: &EntityRef,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> RpcResponseHandle {
-    rpc_response_for(method, request)
 }
 
 pub fn instrument_future_named<F>(_name: impl Into<CompactString>, fut: F) -> F::IntoFuture
@@ -1345,18 +1161,6 @@ pub fn instrument_future_named_with_source<F>(
     _name: impl Into<CompactString>,
     fut: F,
     _source: impl Into<CompactString>,
-) -> F::IntoFuture
-where
-    F: IntoFuture,
-{
-    fut.into_future()
-}
-
-pub fn instrument_future_named_with_krate<F>(
-    _name: impl Into<CompactString>,
-    fut: F,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
 ) -> F::IntoFuture
 where
     F: IntoFuture,
@@ -1387,60 +1191,24 @@ where
     fut.into_future()
 }
 
-pub fn instrument_future_on_with_krate<F>(
-    _name: impl Into<CompactString>,
-    _on: &impl AsEntityRef,
-    fut: F,
-    _source: impl Into<CompactString>,
-    _krate: impl Into<CompactString>,
-) -> F::IntoFuture
-where
-    F: IntoFuture,
-{
-    fut.into_future()
-}
-
-#[doc(hidden)]
-pub fn source_from_file_line(manifest_dir: &str, file: &str, line: u32) -> CompactString {
-    let _ = (manifest_dir, file, line);
-    DISABLED_EMPTY_SOURCE.clone()
-}
-
 #[macro_export]
 macro_rules! peeps {
     (name = $name:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_named_with_source(
-            $name,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-        )
+        $crate::instrument_future_named($name, $fut)
     }};
     (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_on_with_source(
-            $name,
-            &$on,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-        )
+        $crate::instrument_future_on($name, &$on, $fut)
     }};
 }
 
 #[macro_export]
 macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
-        $crate::instrument_future_named_with_source(
-            $name,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-        )
+        $crate::instrument_future_named($name, $fut)
     }};
     ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
         let _ = ($((&$k, &$v)),*);
-        $crate::instrument_future_named_with_source(
-            $name,
-            $fut,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-        )
+        $crate::instrument_future_named($name, $fut)
     }};
     ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
         compile_error!("`level=` is deprecated");
@@ -1456,24 +1224,14 @@ macro_rules! peep {
 #[macro_export]
 macro_rules! mutex {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::Mutex::new_with_krate(
-            $name,
-            $value,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::Mutex::new($name, $value)
     }};
 }
 
 #[macro_export]
 macro_rules! rwlock {
     ($name:expr, $value:expr $(,)?) => {{
-        $crate::RwLock::new_with_krate(
-            $name,
-            $value,
-            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
-            env!("CARGO_PKG_NAME"),
-        )
+        $crate::RwLock::new($name, $value)
     }};
 }
 
