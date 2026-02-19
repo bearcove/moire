@@ -47,10 +47,15 @@ impl<T> Mutex<T> {
 
     #[track_caller]
     pub fn lock_with_cx(&self, cx: CrateContext) -> MutexGuard<'_, T> {
-        self.lock_with_source(UnqualSource::caller(), cx)
+        self._lock(UnqualSource::caller(), cx)
     }
 
-    pub fn lock_with_source(&self, _source: UnqualSource, _cx: CrateContext) -> MutexGuard<'_, T> {
+    pub fn lock_with_source(&self, source: UnqualSource, cx: CrateContext) -> MutexGuard<'_, T> {
+        self._lock(source, cx)
+    }
+
+    #[doc(hidden)]
+    pub fn _lock(&self, _source: UnqualSource, _cx: CrateContext) -> MutexGuard<'_, T> {
         if let Some(inner) = self.inner.try_lock() {
             return self.wrap_guard(inner);
         }
@@ -63,14 +68,19 @@ impl<T> Mutex<T> {
 
     #[track_caller]
     pub fn try_lock_with_cx(&self, cx: CrateContext) -> Option<MutexGuard<'_, T>> {
-        self.try_lock_with_source(UnqualSource::caller(), cx)
+        self._try_lock(UnqualSource::caller(), cx)
     }
 
     pub fn try_lock_with_source(
         &self,
-        _source: UnqualSource,
-        _cx: CrateContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> Option<MutexGuard<'_, T>> {
+        self._try_lock(source, cx)
+    }
+
+    #[doc(hidden)]
+    pub fn _try_lock(&self, _source: UnqualSource, _cx: CrateContext) -> Option<MutexGuard<'_, T>> {
         self.inner.try_lock().map(|inner| self.wrap_guard(inner))
     }
 

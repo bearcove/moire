@@ -45,9 +45,14 @@ pub use self::sync::*;
 
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 
+#[track_caller]
+pub fn source(left: CrateContext) -> source::Source {
+    left.join(UnqualSource::caller())
+}
+
 // facade! expands to a call to this
 #[doc(hidden)]
-pub fn __init_from_macro(manifest_dir: &str) {
+pub fn __init_from_macro() {
     let process_name = std::env::current_exe()
         .unwrap()
         .display()
@@ -162,7 +167,7 @@ pub(super) fn record_event_with_entity_source(mut event: Event, entity_id: &Enti
 #[macro_export]
 macro_rules! facade {
     () => {
-        $crate::__init_from_macro(env!("CARGO_MANIFEST_DIR"));
+        $crate::__init_from_macro();
 
         pub mod peeps {
             pub const PEEPS_CX: $crate::PeepsContext =
