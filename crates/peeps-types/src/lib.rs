@@ -44,19 +44,15 @@ macro_rules! impl_sqlite_json {
 }
 
 pub(crate) mod diff;
-pub(crate) mod edges;
-pub(crate) mod entities;
+pub(crate) mod objects;
 pub(crate) mod primitives;
 pub(crate) mod recording;
-pub(crate) mod scopes;
 pub(crate) mod snapshots;
 pub(crate) mod sources;
 
 pub use diff::*;
-pub use edges::*;
-pub use entities::*;
+pub use objects::*;
 pub use primitives::*;
 pub use recording::*;
-pub use scopes::*;
 pub use snapshots::*;
 pub use sources::*;

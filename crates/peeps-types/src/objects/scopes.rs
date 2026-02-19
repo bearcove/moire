@@ -11,9 +11,7 @@ pub struct Scope {
     /// When we first started tracking this scope.
     pub birth: PTime,
 
-    /// Interned source identifier.
-    ///
-    /// Resolves to a `{source, krate}` tuple in the source registry.
+    /// Location in source code and crate information.
     pub source: SourceId,
 
     /// Human-facing name for this scope.
@@ -40,10 +38,31 @@ impl Scope {
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ScopeBody {
-    Process,
-    Thread,
-    Task,
-    Connection,
+    Process(ProcessScopeBody),
+    Thread(ThreadScopeBody),
+    Task(TaskScopeBody),
+    Connection(ConnectionScopeBody),
+}
+
+#[derive(Facet)]
+pub struct ProcessScopeBody {
+    pub pid: u32,
+}
+
+#[derive(Facet)]
+pub struct ThreadScopeBody {
+    pub thread_name: Option<String>,
+}
+
+#[derive(Facet)]
+pub struct TaskScopeBody {
+    pub task_key: String,
+}
+
+#[derive(Facet)]
+pub struct ConnectionScopeBody {
+    pub local_addr: Option<String>,
+    pub peer_addr: Option<String>,
 }
 
 crate::impl_sqlite_json!(ScopeBody);
