@@ -142,10 +142,7 @@ impl Drop for TaskScopeRegistration {
     }
 }
 
-fn register_current_task_scope(
-    task_name: &str,
-    source: Source,
-) -> Option<TaskScopeRegistration> {
+fn register_current_task_scope(task_name: &str, source: Source) -> Option<TaskScopeRegistration> {
     let task_key = current_tokio_task_key()?;
     let scope = ScopeHandle::new(
         format!("task.{task_name}#{task_key}"),
@@ -366,13 +363,10 @@ where
 {
     let name: CompactString = name.into();
     tokio::spawn(
-        FUTURE_CAUSAL_STACK.scope(
-            RefCell::new(Vec::new()),
-            async move {
-                let _task_scope = register_current_task_scope(name.as_str(), source);
-                instrument_future_named(name, fut, source).await
-            },
-        ),
+        FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
+            let _task_scope = register_current_task_scope(name.as_str(), source);
+            instrument_future_named(name, fut, source).await
+        }),
     )
 }
 
@@ -2235,13 +2229,21 @@ fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
     if let Ok(mut db) = runtime_db().lock() {
         if let Some(entity) = db.entities.get(entity_id) {
             event.source = CompactString::from(entity.source.as_str());
-            event.krate = entity.krate.as_ref().map(|k| CompactString::from(k.as_str()));
+            event.krate = entity
+                .krate
+                .as_ref()
+                .map(|k| CompactString::from(k.as_str()));
         }
         db.record_event(event);
     }
 }
 
-fn emit_channel_wait_started(target: &EntityId, kind: ChannelWaitKind, source: Source, cx: PeepsContext) {
+fn emit_channel_wait_started(
+    target: &EntityId,
+    kind: ChannelWaitKind,
+    source: Source,
+    cx: PeepsContext,
+) {
     if let Ok(event) = Event::channel_wait_started_with_source(
         EventTarget::Entity(target.clone()),
         &ChannelWaitStartedEvent { kind },
@@ -2925,7 +2927,11 @@ impl<T> UnboundedReceiver<T> {
         }
     }
 }
-pub fn channel<T>(name: impl Into<String>, capacity: usize, source: Source) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(
+    name: impl Into<String>,
+    capacity: usize,
+    source: Source,
+) -> (Sender<T>, Receiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
@@ -3206,12 +3212,7 @@ impl<T> OneshotSender<T> {
         self.send_with_source(value, Source::caller(), cx)
     }
 
-    pub fn send_with_source(
-        mut self,
-        value: T,
-        source: Source,
-        cx: PeepsContext,
-    ) -> Result<(), T> {
+    pub fn send_with_source(mut self, value: T, source: Source, cx: PeepsContext) -> Result<(), T> {
         let Some(inner) = self.inner.take() else {
             return Err(value);
         };
@@ -3349,7 +3350,10 @@ impl<T> OneshotReceiver<T> {
         }
     }
 }
-pub fn oneshot<T>(name: impl Into<String>, source: Source) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot<T>(
+    name: impl Into<String>,
+    source: Source,
+) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = oneshot::channel();
     let details = ChannelDetails::Oneshot(OneshotChannelDetails {
@@ -4715,7 +4719,10 @@ impl Command {
     }
 
     #[track_caller]
-    pub fn output_with_cx(&mut self, cx: PeepsContext) -> impl Future<Output = io::Result<Output>> + '_ {
+    pub fn output_with_cx(
+        &mut self,
+        cx: PeepsContext,
+    ) -> impl Future<Output = io::Result<Output>> + '_ {
         self.output_with_source(Source::caller(), cx)
     }
 
@@ -4970,7 +4977,12 @@ macro_rules! join_set {
 impl DiagnosticInterval {
     #[track_caller]
     pub fn tick(&mut self) -> impl Future<Output = tokio::time::Instant> + '_ {
-        instrument_future_on("interval.tick", &self.handle, self.inner.tick(), Source::caller())
+        instrument_future_on(
+            "interval.tick",
+            &self.handle,
+            self.inner.tick(),
+            Source::caller(),
+        )
     }
 
     #[track_caller]
@@ -4997,7 +5009,11 @@ pub fn interval(period: Duration, source: Source) -> DiagnosticInterval {
     }
 }
 
-pub fn interval_at(start: tokio::time::Instant, period: Duration, source: Source) -> DiagnosticInterval {
+pub fn interval_at(
+    start: tokio::time::Instant,
+    period: Duration,
+    source: Source,
+) -> DiagnosticInterval {
     let label = format!("interval({}ms)", period.as_millis());
     DiagnosticInterval {
         inner: tokio::time::interval_at(start, period),
@@ -5198,8 +5214,7 @@ where
     F: IntoFuture,
 {
     let source = source.into_compact_string();
-    let krate =
-        infer_krate_from_source_with_manifest_dir(source.as_str(), Some(cx.manifest_dir()));
+    let krate = infer_krate_from_source_with_manifest_dir(source.as_str(), Some(cx.manifest_dir()));
     OperationFuture::new(
         fut.into_future(),
         EntityId::new(on.id().as_str()),
@@ -5359,9 +5374,11 @@ where
                     clear_relation_edge(&future_id, relation);
                 }
 
-                if let Ok(event) =
-                    Event::new(EventTarget::Entity(EntityId::new(future_id.as_str())), EventKind::StateChanged, &())
-                {
+                if let Ok(event) = Event::new(
+                    EventTarget::Entity(EntityId::new(future_id.as_str())),
+                    EventKind::StateChanged,
+                    &(),
+                ) {
                     record_event_with_entity_source(event, &future_id);
                 }
 
@@ -5786,12 +5803,8 @@ mod tests {
         reset_runtime_db_for_test();
 
         let target = EntityHandle::new("test.target.drop", EntityBody::Future);
-        let fut = instrument_future_on(
-            "test.future.drop",
-            &target,
-            AlwaysPending,
-            Source::caller(),
-        );
+        let fut =
+            instrument_future_on("test.future.drop", &target, AlwaysPending, Source::caller());
         let fut_handle = fut.future_handle.clone();
         let fut_id = EntityId::new(fut_handle.id().as_str());
 
@@ -5893,7 +5906,10 @@ mod tests {
         parent.abort();
         let _ = parent.await;
 
-        assert!(found, "expected spawned future entity to link to a task scope");
+        assert!(
+            found,
+            "expected spawned future entity to link to a task scope"
+        );
     }
 
     #[test]
@@ -5919,8 +5935,16 @@ mod tests {
         let _guard = test_guard();
         reset_runtime_db_for_test();
 
-        let src = EntityHandle::new("test.process.scope.src", EntityBody::Future, Source::caller());
-        let dst = EntityHandle::new("test.process.scope.dst", EntityBody::Future, Source::caller());
+        let src = EntityHandle::new(
+            "test.process.scope.src",
+            EntityBody::Future,
+            Source::caller(),
+        );
+        let dst = EntityHandle::new(
+            "test.process.scope.dst",
+            EntityBody::Future,
+            Source::caller(),
+        );
         let src_id = EntityId::new(src.id().as_str());
         let dst_id = EntityId::new(dst.id().as_str());
 

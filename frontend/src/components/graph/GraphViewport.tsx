@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CircleNotch } from "@phosphor-icons/react";
 import type { EntityDef } from "../../snapshot";
+import { quoteFilterValue } from "../../graphFilter";
+import { canonicalNodeKind, kindDisplayName } from "../../nodeKindSpec";
+import { formatProcessLabel } from "../../processLabel";
 import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
@@ -20,6 +23,8 @@ export function GraphViewport({
   entityById,
   onHideNodeFilter,
   onHideLocationFilter,
+  onFocusConnected,
+  onAppendFilterToken,
   ghostNodeIds,
   ghostEdgeIds,
 }: {
@@ -35,6 +40,8 @@ export function GraphViewport({
   entityById: Map<string, EntityDef>;
   onHideNodeFilter: (entityId: string) => void;
   onHideLocationFilter: (location: string) => void;
+  onFocusConnected: (entityId: string) => void;
+  onAppendFilterToken: (token: string) => void;
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
 }) {
@@ -129,6 +136,14 @@ export function GraphViewport({
       {nodeContextMenu && (() => {
         const entity = entityById.get(nodeContextMenu.nodeId);
         const location = entity?.source?.trim() ?? "";
+        const krate = entity?.krate;
+        const processId = entity?.processId ?? "";
+        const processLabel = entity
+          ? formatProcessLabel(entity.processName, entity.processPid)
+          : processId;
+        const kind = entity ? canonicalNodeKind(entity.kind) : "";
+        const kindLabel = kind ? kindDisplayName(kind) : "";
+        const close = () => setNodeContextMenu(null);
         return (
           <div
             className="graph-node-context-menu"
@@ -138,24 +153,110 @@ export function GraphViewport({
               type="button"
               className="graph-node-context-menu-item"
               onClick={() => {
+                onFocusConnected(nodeContextMenu.nodeId);
+                close();
+              }}
+            >
+              Show only connected
+            </button>
+            <div className="graph-node-context-menu-separator" />
+            <button
+              type="button"
+              className="graph-node-context-menu-item"
+              onClick={() => {
                 onHideNodeFilter(nodeContextMenu.nodeId);
-                setNodeContextMenu(null);
+                close();
               }}
             >
               Hide this node
             </button>
-            <button
-              type="button"
-              className="graph-node-context-menu-item"
-              disabled={!location}
-              onClick={() => {
-                if (!location) return;
-                onHideLocationFilter(location);
-                setNodeContextMenu(null);
-              }}
-            >
-              Hide this location
-            </button>
+            {location && (
+              <button
+                type="button"
+                className="graph-node-context-menu-item"
+                onClick={() => {
+                  onHideLocationFilter(location);
+                  close();
+                }}
+              >
+                Hide this location
+              </button>
+            )}
+            {krate && (
+              <>
+                <div className="graph-node-context-menu-separator" />
+                <button
+                  type="button"
+                  className="graph-node-context-menu-item"
+                  onClick={() => {
+                    onAppendFilterToken(`-crate:${quoteFilterValue(krate)}`);
+                    close();
+                  }}
+                >
+                  Hide this crate
+                </button>
+                <button
+                  type="button"
+                  className="graph-node-context-menu-item"
+                  onClick={() => {
+                    onAppendFilterToken(`+crate:${quoteFilterValue(krate)}`);
+                    close();
+                  }}
+                >
+                  Show only this crate
+                </button>
+              </>
+            )}
+            {processId && (
+              <>
+                <div className="graph-node-context-menu-separator" />
+                <button
+                  type="button"
+                  className="graph-node-context-menu-item"
+                  onClick={() => {
+                    onAppendFilterToken(`-process:${quoteFilterValue(processId)}`);
+                    close();
+                  }}
+                >
+                  Hide process: {processLabel}
+                </button>
+                <button
+                  type="button"
+                  className="graph-node-context-menu-item"
+                  onClick={() => {
+                    onAppendFilterToken(`+process:${quoteFilterValue(processId)}`);
+                    close();
+                  }}
+                >
+                  Show only process: {processLabel}
+                </button>
+              </>
+            )}
+            {kind && (
+              <>
+                <div className="graph-node-context-menu-separator" />
+                <button
+                  type="button"
+                  className="graph-node-context-menu-item"
+                  onClick={() => {
+                    onAppendFilterToken(`-kind:${quoteFilterValue(kind)}`);
+                    close();
+                  }}
+                >
+                  Hide kind: {kindLabel}
+                </button>
+                <button
+                  type="button"
+                  className="graph-node-context-menu-item"
+                  onClick={() => {
+                    onAppendFilterToken(`+kind:${quoteFilterValue(kind)}`);
+                    close();
+                  }}
+                >
+                  Show only kind: {kindLabel}
+                </button>
+              </>
+            )}
           </div>
         );
       })()}

@@ -265,7 +265,10 @@ fn scenario_status_to_result(status: &ExitStatus) -> AnyResult<()> {
     if status.success() {
         return Ok(());
     }
-    Err(format!("scenario subprocess failed: {}", format_status(*status)))
+    Err(format!(
+        "scenario subprocess failed: {}",
+        format_status(*status)
+    ))
 }
 
 fn should_wait_for_ctrl_c_after_scenario(status: &ExitStatus) -> bool {

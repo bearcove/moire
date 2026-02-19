@@ -734,7 +734,11 @@ impl<T: Clone> WatchReceiver<T> {
     }
 }
 
-pub fn channel<T>(_name: impl Into<String>, capacity: usize, _source: Source) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(
+    _name: impl Into<String>,
+    capacity: usize,
+    _source: Source,
+) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = mpsc::channel(capacity);
     (
         Sender {
@@ -765,7 +769,10 @@ pub fn unbounded_channel<T>(
     )
 }
 
-pub fn oneshot<T>(name: impl Into<String>, _source: Source) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot<T>(
+    name: impl Into<String>,
+    _source: Source,
+) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let _ = name;
     let (tx, rx) = oneshot::channel();
     (
@@ -780,7 +787,10 @@ pub fn oneshot<T>(name: impl Into<String>, _source: Source) -> (OneshotSender<T>
     )
 }
 
-pub fn oneshot_channel<T>(name: impl Into<String>, source: Source) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot_channel<T>(
+    name: impl Into<String>,
+    source: Source,
+) -> (OneshotSender<T>, OneshotReceiver<T>) {
     oneshot(name, source)
 }
 
@@ -890,16 +900,13 @@ impl<T> OnceCell<T> {
         self.0.get_or_init(f).await
     }
 
-    pub async fn get_or_try_init_with_cx<F, Fut, E>(
-        &self,
-        f: F,
-        cx: PeepsContext,
-    ) -> Result<&T, E>
+    pub async fn get_or_try_init_with_cx<F, Fut, E>(&self, f: F, cx: PeepsContext) -> Result<&T, E>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, E>>,
     {
-        self.get_or_try_init_with_source(f, Source::caller(), cx).await
+        self.get_or_try_init_with_source(f, Source::caller(), cx)
+            .await
     }
 
     pub async fn get_or_try_init_with_source<F, Fut, E>(
@@ -988,7 +995,11 @@ impl Semaphore {
         _source: Source,
         _cx: PeepsContext,
     ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        self.0.clone().acquire_owned().await.map(OwnedSemaphorePermit)
+        self.0
+            .clone()
+            .acquire_owned()
+            .await
+            .map(OwnedSemaphorePermit)
     }
 
     pub async fn acquire_many_owned_with_cx(
@@ -1006,7 +1017,11 @@ impl Semaphore {
         _source: Source,
         _cx: PeepsContext,
     ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        self.0.clone().acquire_many_owned(n).await.map(OwnedSemaphorePermit)
+        self.0
+            .clone()
+            .acquire_many_owned(n)
+            .await
+            .map(OwnedSemaphorePermit)
     }
 
     pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
@@ -1215,7 +1230,8 @@ impl Child {
     }
 
     pub async fn wait_with_output_with_cx(self, cx: PeepsContext) -> io::Result<Output> {
-        self.wait_with_output_with_source(Source::caller(), cx).await
+        self.wait_with_output_with_source(Source::caller(), cx)
+            .await
     }
 
     pub async fn wait_with_output_with_source(

@@ -47,6 +47,8 @@ export function GraphPanel({
   onGraphFilterTextChange,
   onHideNodeFilter,
   onHideLocationFilter,
+  onFocusConnected,
+  onAppendFilterToken,
   floatingFilterBar = false,
 }: {
   entityDefs: EntityDef[];
@@ -69,6 +71,8 @@ export function GraphPanel({
   onGraphFilterTextChange: (next: string) => void;
   onHideNodeFilter: (entityId: string) => void;
   onHideLocationFilter: (location: string) => void;
+  onFocusConnected: (entityId: string) => void;
+  onAppendFilterToken: (token: string) => void;
   floatingFilterBar?: boolean;
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
@@ -172,6 +176,8 @@ export function GraphPanel({
         entityById={entityById}
         onHideNodeFilter={onHideNodeFilter}
         onHideLocationFilter={onHideLocationFilter}
+        onFocusConnected={onFocusConnected}
+        onAppendFilterToken={onAppendFilterToken}
         ghostNodeIds={unionFrameLayout?.ghostNodeIds}
         ghostEdgeIds={unionFrameLayout?.ghostEdgeIds}
       />

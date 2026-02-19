@@ -192,7 +192,13 @@ impl Event {
         source: impl Into<CompactString>,
         manifest_dir: Option<&str>,
     ) -> Result<Self, MetaSerializeError> {
-        Self::new_with_source(target, EventKind::ChannelReceived, meta, source, manifest_dir)
+        Self::new_with_source(
+            target,
+            EventKind::ChannelReceived,
+            meta,
+            source,
+            manifest_dir,
+        )
     }
 
     /// Channel closure event with typed payload metadata.
@@ -255,7 +261,13 @@ impl Event {
         source: impl Into<CompactString>,
         manifest_dir: Option<&str>,
     ) -> Result<Self, MetaSerializeError> {
-        Self::new_with_source(target, EventKind::ChannelWaitEnded, meta, source, manifest_dir)
+        Self::new_with_source(
+            target,
+            EventKind::ChannelWaitEnded,
+            meta,
+            source,
+            manifest_dir,
+        )
     }
 }
 

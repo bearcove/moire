@@ -6,6 +6,9 @@ license.workspace = true
 
 [dependencies]
 axum.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 compact_str.workspace = true
 facet.workspace = true
 facet-json.workspace = true

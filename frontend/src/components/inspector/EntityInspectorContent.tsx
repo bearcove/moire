@@ -1,5 +1,6 @@
 import React from "react";
-import { Crosshair } from "@phosphor-icons/react";
+import { Crosshair, Package } from "@phosphor-icons/react";
+import { NodeChip } from "../../ui/primitives/NodeChip";
 import { Badge } from "../../ui/primitives/Badge";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
@@ -36,7 +37,12 @@ function EntityDetailsSection({ entity }: { entity: EntityDef }) {
         <Source source={entity.source} />
       </KeyValueRow>
       {entity.krate && (
-        <KeyValueRow label="Crate">{entity.krate}</KeyValueRow>
+        <KeyValueRow label="Crate">
+          <NodeChip
+            icon={<Package size={12} weight="bold" />}
+            label={entity.krate}
+          />
+        </KeyValueRow>
       )}
       <KeyValueRow label="Age">
         <span title={birthTitle}>
@@ -253,7 +259,6 @@ function EntityInspectorBody({
         </div>
       )}
 
-      <EntityDetailsSection entity={entity} />
       <div className="inspector-kv-table">
         <EntityDetailsSection entity={entity} />
         <EntityBodySection entity={entity} />

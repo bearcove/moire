@@ -466,19 +466,6 @@
     font-weight: 600;
 }
 
-/* ── Source link style ───────────────────────────────────── */
-
-.inspector-source-link {
-    font-family: var(--font-ui);
-    font-size: var(--font-size-sm);
-    color: var(--accent);
-    text-decoration: none;
-}
-
-.inspector-source-link:hover {
-    text-decoration: underline;
-}
-
 .inspector-scope-links {
     display: flex;
     flex-direction: column;

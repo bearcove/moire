@@ -256,12 +256,56 @@ const DB_SCHEMA_VERSION: i64 = 3;
 const DEFAULT_VITE_ADDR: &str = "[::]:9131";
 const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 
-#[tokio::main]
-async fn main() {
+const REAPER_PIPE_FD_ENV: &str = "PEEPS_REAPER_PIPE_FD";
+const REAPER_PGID_ENV: &str = "PEEPS_REAPER_PGID";
+
+fn main() {
+    // Reaper mode: watch the pipe, kill the process group when it closes.
+    // Must NOT call die_with_parent() — we need to outlive the parent briefly.
+    #[cfg(unix)]
+    if let (Ok(fd_str), Ok(pgid_str)) = (
+        std::env::var(REAPER_PIPE_FD_ENV),
+        std::env::var(REAPER_PGID_ENV),
+    ) {
+        if let (Ok(fd), Ok(pgid)) = (
+            fd_str.parse::<libc::c_int>(),
+            pgid_str.parse::<libc::pid_t>(),
+        ) {
+            reaper_main(fd, pgid);
+            return;
+        }
+    }
+
     ur_taking_me_with_you::die_with_parent();
-    if let Err(err) = run().await {
-        eprintln!("{err}");
-        std::process::exit(1);
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime")
+        .block_on(async {
+            if let Err(err) = run().await {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+        });
+}
+
+#[cfg(unix)]
+fn reaper_main(pipe_fd: libc::c_int, pgid: libc::pid_t) {
+    // Block until the parent closes the write end of the pipe (i.e. parent died).
+    let mut buf = [0u8; 1];
+    loop {
+        let n = unsafe { libc::read(pipe_fd, buf.as_mut_ptr() as *mut _, 1) };
+        if n <= 0 {
+            break; // EOF or error — parent is gone
+        }
+    }
+    // Kill the entire process group.
+    unsafe {
+        libc::kill(-pgid, libc::SIGTERM);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    unsafe {
+        libc::kill(-pgid, libc::SIGKILL);
     }
 }
 
@@ -1128,14 +1172,75 @@ async fn start_vite_dev_server(vite_addr: &str) -> Result<Child, String> {
         .stderr(Stdio::inherit())
         .kill_on_drop(true);
 
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+
     let child = command.spawn().map_err(|e| {
         format!(
             "failed to launch Vite via pnpm in {}: {e}",
             workspace_root.display()
         )
     })?;
+
+    #[cfg(unix)]
+    {
+        let vite_pgid = child.id().ok_or("Vite child has no PID")? as libc::pid_t;
+        spawn_vite_reaper(vite_pgid)?;
+    }
+
     wait_for_tcp_ready(vite_addr, Duration::from_secs(20)).await?;
     Ok(child)
+}
+
+#[cfg(unix)]
+fn spawn_vite_reaper(vite_pgid: libc::pid_t) -> Result<(), String> {
+    use std::os::fd::FromRawFd;
+
+    // Create a pipe. We keep the write end; the reaper gets the read end.
+    // When we (peeps-web) die, the write end closes and the reaper wakes up.
+    let mut fds = [0 as libc::c_int; 2];
+    let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
+    if ret != 0 {
+        return Err(format!(
+            "failed to create reaper pipe: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let read_fd = fds[0];
+    let write_fd = fds[1];
+
+    // read_fd: clear FD_CLOEXEC so the reaper child inherits it
+    unsafe {
+        let flags = libc::fcntl(read_fd, libc::F_GETFD);
+        libc::fcntl(read_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+    }
+    // write_fd: set FD_CLOEXEC so it closes on exec (stays only in this process)
+    unsafe {
+        let flags = libc::fcntl(write_fd, libc::F_GETFD);
+        libc::fcntl(write_fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+    }
+
+    let exe = std::env::current_exe().map_err(|e| format!("failed to get current exe: {e}"))?;
+    std::process::Command::new(exe)
+        .env(REAPER_PIPE_FD_ENV, read_fd.to_string())
+        .env(REAPER_PGID_ENV, vite_pgid.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("failed to spawn vite reaper: {e}"))?;
+
+    // Close read_fd in this process — the child has its own copy.
+    unsafe { libc::close(read_fd) };
+
+    // Leak the write_fd intentionally: it stays open as long as this process lives.
+    // When we exit (for any reason), the OS closes it, which unblocks the reaper.
+    std::mem::forget(unsafe { std::fs::File::from_raw_fd(write_fd) });
+
+    Ok(())
 }
 
 async fn ensure_frontend_deps(workspace_root: &PathBuf) -> Result<(), String> {

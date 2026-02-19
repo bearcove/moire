@@ -278,8 +278,7 @@ struct SourceKrateCacheKey {
 fn source_krate_cache() -> &'static RwLock<HashMap<SourceKrateCacheKey, Option<CompactString>>> {
     static SOURCE_KRATE_CACHE: OnceLock<
         RwLock<HashMap<SourceKrateCacheKey, Option<CompactString>>>,
-    > =
-        OnceLock::new();
+    > = OnceLock::new();
     SOURCE_KRATE_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
@@ -313,7 +312,9 @@ impl fmt::Display for PeepsHex {
 
 #[cfg(test)]
 mod tests {
-    use super::{caller_source, infer_krate_from_source, infer_krate_from_source_with_manifest_dir};
+    use super::{
+        caller_source, infer_krate_from_source, infer_krate_from_source_with_manifest_dir,
+    };
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -376,7 +377,8 @@ mod tests {
             "[package]\nname = \"peeps_types_manifest_ctx\"\nversion = \"0.0.0\"\n",
         )
         .expect("should write Cargo.toml");
-        std::fs::write(src.join("lib.rs"), "pub fn hello() {}\n").expect("should write source file");
+        std::fs::write(src.join("lib.rs"), "pub fn hello() {}\n")
+            .expect("should write source file");
 
         let inferred = infer_krate_from_source_with_manifest_dir(
             "src/lib.rs:42",
@@ -405,7 +407,10 @@ mod tests {
             nonce
         ));
 
-        for (root, name) in [(&root_a, "peeps_types_cache_a"), (&root_b, "peeps_types_cache_b")] {
+        for (root, name) in [
+            (&root_a, "peeps_types_cache_a"),
+            (&root_b, "peeps_types_cache_b"),
+        ] {
             let src = root.join("src");
             std::fs::create_dir_all(&src).expect("should create temp source tree");
             std::fs::write(

@@ -1,8 +1,8 @@
+use crate::peeps::prelude::*;
 use std::sync::Arc;
 use std::sync::Barrier;
 use std::time::Duration;
 use tokio::sync::oneshot;
-use crate::peeps::prelude::*;
 
 fn spawn_lock_order_worker(
     task_name: &'static str,

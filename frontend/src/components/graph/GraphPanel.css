@@ -273,6 +273,12 @@
     color: var(--text-muted);
 }
 
+.graph-node-context-menu-separator {
+    height: 1px;
+    background: var(--border-default);
+    margin: 3px 4px;
+}
+
 .graph-toolbar .ui-filter-trigger {
     height: var(--control-height);
     padding: 0 8px;
