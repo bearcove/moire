@@ -18,7 +18,7 @@
 }
 
 .ui-filter-badge {
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     padding: 0 4px;
     border-radius: var(--radius-control);
@@ -73,6 +73,10 @@
     background: transparent;
 }
 
+.ui-filter-item:has([data-selected]) {
+    background: color-mix(in srgb, white 5%, var(--bg-surface));
+}
+
 .ui-filter-item:hover {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
 }
@@ -116,7 +120,7 @@
 
 .ui-filter-item-meta {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 12px;
     color: color-mix(in srgb, var(--text-muted) 78%, var(--text-tertiary));
     margin-left: auto;
 }

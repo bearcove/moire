@@ -3,7 +3,7 @@
 .duration {
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
-    font-weight: 600;
+    font-weight: 500;
     padding: 0 3px;
     border-radius: var(--radius-control);
 }

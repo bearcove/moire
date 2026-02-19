@@ -60,19 +60,19 @@ type DemoConnectionRow = {
   lastSentTone: DemoTone;
 };
 
-const DARK_ROLE_SWATCHES = [
-  { name: "bg.base", token: "--bg-base", hex: "#0F131A" },
-  { name: "bg.surface", token: "--bg-surface", hex: "#151A23" },
-  { name: "bg.elevated", token: "--bg-elevated", hex: "#1C2230" },
-  { name: "border.subtle", token: "--border-subtle", hex: "#232B3A" },
-  { name: "border.default", token: "--border-default", hex: "#2E384A" },
-  { name: "text.primary", token: "--text-primary", hex: "#E6EDF3" },
-  { name: "text.secondary", token: "--text-secondary", hex: "#A8B3C2" },
-  { name: "text.muted", token: "--text-muted", hex: "#6B7789" },
-  { name: "accent", token: "--accent", hex: "#5F7D96" },
-  { name: "success", token: "--status-success", hex: "#3FB950" },
-  { name: "warning", token: "--status-warning", hex: "#D29922" },
-  { name: "danger", token: "--status-danger", hex: "#F85149" },
+const ROLE_SWATCHES = [
+  { name: "bg.base", token: "--bg-base" },
+  { name: "bg.surface", token: "--bg-surface" },
+  { name: "bg.elevated", token: "--bg-elevated" },
+  { name: "border.subtle", token: "--border-subtle" },
+  { name: "border.default", token: "--border-default" },
+  { name: "text.primary", token: "--text-primary" },
+  { name: "text.secondary", token: "--text-secondary" },
+  { name: "text.muted", token: "--text-muted" },
+  { name: "accent", token: "--accent" },
+  { name: "success", token: "--status-success" },
+  { name: "warning", token: "--status-warning" },
+  { name: "danger", token: "--status-danger" },
 ] as const;
 
 const PROPOSED_ACCENT_SWATCHES = [
@@ -126,7 +126,7 @@ const PROPOSED_ACCENT_SWATCHES = [
   },
 ] as const;
 
-export function StorybookPage() {
+export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" }) {
   const [textValue, setTextValue] = useState("Hello");
   const [searchValue, setSearchValue] = useState("");
   const [checked, setChecked] = useState(true);
@@ -562,34 +562,30 @@ export function StorybookPage() {
   }, []);
 
   return (
-    <Panel variant="lab">
+    <Panel variant="lab" style={{ height: "100%", ...(colorScheme ? { colorScheme, background: "var(--bg-base)", color: "var(--text-primary)" } : undefined) }}>
       <PanelHeader title="Lab" hint="Primitives and tone language" />
       <div className="lab-body">
-        <Section title="UI font — Manrope" subtitle="UI font in the sizes we actually use" wide>
-          <div className="ui-typo-card">
-            <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
-            <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
-            <div className="ui-typo-sample ui-typo-ui ui-typo-ui--sm ui-typo-muted">
-              Buttons, labels, helper text, and navigation should mostly live here.
-            </div>
-            <div className="ui-typo-weights">
-              <span className="ui-typo-pill ui-typo-ui ui-typo-w-400">400</span>
-              <span className="ui-typo-pill ui-typo-ui ui-typo-w-700">700</span>
-            </div>
+        <Section title="UI font — Satoshi" subtitle="UI font in the sizes we actually use" wide>
+          <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
+          <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
+          <div className="ui-typo-sample ui-typo-ui ui-typo-ui--sm ui-typo-muted">
+            Buttons, labels, helper text, and navigation should mostly live here.
+          </div>
+          <div className="ui-typo-weights">
+            <span className="ui-typo-pill ui-typo-ui ui-typo-w-400">400</span>
+            <span className="ui-typo-pill ui-typo-ui ui-typo-w-700">700</span>
           </div>
         </Section>
 
         <Section title="Mono font — Maple Mono" subtitle="Mono font in the sizes we actually use" wide>
-          <div className="ui-typo-card">
-            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY&hellip;</div>
-            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
-            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--sm ui-typo-muted">
-              IDs, paths, tokens, and anything users copy/paste.
-            </div>
-            <div className="ui-typo-weights">
-              <span className="ui-typo-pill ui-typo-mono ui-typo-w-400">400</span>
-              <span className="ui-typo-pill ui-typo-mono ui-typo-w-700">700</span>
-            </div>
+          <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY&hellip;</div>
+          <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
+          <div className="ui-typo-sample ui-typo-mono ui-typo-mono--sm ui-typo-muted">
+            IDs, paths, tokens, and anything users copy/paste.
+          </div>
+          <div className="ui-typo-weights">
+            <span className="ui-typo-pill ui-typo-mono ui-typo-w-400">400</span>
+            <span className="ui-typo-pill ui-typo-mono ui-typo-w-700">700</span>
           </div>
         </Section>
 
@@ -770,16 +766,16 @@ export function StorybookPage() {
         <Section title="Color System" subtitle="Role tokens + scope palette (graph only)" wide>
           <div className="ui-section-stack">
             <div className="ui-color-vars">
-              <div className="ui-typo-kicker">Dark Role Palette (Large Swatches)</div>
+              <div className="ui-typo-kicker">Role Palette</div>
               <div className="ui-role-swatch-grid">
-                {DARK_ROLE_SWATCHES.map((item) => (
+                {ROLE_SWATCHES.map((item) => (
                   <div key={item.name} className="ui-role-swatch-card">
                     <div
                       className="ui-role-swatch-card__swatch"
                       style={{ background: `var(${item.token})` }}
                     />
                     <div className="ui-role-swatch-card__name">{item.name}</div>
-                    <div className="ui-role-swatch-card__meta">{item.token} · {item.hex}</div>
+                    <div className="ui-role-swatch-card__meta">{item.token}</div>
                   </div>
                 ))}
               </div>

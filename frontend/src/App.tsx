@@ -33,6 +33,11 @@ import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
 import { formatProcessLabel } from "./processLabel";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "./nodeKindSpec";
 import { canonicalScopeKind } from "./scopeKindSpec";
+import {
+  appendFilterToken,
+  parseGraphFilterQuery,
+  quoteFilterValue,
+} from "./graphFilter";
 
 // ── Snapshot state machine ─────────────────────────────────────
 
@@ -120,9 +125,10 @@ export function App() {
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
   const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<string>>(new Set());
-  const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("crate");
-  const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("process");
+  const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("none");
+  const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("none");
   const [showLoners, setShowLoners] = useState(false);
+  const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
@@ -209,17 +215,36 @@ export function App() {
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
+  const graphTextFilters = useMemo(() => parseGraphFilterQuery(graphFilterText), [graphFilterText]);
+  const effectiveHiddenKrates = useMemo(
+    () => new Set<string>([...hiddenKrates, ...graphTextFilters.hiddenCrates]),
+    [hiddenKrates, graphTextFilters.hiddenCrates],
+  );
+  const effectiveHiddenProcesses = useMemo(
+    () => new Set<string>([...hiddenProcesses, ...graphTextFilters.hiddenProcesses]),
+    [hiddenProcesses, graphTextFilters.hiddenProcesses],
+  );
+  const effectiveHiddenKinds = useMemo(
+    () => new Set<string>([...hiddenKinds, ...graphTextFilters.hiddenKinds]),
+    [hiddenKinds, graphTextFilters.hiddenKinds],
+  );
+  const effectiveShowLoners = graphTextFilters.showLoners ?? false;
+  const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
+  const effectiveSubgraphScopeMode: SubgraphScopeMode =
+    graphTextFilters.groupBy === "none" ? "none" : (graphTextFilters.groupBy ?? "none");
   const applyBaseFilters = useCallback(
     (ignore: "crate" | "process" | "kind" | null) => {
       let entities = allEntities.filter(
         (e) =>
-          (ignore === "crate" || hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
-          (ignore === "process" || hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
-          (ignore === "kind" || hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))),
+          (ignore === "crate" || effectiveHiddenKrates.size === 0 || !effectiveHiddenKrates.has(e.krate ?? "~no-crate")) &&
+          (ignore === "process" || effectiveHiddenProcesses.size === 0 || !effectiveHiddenProcesses.has(e.processId)) &&
+          (ignore === "kind" || effectiveHiddenKinds.size === 0 || !effectiveHiddenKinds.has(canonicalNodeKind(e.kind))) &&
+          !graphTextFilters.hiddenNodeIds.has(e.id) &&
+          !graphTextFilters.hiddenLocations.has(e.source),
       );
       const entityIds = new Set(entities.map((entity) => entity.id));
       let edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);
-      if (!showLoners) {
+      if (!effectiveShowLoners) {
         const withoutLoners = filterLoners(entities, edges);
         entities = withoutLoners.entities;
         edges = withoutLoners.edges;
@@ -231,8 +256,25 @@ export function App() {
       }
       return { entities, edges };
     },
-    [allEntities, allEdges, hiddenKrates, hiddenProcesses, hiddenKinds, showLoners, scopeEntityFilter],
+    [
+      allEntities,
+      allEdges,
+      effectiveHiddenKrates,
+      effectiveHiddenProcesses,
+      effectiveHiddenKinds,
+      effectiveShowLoners,
+      scopeEntityFilter,
+      graphTextFilters,
+    ],
   );
+
+  const hideNodeViaTextFilter = useCallback((entityId: string) => {
+    setGraphFilterText((prev) => appendFilterToken(prev, `node:${quoteFilterValue(entityId)}`));
+  }, []);
+
+  const hideLocationViaTextFilter = useCallback((location: string) => {
+    setGraphFilterText((prev) => appendFilterToken(prev, `location:${quoteFilterValue(location)}`));
+  }, []);
 
   const crateItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
@@ -443,12 +485,12 @@ where l.conn_id = ${connId}
       }
       setSnap({ phase: "loading" });
       const snapshot = await apiClient.fetchSnapshot();
-      const converted = convertSnapshot(snapshot, subgraphScopeMode);
+      const converted = convertSnapshot(snapshot, effectiveSubgraphScopeMode);
       setSnap({ phase: "ready", ...converted });
     } catch (err) {
       setSnap({ phase: "error", message: err instanceof Error ? err.message : String(err) });
     }
-  }, [subgraphScopeMode]);
+  }, [effectiveSubgraphScopeMode]);
 
   const handleStartRecording = useCallback(async () => {
     try {
@@ -481,7 +523,7 @@ where l.conn_id = ${connId}
             if (isLiveRef.current && current.session.frame_count > 0) {
               const frameIndex = current.session.frame_count - 1;
               const frame = await apiClient.fetchRecordingFrame(frameIndex);
-              const converted = convertSnapshot(frame, subgraphScopeMode);
+              const converted = convertSnapshot(frame, effectiveSubgraphScopeMode);
               setSnap({ phase: "ready", ...converted });
             }
           } catch (e) {
@@ -492,7 +534,7 @@ where l.conn_id = ${connId}
     } catch (err) {
       console.error(err);
     }
-  }, [subgraphScopeMode]);
+  }, [effectiveSubgraphScopeMode]);
 
   const handleStopRecording = useCallback(async () => {
     if (pollingRef.current !== null) {
@@ -520,7 +562,7 @@ where l.conn_id = ${connId}
       if (session.frame_count > 0) {
         const lastFrameIndex = session.frame_count - 1;
         const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
-        const converted = convertSnapshot(lastFrame, subgraphScopeMode);
+        const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
         setSnap({ phase: "ready", ...converted });
 
         const union = await buildUnionLayout(
@@ -533,7 +575,7 @@ where l.conn_id = ${connId}
             });
           },
           autoInterval,
-          subgraphScopeMode,
+          effectiveSubgraphScopeMode,
         );
         setRecording((prev) => {
           if (prev.phase !== "stopped") return prev;
@@ -544,19 +586,21 @@ where l.conn_id = ${connId}
         const unionFrame = renderFrameFromUnion(
           snappedLast,
           union,
-          hiddenKrates,
-          hiddenProcesses,
-          hiddenKinds,
+          effectiveHiddenKrates,
+          effectiveHiddenProcesses,
+          effectiveHiddenKinds,
+          graphTextFilters.hiddenNodeIds,
+          graphTextFilters.hiddenLocations,
           focusedEntityId,
           ghostMode,
-          showLoners,
+          effectiveShowLoners,
         );
         setUnionFrameLayout(unionFrame);
       }
     } catch (err) {
       console.error(err);
     }
-  }, [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
+  }, [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, effectiveSubgraphScopeMode]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -602,7 +646,7 @@ where l.conn_id = ${connId}
         if (session.frames.length > 0) {
           const lastFrameIndex = session.frames[session.frames.length - 1].frame_index;
           const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
-          const converted = convertSnapshot(lastFrame, subgraphScopeMode);
+          const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
           setSnap({ phase: "ready", ...converted });
 
           const union = await buildUnionLayout(
@@ -615,7 +659,7 @@ where l.conn_id = ${connId}
               });
             },
             autoInterval,
-            subgraphScopeMode,
+            effectiveSubgraphScopeMode,
           );
           setRecording((prev) => {
             if (prev.phase !== "stopped") return prev;
@@ -626,12 +670,14 @@ where l.conn_id = ${connId}
           const unionFrame = renderFrameFromUnion(
             snappedLast,
             union,
-            hiddenKrates,
-            hiddenProcesses,
-            hiddenKinds,
+            effectiveHiddenKrates,
+            effectiveHiddenProcesses,
+            effectiveHiddenKinds,
+            graphTextFilters.hiddenNodeIds,
+            graphTextFilters.hiddenLocations,
             focusedEntityId,
             ghostMode,
-            showLoners,
+            effectiveShowLoners,
           );
           setUnionFrameLayout(unionFrame);
         }
@@ -639,7 +685,7 @@ where l.conn_id = ${connId}
         console.error(err);
       }
     },
-    [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, subgraphScopeMode],
+    [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, effectiveSubgraphScopeMode],
   );
 
   const handleScrub = useCallback(
@@ -654,12 +700,14 @@ where l.conn_id = ${connId}
         const result = renderFrameFromUnion(
           frameIndex,
           unionLayout,
-          hiddenKrates,
-          hiddenProcesses,
-          hiddenKinds,
+          effectiveHiddenKrates,
+          effectiveHiddenProcesses,
+          effectiveHiddenKinds,
+          graphTextFilters.hiddenNodeIds,
+          graphTextFilters.hiddenLocations,
           focusedEntityId,
           ghostMode,
-          showLoners,
+          effectiveShowLoners,
         );
         setUnionFrameLayout(result);
 
@@ -682,7 +730,7 @@ where l.conn_id = ${connId}
         };
       });
     },
-    [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners],
+    [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners],
   );
 
   const handleRebuildUnion = useCallback(async () => {
@@ -712,7 +760,7 @@ where l.conn_id = ${connId}
           });
         },
         downsampleInterval,
-        subgraphScopeMode,
+        effectiveSubgraphScopeMode,
       );
       setBuiltDownsampleInterval(downsampleInterval);
       setRecording((prev) => {
@@ -724,12 +772,14 @@ where l.conn_id = ${connId}
       const unionFrame = renderFrameFromUnion(
         snapped,
         union,
-        hiddenKrates,
-        hiddenProcesses,
-        hiddenKinds,
+        effectiveHiddenKrates,
+        effectiveHiddenProcesses,
+        effectiveHiddenKinds,
+        graphTextFilters.hiddenNodeIds,
+        graphTextFilters.hiddenLocations,
         focusedEntityId,
         ghostMode,
-        showLoners,
+        effectiveShowLoners,
       );
       setUnionFrameLayout(unionFrame);
       const frameData = union.frameCache.get(snapped);
@@ -739,7 +789,7 @@ where l.conn_id = ${connId}
     } catch (err) {
       console.error(err);
     }
-  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
+  }, [recording, downsampleInterval, effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, effectiveSubgraphScopeMode]);
 
   // Re-render union frame when filters change during playback.
   useEffect(() => {
@@ -747,12 +797,14 @@ where l.conn_id = ${connId}
       const result = renderFrameFromUnion(
         recording.currentFrameIndex,
         recording.unionLayout,
-        hiddenKrates,
-        hiddenProcesses,
-        hiddenKinds,
+        effectiveHiddenKrates,
+        effectiveHiddenProcesses,
+        effectiveHiddenKinds,
+        graphTextFilters.hiddenNodeIds,
+        graphTextFilters.hiddenLocations,
         focusedEntityId,
         ghostMode,
-        showLoners,
+        effectiveShowLoners,
       );
       setUnionFrameLayout(result);
     } else if (recording.phase === "stopped" && recording.unionLayout) {
@@ -760,16 +812,18 @@ where l.conn_id = ${connId}
       const result = renderFrameFromUnion(
         recording.frames[lastFrame]?.frame_index ?? 0,
         recording.unionLayout,
-        hiddenKrates,
-        hiddenProcesses,
-        hiddenKinds,
+        effectiveHiddenKrates,
+        effectiveHiddenProcesses,
+        effectiveHiddenKinds,
+        graphTextFilters.hiddenNodeIds,
+        graphTextFilters.hiddenLocations,
         focusedEntityId,
         ghostMode,
-        showLoners,
+        effectiveShowLoners,
       );
       setUnionFrameLayout(result);
     }
-  }, [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, recording]);
+  }, [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, recording]);
 
   // Clear union frame layout when going back to idle or starting a new recording.
   useEffect(() => {
@@ -789,7 +843,7 @@ where l.conn_id = ${connId}
           const existingSnapshot = await apiClient.fetchExistingSnapshot();
           if (cancelled) break;
           if (existingSnapshot) {
-            const converted = convertSnapshot(existingSnapshot, subgraphScopeMode);
+            const converted = convertSnapshot(existingSnapshot, effectiveSubgraphScopeMode);
             setSnap({ phase: "ready", ...converted });
             break;
           }
@@ -807,7 +861,7 @@ where l.conn_id = ${connId}
     return () => {
       cancelled = true;
     };
-  }, [takeSnapshot, subgraphScopeMode]);
+  }, [takeSnapshot, effectiveSubgraphScopeMode]);
 
   useEffect(() => {
     isLiveRef.current = isLive;
@@ -991,17 +1045,21 @@ where l.conn_id = ${connId}
                 hiddenKinds={hiddenKinds}
                 onKindToggle={handleKindToggle}
                 onKindSolo={handleKindSolo}
-                scopeColorMode={scopeColorMode}
+                scopeColorMode={effectiveScopeColorMode}
                 onToggleProcessColorBy={handleToggleProcessColorBy}
                 onToggleCrateColorBy={handleToggleCrateColorBy}
-                subgraphScopeMode={subgraphScopeMode}
+                subgraphScopeMode={effectiveSubgraphScopeMode}
                 onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
                 onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
-                showLoners={showLoners}
+                showLoners={effectiveShowLoners}
                 onToggleShowLoners={() => setShowLoners((prev) => !prev)}
                 scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
                 onClearScopeFilter={() => setScopeEntityFilter(null)}
                 unionFrameLayout={unionFrameLayout}
+                graphFilterText={graphFilterText}
+                onGraphFilterTextChange={setGraphFilterText}
+                onHideNodeFilter={hideNodeViaTextFilter}
+                onHideLocationFilter={hideLocationViaTextFilter}
               />
             ) : leftPaneTab === "scopes" ? (
               <ScopeTablePanel

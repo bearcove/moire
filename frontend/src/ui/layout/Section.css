@@ -1,9 +1,14 @@
 .ui-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ui-section-body {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     background: var(--bg-surface);
     padding: 10px;
-    box-shadow: 0 6px 14px var(--shadow-soft);
 }
 
 .ui-section--wide {
@@ -17,7 +22,7 @@
     font-size: var(--font-size-sm);
     font-weight: 800;
     color: var(--text-primary);
-    margin-bottom: 6px;
+    margin-bottom: 0;
 }
 
 .ui-section-subhead {

@@ -16,11 +16,10 @@
     border-radius: var(--radius-control);
     border: 1px solid var(--border-subtle);
     background: var(--bg-surface);
-    box-shadow: 0 0 0 1px var(--shadow-soft);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .ui-checkbox:hover .ui-checkbox-box {
@@ -28,9 +27,8 @@
 }
 
 .ui-checkbox[data-selected] .ui-checkbox-box {
-    background: color-mix(in srgb, var(--accent-active) 14%, var(--bg-surface));
-    border-color: color-mix(in srgb, var(--accent-active) 42%, var(--border-default));
-    box-shadow: none;
+    background: var(--bg-surface);
+    border-color: var(--border-default);
 }
 
 .ui-checkbox[data-focus-visible] .ui-checkbox-box {

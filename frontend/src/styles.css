@@ -1,4 +1,12 @@
 @font-face {
+    font-family: "Satoshi";
+    src: url("/fonts/Satoshi-Variable.woff2") format("woff2");
+    font-weight: 300 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
     font-family: "Maple Mono";
     src: url("/fonts/MapleMono-Regular.woff2") format("woff2");
     font-weight: 400;
@@ -16,7 +24,7 @@
 
 :root {
     color-scheme: light dark;
-    --font-ui: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-ui: "Satoshi", -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: "Maple Mono", monospace;
     --font-scale-ui: 1.08;
     --font-size-sm: calc(12px * var(--font-scale-ui));
@@ -28,32 +36,23 @@
     line-height: 1.4;
 
     /* Role tokens */
-    --gray: #332222;
-    --bg-base: light-dark(
-        color-mix(in srgb, #f7f9fc 80%, var(--gray)),
-        color-mix(in srgb, #0f131a 80%, var(--gray))
-    );
-    --bg-surface: light-dark(
-        color-mix(in srgb, #ffffff 80%, var(--gray)),
-        color-mix(in srgb, #151a23 80%, var(--gray))
-    );
-    --bg-elevated: light-dark(
-        color-mix(in srgb, #f1f5fb 80%, var(--gray)),
-        color-mix(in srgb, #1c2230 80%, var(--gray))
-    );
+    --bg-base: light-dark(#ffffff, #0f131a);
+    --bg-surface: light-dark(#ffffff, #151a23);
+    --bg-elevated: light-dark(#ffffff, #1c2230);
 
-    --border-subtle: light-dark(#d7e0ec, #232b3a);
-    --border-default: light-dark(#c0cad9, #2e384a);
-    --border-edge: light-dark(#e4ebf5, #2a3344);
+    --border-subtle: light-dark(#d0d0d0, #232b3a);
+    --border-default: light-dark(#1a1a1a, #2e384a);
+    --border-edge: light-dark(#e8e8e8, #2a3344);
 
-    --text-primary: light-dark(#1b2432, #e6edf3);
+    --text-primary: light-dark(#111111, #e6edf3);
     --text-secondary: light-dark(#4d5b71, #a8b3c2);
-    --text-muted: light-dark(#728099, #6b7789);
+    --text-muted: light-dark(#888888, #6b7789);
     --text-tertiary: var(--text-muted);
 
-    --accent: light-dark(#3e6fa8, #3e6fa8);
-    --accent-hover: light-dark(#4f80b8, #4f80b8);
-    --accent-active: light-dark(#335f91, #335f91);
+    --accent: light-dark(#1a1a1a, #3e6fa8);
+    --accent-hover: light-dark(#333333, #4f80b8);
+    --accent-active: light-dark(#000000, #335f91);
+    --accent-fg: light-dark(#ffffff, #ffffff);
 
     --status-success: light-dark(#2f9f45, #3fb950);
     --status-warning: light-dark(#b37f1c, #d29922);
@@ -65,7 +64,7 @@
     --shadow-strong: rgba(0, 0, 0, 0.45);
     --shadow-popover: 0 14px 30px var(--shadow-strong);
 
-    --edge-stroke-default: var(--border-default);
+    --edge-stroke-default: light-dark(var(--border-default), var(--border-subtle));
     --edge-stroke-muted: var(--border-subtle);
 
     --pulse-danger-shadow-rest: color-mix(in srgb, var(--status-danger) 24%, transparent);

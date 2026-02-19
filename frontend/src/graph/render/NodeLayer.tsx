@@ -14,6 +14,7 @@ export interface NodeLayerProps {
   selectedNodeId?: string | null;
   hoveredNodeId?: string | null;
   onNodeClick?: (id: string) => void;
+  onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
   ghostNodeIds?: Set<string>;
 }
@@ -110,6 +111,7 @@ export function NodeLayer({
   selectedNodeId,
   hoveredNodeId: _hoveredNodeId,
   onNodeClick,
+  onNodeContextMenu,
   onNodeHover,
   ghostNodeIds,
 }: NodeLayerProps) {
@@ -135,6 +137,11 @@ export function NodeLayer({
             data-pan-block="true"
             style={{ overflow: "visible" }}
             onClick={() => onNodeClick?.(node.id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onNodeContextMenu?.(node.id, event.clientX, event.clientY);
+            }}
             onMouseEnter={() => onNodeHover?.(node.id)}
             onMouseLeave={() => onNodeHover?.(null)}
           >

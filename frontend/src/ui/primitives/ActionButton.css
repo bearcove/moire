@@ -11,19 +11,16 @@
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
-    box-shadow: 0 1px 2px var(--shadow-soft);
-    transition: background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    transition: background-color 120ms ease, border-color 120ms ease;
 }
 
 .ui-action-button:hover {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
     border-color: var(--border-default);
-    box-shadow: 0 1px 3px var(--shadow-strong);
 }
 
 .ui-action-button:active {
     background: color-mix(in srgb, white 8%, var(--bg-surface));
-    box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .ui-action-button:focus-visible {
@@ -41,15 +38,13 @@
 
 .ui-action-button--primary {
     background: var(--accent);
-    color: var(--text-primary);
+    color: var(--accent-fg);
     border-color: transparent;
-    box-shadow: none;
 }
 
 .ui-action-button--primary:hover {
     background: var(--accent);
     border-color: transparent;
-    box-shadow: none;
 }
 
 .ui-action-button--primary:active {
@@ -59,20 +54,18 @@
 .ui-action-button--ghost {
     background: transparent;
     border-color: transparent;
-    box-shadow: none;
     color: var(--text-secondary);
 }
 
 .ui-action-button--ghost:hover {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
     border-color: var(--border-subtle);
-    box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .ui-action-button--sm {
     height: 24px;
     padding: 0 6px;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .ui-action-button--icon-only {

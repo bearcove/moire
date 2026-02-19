@@ -139,7 +139,7 @@
 
 .ui-color-chip__label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -184,7 +184,7 @@
 .ui-role-swatch-card__meta {
     margin-top: 2px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
 }
 
@@ -230,7 +230,7 @@
 
 .ui-accent-proposal-swatch__label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
 }
 
@@ -259,13 +259,13 @@
 
 .ui-color-var-row__name {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-primary);
 }
 
 .ui-color-var-row__value {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -302,13 +302,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     width: 100%;
     min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-bottom: 2px;
 }
 
 .ui-control-line > * {

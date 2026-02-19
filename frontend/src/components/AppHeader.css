@@ -1,11 +1,11 @@
 .app-header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--border-edge);
     background: var(--bg-elevated);
-    box-shadow: 0 1px 0 color-mix(in srgb, var(--border-default) 65%, transparent);
     font-size: var(--font-size-sm);
     flex-shrink: 0;
 }
@@ -34,7 +34,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     padding: 2px 8px;
     border-radius: var(--radius-control);
@@ -65,7 +65,7 @@
 }
 
 .app-header-error {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--status-danger);
     font-weight: 600;
     max-width: 300px;
@@ -82,7 +82,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     padding: 2px 8px;
     border-radius: var(--radius-control);

@@ -18,8 +18,7 @@
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    box-shadow: 0 1px 2px var(--shadow-soft);
-    transition: background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    transition: background-color 120ms ease, border-color 120ms ease;
 }
 
 .ui-segmented-option:first-child {
@@ -43,21 +42,15 @@
     background: color-mix(in srgb, var(--bg-elevated) 88%, var(--bg-surface));
     color: var(--accent-hover);
     border-color: var(--border-default);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--border-edge) 80%, transparent),
-        inset 0 1px 0 color-mix(in srgb, white 7%, transparent),
-        inset 0 -2px 0 var(--accent);
 }
 
 .ui-segmented-option:hover:not(.ui-segmented-option--selected) {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
     border-color: var(--border-default);
-    box-shadow: 0 1px 3px var(--shadow-strong);
 }
 
 .ui-segmented-option:active:not(.ui-segmented-option--selected) {
     background: color-mix(in srgb, white 8%, var(--bg-surface));
-    box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .ui-segmented-option[data-focus-visible] {
@@ -74,5 +67,5 @@
 .ui-segmented-group--sm .ui-segmented-option {
     padding: 0 6px;
     height: 24px;
-    font-size: 11px;
+    font-size: 12px;
 }

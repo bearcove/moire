@@ -267,6 +267,8 @@ export function renderFrameFromUnion(
   hiddenKrates: ReadonlySet<string>,
   hiddenProcesses: ReadonlySet<string>,
   hiddenKinds: ReadonlySet<string>,
+  hiddenNodeIds: ReadonlySet<string>,
+  hiddenLocations: ReadonlySet<string>,
   focusedEntityId: string | null,
   ghostMode?: boolean,
   showLoners: boolean = true,
@@ -281,7 +283,9 @@ export function renderFrameFromUnion(
     (e) =>
       (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
       (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
-      (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))),
+      (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))) &&
+      !hiddenNodeIds.has(e.id) &&
+      !hiddenLocations.has(e.source),
   );
   let filteredEdges = frameData.edges;
   const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));

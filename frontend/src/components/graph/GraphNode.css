@@ -43,7 +43,7 @@
 .graph-node {
     display: flex;
     flex-direction: row;
-    gap: 6px;
+    gap: 8px;
     padding: 4px 4px 4px 6px;
     align-items: center;
     font-family: var(--font-mono);
@@ -68,7 +68,7 @@
     flex-direction: row;
     align-items: center;
     gap: 6px;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 400;
 }
 
@@ -96,14 +96,14 @@
 
 .graph-node-dot {
     color: var(--text-tertiary);
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1;
     padding: 0;
 }
 
 .graph-node-stat {
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 500;
 }
 

@@ -18,7 +18,9 @@ export function Section({
         <span>{title}</span>
         {subtitle && <span className="ui-section-subhead">{subtitle}</span>}
       </div>
-      {children}
+      <div className="ui-section-body">
+        {children}
+      </div>
     </section>
   );
 }

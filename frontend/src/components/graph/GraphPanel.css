@@ -16,7 +16,7 @@
 }
 
 .graph-empty-hint {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     opacity: 0.7;
 }
@@ -39,7 +39,7 @@
     box-sizing: border-box;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--bg-surface);
-    font-size: 11px;
+    font-size: 12px;
     flex-shrink: 0;
 }
 
@@ -48,25 +48,165 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    flex-shrink: 0;
+}
+
+.graph-toolbar-middle {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 340px;
+}
+
+.graph-filter-input {
+    width: 100%;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: var(--bg-elevated);
+    padding: 3px 6px;
+    box-sizing: border-box;
+}
+
+.graph-filter-input:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.graph-filter-fragment-input {
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-default);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    min-width: 120px;
+    flex: 1 1 120px;
+}
+
+.graph-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    background: color-mix(in srgb, var(--bg-elevated) 85%, var(--bg-surface));
+    color: var(--text-default);
+}
+
+.graph-filter-chip--valid {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border-default));
+}
+
+.graph-filter-chip--invalid {
+    border-color: color-mix(in srgb, var(--status-danger) 65%, var(--border-default));
+    color: color-mix(in srgb, var(--status-danger) 85%, var(--text-default));
+}
+
+.graph-filter-chip-x {
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.75;
+}
+
+.graph-filter-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 35;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+}
+
+.graph-filter-suggestion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 0;
+    background: transparent;
+    color: var(--text-default);
+    text-align: left;
+    padding: 7px 9px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.graph-filter-suggestion:hover,
+.graph-filter-suggestion--active {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.graph-filter-suggestion-token {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
 }
 
 .graph-stat {
     color: var(--text-muted);
     font-family: var(--font-ui);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 400;
+    opacity: 0.8;
 }
 
 .graph-stat-sep {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1;
+    opacity: 0.8;
 }
 
 .graph-flow {
     flex: 1;
     min-height: 0;
     position: relative;
+}
+
+.graph-node-context-menu {
+    position: absolute;
+    z-index: 30;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: var(--bg-elevated);
+}
+
+.graph-node-context-menu-item {
+    border: 0;
+    background: transparent;
+    color: var(--text-default);
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.graph-node-context-menu-item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.graph-node-context-menu-item:disabled {
+    cursor: not-allowed;
+    color: var(--text-muted);
 }
 
 .graph-toolbar .ui-filter-trigger {
