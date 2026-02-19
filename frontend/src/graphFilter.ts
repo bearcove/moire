@@ -147,6 +147,30 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         colorBy = value;
         valid = true;
       }
+    } else if (keyLower === "hide") {
+      const secondColon = value.indexOf(":");
+      if (secondColon > 0) {
+        const subKey = value.slice(0, secondColon).toLowerCase();
+        const subValue = stripFilterQuotes(value.slice(secondColon + 1)).trim();
+        if (subValue.length > 0) {
+          if (subKey === "node" || subKey === "id") {
+            hiddenNodeIds.add(subValue);
+            valid = true;
+          } else if (subKey === "location" || subKey === "source") {
+            hiddenLocations.add(subValue);
+            valid = true;
+          } else if (subKey === "crate") {
+            hiddenCrates.add(subValue);
+            valid = true;
+          } else if (subKey === "process") {
+            hiddenProcesses.add(subValue);
+            valid = true;
+          } else if (subKey === "kind") {
+            hiddenKinds.add(subValue);
+            valid = true;
+          }
+        }
+      }
     } else if (keyLower === "groupby") {
       if (value === "process" || value === "crate" || value === "none") {
         groupBy = value;
@@ -260,6 +284,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "crate:", label: "hide crate (`crate:`)" },
       { key: "process:", label: "hide process (`process:`)" },
       { key: "kind:", label: "hide kind (`kind:`)" },
+      { key: "hide:", label: "hide (2-stage)" },
       { key: "loners:on", label: "show loners (`loners:on`)" },
       { key: "loners:off", label: "hide loners (`loners:off`)" },
       { key: "colorBy:process", label: "color by process" },
@@ -282,6 +307,60 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
   if (keyLower === "node" || keyLower === "id") {
     for (const id of sortedMatches(input.nodeIds, valueLower, (v) => v)) {
       uniquePush(out, `node ${id}`, `node:${quoteFilterValue(id)}`);
+    }
+    return out;
+  }
+  if (keyLower === "hide") {
+    const secondColon = rawValue.indexOf(":");
+    if (secondColon < 1) {
+      const stageOne = sortedMatches(
+        [
+          { sub: "node", label: "node" },
+          { sub: "location", label: "location" },
+          { sub: "crate", label: "crate" },
+          { sub: "process", label: "process" },
+          { sub: "kind", label: "kind" },
+        ],
+        valueLower,
+        (v) => v.sub,
+      );
+      for (const row of stageOne) {
+        uniquePush(out, `hide ${row.label}`, `hide:${row.sub}:`);
+      }
+      return out;
+    }
+
+    const subKey = rawValue.slice(0, secondColon).toLowerCase();
+    const subValueLower = rawValue.slice(secondColon + 1).replace(/^"/, "").toLowerCase();
+    if (subKey === "node" || subKey === "id") {
+      for (const id of sortedMatches(input.nodeIds, subValueLower, (v) => v)) {
+        uniquePush(out, `hide node ${id}`, `hide:node:${quoteFilterValue(id)}`);
+      }
+      return out;
+    }
+    if (subKey === "location" || subKey === "source") {
+      for (const location of sortedMatches(input.locations, subValueLower, (v) => v)) {
+        uniquePush(out, `hide location ${location}`, `hide:location:${quoteFilterValue(location)}`);
+      }
+      return out;
+    }
+    if (subKey === "crate") {
+      for (const item of sortedMatches(input.crates, subValueLower, (v) => `${v.id} ${v.label}`)) {
+        uniquePush(out, `hide crate ${item.label}`, `hide:crate:${quoteFilterValue(item.id)}`);
+      }
+      return out;
+    }
+    if (subKey === "process") {
+      for (const item of sortedMatches(input.processes, subValueLower, (v) => `${v.id} ${v.label}`)) {
+        uniquePush(out, `hide process ${item.label}`, `hide:process:${quoteFilterValue(item.id)}`);
+      }
+      return out;
+    }
+    if (subKey === "kind") {
+      for (const item of sortedMatches(input.kinds, subValueLower, (v) => `${v.id} ${v.label}`)) {
+        uniquePush(out, `hide kind ${item.label}`, `hide:kind:${quoteFilterValue(item.id)}`);
+      }
+      return out;
     }
     return out;
   }
@@ -334,6 +413,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     { key: "crate:", label: "hide crate (`crate:`)" },
     { key: "process:", label: "hide process (`process:`)" },
     { key: "kind:", label: "hide kind (`kind:`)" },
+    { key: "hide:", label: "hide (2-stage)" },
     { key: "loners:", label: "show/hide loners (`loners:on|off`)" },
     { key: "colorBy:", label: "color by (`colorBy:`)" },
     { key: "groupBy:", label: "group by (`groupBy:`)" },

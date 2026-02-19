@@ -4,7 +4,6 @@ import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
 import { GraphNode, graphNodeDataFromEntity, type GraphNodeData } from "../../components/graph/GraphNode";
-import { ProcessIdenticon } from "../../ui/primitives/ProcessIdenticon";
 import { scopeKindIcon } from "../../scopeKindSpec";
 import "../../components/graph/ScopeGroupNode.css";
 import "./NodeLayer.css";
@@ -82,11 +81,7 @@ export async function measureGraphLayout(
           <div className="scope-group-header">
             <span className="scope-group-label">
               <span className="scope-group-icon">
-                {subgraphScopeMode === "process" ? (
-                  <ProcessIdenticon name={sampleLabel} seed={sampleLabel} size={12} />
-                ) : (
-                  scopeKindIcon(subgraphScopeMode, 12)
-                )}
+                {scopeKindIcon(subgraphScopeMode, 12)}
               </span>
               <span>{sampleLabel}</span>
             </span>

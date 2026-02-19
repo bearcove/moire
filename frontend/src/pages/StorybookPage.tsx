@@ -28,7 +28,6 @@ import { KeyValueRow } from "../ui/primitives/KeyValueRow";
 import { RelativeTimestamp } from "../ui/primitives/RelativeTimestamp";
 import { DurationDisplay } from "../ui/primitives/DurationDisplay";
 import { NodeChip } from "../ui/primitives/NodeChip";
-import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
@@ -159,18 +158,6 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
     { id: "net:read", label: "net.readable.wait", kind: "net", process: "vxd" },
   ], []);
 
-  const processIdenticonNames = useMemo(
-    () => [
-      "example-roam-rpc-stuck-request",
-      "vx-store",
-      "vx-runner",
-      "vx-vfsd",
-      "vxd",
-      "peeps-collector",
-    ],
-    [],
-  );
-
   const filterKindItems = useMemo<FilterMenuItem[]>(() => [
     { id: "connection", label: "Connection", icon: kindIcon("connection", 14), meta: "connection" },
     { id: "mutex", label: "Mutex", icon: kindIcon("mutex", 14), meta: "lock" },
@@ -251,7 +238,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
       healthLabel: "OK",
       healthTone: "ok",
       connectionKind: "connection",
-      connectionLabel: "example-roam-rpc-stuck-request: initiator\u2192acceptor",
+      connectionLabel: "example-roam-rpc-stuck-request: initiator→acceptor",
       pending: 0,
       lastRecvBasis: "P",
       lastRecvBasisLabel: "process started",
@@ -1067,11 +1054,11 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
             >
               <NodeChip
                 kind="connection"
-                label="initiator\u2192acceptor"
-                onClick={() => console.log("inspect initiator\u2192acceptor")}
+                label="initiator→acceptor"
+                onClick={() => console.log("inspect initiator→acceptor")}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  console.log("open context for initiator\u2192acceptor");
+                  console.log("open context for initiator→acceptor");
                 }}
               />
             </KeyValueRow>
@@ -1149,7 +1136,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
           <Row>
             <NodeChip
               kind="connection"
-              label="initiator\u2192acceptor:acceptor\u2194\u2192initiator"
+              label="initiator→acceptor"
               onClick={() => console.log("open connection chip")}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -1184,17 +1171,6 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
             />
           </Row>
           <div className="ui-lab-hint">Left-click to navigate, right-click for actions</div>
-        </Section>
-
-        <Section title="Process Identicons" subtitle="Name-derived 5x5 process avatars">
-          <div className="ui-identicon-list">
-            {processIdenticonNames.map((name) => (
-              <span key={name} className="ui-identicon-cell">
-                <ProcessIdenticon name={name} size={20} />
-                <span>{name}</span>
-              </span>
-            ))}
-          </div>
         </Section>
 
         <Section title="Table" subtitle="Sortable, sticky header, selectable rows" wide>

@@ -1,6 +1,7 @@
 .ui-relative-timestamp {
     display: inline;
     cursor: default;
+    font-size: var(--font-size-sm);
     font-weight: 500;
 }
 

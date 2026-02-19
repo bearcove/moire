@@ -3,9 +3,9 @@
     width: fit-content;
     min-width: 0;
     max-width: fit-content;
-    align-items: stretch;
-    gap: 0;
-    padding: 0;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
     height: 24px;
     border-radius: var(--radius-control);
     border: none;
@@ -21,17 +21,11 @@
     background: var(--bg-elevated);
 }
 
-.ui-node-chip:hover .ui-node-chip__icon {
-    background: var(--bg-elevated);
-}
-
 .ui-node-chip__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    padding: 0 6px;
-    background: var(--bg-elevated);
     color: var(--text-secondary);
 }
 
@@ -41,7 +35,6 @@
     white-space: nowrap;
     min-width: 0;
     flex: 1;
-    padding: 0 8px;
     display: inline-flex;
     align-items: center;
 }

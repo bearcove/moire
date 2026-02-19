@@ -2,7 +2,6 @@ import React from "react";
 import type { GeometryGroup } from "../geometry";
 import "../../components/graph/ScopeGroupNode.css";
 import { scopeKindIcon } from "../../scopeKindSpec";
-import { ProcessIdenticon } from "../../ui/primitives/ProcessIdenticon";
 
 interface GroupLayerProps {
   groups: GeometryGroup[];
@@ -17,8 +16,6 @@ export function GroupLayer({ groups }: GroupLayerProps) {
         const { x, y, width, height } = group.worldRect;
         const scopeRgbLight = group.data?.scopeRgbLight as string | undefined;
         const scopeRgbDark = group.data?.scopeRgbDark as string | undefined;
-        const scopeKey = group.data?.scopeKey as string | undefined;
-        const isProcessGroup = group.scopeKind === "process";
 
         return (
           <foreignObject
@@ -46,9 +43,7 @@ export function GroupLayer({ groups }: GroupLayerProps) {
               <div className="scope-group-header">
                 <span className="scope-group-label">
                   <span className="scope-group-icon">
-                    {isProcessGroup
-                      ? <ProcessIdenticon name={group.label} seed={scopeKey ?? group.label} size={12} />
-                      : scopeKindIcon(group.scopeKind, 12)}
+                    {scopeKindIcon(group.scopeKind, 12)}
                   </span>
                   <span>{group.label}</span>
                 </span>

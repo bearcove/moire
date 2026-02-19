@@ -65,7 +65,7 @@
     flex-wrap: wrap;
     gap: 4px;
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--bg-elevated);
     padding: 3px 6px;
     box-sizing: border-box;
@@ -82,7 +82,7 @@
     background: transparent;
     color: var(--text-default);
     font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
+    font-size: calc(var(--font-size-sm) * 0.92);
     line-height: 20px;
     min-width: 120px;
     flex: 1 1 120px;
@@ -92,23 +92,24 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    border: 1px solid var(--border-default);
-    border-radius: 999px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
     padding: 2px 8px;
-    font-size: var(--font-size-sm);
+    font-size: calc(var(--font-size-sm) * 0.92);
     font-family: var(--font-mono);
     cursor: pointer;
-    background: color-mix(in srgb, var(--bg-elevated) 85%, var(--bg-surface));
-    color: var(--text-default);
+    background: var(--accent);
+    color: var(--accent-fg);
 }
 
 .graph-filter-chip--valid {
-    border-color: color-mix(in srgb, var(--accent) 50%, var(--border-default));
+    border-color: transparent;
 }
 
 .graph-filter-chip--invalid {
     border-color: color-mix(in srgb, var(--status-danger) 65%, var(--border-default));
-    color: color-mix(in srgb, var(--status-danger) 85%, var(--text-default));
+    background: color-mix(in srgb, var(--status-danger) 25%, var(--bg-elevated));
+    color: color-mix(in srgb, var(--status-danger) 92%, var(--text-primary));
 }
 
 .graph-filter-chip-x {
@@ -126,7 +127,7 @@
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--bg-elevated);
     overflow: hidden;
 }
@@ -185,7 +186,7 @@
     flex-direction: column;
     padding: 4px;
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--bg-elevated);
 }
 
@@ -195,7 +196,7 @@
     color: var(--text-default);
     text-align: left;
     padding: 6px 8px;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     font-size: var(--font-size-sm);
     cursor: pointer;
 }

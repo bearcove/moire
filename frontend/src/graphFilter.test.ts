@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ensureTrailingSpaceForNewFilter,
   graphFilterEditorParts,
+  parseGraphFilterQuery,
   graphFilterSuggestions,
 } from "./graphFilter";
 
@@ -72,6 +73,9 @@ describe("graphFilterSuggestions", () => {
     ["groupBy:n", "groupBy:none"],
     ["colorBy:pro", "colorBy:process"],
     ["colorBy:cr", "colorBy:crate"],
+    ["hid", "hide:"],
+    ["hide:no", "hide:node:"],
+    ["hide:node:alp", "hide:node:1/alpha"],
   ])("suggests value for %s", (fragment, expectedToken) => {
     const out = graphFilterSuggestions({ ...baseInput, fragment });
     expect(out.map((s) => s.token)).toContain(expectedToken);
@@ -162,5 +166,17 @@ describe("graphFilterEditorParts", () => {
     const out = graphFilterEditorParts("node:1/a location:src/main.rs:42 ", true);
     expect(out.committed).toEqual(["node:1/a", "location:src/main.rs:42"]);
     expect(out.fragment).toBe("");
+  });
+});
+
+describe("parseGraphFilterQuery hide syntax", () => {
+  it("parses hide:node", () => {
+    const out = parseGraphFilterQuery("hide:node:1/alpha");
+    expect(out.hiddenNodeIds.has("1/alpha")).toBe(true);
+  });
+
+  it("parses hide:location", () => {
+    const out = parseGraphFilterQuery('hide:location:"src/main.rs:12"');
+    expect(out.hiddenLocations.has("src/main.rs:12")).toBe(true);
   });
 });

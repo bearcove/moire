@@ -29,10 +29,9 @@ import { ScopeTablePanel, type ScopeTableRow } from "./components/scopes/ScopeTa
 import { EntityTablePanel } from "./components/entities/EntityTablePanel";
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
-import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
 import { formatProcessLabel } from "./processLabel";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "./nodeKindSpec";
-import { canonicalScopeKind } from "./scopeKindSpec";
+import { canonicalScopeKind, scopeKindIcon } from "./scopeKindSpec";
 import {
   appendFilterToken,
   parseGraphFilterQuery,
@@ -327,7 +326,7 @@ export function App() {
         return {
           id: row.id,
           label: formatProcessLabel(row.name, row.pid),
-          icon: <ProcessIdenticon name={row.name} seed={`${row.name}:${suffix}`} size={14} />,
+          icon: scopeKindIcon("process", 14),
           meta: row.count,
         };
       });

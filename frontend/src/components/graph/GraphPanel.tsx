@@ -19,7 +19,6 @@ import {
   graphFilterEditorParts,
   graphFilterSuggestions,
   parseGraphFilterQuery,
-  tokenizeFilterQuery,
   replaceTrailingFragment,
 } from "../../graphFilter";
 import "./GraphPanel.css";
@@ -242,7 +241,11 @@ export function GraphPanel({
 
   const applyGraphFilterSuggestion = useCallback(
     (token: string) => {
-      onGraphFilterTextChange(replaceTrailingFragment(graphFilterText, token));
+      let next = replaceTrailingFragment(graphFilterText, token);
+      if (token === "hide:" || (token.startsWith("hide:") && token.endsWith(":"))) {
+        if (next.endsWith(" ")) next = next.slice(0, -1);
+      }
+      onGraphFilterTextChange(next);
       setGraphFilterSuggestOpen(false);
       setGraphFilterSuggestionIndex(0);
       graphFilterInputRef.current?.focus();

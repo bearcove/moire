@@ -24,6 +24,7 @@
 
 .ui-duration-display {
     display: inline;
+    font-size: var(--font-size-sm);
     font-weight: 500;
 }
 
