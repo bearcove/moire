@@ -152,7 +152,7 @@ where
 
 pub struct InstrumentedFuture<F> {
     inner: F,
-    future_handle: EntityHandle,
+    pub(super) future_handle: EntityHandle,
     awaited_by: Option<FutureEdgeRelation>,
     waits_on: Option<FutureEdgeRelation>,
 }

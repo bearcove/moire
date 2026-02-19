@@ -3,11 +3,12 @@ use super::*;
 use peeps_types::{
     BufferState, ChannelCloseCause, ChannelDetails, ChannelEndpointEntity,
     ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent,
-    ChannelSendOutcome, ChannelClosedEvent, EdgeKind, EntityBody, EntityId, Event, EventTarget,
-    MpscChannelDetails, OperationKind,
+    ChannelSendOutcome, ChannelClosedEvent, ChannelWaitKind, EdgeKind, EntityBody, EntityId,
+    Event, EventTarget, MpscChannelDetails, OperationKind,
 };
 use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 impl<T> Drop for Sender<T> {

@@ -1,14 +1,14 @@
 use peeps_types::{EdgeKind, EntityBody, EntityId, OperationKind, SemaphoreEntity};
 use std::collections::BTreeMap;
 use std::future::Future;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
-use super::super::handles::{current_causal_target, EntityHandle};
+use super::super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 use super::super::{PeepsContext, Source};
-use super::semaphore_permit::{OwnedSemaphorePermit, SemaphorePermit};
 
 #[derive(Clone)]
 pub struct Semaphore {
@@ -16,6 +16,68 @@ pub struct Semaphore {
     handle: EntityHandle,
     max_permits: Arc<AtomicU32>,
     holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+}
+
+pub struct SemaphorePermit<'a> {
+    inner: Option<tokio::sync::SemaphorePermit<'a>>,
+    semaphore_id: EntityId,
+    holder_future_id: Option<EntityId>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    max_permits: Arc<AtomicU32>,
+}
+
+pub struct OwnedSemaphorePermit {
+    inner: Option<tokio::sync::OwnedSemaphorePermit>,
+    semaphore_id: EntityId,
+    holder_future_id: Option<EntityId>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    max_permits: Arc<AtomicU32>,
+}
+
+pub(super) fn sync_semaphore_state(
+    semaphore_id: &EntityId,
+    semaphore: &Arc<tokio::sync::Semaphore>,
+    max_permits: u32,
+) {
+    let available = semaphore.available_permits().min(u32::MAX as usize) as u32;
+    let handed_out_permits = max_permits.saturating_sub(available);
+    if let Ok(mut db) = runtime_db().lock() {
+        db.update_semaphore_state(semaphore_id, max_permits, handed_out_permits);
+    }
+}
+
+pub(super) fn release_semaphore_holder_edge(
+    semaphore_id: &EntityId,
+    holder_future_id: &mut Option<EntityId>,
+    holder_counts: &Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+) {
+    let Some(holder_id) = holder_future_id.take() else {
+        return;
+    };
+
+    let should_remove = if let Ok(mut counts) = holder_counts.lock() {
+        match counts.get_mut(&holder_id) {
+            None => false,
+            Some(count) if *count > 1 => {
+                *count -= 1;
+                false
+            }
+            Some(_) => {
+                counts.remove(&holder_id);
+                true
+            }
+        }
+    } else {
+        false
+    };
+
+    if should_remove {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.remove_edge(semaphore_id, &holder_id, EdgeKind::Holds);
+        }
+    }
 }
 
 impl Semaphore {
@@ -325,47 +387,77 @@ impl Semaphore {
     }
 }
 
-pub(super) fn sync_semaphore_state(
-    semaphore_id: &EntityId,
-    semaphore: &Arc<tokio::sync::Semaphore>,
-    max_permits: u32,
-) {
-    let available = semaphore.available_permits().min(u32::MAX as usize) as u32;
-    let handed_out_permits = max_permits.saturating_sub(available);
-    if let Ok(mut db) = runtime_db().lock() {
-        db.update_semaphore_state(semaphore_id, max_permits, handed_out_permits);
+impl AsEntityRef for Semaphore {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
     }
 }
 
-pub(super) fn release_semaphore_holder_edge(
-    semaphore_id: &EntityId,
-    holder_future_id: &mut Option<EntityId>,
-    holder_counts: &Arc<StdMutex<BTreeMap<EntityId, u32>>>,
-) {
-    let Some(holder_id) = holder_future_id.take() else {
-        return;
-    };
+impl<'a> Deref for SemaphorePermit<'a> {
+    type Target = tokio::sync::SemaphorePermit<'a>;
 
-    let should_remove = if let Ok(mut counts) = holder_counts.lock() {
-        match counts.get_mut(&holder_id) {
-            None => false,
-            Some(count) if *count > 1 => {
-                *count -= 1;
-                false
-            }
-            Some(_) => {
-                counts.remove(&holder_id);
-                true
-            }
-        }
-    } else {
-        false
-    };
+    fn deref(&self) -> &Self::Target {
+        self.inner
+            .as_ref()
+            .expect("semaphore permit accessed after drop")
+    }
+}
 
-    if should_remove {
-        if let Ok(mut db) = runtime_db().lock() {
-            db.remove_edge(semaphore_id, &holder_id, EdgeKind::Holds);
-        }
+impl<'a> DerefMut for SemaphorePermit<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+            .as_mut()
+            .expect("semaphore permit accessed after drop")
+    }
+}
+
+impl<'a> Drop for SemaphorePermit<'a> {
+    fn drop(&mut self) {
+        let _ = self.inner.take();
+        release_semaphore_holder_edge(
+            &self.semaphore_id,
+            &mut self.holder_future_id,
+            &self.holder_counts,
+        );
+        sync_semaphore_state(
+            &self.semaphore_id,
+            &self.semaphore,
+            self.max_permits.load(Ordering::Relaxed),
+        );
+    }
+}
+
+impl Deref for OwnedSemaphorePermit {
+    type Target = tokio::sync::OwnedSemaphorePermit;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner
+            .as_ref()
+            .expect("owned semaphore permit accessed after drop")
+    }
+}
+
+impl DerefMut for OwnedSemaphorePermit {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+            .as_mut()
+            .expect("owned semaphore permit accessed after drop")
+    }
+}
+
+impl Drop for OwnedSemaphorePermit {
+    fn drop(&mut self) {
+        let _ = self.inner.take();
+        release_semaphore_holder_edge(
+            &self.semaphore_id,
+            &mut self.holder_future_id,
+            &self.holder_counts,
+        );
+        sync_semaphore_state(
+            &self.semaphore_id,
+            &self.semaphore,
+            self.max_permits.load(Ordering::Relaxed),
+        );
     }
 }
 

@@ -1,7 +1,7 @@
 use compact_str::CompactString;
 use peeps_types::{
-    CutAck, CutId, Edge, Entity, EntityId, Event, PullChangesResponse, Scope, ScopeId, SeqNo,
-    StreamCursor, StreamId,
+    CutAck, CutId, Edge, Entity, Event, PullChangesResponse, Scope, SeqNo,
+    StreamCursor,
 };
 
 use super::db::{runtime_db, runtime_stream_id};

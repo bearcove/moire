@@ -8,12 +8,10 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 
 pub(super) use super::db::runtime_db;
-pub(super) use super::futures::{
-    instrument_future_on_with_source, instrument_operation_on_with_source,
-};
-pub(super) use super::handles::{AsEntityRef, EntityHandle, EntityRef, current_causal_target};
+pub(super) use super::futures::instrument_operation_on_with_source;
+pub(super) use super::handles::{AsEntityRef, EntityHandle, EntityRef};
 pub(super) use super::{
-    PeepsContext, Source, FUTURE_CAUSAL_STACK, record_event_with_entity_source,
+    PeepsContext, Source, record_event_with_entity_source,
     record_event_with_source,
 };
 

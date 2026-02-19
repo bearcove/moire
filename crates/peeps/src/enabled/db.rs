@@ -1,10 +1,9 @@
 use compact_str::CompactString;
 use peeps_types::{
     BufferState, Change, ChannelDetails, ChannelEndpointLifecycle, Edge, EdgeKind, Entity,
-    EntityBody, EntityId, Event, MpscChannelDetails, OnceCellState, OneshotChannelDetails,
-    OneshotState, OperationEdgeMeta, OperationKind, OperationState, PTime, PullChangesResponse,
+    EntityBody, EntityId, Event, OnceCellState,
+    OneshotState, PTime, PullChangesResponse,
     ResponseStatus, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
-    WatchChannelDetails,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex as StdMutex, OnceLock};
@@ -34,28 +33,28 @@ pub(super) fn runtime_stream_id() -> StreamId {
 use super::DEFAULT_STREAM_ID_PREFIX;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct EdgeKey {
-    src: EntityId,
-    dst: EntityId,
-    kind: EdgeKind,
+pub(super) struct EdgeKey {
+    pub(super) src: EntityId,
+    pub(super) dst: EntityId,
+    pub(super) kind: EdgeKind,
 }
 
-struct RuntimeDb {
+pub(super) struct RuntimeDb {
     stream_id: StreamId,
     next_seq_no: SeqNo,
     compacted_before_seq_no: Option<SeqNo>,
-    entities: BTreeMap<EntityId, Entity>,
-    scopes: BTreeMap<ScopeId, Scope>,
+    pub(super) entities: BTreeMap<EntityId, Entity>,
+    pub(super) scopes: BTreeMap<ScopeId, Scope>,
     task_scope_ids: BTreeMap<CompactString, ScopeId>,
-    entity_scope_links: BTreeMap<(EntityId, ScopeId), ()>,
-    edges: BTreeMap<EdgeKey, Edge>,
-    events: VecDeque<Event>,
+    pub(super) entity_scope_links: BTreeMap<(EntityId, ScopeId), ()>,
+    pub(super) edges: BTreeMap<EdgeKey, Edge>,
+    pub(super) events: VecDeque<Event>,
     changes: VecDeque<InternalStampedChange>,
     max_events: usize,
 }
 
 impl RuntimeDb {
-    fn new(stream_id: StreamId, max_events: usize) -> Self {
+    pub(super) fn new(stream_id: StreamId, max_events: usize) -> Self {
         Self {
             stream_id,
             next_seq_no: SeqNo::ZERO,
@@ -164,7 +163,7 @@ impl RuntimeDb {
         // checkpoint materialization and replay handoff.
     }
 
-    fn upsert_entity(&mut self, entity: Entity) {
+    pub(super) fn upsert_entity(&mut self, entity: Entity) {
         let entity_id = EntityId::new(entity.id.as_str());
         let should_link_task_scope = matches!(&entity.body, EntityBody::Future);
         let entity_json = facet_json::to_vec(&entity).ok();
@@ -186,7 +185,7 @@ impl RuntimeDb {
         }
     }
 
-    fn upsert_scope(&mut self, scope: Scope) {
+    pub(super) fn upsert_scope(&mut self, scope: Scope) {
         let scope_id = ScopeId::new(scope.id.as_str());
         let scope_json = facet_json::to_vec(&scope).ok();
         self.scopes.insert(ScopeId::new(scope.id.as_str()), scope);
@@ -198,14 +197,14 @@ impl RuntimeDb {
         }
     }
 
-    fn register_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
+    pub(super) fn register_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
         self.task_scope_ids.insert(
             CompactString::from(task_key.as_str()),
             ScopeId::new(scope_id.as_str()),
         );
     }
 
-    fn unregister_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
+    pub(super) fn unregister_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
         if self
             .task_scope_ids
             .get(task_key)
@@ -235,7 +234,7 @@ impl RuntimeDb {
         Some(scope_id)
     }
 
-    fn update_channel_endpoint_state(
+    pub(super) fn update_channel_endpoint_state(
         &mut self,
         id: &EntityId,
         lifecycle: ChannelEndpointLifecycle,
@@ -282,7 +281,7 @@ impl RuntimeDb {
         }
     }
 
-    fn update_oneshot_endpoint_state(
+    pub(super) fn update_oneshot_endpoint_state(
         &mut self,
         id: &EntityId,
         lifecycle: ChannelEndpointLifecycle,
@@ -320,7 +319,7 @@ impl RuntimeDb {
         }
     }
 
-    fn update_watch_last_update(
+    pub(super) fn update_watch_last_update(
         &mut self,
         id: &EntityId,
         last_update_at: Option<peeps_types::PTime>,
@@ -351,7 +350,7 @@ impl RuntimeDb {
         }
     }
 
-    fn update_notify_waiter_count(&mut self, id: &EntityId, waiter_count: u32) {
+    pub(super) fn update_notify_waiter_count(&mut self, id: &EntityId, waiter_count: u32) {
         let Some(entity) = self.entities.get_mut(id) else {
             return;
         };
@@ -376,7 +375,7 @@ impl RuntimeDb {
         }
     }
 
-    fn update_once_cell_state(&mut self, id: &EntityId, waiter_count: u32, state: OnceCellState) {
+    pub(super) fn update_once_cell_state(&mut self, id: &EntityId, waiter_count: u32, state: OnceCellState) {
         let Some(entity) = self.entities.get_mut(id) else {
             return;
         };
@@ -405,7 +404,7 @@ impl RuntimeDb {
         }
     }
 
-    fn update_semaphore_state(&mut self, id: &EntityId, max_permits: u32, handed_out_permits: u32) {
+    pub(super) fn update_semaphore_state(&mut self, id: &EntityId, max_permits: u32, handed_out_permits: u32) {
         let Some(entity) = self.entities.get_mut(id) else {
             return;
         };
@@ -434,7 +433,7 @@ impl RuntimeDb {
         }
     }
 
-    fn update_response_status(&mut self, id: &EntityId, status: ResponseStatus) -> bool {
+    pub(super) fn update_response_status(&mut self, id: &EntityId, status: ResponseStatus) -> bool {
         let Some(entity) = self.entities.get_mut(id) else {
             return false;
         };
@@ -462,7 +461,7 @@ impl RuntimeDb {
         true
     }
 
-    fn remove_entity(&mut self, id: &EntityId) {
+    pub(super) fn remove_entity(&mut self, id: &EntityId) {
         if self.entities.remove(id).is_none() {
             return;
         }
@@ -498,7 +497,7 @@ impl RuntimeDb {
         });
     }
 
-    fn remove_scope(&mut self, id: &ScopeId) {
+    pub(super) fn remove_scope(&mut self, id: &ScopeId) {
         if self.scopes.remove(id).is_none() {
             return;
         }
@@ -520,7 +519,7 @@ impl RuntimeDb {
         });
     }
 
-    fn link_entity_to_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
+    pub(super) fn link_entity_to_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
         let key = (
             EntityId::new(entity_id.as_str()),
             ScopeId::new(scope_id.as_str()),
@@ -541,7 +540,7 @@ impl RuntimeDb {
         });
     }
 
-    fn unlink_entity_from_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
+    pub(super) fn unlink_entity_from_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
         let key = (
             EntityId::new(entity_id.as_str()),
             ScopeId::new(scope_id.as_str()),
@@ -555,11 +554,11 @@ impl RuntimeDb {
         });
     }
 
-    fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
+    pub(super) fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
         self.upsert_edge_with_meta(src, dst, kind, facet_value::Value::NULL);
     }
 
-    fn upsert_edge_with_meta(
+    pub(super) fn upsert_edge_with_meta(
         &mut self,
         src: &EntityId,
         dst: &EntityId,
@@ -602,7 +601,7 @@ impl RuntimeDb {
         }
     }
 
-    fn remove_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
+    pub(super) fn remove_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
         let removed = self.edges.remove(&EdgeKey {
             src: EntityId::new(src.as_str()),
             dst: EntityId::new(dst.as_str()),
@@ -617,7 +616,7 @@ impl RuntimeDb {
         }
     }
 
-    fn record_event(&mut self, event: Event) {
+    pub(super) fn record_event(&mut self, event: Event) {
         let event_json = facet_json::to_vec(&event).ok();
         self.events.push_back(event);
         while self.events.len() > self.max_events {
@@ -628,7 +627,7 @@ impl RuntimeDb {
         }
     }
 
-    fn pull_changes_since(&self, from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
+    pub(super) fn pull_changes_since(&self, from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
         let compacted_before = self.compacted_before_seq_no;
         let effective_from = compacted_before
             .map(|compacted| {
@@ -684,7 +683,7 @@ impl RuntimeDb {
         }
     }
 
-    fn current_cursor(&self) -> StreamCursor {
+    pub(super) fn current_cursor(&self) -> StreamCursor {
         StreamCursor {
             stream_id: self.stream_id.clone(),
             next_seq_no: self.next_seq_no,
