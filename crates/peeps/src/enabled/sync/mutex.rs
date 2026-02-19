@@ -38,7 +38,7 @@ impl<T> Mutex<T> {
             EntityBody::Lock(LockEntity {
                 kind: LockKind::Mutex,
             }),
-            source,
+            Source::new(source.into_string(), None),
         )
         .into_typed::<peeps_types::Lock>();
         Self {
@@ -53,20 +53,21 @@ impl<T> Mutex<T> {
     }
 
     #[doc(hidden)]
-    pub fn _lock(&self, _source: Source) -> MutexGuard<'_, T> {
+    pub fn _lock(&self, source: Source) -> MutexGuard<'_, T> {
         let owner_ref = current_causal_target();
 
         if let Some(inner) = self.inner.try_lock() {
-            return self.wrap_guard(inner, owner_ref.as_ref(), None);
+            return self.wrap_guard(inner, owner_ref.as_ref(), None, &source);
         }
 
-        let waiting_edge = owner_ref
-            .as_ref()
-            .map(|owner| self.handle.link_to_owned(owner, EdgeKind::WaitingOn));
+        let waiting_edge = owner_ref.as_ref().map(|owner| {
+            self.handle
+                .link_to_owned_with_source(owner, EdgeKind::WaitingOn, source.clone())
+        });
         let inner = self.inner.lock();
         drop(waiting_edge);
 
-        self.wrap_guard(inner, owner_ref.as_ref(), None)
+        self.wrap_guard(inner, owner_ref.as_ref(), None, &source)
     }
 
     #[doc(hidden)]
@@ -75,11 +76,11 @@ impl<T> Mutex<T> {
     }
 
     #[doc(hidden)]
-    pub fn _try_lock(&self, _source: Source) -> Option<MutexGuard<'_, T>> {
+    pub fn _try_lock(&self, source: Source) -> Option<MutexGuard<'_, T>> {
         let owner_ref = current_causal_target();
         self.inner
             .try_lock()
-            .map(|inner| self.wrap_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls)))
+            .map(|inner| self.wrap_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls), &source))
     }
 
     fn wrap_guard<'a>(
@@ -87,12 +88,16 @@ impl<T> Mutex<T> {
         inner: parking_lot::MutexGuard<'a, T>,
         owner_ref: Option<&EntityRef>,
         pre_edge_kind: Option<EdgeKind>,
+        source: &Source,
     ) -> MutexGuard<'a, T> {
         if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
-            self.handle.link_to(owner, kind);
+            self.handle.link_to_with_source(owner, kind, source.clone());
         }
 
-        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::Holds));
+        let holds_edge = owner_ref.map(|owner| {
+            self.handle
+                .link_to_owned_with_source(owner, EdgeKind::Holds, source.clone())
+        });
         let lock_id = self.handle.id().clone();
 
         HELD_MUTEX_STACK.with(|stack| {

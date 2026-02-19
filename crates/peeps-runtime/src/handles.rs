@@ -183,9 +183,29 @@ impl<S> EntityHandle<S> {
         }
     }
 
+    pub fn link_to_with_source(
+        &self,
+        target: &EntityRef,
+        kind: EdgeKind,
+        source: impl Into<Source>,
+    ) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.upsert_edge_with_source(self.id(), target.id(), kind, source.into());
+        }
+    }
+
     #[track_caller]
     pub fn link_to_handle<T>(&self, target: &EntityHandle<T>, kind: EdgeKind) {
         self.link_to(&target.entity_ref(), kind);
+    }
+
+    pub fn link_to_handle_with_source<T>(
+        &self,
+        target: &EntityHandle<T>,
+        kind: EdgeKind,
+        source: impl Into<Source>,
+    ) {
+        self.link_to_with_source(&target.entity_ref(), kind, source);
     }
 
     #[track_caller]
@@ -321,6 +341,20 @@ impl<S> EntityHandle<S> {
         let dst = target.id().clone();
         if let Ok(mut db) = runtime_db().lock() {
             db.upsert_edge(&src, &dst, kind);
+        }
+        EdgeHandle { src, dst, kind }
+    }
+
+    pub fn link_to_owned_with_source(
+        &self,
+        target: &EntityRef,
+        kind: EdgeKind,
+        source: impl Into<Source>,
+    ) -> EdgeHandle {
+        let src = self.id().clone();
+        let dst = target.id().clone();
+        if let Ok(mut db) = runtime_db().lock() {
+            db.upsert_edge_with_source(&src, &dst, kind, source.into());
         }
         EdgeHandle { src, dst, kind }
     }

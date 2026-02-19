@@ -15,7 +15,7 @@ impl<T> RwLock<T> {
             EntityBody::Lock(LockEntity {
                 kind: LockKind::RwLock,
             }),
-            source,
+            Source::new(source.into_string(), None),
         )
         .into_typed::<peeps_types::Lock>();
         Self {
@@ -25,33 +25,43 @@ impl<T> RwLock<T> {
     }
 
     #[doc(hidden)]
-    pub fn read_with_source(&self, _source: Source) -> parking_lot::RwLockReadGuard<'_, T> {
+    pub fn read_with_source(&self, source: Source) -> parking_lot::RwLockReadGuard<'_, T> {
         if let Some(caller) = current_causal_target() {
-            self.handle.link_to(&caller, EdgeKind::Polls);
+            self.handle
+                .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.read()
     }
 
     #[doc(hidden)]
-    pub fn write_with_source(&self, _source: Source) -> parking_lot::RwLockWriteGuard<'_, T> {
+    pub fn write_with_source(&self, source: Source) -> parking_lot::RwLockWriteGuard<'_, T> {
         if let Some(caller) = current_causal_target() {
-            self.handle.link_to(&caller, EdgeKind::Polls);
+            self.handle
+                .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.write()
     }
 
     #[doc(hidden)]
-    pub fn try_read_with_source(&self, _source: Source) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+    pub fn try_read_with_source(
+        &self,
+        source: Source,
+    ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
         if let Some(caller) = current_causal_target() {
-            self.handle.link_to(&caller, EdgeKind::Polls);
+            self.handle
+                .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.try_read()
     }
 
     #[doc(hidden)]
-    pub fn try_write_with_source(&self, _source: Source) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+    pub fn try_write_with_source(
+        &self,
+        source: Source,
+    ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
         if let Some(caller) = current_causal_target() {
-            self.handle.link_to(&caller, EdgeKind::Polls);
+            self.handle
+                .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.try_write()
     }

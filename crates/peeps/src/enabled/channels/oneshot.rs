@@ -87,18 +87,22 @@ pub fn oneshot<T>(
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
         EntityBody::OneshotTx(OneshotTxEntity { sent: false }),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::OneshotTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::OneshotRx(OneshotRxEntity {}),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::OneshotRx>();
 
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
+    tx_handle.link_to_handle_with_source(
+        &rx_handle,
+        EdgeKind::PairedWith,
+        Source::new(source.into_string(), None),
+    );
 
     (
         OneshotSender {

@@ -75,9 +75,14 @@ impl<T> Sender<T> {
     }
 
     #[doc(hidden)]
-    pub async fn send_with_source(&self, value: T, source: Source) -> Result<(), mpsc::error::SendError<T>> {
+    pub async fn send_with_source(
+        &self,
+        value: T,
+        source: Source,
+    ) -> Result<(), mpsc::error::SendError<T>> {
         let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.send(value), &source).await;
+            instrument_operation_on_with_source(&self.handle, self.inner.send(value), &source)
+                .await;
         if result.is_ok() {
             let _ = self
                 .handle
@@ -129,7 +134,11 @@ impl<T> UnboundedSender<T> {
     }
 
     #[doc(hidden)]
-    pub fn send_with_source(&self, value: T, source: Source) -> Result<(), mpsc::error::SendError<T>> {
+    pub fn send_with_source(
+        &self,
+        value: T,
+        source: Source,
+    ) -> Result<(), mpsc::error::SendError<T>> {
         if let Some(caller) = current_causal_target() {
             self.handle.link_to(&caller, EdgeKind::Polls);
         }
@@ -192,7 +201,11 @@ impl<T> UnboundedReceiver<T> {
     }
 }
 
-pub fn channel<T>(name: impl Into<String>, capacity: usize, source: SourceRight) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(
+    name: impl Into<String>,
+    capacity: usize,
+    source: SourceRight,
+) -> (Sender<T>, Receiver<T>) {
     let name = name.into();
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
@@ -203,18 +216,22 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize, source: SourceRight)
             queue_len: 0,
             capacity: Some(capacity_u32),
         }),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::MpscRx>();
 
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
+    tx_handle.link_to_handle_with_source(
+        &rx_handle,
+        EdgeKind::PairedWith,
+        Source::new(source.into_string(), None),
+    );
 
     (
         Sender {
@@ -229,12 +246,19 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize, source: SourceRight)
     )
 }
 
-pub fn mpsc_channel<T>(name: impl Into<String>, capacity: usize, source: SourceRight) -> (Sender<T>, Receiver<T>) {
+pub fn mpsc_channel<T>(
+    name: impl Into<String>,
+    capacity: usize,
+    source: SourceRight,
+) -> (Sender<T>, Receiver<T>) {
     #[allow(deprecated)]
     channel(name, capacity, source)
 }
 
-pub fn unbounded_channel<T>(name: impl Into<String>, source: SourceRight) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+pub fn unbounded_channel<T>(
+    name: impl Into<String>,
+    source: SourceRight,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let name = name.into();
     let (tx, rx) = mpsc::unbounded_channel();
 
@@ -244,18 +268,22 @@ pub fn unbounded_channel<T>(name: impl Into<String>, source: SourceRight) -> (Un
             queue_len: 0,
             capacity: None,
         }),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::MpscRx>();
 
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
+    tx_handle.link_to_handle_with_source(
+        &rx_handle,
+        EdgeKind::PairedWith,
+        Source::new(source.into_string(), None),
+    );
 
     (
         UnboundedSender {

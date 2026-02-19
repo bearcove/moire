@@ -1,3 +1,4 @@
+use peeps_source::SourceId;
 use peeps_types::{
     Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PTime, PullChangesResponse, Scope,
     ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId, TaskScopeBody,
@@ -360,6 +361,21 @@ impl RuntimeDb {
     }
 
     pub fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
+        self.upsert_edge_with_source(
+            src,
+            dst,
+            kind,
+            Source::new(SourceRight::caller().into_string(), None),
+        );
+    }
+
+    pub fn upsert_edge_with_source(
+        &mut self,
+        src: &EntityId,
+        dst: &EntityId,
+        kind: EdgeKind,
+        source: impl Into<SourceId>,
+    ) {
         if let Some(process_scope_id) = current_process_scope_id() {
             if self.entities.contains_key(src) {
                 self.link_entity_to_scope(src, &process_scope_id);
@@ -380,7 +396,7 @@ impl RuntimeDb {
             EntityId::new(src.as_str()),
             EntityId::new(dst.as_str()),
             kind,
-            Source::new(SourceRight::caller().into_string(), None),
+            source,
         );
         let edge_json = facet_json::to_vec(&edge).ok();
         self.edges.insert(key, edge);

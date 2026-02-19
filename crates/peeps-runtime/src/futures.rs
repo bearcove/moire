@@ -1,3 +1,4 @@
+use peeps_source::SourceId;
 use peeps_types::{EdgeKind, EntityBody, EntityId, FutureEntity};
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
@@ -12,15 +13,17 @@ pub struct OperationFuture<F> {
     actor_id: Option<EntityId>,
     resource_id: EntityId,
     current_edge: Option<EdgeKind>,
+    source: SourceId,
 }
 
 impl<F> OperationFuture<F> {
-    fn new(inner: F, resource_id: EntityId) -> Self {
+    fn new(inner: F, resource_id: EntityId, source: SourceId) -> Self {
         Self {
             inner,
             actor_id: current_causal_target().map(|target| target.id().clone()),
             resource_id,
             current_edge: None,
+            source,
         }
     }
 
@@ -37,7 +40,7 @@ impl<F> OperationFuture<F> {
                 db.remove_edge(actor_id, &self.resource_id, current);
             }
             if let Some(edge) = next {
-                db.upsert_edge(actor_id, &self.resource_id, edge);
+                db.upsert_edge_with_source(actor_id, &self.resource_id, edge, self.source);
             }
         }
         self.current_edge = next;
@@ -78,17 +81,22 @@ impl<F> Drop for OperationFuture<F> {
 pub fn instrument_operation_on_with_source<F, S>(
     on: &EntityHandle<S>,
     fut: F,
-    _source: &Source,
+    source: &Source,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    OperationFuture::new(fut.into_future(), EntityId::new(on.id().as_str()))
+    OperationFuture::new(
+        fut.into_future(),
+        EntityId::new(on.id().as_str()),
+        source.clone().into(),
+    )
 }
 
 pub struct InstrumentedFuture<F> {
     inner: F,
     pub(super) future_handle: EntityHandle,
+    source: SourceId,
     awaited_by: Option<FutureEdgeRelation>,
     waits_on: Option<FutureEdgeRelation>,
 }
@@ -116,7 +124,12 @@ impl FutureEdgeRelation {
 }
 
 impl<F> InstrumentedFuture<F> {
-    fn new(inner: F, future_handle: EntityHandle, target: Option<EntityRef>) -> Self {
+    fn new(
+        inner: F,
+        future_handle: EntityHandle,
+        target: Option<EntityRef>,
+        source: SourceId,
+    ) -> Self {
         let awaited_by = current_causal_target().and_then(|parent| {
             if parent.id().as_str() == future_handle.id().as_str() {
                 None
@@ -132,6 +145,7 @@ impl<F> InstrumentedFuture<F> {
         Self {
             inner,
             future_handle,
+            source,
             awaited_by,
             waits_on,
         }
@@ -140,6 +154,7 @@ impl<F> InstrumentedFuture<F> {
 
 fn transition_relation_edge(
     future_id: &EntityId,
+    source: SourceId,
     relation: &mut FutureEdgeRelation,
     next_edge: Option<EdgeKind>,
 ) {
@@ -162,7 +177,7 @@ fn transition_relation_edge(
             db.remove_edge(&src, &dst, current_edge);
         }
         if let Some(edge) = next_edge {
-            db.upsert_edge(&src, &dst, edge);
+            db.upsert_edge_with_source(&src, &dst, edge, source);
         }
     }
     relation.current_edge = next_edge;
@@ -184,10 +199,10 @@ where
             .is_ok();
 
         if let Some(relation) = this.awaited_by.as_mut() {
-            transition_relation_edge(&future_id, relation, Some(EdgeKind::Polls));
+            transition_relation_edge(&future_id, this.source, relation, Some(EdgeKind::Polls));
         }
         if let Some(relation) = this.waits_on.as_mut() {
-            transition_relation_edge(&future_id, relation, Some(EdgeKind::Polls));
+            transition_relation_edge(&future_id, this.source, relation, Some(EdgeKind::Polls));
         }
 
         let poll = unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx);
@@ -199,19 +214,29 @@ where
         match poll {
             Poll::Pending => {
                 if let Some(relation) = this.awaited_by.as_mut() {
-                    transition_relation_edge(&future_id, relation, Some(EdgeKind::WaitingOn));
+                    transition_relation_edge(
+                        &future_id,
+                        this.source,
+                        relation,
+                        Some(EdgeKind::WaitingOn),
+                    );
                 }
                 if let Some(relation) = this.waits_on.as_mut() {
-                    transition_relation_edge(&future_id, relation, Some(EdgeKind::WaitingOn));
+                    transition_relation_edge(
+                        &future_id,
+                        this.source,
+                        relation,
+                        Some(EdgeKind::WaitingOn),
+                    );
                 }
                 Poll::Pending
             }
             Poll::Ready(output) => {
                 if let Some(relation) = this.awaited_by.as_mut() {
-                    transition_relation_edge(&future_id, relation, None);
+                    transition_relation_edge(&future_id, this.source, relation, None);
                 }
                 if let Some(relation) = this.waits_on.as_mut() {
-                    transition_relation_edge(&future_id, relation, None);
+                    transition_relation_edge(&future_id, this.source, relation, None);
                 }
 
                 Poll::Ready(output)
@@ -224,10 +249,10 @@ impl<F> Drop for InstrumentedFuture<F> {
     fn drop(&mut self) {
         let future_id = EntityId::new(self.future_handle.id().as_str());
         if let Some(relation) = self.awaited_by.as_mut() {
-            transition_relation_edge(&future_id, relation, None);
+            transition_relation_edge(&future_id, self.source, relation, None);
         }
         if let Some(relation) = self.waits_on.as_mut() {
-            transition_relation_edge(&future_id, relation, None);
+            transition_relation_edge(&future_id, self.source, relation, None);
         }
     }
 }
@@ -242,6 +267,7 @@ pub fn instrument_future<F>(
 where
     F: IntoFuture,
 {
+    let source_id: SourceId = source.clone().into();
     let handle = EntityHandle::new_with_source(name, EntityBody::Future(FutureEntity {}), source);
-    InstrumentedFuture::new(fut.into_future(), handle, on)
+    InstrumentedFuture::new(fut.into_future(), handle, on, source_id)
 }

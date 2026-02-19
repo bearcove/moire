@@ -90,7 +90,8 @@ pub fn rpc_request(
         args_preview: args_preview.into(),
     });
     RpcRequestHandle {
-        handle: EntityHandle::new(method, body, source).into_typed::<peeps_types::Request>(),
+        handle: EntityHandle::new(method, body, Source::new(source.into_string(), None))
+            .into_typed::<peeps_types::Request>(),
     }
 }
 
@@ -101,7 +102,8 @@ pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcRespon
         status: ResponseStatus::Pending,
     });
     RpcResponseHandle {
-        handle: EntityHandle::new(method, body, source).into_typed::<peeps_types::Response>(),
+        handle: EntityHandle::new(method, body, Source::new(source.into_string(), None))
+            .into_typed::<peeps_types::Response>(),
     }
 }
 
@@ -115,9 +117,13 @@ pub fn rpc_response_for(
         method: method.clone(),
         status: ResponseStatus::Pending,
     });
+    let source = Source::new(source.into_string(), None);
     let response = RpcResponseHandle {
-        handle: EntityHandle::new(method, body, source).into_typed::<peeps_types::Response>(),
+        handle: EntityHandle::new(method, body, source.clone())
+            .into_typed::<peeps_types::Response>(),
     };
-    response.handle.link_to(request, EdgeKind::PairedWith);
+    response
+        .handle
+        .link_to_with_source(request, EdgeKind::PairedWith, source);
     response
 }

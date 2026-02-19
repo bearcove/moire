@@ -50,7 +50,7 @@ impl Semaphore {
                 max_permits,
                 handed_out_permits: 0,
             }),
-            source,
+            Source::new(source.into_string(), None),
         )
         .into_typed::<peeps_types::Semaphore>();
         Self {
@@ -89,10 +89,11 @@ impl Semaphore {
         source: Source,
     ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let holder_ref = current_causal_target();
-        let permit = instrument_operation_on_with_source(&self.handle, self.inner.acquire(), &source)
-            .await?;
+        let permit =
+            instrument_operation_on_with_source(&self.handle, self.inner.acquire(), &source)
+                .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
+            self.note_holder_acquired_with_source(holder_ref, &source);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
@@ -112,14 +113,11 @@ impl Semaphore {
         source: Source,
     ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let holder_ref = current_causal_target();
-        let permit = instrument_operation_on_with_source(
-            &self.handle,
-            self.inner.acquire_many(n),
-            &source,
-        )
-        .await?;
+        let permit =
+            instrument_operation_on_with_source(&self.handle, self.inner.acquire_many(n), &source)
+                .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
+            self.note_holder_acquired_with_source(holder_ref, &source);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
@@ -145,7 +143,7 @@ impl Semaphore {
         )
         .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
+            self.note_holder_acquired_with_source(holder_ref, &source);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
@@ -172,7 +170,7 @@ impl Semaphore {
         )
         .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
+            self.note_holder_acquired_with_source(holder_ref, &source);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
@@ -275,13 +273,20 @@ impl Semaphore {
                 return;
             }
             let edge = self.handle.link_to_owned(holder_ref, EdgeKind::Holds);
-            holder_counts.insert(
-                holder_ref.clone(),
-                HolderEdge {
-                    count: 1,
-                    edge,
-                },
-            );
+            holder_counts.insert(holder_ref.clone(), HolderEdge { count: 1, edge });
+        }
+    }
+
+    fn note_holder_acquired_with_source(&self, holder_ref: &EntityRef, source: &Source) {
+        if let Ok(mut holder_counts) = self.holder_counts.lock() {
+            if let Some(entry) = holder_counts.get_mut(holder_ref) {
+                entry.count = entry.count.saturating_add(1);
+                return;
+            }
+            let edge =
+                self.handle
+                    .link_to_owned_with_source(holder_ref, EdgeKind::Holds, source.clone());
+            holder_counts.insert(holder_ref.clone(), HolderEdge { count: 1, edge });
         }
     }
 }

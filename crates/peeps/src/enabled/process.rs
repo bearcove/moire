@@ -212,7 +212,11 @@ impl Child {
             env: diag.env.clone(),
         });
         let name = String::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new(name, body, SourceRight::caller());
+        let handle = EntityHandle::new(
+            name,
+            body,
+            Source::new(SourceRight::caller().into_string(), None),
+        );
         Self {
             inner: Some(child),
             handle,

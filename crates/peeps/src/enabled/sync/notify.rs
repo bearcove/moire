@@ -15,7 +15,7 @@ impl Notify {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
-            source,
+            Source::new(source.into_string(), None),
         )
         .into_typed::<peeps_types::Notify>();
         Self {

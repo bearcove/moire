@@ -41,7 +41,7 @@ pub fn init_runtime_from_macro() {
             ScopeBody::Process(ProcessScopeBody {
                 pid: std::process::id(),
             }),
-            SourceRight::caller(),
+            Source::new(SourceRight::caller().into_string(), None),
         )
     });
     dashboard::init_dashboard_push_loop(&process_name);

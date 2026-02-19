@@ -17,7 +17,7 @@ impl<T> OnceCell<T> {
                 waiter_count: 0,
                 state: OnceCellState::Empty,
             }),
-            source,
+            Source::new(source.into_string(), None),
         )
         .into_typed::<peeps_types::OnceCell>();
         Self {

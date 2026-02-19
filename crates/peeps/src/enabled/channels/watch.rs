@@ -34,7 +34,7 @@ impl<T> Clone for WatchReceiver<T> {
         let handle = EntityHandle::new(
             "watch:rx.clone",
             EntityBody::WatchRx(WatchRxEntity {}),
-            SourceRight::caller(),
+            Source::new(SourceRight::caller().into_string(), None),
         )
         .into_typed::<peeps_types::WatchRx>();
         Self {
@@ -52,7 +52,11 @@ impl<T: Clone> WatchSender<T> {
     }
 
     #[doc(hidden)]
-    pub fn send_with_source(&self, value: T, source: Source) -> Result<(), watch::error::SendError<T>> {
+    pub fn send_with_source(
+        &self,
+        value: T,
+        source: Source,
+    ) -> Result<(), watch::error::SendError<T>> {
         let result = self.inner.send(value);
         if result.is_ok() {
             let _ = self
@@ -87,10 +91,14 @@ impl<T: Clone> WatchSender<T> {
         let handle = EntityHandle::new(
             "watch:rx.subscribe",
             EntityBody::WatchRx(WatchRxEntity {}),
-            SourceRight::caller(),
+            Source::new(SourceRight::caller().into_string(), None),
         )
         .into_typed::<peeps_types::WatchRx>();
-        self.handle.link_to_handle(&handle, EdgeKind::PairedWith);
+        self.handle.link_to_handle_with_source(
+            &handle,
+            EdgeKind::PairedWith,
+            Source::new(SourceRight::caller().into_string(), None),
+        );
         WatchReceiver {
             inner: self.inner.subscribe(),
             handle,
@@ -147,18 +155,22 @@ pub fn watch<T: Clone>(
         EntityBody::WatchTx(WatchTxEntity {
             last_update_at: None,
         }),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::WatchTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::WatchRx(WatchRxEntity {}),
-        source,
+        Source::new(source.into_string(), None),
     )
     .into_typed::<peeps_types::WatchRx>();
 
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
+    tx_handle.link_to_handle_with_source(
+        &rx_handle,
+        EdgeKind::PairedWith,
+        Source::new(source.into_string(), None),
+    );
 
     (
         WatchSender {
