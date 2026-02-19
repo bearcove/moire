@@ -3,7 +3,8 @@ use peeps_types::{
     EntityBody, EntityId, Event, OnceCellState, OneshotState, PTime, PullChangesResponse,
     ResponseStatus, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
 };
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{hash_map::DefaultHasher, BTreeMap, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 use super::{
@@ -202,11 +203,7 @@ impl RuntimeDb {
         );
     }
 
-    pub(super) fn unregister_task_scope_id(
-        &mut self,
-        task_key: &String,
-        scope_id: &ScopeId,
-    ) {
+    pub(super) fn unregister_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
         if self
             .task_scope_ids
             .get(task_key)
@@ -242,45 +239,21 @@ impl RuntimeDb {
         lifecycle: ChannelEndpointLifecycle,
         buffer: Option<BufferState>,
     ) {
-        let Some(entity) = self.entities.get_mut(id) else {
-            return;
-        };
-
-        let mut changed = false;
-        match &mut entity.body {
+        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| match body {
             EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
-                if endpoint.lifecycle != lifecycle {
-                    endpoint.lifecycle = lifecycle;
-                    changed = true;
-                }
+                endpoint.lifecycle = lifecycle;
                 match &mut endpoint.details {
                     ChannelDetails::Mpsc(details) => {
-                        if details.buffer != buffer {
-                            details.buffer = buffer;
-                            changed = true;
-                        }
+                        details.buffer = buffer;
                     }
                     ChannelDetails::Broadcast(details) => {
-                        if details.buffer != buffer {
-                            details.buffer = buffer;
-                            changed = true;
-                        }
+                        details.buffer = buffer;
                     }
                     _ => {}
                 }
             }
-            _ => return,
-        }
-
-        if !changed {
-            return;
-        }
-        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
-            self.push_change(InternalChange::UpsertEntity {
-                id: EntityId::new(id.as_str()),
-                entity_json,
-            });
-        }
+            _ => {}
+        });
     }
 
     pub(super) fn update_oneshot_endpoint_state(
@@ -289,36 +262,15 @@ impl RuntimeDb {
         lifecycle: ChannelEndpointLifecycle,
         state: OneshotState,
     ) {
-        let Some(entity) = self.entities.get_mut(id) else {
-            return;
-        };
-
-        let mut changed = false;
-        match &mut entity.body {
+        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| match body {
             EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
-                if endpoint.lifecycle != lifecycle {
-                    endpoint.lifecycle = lifecycle;
-                    changed = true;
-                }
+                endpoint.lifecycle = lifecycle;
                 if let ChannelDetails::Oneshot(details) = &mut endpoint.details {
-                    if details.state != state {
-                        details.state = state;
-                        changed = true;
-                    }
+                    details.state = state;
                 }
             }
-            _ => return,
-        }
-
-        if !changed {
-            return;
-        }
-        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
-            self.push_change(InternalChange::UpsertEntity {
-                id: EntityId::new(id.as_str()),
-                entity_json,
-            });
-        }
+            _ => {}
+        });
     }
 
     pub(super) fn update_watch_last_update(
@@ -326,55 +278,22 @@ impl RuntimeDb {
         id: &EntityId,
         last_update_at: Option<peeps_types::PTime>,
     ) {
-        let Some(entity) = self.entities.get_mut(id) else {
-            return;
-        };
-        let mut changed = false;
-        match &mut entity.body {
+        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| match body {
             EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
                 if let ChannelDetails::Watch(details) = &mut endpoint.details {
-                    if details.last_update_at != last_update_at {
-                        details.last_update_at = last_update_at;
-                        changed = true;
-                    }
+                    details.last_update_at = last_update_at;
                 }
             }
-            _ => return,
-        }
-        if !changed {
-            return;
-        }
-        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
-            self.push_change(InternalChange::UpsertEntity {
-                id: EntityId::new(id.as_str()),
-                entity_json,
-            });
-        }
+            _ => {}
+        });
     }
 
     pub(super) fn update_notify_waiter_count(&mut self, id: &EntityId, waiter_count: u32) {
-        let Some(entity) = self.entities.get_mut(id) else {
-            return;
-        };
-        let mut changed = false;
-        match &mut entity.body {
-            EntityBody::Notify(notify) => {
-                if notify.waiter_count != waiter_count {
-                    notify.waiter_count = waiter_count;
-                    changed = true;
-                }
+        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| {
+            if let EntityBody::Notify(notify) = body {
+                notify.waiter_count = waiter_count;
             }
-            _ => return,
-        }
-        if !changed {
-            return;
-        }
-        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
-            self.push_change(InternalChange::UpsertEntity {
-                id: EntityId::new(id.as_str()),
-                entity_json,
-            });
-        }
+        });
     }
 
     pub(super) fn update_once_cell_state(
@@ -383,32 +302,12 @@ impl RuntimeDb {
         waiter_count: u32,
         state: OnceCellState,
     ) {
-        let Some(entity) = self.entities.get_mut(id) else {
-            return;
-        };
-        let mut changed = false;
-        match &mut entity.body {
-            EntityBody::OnceCell(once_cell) => {
-                if once_cell.waiter_count != waiter_count {
-                    once_cell.waiter_count = waiter_count;
-                    changed = true;
-                }
-                if once_cell.state != state {
-                    once_cell.state = state;
-                    changed = true;
-                }
+        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| {
+            if let EntityBody::OnceCell(once_cell) = body {
+                once_cell.waiter_count = waiter_count;
+                once_cell.state = state;
             }
-            _ => return,
-        }
-        if !changed {
-            return;
-        }
-        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
-            self.push_change(InternalChange::UpsertEntity {
-                id: EntityId::new(id.as_str()),
-                entity_json,
-            });
-        }
+        });
     }
 
     pub(super) fn update_semaphore_state(
@@ -417,59 +316,50 @@ impl RuntimeDb {
         max_permits: u32,
         handed_out_permits: u32,
     ) {
-        let Some(entity) = self.entities.get_mut(id) else {
-            return;
-        };
-        let mut changed = false;
-        match &mut entity.body {
-            EntityBody::Semaphore(semaphore) => {
-                if semaphore.max_permits != max_permits {
-                    semaphore.max_permits = max_permits;
-                    changed = true;
-                }
-                if semaphore.handed_out_permits != handed_out_permits {
-                    semaphore.handed_out_permits = handed_out_permits;
-                    changed = true;
-                }
+        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| {
+            if let EntityBody::Semaphore(semaphore) = body {
+                semaphore.max_permits = max_permits;
+                semaphore.handed_out_permits = handed_out_permits;
             }
-            _ => return,
-        }
-        if !changed {
-            return;
-        }
-        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
-            self.push_change(InternalChange::UpsertEntity {
-                id: EntityId::new(id.as_str()),
-                entity_json,
-            });
-        }
+        });
     }
 
     pub(super) fn update_response_status(&mut self, id: &EntityId, status: ResponseStatus) -> bool {
-        let Some(entity) = self.entities.get_mut(id) else {
-            return false;
-        };
-
-        let mut changed = false;
-        match &mut entity.body {
-            EntityBody::Response(response) => {
-                if response.status != status {
-                    response.status = status;
-                    changed = true;
-                }
+        self.mutate_entity_body_and_maybe_upsert(id, |body| {
+            if let EntityBody::Response(response) = body {
+                response.status = status;
             }
-            _ => return false,
-        }
+        })
+    }
 
-        if !changed {
-            return false;
-        }
-        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
-            self.push_change(InternalChange::UpsertEntity {
-                id: EntityId::new(id.as_str()),
-                entity_json,
-            });
-        }
+    fn body_fingerprint(body: &EntityBody) -> u64 {
+        let bytes = facet_json::to_vec(body).expect("entity body serialization must succeed");
+        let mut hasher = DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn mutate_entity_body_and_maybe_upsert(
+        &mut self,
+        id: &EntityId,
+        mutate: impl FnOnce(&mut EntityBody),
+    ) -> bool {
+        let entity_json = {
+            let Some(entity) = self.entities.get_mut(id) else {
+                return false;
+            };
+            let before = Self::body_fingerprint(&entity.body);
+            mutate(&mut entity.body);
+            let after = Self::body_fingerprint(&entity.body);
+            if before == after {
+                return false;
+            }
+            facet_json::to_vec(entity).expect("entity serialization must succeed")
+        };
+        self.push_change(InternalChange::UpsertEntity {
+            id: EntityId::new(id.as_str()),
+            entity_json,
+        });
         true
     }
 

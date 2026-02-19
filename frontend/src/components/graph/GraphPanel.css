@@ -58,8 +58,8 @@
 
 .graph-toolbar-middle {
     position: relative;
-    flex: 0 1 min(1100px, calc(100vw - 260px));
-    width: min(1100px, calc(100vw - 260px));
+    flex: 1 1 auto;
+    max-width: 1200px;
     min-width: 300px;
 }
 
@@ -274,7 +274,6 @@
     min-height: 0;
     position: relative;
 }
-
 
 .graph-toolbar .ui-filter-trigger {
     height: var(--control-height);

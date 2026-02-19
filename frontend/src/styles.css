@@ -40,13 +40,13 @@
     line-height: 1.4;
 
     /* Role tokens */
-    --bg-base: light-dark(#ffffff, #0a0a0a);
-    --bg-surface: light-dark(#ffffff, #0a0a0a);
-    --bg-elevated: light-dark(#ffffff, #0a0a0a);
+    --bg-base: light-dark(#ffffff, #17171a);
+    --bg-surface: var(--bg-base);
+    --bg-elevated: var(--bg-base);
 
     --border-subtle: light-dark(#1a1a1a, #fafafa);
-    --border-default: light-dark(#1a1a1a, #fafafa);
-    --border-edge: light-dark(#1a1a1a, #fafafa);
+    --border-default: var(--border-subtle);
+    --border-edge: var(--border-subtle);
 
     --text-primary: light-dark(#111111, #fafafa);
     --text-secondary: light-dark(#3a3a3a, #e0e0e0);
