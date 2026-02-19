@@ -165,7 +165,7 @@ export function GraphFilterInput({
               if (event.key === "Backspace" && filterParts.fragment.length === 0 && filterParts.committed.length > 0) {
                 event.preventDefault();
                 const next = filterParts.committed.slice(0, -1);
-                onGraphFilterTextChange(next.join(" "));
+                onGraphFilterTextChange(next.length > 0 ? `${next.join(" ")} ` : "");
                 setGraphFilterSuggestOpen(true);
                 setGraphFilterSuggestionIndex(0);
                 return;

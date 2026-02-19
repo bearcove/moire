@@ -52,14 +52,11 @@
 .ui-section-stack {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
 }
 
 .ui-section-stack > .ui-key-value-row {
-    padding: 4px 6px;
-}
-
-.ui-section-stack > .ui-key-value-row:nth-child(odd) {
-    background: color-mix(in srgb, white 3%, transparent);
+    padding: 3px 6px;
     border-radius: var(--radius-control);
 }
+

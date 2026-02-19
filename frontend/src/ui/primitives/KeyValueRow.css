@@ -1,6 +1,6 @@
 .ui-key-value-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
     font-size: var(--font-size-sm);
     min-height: 22px;

@@ -65,11 +65,9 @@ export function LabeledSlider({
 }) {
   return (
     <div className={["ui-slider-panel", className].filter(Boolean).join(" ")}>
-      <div className="ui-slider-head">
-        <span className="ui-slider-label">{label}</span>
-        {valueLabel != null && <span className="ui-slider-value">{valueLabel}</span>}
-      </div>
+      <span className="ui-slider-label">{label}</span>
       <Slider {...sliderProps} />
+      {valueLabel != null && <span className="ui-slider-value">{valueLabel}</span>}
     </div>
   );
 }

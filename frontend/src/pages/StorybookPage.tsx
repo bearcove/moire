@@ -69,6 +69,14 @@ export function useStorybookState() {
   const [checked, setChecked] = useState(true);
   const [selectValue, setSelectValue] = useState("all");
   const [sliderValue, setSliderValue] = useState(1);
+  const [lastMenuPick, setLastMenuPick] = useState<string | null>(null);
+  const lastMenuPickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pickMenuAction = useCallback((prefix: string, id: string) => {
+    if (lastMenuPickTimer.current) clearTimeout(lastMenuPickTimer.current);
+    setLastMenuPick(`${prefix} → ${id}`);
+    lastMenuPickTimer.current = setTimeout(() => setLastMenuPick(null), 3000);
+  }, []);
+
   const [searchOnlyKind, setSearchOnlyKind] = useState<string | null>(null);
   const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
   const [segmentedMode, setSegmentedMode] = useState("graph");
@@ -715,6 +723,8 @@ export function useStorybookState() {
     setSelectValue,
     sliderValue,
     setSliderValue,
+    lastMenuPick,
+    pickMenuAction,
     searchOnlyKind,
     setSearchOnlyKind,
     selectedSearchId,
@@ -793,6 +803,8 @@ export function StorybookPage({
     setSelectValue,
     sliderValue,
     setSliderValue,
+    lastMenuPick,
+    pickMenuAction,
     searchOnlyKind,
     setSearchOnlyKind,
     selectedSearchId,
@@ -1314,6 +1326,13 @@ export function StorybookPage({
         </Section>
 
         <Section title="Menu" subtitle="Action menus for context operations">
+          <p className="ui-section-description">
+            <strong>Click</strong> to open. Click the trigger again or click outside to close.
+            Click an item to trigger it.{" "}
+            <strong>Press and hold</strong> the trigger to open, then drag to an item and release
+            — the action fires without a separate click. You can also drag from one menu trigger to
+            another while holding to switch menus mid-drag.
+          </p>
           <Row>
             <Menu
               label={
@@ -1323,6 +1342,7 @@ export function StorybookPage({
                 </span>
               }
               items={nodeTypeMenu}
+              onAction={(id) => pickMenuAction("node types", id)}
             />
             <Menu
               label={
@@ -1331,8 +1351,14 @@ export function StorybookPage({
                 </span>
               }
               items={processMenu}
+              onAction={(id) => pickMenuAction("process", id)}
             />
           </Row>
+          {lastMenuPick && (
+            <div className="ui-lab-event">
+              You picked: <strong>{lastMenuPick}</strong>
+            </div>
+          )}
         </Section>
 
         <Section title="Filter Menu" subtitle="Multi-select with checkboxes, alt-click to solo">

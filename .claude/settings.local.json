@@ -13,7 +13,10 @@
       "Bash(xargs:*)",
       "Bash(rg:*)",
       "Bash(grep:*)",
-      "Bash(tmux list-panes:*)"
+      "Bash(tmux list-panes:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "mcp__playwright__browser_navigate"
     ]
   }
 }

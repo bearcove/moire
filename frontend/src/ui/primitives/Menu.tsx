@@ -30,6 +30,9 @@ export function Menu({
   const popoverRef = useRef<HTMLDivElement>(null);
   const suppressTriggerCloseRef = useRef(false);
   const suppressNextOpenRef = useRef(false);
+  // True when the menu was opened by pressing (not releasing) the trigger,
+  // so that releasing over a menu item triggers the action without a separate click.
+  const isDragOpenRef = useRef(false);
 
   const announceOpen = () => {
     window.dispatchEvent(
@@ -76,6 +79,7 @@ export function Menu({
       setTimeout(() => {
         suppressTriggerCloseRef.current = false;
         suppressNextOpenRef.current = false;
+        isDragOpenRef.current = false;
       }, 0);
     };
     window.addEventListener("pointerup", clearSuppression);
@@ -107,10 +111,12 @@ export function Menu({
             event.preventDefault();
             suppressTriggerCloseRef.current = false;
             suppressNextOpenRef.current = true;
+            isDragOpenRef.current = false;
             setOpen(false);
             return;
           }
           suppressTriggerCloseRef.current = true;
+          isDragOpenRef.current = true;
           setOpen(true);
           announceOpen();
         }}
@@ -118,6 +124,7 @@ export function Menu({
           if ((event.buttons & 1) !== 1) return;
           if (open) return;
           suppressTriggerCloseRef.current = true;
+          isDragOpenRef.current = true;
           setOpen(true);
           announceOpen();
         }}
@@ -144,6 +151,12 @@ export function Menu({
                 "ui-menu-item",
                 item.danger && "ui-menu-item--danger",
               ].filter(Boolean).join(" ")}
+              onPointerUp={() => {
+                if (!isDragOpenRef.current) return;
+                isDragOpenRef.current = false;
+                onAction?.(item.id);
+                setOpen(false);
+              }}
             >
               {item.label}
             </MenuItem>

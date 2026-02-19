@@ -21,10 +21,6 @@
         rgb(var(--scope-rgb-light) / 0.95),
         rgb(var(--scope-rgb-dark) / 0.9)
     );
-    --graph-card-bg: light-dark(
-        rgb(var(--scope-rgb-light) / 0.3),
-        rgb(var(--scope-rgb-dark) / 0.34)
-    );
 }
 
 .graph-card--stat-crit {

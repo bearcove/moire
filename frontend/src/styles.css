@@ -45,7 +45,7 @@
     --border-edge: light-dark(#e8e8e8, #282828);
 
     --text-primary: light-dark(#111111, #f4f4f4);
-    --text-secondary: light-dark(#4d5b71, #b8b8b8);
+    --text-secondary: light-dark(#3a3a3a, #b8b8b8);
     --text-muted: light-dark(#888888, #888888);
     --text-tertiary: var(--text-muted);
 

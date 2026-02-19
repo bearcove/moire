@@ -3,10 +3,6 @@
     height: 100%;
     border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
     border-radius: var(--radius-control);
-    background: light-dark(
-        rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.34),
-        var(--bg-surface)
-    );
 }
 
 .scope-group-header {

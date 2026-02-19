@@ -81,6 +81,21 @@ describe("GraphPanel filter input interactions", () => {
     expect(screen.getByRole("button", { name: /-node:<id>/i })).toBeTruthy();
   });
 
+  it("backspace at end removes last chip but keeps previous chip committed", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    expect(input.value).toBe("");
+
+    await user.keyboard("{Backspace}");
+
+    expect(screen.queryByRole("button", { name: /groupBy:process/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /colorBy:crate/i })).toBeTruthy();
+    expect(input.value).toBe("");
+  });
+
   it("captures Tab and applies current autocomplete choice", async () => {
     const user = userEvent.setup();
     render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);

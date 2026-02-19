@@ -5,22 +5,19 @@
 
 .ui-slider-panel {
     display: inline-flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     gap: 8px;
-    padding: 6px 8px;
-    border-radius: var(--radius-control);
-    border: 1px solid var(--border-subtle);
+    padding: 2px 4px;
     background: var(--bg-surface);
     min-width: 0;
     width: 100%;
     max-width: 360px;
 }
 
-.ui-slider-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
+.ui-slider-panel > .ui-slider {
+    flex: 1;
+    min-width: 0;
 }
 
 .ui-slider-label {
