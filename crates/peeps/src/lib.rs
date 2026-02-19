@@ -33,15 +33,10 @@ pub use disabled::*;
 pub use enabled::*;
 
 #[macro_export]
-macro_rules! init {
-    () => {{
-        $crate::__init_from_macro(env!("CARGO_MANIFEST_DIR"));
-    }};
-}
-
-#[macro_export]
 macro_rules! facade {
     () => {
+        $crate::__init_from_macro(env!("CARGO_MANIFEST_DIR"));
+
         pub mod peeps {
             pub const PEEPS_CX: $crate::PeepsContext =
                 $crate::PeepsContext::new(env!("CARGO_MANIFEST_DIR"));

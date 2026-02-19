@@ -1,16 +1,15 @@
 use compact_str::CompactString;
 use peeps_types::{
     BufferState, Change, ChannelDetails, ChannelEndpointLifecycle, Edge, EdgeKind, Entity,
-    EntityBody, EntityId, Event, OnceCellState,
-    OneshotState, PTime, PullChangesResponse,
+    EntityBody, EntityId, Event, OnceCellState, OneshotState, PTime, PullChangesResponse,
     ResponseStatus, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 use super::{
-    MAX_CHANGES_BEFORE_COMPACT, COMPACT_TARGET_CHANGES, ensure_process_scope_id,
-    current_tokio_task_key,
+    current_tokio_task_key, ensure_process_scope_id, COMPACT_TARGET_CHANGES,
+    MAX_CHANGES_BEFORE_COMPACT,
 };
 
 pub(super) fn runtime_db() -> &'static StdMutex<RuntimeDb> {
@@ -204,7 +203,11 @@ impl RuntimeDb {
         );
     }
 
-    pub(super) fn unregister_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
+    pub(super) fn unregister_task_scope_id(
+        &mut self,
+        task_key: &CompactString,
+        scope_id: &ScopeId,
+    ) {
         if self
             .task_scope_ids
             .get(task_key)
@@ -375,7 +378,12 @@ impl RuntimeDb {
         }
     }
 
-    pub(super) fn update_once_cell_state(&mut self, id: &EntityId, waiter_count: u32, state: OnceCellState) {
+    pub(super) fn update_once_cell_state(
+        &mut self,
+        id: &EntityId,
+        waiter_count: u32,
+        state: OnceCellState,
+    ) {
         let Some(entity) = self.entities.get_mut(id) else {
             return;
         };
@@ -404,7 +412,12 @@ impl RuntimeDb {
         }
     }
 
-    pub(super) fn update_semaphore_state(&mut self, id: &EntityId, max_permits: u32, handed_out_permits: u32) {
+    pub(super) fn update_semaphore_state(
+        &mut self,
+        id: &EntityId,
+        max_permits: u32,
+        handed_out_permits: u32,
+    ) {
         let Some(entity) = self.entities.get_mut(id) else {
             return;
         };
@@ -627,7 +640,11 @@ impl RuntimeDb {
         }
     }
 
-    pub(super) fn pull_changes_since(&self, from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
+    pub(super) fn pull_changes_since(
+        &self,
+        from_seq_no: SeqNo,
+        max_changes: u32,
+    ) -> PullChangesResponse {
         let compacted_before = self.compacted_before_seq_no;
         let effective_from = compacted_before
             .map(|compacted| {
@@ -788,6 +805,7 @@ pub(super) fn build_snapshot_reply(snapshot_id: i64) -> peeps_wire::SnapshotRepl
     // represents the moment this snapshot was requested.
     let ptime_now_ms = PTime::now().as_millis();
 
+    // [FIXME] omg kill it
     let (entity_bytes, scope_bytes, edge_bytes, event_bytes): (
         Vec<Vec<u8>>,
         Vec<Vec<u8>>,

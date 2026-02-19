@@ -1,16 +1,17 @@
-use compact_str::CompactString;
+use compact_str::{CompactString, ToCompactString};
 use peeps_types::infer_krate_from_source_with_manifest_dir;
 use peeps_types::set_inference_source_root;
 use peeps_types::{EntityBody, EntityId, Event, ScopeBody, ScopeId};
 use std::cell::RefCell;
 use std::future::Future;
+use std::panic::Location;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 pub(super) const MAX_EVENTS: usize = 16_384;
 pub(super) const MAX_CHANGES_BEFORE_COMPACT: usize = 65_536;
 pub(super) const COMPACT_TARGET_CHANGES: usize = 8_192;
 pub(super) const DEFAULT_STREAM_ID_PREFIX: &str = "proc";
-static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 pub(super) const DASHBOARD_PUSH_MAX_CHANGES: u32 = 2048;
 pub(super) const DASHBOARD_PUSH_INTERVAL_MS: u64 = 100;
 pub(super) const DASHBOARD_RECONNECT_DELAY_MS: u64 = 500;
@@ -22,37 +23,47 @@ thread_local! {
     pub(super) static HELD_MUTEX_STACK: RefCell<Vec<EntityId>> = const { RefCell::new(Vec::new()) };
 }
 
-pub(super) mod db;
 mod api;
-mod dashboard;
-pub mod handles;
-pub mod rpc;
 pub mod channels;
-pub mod sync;
+mod dashboard;
+pub(super) mod db;
 pub mod futures;
+pub mod handles;
 pub mod process;
+pub mod rpc;
+pub mod sync;
 
 pub use self::api::*;
-pub use self::handles::*;
-pub use self::rpc::*;
 pub use self::channels::*;
-pub use self::sync::*;
 pub use self::futures::*;
+pub use self::handles::*;
 pub use self::process::*;
+pub use self::rpc::*;
+pub use self::sync::*;
 
-#[cfg(test)]
-mod tests;
-
+// This identifies where something happened, for example, where a future was polled, where a task
+// was created, etc.
+//
+// If all we were using all the time, including future poll, were macros, we could use the `file!()`
+// macro and the `line!()` macro to get accurate data.
+//
+// But it's not, there are functions, so we have to rely on `Location::caller()` (which is what we
+// encapsulate here). The problem with `Location::caller()` is that it sometimes has relative paths
+// for files, like `src/main.rs` — which crate is that from? Good luck.
+//
+// Therefore, we ideally need two things: `$CARGO_MANIFEST_DIR` and `Location::caller()`. The latter
+// is usually either grabbed just in time if all of the ancestors were marked with the #[track_caller]
+// attribute. As for the former, it is registered once per process inside of the process scope.
 #[derive(Clone, Copy, Debug)]
 pub struct Source {
-    location: &'static std::panic::Location<'static>,
+    location: &'static Location<'static>,
 }
 
 impl Source {
     #[track_caller]
     pub fn caller() -> Self {
         Self {
-            location: std::panic::Location::caller(),
+            location: Location::caller(),
         }
     }
 
@@ -81,36 +92,20 @@ impl PeepsContext {
     }
 }
 
-#[track_caller]
+static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
+
+// facade! expands to a call to this
 #[doc(hidden)]
 pub fn __init_from_macro(manifest_dir: &str) {
-    set_inference_source_root(std::path::PathBuf::from(manifest_dir));
-    let process_name = process_name_auto();
-    ensure_process_scope(&process_name, Source::caller());
+    set_inference_source_root(PathBuf::from(manifest_dir));
+    let process_name = std::env::current_exe()
+        .unwrap()
+        .display()
+        .to_compact_string();
+    PROCESS_SCOPE.get_or_init(|| {
+        ScopeHandle::new(process_name.clone(), ScopeBody::Process, Source::caller())
+    });
     dashboard::init_dashboard_push_loop(&process_name);
-}
-
-fn ensure_process_scope(process_name: &str, source: Source) {
-    PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process, source));
-}
-
-#[track_caller]
-pub(super) fn ensure_process_scope_id() -> Option<ScopeId> {
-    if current_process_scope_id().is_none() {
-        let process_name = process_name_auto();
-        ensure_process_scope(process_name.as_str(), Source::caller());
-    }
-    current_process_scope_id()
-}
-
-fn process_name_auto() -> CompactString {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.file_stem().map(|name| name.to_owned()))
-        .and_then(|name| name.into_string().ok())
-        .filter(|name| !name.is_empty())
-        .map(CompactString::from)
-        .unwrap_or_else(|| CompactString::from("process"))
 }
 
 pub(super) fn current_process_scope_id() -> Option<ScopeId> {
@@ -171,13 +166,6 @@ where
     )
 }
 
-#[macro_export]
-macro_rules! spawn_tracked {
-    ($name:expr, $fut:expr $(,)?) => {
-        $crate::spawn_tracked($name, $fut, $crate::Source::caller())
-    };
-}
-
 #[track_caller]
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<CompactString>,
@@ -193,50 +181,6 @@ where
         let _hold = handle;
         f()
     })
-}
-
-#[macro_export]
-macro_rules! spawn_blocking_tracked {
-    ($name:expr, $f:expr $(,)?) => {
-        $crate::spawn_blocking_tracked($name, $f, $crate::Source::caller())
-    };
-}
-
-#[track_caller]
-pub fn sleep(
-    duration: std::time::Duration,
-    _label: impl Into<String>,
-) -> impl Future<Output = ()> {
-    // we've decided to stop instrumenting sleeps
-    tokio::time::sleep(duration)
-}
-
-#[macro_export]
-macro_rules! sleep {
-    ($duration:expr, $label:expr $(,)?) => {
-        $crate::sleep($duration, $label)
-    };
-}
-
-#[track_caller]
-#[allow(clippy::manual_async_fn)]
-pub fn timeout<F>(
-    duration: std::time::Duration,
-    future: F,
-    _label: impl Into<String>,
-) -> impl Future<Output = Result<F::Output, tokio::time::error::Elapsed>>
-where
-    F: Future,
-{
-    // we've decided to stop instrumenting timeouts
-    tokio::time::timeout(duration, future)
-}
-
-#[macro_export]
-macro_rules! timeout {
-    ($duration:expr, $future:expr, $label:expr $(,)?) => {
-        $crate::timeout($duration, $future, $label)
-    };
 }
 
 pub(super) fn record_event_with_source(mut event: Event, source: Source, cx: PeepsContext) {
