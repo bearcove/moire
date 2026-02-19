@@ -35,62 +35,25 @@ impl Edge {
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum EdgeKind {
-    /// Contextual resource-touch relationship (actor has interacted with resource).
-    Touches,
-
-    /// Polled relationship (non-blocking observation of dependency).
+    /// Poll relationship (task/entity is actively polling another future/resource).
+    ///
+    /// Example: parent future polls child future during one executor tick.
     Polls,
 
-    /// Waiting/blocked-on relationship.
-    Needs,
+    /// Waiting relationship (task/entity is blocked on another resource).
+    ///
+    /// Example: receiver waits on channel `rx.recv().await`.
+    WaitingOn,
 
-    /// Resource ownership relationship (resource -> current holder).
+    /// Pairing relationship between two endpoints that form one logical primitive.
+    ///
+    /// Example: channel sender paired with its corresponding receiver.
+    PairedWith,
+
+    /// Resource ownership/lease relationship (resource -> current holder).
+    ///
+    /// Example: semaphore points to the holder of an acquired permit.
     Holds,
-
-    /// Closure/cancellation cause relationship.
-    ClosedBy,
-
-    /// Structural channel endpoint pairing (`tx -> rx`).
-    ChannelLink,
-
-    /// Structural request/response pairing.
-    RpcLink,
 }
 
-/// Primitive operation represented on an operation edge.
-#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum OperationKind {
-    Send,
-    Recv,
-    Acquire,
-    Lock,
-    NotifyWait,
-    OncecellWait,
-}
-
-/// Runtime state for a primitive operation edge.
-#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum OperationState {
-    Active,
-    Pending,
-    Done,
-    Failed,
-    Cancelled,
-}
-
-/// Metadata payload for operation edges (`EdgeKind::Needs` + `op_kind`).
-#[derive(Facet, Clone, Debug, PartialEq)]
-pub struct OperationEdgeMeta {
-    pub op_kind: OperationKind,
-    pub state: OperationState,
-    pub pending_since_ptime_ms: Option<u64>,
-    pub last_change_ptime_ms: u64,
-    pub source: String,
-    pub krate: Option<String>,
-    pub poll_count: Option<u64>,
-    pub details: Option<facet_value::Value>,
-}
+crate::impl_sqlite_json!(EdgeKind);

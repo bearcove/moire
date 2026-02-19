@@ -58,6 +58,9 @@ pub enum EventKind {
     ChannelWaitEnded,
 }
 
+crate::impl_sqlite_json!(EventTarget);
+crate::impl_sqlite_json!(EventKind);
+
 #[derive(Facet)]
 pub struct ChannelSendEvent {
     /// Send attempt outcome.

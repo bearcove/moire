@@ -257,3 +257,5 @@ pub enum ResponseStatus {
     Error,
     Cancelled,
 }
+
+crate::impl_sqlite_json!(EntityBody);
