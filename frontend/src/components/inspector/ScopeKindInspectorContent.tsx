@@ -45,21 +45,19 @@ export function ScopeKindInspectorContent({ kind }: { kind: string }) {
   };
 
   return (
-    <>
-      <div className="inspector-section">
-        <KeyValueRow label="Kind">
-          <span className="inspector-mono">{kind}</span>
-        </KeyValueRow>
-        <KeyValueRow label="Description">
-          <span>{info.description}</span>
-        </KeyValueRow>
-        <KeyValueRow label="Typical fields">
-          <span className="inspector-mono">{info.typicalFields}</span>
-        </KeyValueRow>
-        <KeyValueRow label="Why it matters">
-          <span>{info.whyItMatters}</span>
-        </KeyValueRow>
-      </div>
-    </>
+    <div className="inspector-kv-table">
+      <KeyValueRow label="Kind">
+        <span className="inspector-mono">{kind}</span>
+      </KeyValueRow>
+      <KeyValueRow label="Description">
+        <span>{info.description}</span>
+      </KeyValueRow>
+      <KeyValueRow label="Typical fields">
+        <span className="inspector-mono">{info.typicalFields}</span>
+      </KeyValueRow>
+      <KeyValueRow label="Why it matters">
+        <span>{info.whyItMatters}</span>
+      </KeyValueRow>
+    </div>
   );
 }

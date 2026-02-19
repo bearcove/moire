@@ -23,7 +23,7 @@ export function ScopeInspectorContent({ scope }: { scope: ScopeTableRow }) {
 
   return (
     <>
-      <div className="inspector-section">
+      <div className="inspector-kv-table">
         <KeyValueRow label="Kind">
           <span className="inspector-mono">{scope.scopeKind}</span>
         </KeyValueRow>

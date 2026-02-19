@@ -4,7 +4,6 @@ import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import type { EntityBody } from "../../api/types";
 import type { EntityDef, Tone } from "../../snapshot";
-import "./InspectorPanel.css";
 
 type RequestBody = Extract<EntityBody, { request: unknown }>;
 type ResponseBody = Extract<EntityBody, { response: unknown }>;
@@ -19,7 +18,7 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
   if ("request" in body) {
     const req = (body as RequestBody).request;
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Args">
           <span
             className={`inspector-mono${req.args_preview === "(no args)" ? " inspector-muted" : ""}`}
@@ -27,14 +26,14 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
             {req.args_preview}
           </span>
         </KeyValueRow>
-      </div>
+      </>
     );
   }
 
   if ("response" in body) {
     const resp = (body as ResponseBody).response;
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
           <span className="inspector-mono">{resp.method}</span>
         </KeyValueRow>
@@ -43,17 +42,17 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
             {resp.status}
           </Badge>
         </KeyValueRow>
-      </div>
+      </>
     );
   }
 
   if ("lock" in body) {
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Lock kind">
           <span className="inspector-mono">{body.lock.kind}</span>
         </KeyValueRow>
-      </div>
+      </>
     );
   }
 
@@ -78,7 +77,7 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
             : "inspector-buffer-segment--ok"
         : "inspector-buffer-segment--ok";
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Lifecycle">
           <Badge tone={lifecycleTone}>{lifecycleLabel}</Badge>
         </KeyValueRow>
@@ -106,36 +105,36 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
             </span>
           </KeyValueRow>
         )}
-      </div>
+      </>
     );
   }
 
   if ("semaphore" in body) {
     const { max_permits, handed_out_permits } = body.semaphore;
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Permits available">
           <span className="inspector-mono">
             {max_permits - handed_out_permits} / {max_permits}
           </span>
         </KeyValueRow>
-      </div>
+      </>
     );
   }
 
   if ("notify" in body) {
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Waiters">
           <span className="inspector-mono">{body.notify.waiter_count}</span>
         </KeyValueRow>
-      </div>
+      </>
     );
   }
 
   if ("once_cell" in body) {
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="State">
           <Badge tone={body.once_cell.state === "initialized" ? "ok" : "warn"}>
             {body.once_cell.state}
@@ -146,33 +145,33 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
             <span className="inspector-mono">{body.once_cell.waiter_count}</span>
           </KeyValueRow>
         )}
-      </div>
+      </>
     );
   }
 
   if ("command" in body) {
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Program">
           <span className="inspector-mono">{body.command.program}</span>
         </KeyValueRow>
         <KeyValueRow label="Args">
           <span className="inspector-mono">{body.command.args.join(" ") || "(none)"}</span>
         </KeyValueRow>
-      </div>
+      </>
     );
   }
 
   if ("file_op" in body) {
     return (
-      <div className="inspector-section">
+      <>
         <KeyValueRow label="Operation">
           <span className="inspector-mono">{body.file_op.op}</span>
         </KeyValueRow>
         <KeyValueRow label="Path">
           <span className="inspector-mono">{body.file_op.path}</span>
         </KeyValueRow>
-      </div>
+      </>
     );
   }
 
@@ -180,11 +179,11 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
     if (netKey in body) {
       const net = (body as Record<string, { addr: string }>)[netKey];
       return (
-        <div className="inspector-section">
+        <>
           <KeyValueRow label="Address">
             <span className="inspector-mono">{net.addr}</span>
           </KeyValueRow>
-        </div>
+        </>
       );
     }
   }

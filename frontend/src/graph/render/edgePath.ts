@@ -1,6 +1,6 @@
 import type { Point } from "../geometry";
 
-const ORTHO_CORNER_RADIUS = 3;
+const ORTHO_CORNER_RADIUS = 6;
 const POINT_EPSILON = 0.5;
 
 function distance(a: Point, b: Point): number {

@@ -63,15 +63,16 @@ export function EdgeLayer({
           }
         }
 
-        const d = polylineToPath(visPolyline, true);
+        const d = polylineToPath(visPolyline);
         const hitD = hitTestPath(polyline);
 
         const visibleStyle: React.CSSProperties = isSelected
-          ? { stroke, strokeWidth: 2.5 }
+          ? { stroke, strokeWidth: 2.5, strokeLinecap: "round" }
           : {
               stroke,
               strokeWidth: edgeStyle.strokeWidth,
               strokeDasharray: edgeStyle.strokeDasharray,
+              strokeLinecap: "round",
             };
 
         return (

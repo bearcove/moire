@@ -31,21 +31,19 @@ function EntityDetailsSection({ entity }: { entity: EntityDef }) {
   ].filter(Boolean).join(" · ");
 
   return (
-    <div className="inspector-section">
-      <KeyValueRow label="Source" labelWidth={52}>
+    <>
+      <KeyValueRow label="Source">
         <Source source={entity.source} />
       </KeyValueRow>
       {entity.krate && (
-        <KeyValueRow label="Crate" labelWidth={52}>
-          {entity.krate}
-        </KeyValueRow>
+        <KeyValueRow label="Crate">{entity.krate}</KeyValueRow>
       )}
-      <KeyValueRow label="Age" labelWidth={52}>
+      <KeyValueRow label="Age">
         <span title={birthTitle}>
           <DurationDisplay ms={entity.ageMs} />
         </span>
       </KeyValueRow>
-    </div>
+    </>
   );
 }
 
@@ -256,8 +254,11 @@ function EntityInspectorBody({
       )}
 
       <EntityDetailsSection entity={entity} />
+      <div className="inspector-kv-table">
+        <EntityDetailsSection entity={entity} />
+        <EntityBodySection entity={entity} />
+      </div>
       {showScopeLinks && <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />}
-      <EntityBodySection entity={entity} />
       {showMeta && <MetaSection meta={entity.meta} />}
     </>
   );

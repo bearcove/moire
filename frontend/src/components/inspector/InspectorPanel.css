@@ -523,17 +523,27 @@
     color: var(--text-primary);
 }
 
-.inspector-lane-card .ui-key-value-row {
-    min-height: var(--control-height-sm);
+.inspector-kv-table {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: start;
+}
+
+.inspector-lane-card .inspector-kv-table {
+    row-gap: 0;
 }
 
 .inspector-lane-card .ui-key-value-row__label {
     color: var(--inspector-lum-text-weak);
     font-weight: 600;
+    min-height: var(--control-height-sm);
 }
 
 .inspector-lane-card .ui-key-value-row__value {
     color: var(--text-primary);
+    min-height: var(--control-height-sm);
 }
 
 .inspector-lane-card .inspector-queue-value .inspector-mono {

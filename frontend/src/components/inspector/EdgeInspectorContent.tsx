@@ -1,7 +1,6 @@
 import React from "react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
-import { kindIcon } from "../../nodeKindSpec";
 import { formatProcessLabel } from "../../processLabel";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import { edgeTooltip } from "../../graph/elkAdapter";
@@ -24,50 +23,41 @@ export function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; enti
   const isStructural = edge.kind === "rpc_link" || edge.kind === "channel_link";
 
   return (
-    <>
-      <div className="inspector-section">
-        <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
-          <span className="inspector-mono">{srcEntity?.name ?? edge.source}</span>
-          {srcEntity && (
-            <span className="inspector-mono" style={{ fontSize: "0.75em", marginLeft: 4 }}>
-              {formatProcessLabel(srcEntity.processName, srcEntity.processPid)}
-            </span>
-          )}
-        </KeyValueRow>
-        <KeyValueRow label="To" icon={dstEntity ? kindIcon(dstEntity.kind, 12) : undefined}>
-          <span className="inspector-mono">{dstEntity?.name ?? edge.target}</span>
-          {dstEntity && (
-            <span className="inspector-mono" style={{ fontSize: "0.75em", marginLeft: 4 }}>
-              {formatProcessLabel(dstEntity.processName, dstEntity.processPid)}
-            </span>
-          )}
-        </KeyValueRow>
-      </div>
-
-      <div className="inspector-section">
-        <KeyValueRow label="Meaning">
-          <span className="inspector-mono">{tooltip}</span>
-        </KeyValueRow>
-        <KeyValueRow label="Type">
-          <Badge
-            tone={
-              isStructural ? "neutral" : edge.kind === "needs" ? "crit" : edge.kind === "holds" ? "ok" : "warn"
-            }
-          >
-            {isStructural ? "structural" : "causal"}
-          </Badge>
-        </KeyValueRow>
-        {edge.opKind && (
-          <KeyValueRow label="Operation">
-            <span className="inspector-mono">{edge.opKind}</span>
-          </KeyValueRow>
+    <div className="inspector-kv-table">
+      <KeyValueRow label="From">
+        <span className="inspector-mono">{srcEntity?.name ?? edge.source}</span>
+        {srcEntity && (
+          <span className="inspector-mono" style={{ fontSize: "0.75em", marginLeft: 4 }}>
+            {formatProcessLabel(srcEntity.processName, srcEntity.processPid)}
+          </span>
         )}
-        {edge.state && (
-          <KeyValueRow label="State">
-            <span className="inspector-mono">{edge.state}</span>
-          </KeyValueRow>
+      </KeyValueRow>
+      <KeyValueRow label="To">
+        <span className="inspector-mono">{dstEntity?.name ?? edge.target}</span>
+        {dstEntity && (
+          <span className="inspector-mono" style={{ fontSize: "0.75em", marginLeft: 4 }}>
+            {formatProcessLabel(dstEntity.processName, dstEntity.processPid)}
+          </span>
         )}
-      </div>
-    </>
+      </KeyValueRow>
+      <KeyValueRow label="Meaning">
+        <span className="inspector-mono">{tooltip}</span>
+      </KeyValueRow>
+      <KeyValueRow label="Type">
+        <Badge tone={isStructural ? "neutral" : edge.kind === "needs" ? "crit" : edge.kind === "holds" ? "ok" : "warn"}>
+          {isStructural ? "structural" : "causal"}
+        </Badge>
+      </KeyValueRow>
+      {edge.opKind && (
+        <KeyValueRow label="Operation">
+          <span className="inspector-mono">{edge.opKind}</span>
+        </KeyValueRow>
+      )}
+      {edge.state && (
+        <KeyValueRow label="State">
+          <span className="inspector-mono">{edge.state}</span>
+        </KeyValueRow>
+      )}
+    </div>
   );
 }

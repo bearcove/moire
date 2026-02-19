@@ -100,6 +100,15 @@ fn ensure_process_scope(process_name: &str, source: Source) {
     PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process, source));
 }
 
+#[track_caller]
+fn ensure_process_scope_id() -> Option<ScopeId> {
+    if current_process_scope_id().is_none() {
+        let process_name = process_name_auto();
+        ensure_process_scope(process_name.as_str(), Source::caller());
+    }
+    current_process_scope_id()
+}
+
 fn process_name_auto() -> CompactString {
     std::env::current_exe()
         .ok()
@@ -579,14 +588,17 @@ impl RuntimeDb {
 
     fn upsert_entity(&mut self, entity: Entity) {
         let entity_id = EntityId::new(entity.id.as_str());
+        let should_link_task_scope = matches!(&entity.body, EntityBody::Future);
         let entity_json = facet_json::to_vec(&entity).ok();
         self.entities
             .insert(EntityId::new(entity.id.as_str()), entity);
-        if let Some(scope_id) = current_process_scope_id() {
+        if let Some(scope_id) = ensure_process_scope_id() {
             self.link_entity_to_scope(&entity_id, &scope_id);
         }
-        if let Some(scope_id) = self.ensure_current_task_scope_id() {
-            self.link_entity_to_scope(&entity_id, &scope_id);
+        if should_link_task_scope {
+            if let Some(scope_id) = self.ensure_current_task_scope_id() {
+                self.link_entity_to_scope(&entity_id, &scope_id);
+            }
         }
         if let Some(entity_json) = entity_json {
             self.push_change(InternalChange::UpsertEntity {
@@ -976,6 +988,14 @@ impl RuntimeDb {
         kind: EdgeKind,
         meta: facet_value::Value,
     ) {
+        if let Some(process_scope_id) = ensure_process_scope_id() {
+            if self.entities.contains_key(src) {
+                self.link_entity_to_scope(src, &process_scope_id);
+            }
+            if self.entities.contains_key(dst) {
+                self.link_entity_to_scope(dst, &process_scope_id);
+            }
+        }
         let key = EdgeKey {
             src: EntityId::new(src.as_str()),
             dst: EntityId::new(dst.as_str()),
@@ -5590,6 +5610,46 @@ mod tests {
         })
     }
 
+    fn entity_has_process_scope_link(id: &EntityId) -> bool {
+        let db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
+        db.entity_scope_links.keys().any(|(entity_id, scope_id)| {
+            entity_id == id
+                && db
+                    .scopes
+                    .get(scope_id)
+                    .is_some_and(|scope| matches!(&scope.body, ScopeBody::Process))
+        })
+    }
+
+    fn remove_process_scope_links(id: &EntityId) {
+        let mut db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
+        let scope_ids: Vec<ScopeId> = db
+            .entity_scope_links
+            .keys()
+            .filter_map(|(entity_id, scope_id)| {
+                if entity_id != id {
+                    return None;
+                }
+                let is_process = db
+                    .scopes
+                    .get(scope_id)
+                    .is_some_and(|scope| matches!(&scope.body, ScopeBody::Process));
+                if is_process {
+                    Some(ScopeId::new(scope_id.as_str()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for scope_id in scope_ids {
+            db.unlink_entity_from_scope(id, &scope_id);
+        }
+    }
+
     #[test]
     fn instrument_future_named_uses_caller_source() {
         let _guard = test_guard();
@@ -5834,6 +5894,51 @@ mod tests {
         let _ = parent.await;
 
         assert!(found, "expected spawned future entity to link to a task scope");
+    }
+
+    #[test]
+    fn entity_creation_always_links_process_scope() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let entity = EntityHandle::new(
+            "test.process.scope.entity",
+            EntityBody::Future,
+            Source::caller(),
+        );
+        let entity_id = EntityId::new(entity.id().as_str());
+
+        assert!(
+            entity_has_process_scope_link(&entity_id),
+            "expected created entity to always have process scope link"
+        );
+    }
+
+    #[test]
+    fn edge_upsert_repairs_missing_process_scope_links_for_endpoints() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let src = EntityHandle::new("test.process.scope.src", EntityBody::Future, Source::caller());
+        let dst = EntityHandle::new("test.process.scope.dst", EntityBody::Future, Source::caller());
+        let src_id = EntityId::new(src.id().as_str());
+        let dst_id = EntityId::new(dst.id().as_str());
+
+        remove_process_scope_links(&src_id);
+        remove_process_scope_links(&dst_id);
+        assert!(!entity_has_process_scope_link(&src_id));
+        assert!(!entity_has_process_scope_link(&dst_id));
+
+        src.link_to_handle(&dst, EdgeKind::Needs);
+
+        assert!(
+            entity_has_process_scope_link(&src_id),
+            "expected source process scope link to be restored during edge upsert"
+        );
+        assert!(
+            entity_has_process_scope_link(&dst_id),
+            "expected target process scope link to be restored during edge upsert"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

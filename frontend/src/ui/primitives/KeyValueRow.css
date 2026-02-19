@@ -1,24 +1,27 @@
 .ui-key-value-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--font-size-sm);
-    min-height: 22px;
+    display: contents;
 }
 
 .ui-key-value-row__label {
-    flex-shrink: 0;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     color: var(--text-secondary);
-    display: inline-flex;
+    text-align: right;
+    white-space: nowrap;
+    align-self: baseline;
+    min-height: 22px;
+    display: flex;
     align-items: center;
     justify-content: flex-end;
-    text-align: right;
 }
 
 .ui-key-value-row__value {
-    flex: 1;
-    min-width: 0;
-    word-break: break-all;
+    font-size: var(--font-size-sm);
     font-weight: 500;
+    min-width: 0;
+    word-break: break-word;
+    align-self: baseline;
+    min-height: 22px;
+    display: flex;
+    align-items: center;
 }
