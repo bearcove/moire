@@ -22,7 +22,7 @@
 
 .ui-menu-popover {
     min-width: 180px;
-    border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--bg-elevated) 54%, var(--bg-base));
     box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow-strong) 72%, transparent);

@@ -14,7 +14,7 @@
     width: 15px;
     height: 15px;
     border-radius: var(--radius-control);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
     background: var(--bg-surface);
     display: inline-flex;
     align-items: center;

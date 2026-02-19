@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  ensureTrailingSpaceForNewFilter,
-  graphFilterEditorParts,
-  parseGraphFilterQuery,
+  graphFilterEditorReducer,
+  graphFilterEditorStateFromText,
   graphFilterSuggestions,
+  parseGraphFilterQuery,
+  serializeGraphFilterEditorState,
+  type GraphFilterEditorAction,
+  type GraphFilterEditorState,
 } from "./graphFilter";
 
 const baseInput = {
@@ -22,6 +25,14 @@ const baseInput = {
     { id: "response", label: "Response" },
   ],
 };
+
+function reduce(state: GraphFilterEditorState, ...actions: GraphFilterEditorAction[]): GraphFilterEditorState {
+  let next = state;
+  for (const action of actions) {
+    next = graphFilterEditorReducer(next, action);
+  }
+  return next;
+}
 
 describe("graphFilterSuggestions", () => {
   it("filters key suggestions when no colon is present", () => {
@@ -79,21 +90,9 @@ describe("graphFilterSuggestions", () => {
   });
 });
 
-describe("ensureTrailingSpaceForNewFilter", () => {
-  it.each([
-    ["", ""],
-    ["-node:1/a", "-node:1/a "],
-    ["-node:1/a ", "-node:1/a "],
-    ["-node:1/a  ", "-node:1/a  "],
-    ['-location:"a b"', '-location:"a b" '],
-    ['-location:"a b" ', '-location:"a b" '],
-  ])("normalizes %s", (input, expected) => {
-    expect(ensureTrailingSpaceForNewFilter(input)).toBe(expected);
-  });
-});
-
-describe("graphFilterEditorParts", () => {
+describe("graphFilterEditorReducer", () => {
   const atoms = ["a", "bb", "ccc", "d4", "z"];
+
   function makeSequences(maxLen: number): string[][] {
     const out: string[][] = [[]];
     for (let len = 1; len <= maxLen; len++) {
@@ -106,63 +105,82 @@ describe("graphFilterEditorParts", () => {
     return out;
   }
 
-  const sequences = makeSequences(3); // 1 + 5 + 25 + 125 = 156 sequences
+  const sequences = makeSequences(3); // 156
   const cases: Array<{
     name: string;
-    text: string;
-    editing: boolean;
-    committed: string[];
-    fragment: string;
+    run: () => void;
   }> = [];
 
   for (const tokens of sequences) {
     const joined = tokens.join(" ");
+
     cases.push({
-      name: `view:${joined || "<empty>"}`,
-      text: joined,
-      editing: false,
-      committed: tokens,
-      fragment: "",
+      name: `from-text-roundtrip:${joined || "<empty>"}`,
+      run: () => {
+        const state = graphFilterEditorStateFromText(joined);
+        expect(state.ast).toEqual(tokens);
+        expect(state.insertionPoint).toBe(tokens.length);
+        expect(state.draft).toBe("");
+        expect(serializeGraphFilterEditorState(state)).toBe(joined);
+      },
     });
+
     cases.push({
-      name: `edit-trailing:${joined || "<empty>"}`,
-      text: joined.length === 0 ? "" : `${joined} `,
-      editing: true,
-      committed: tokens,
-      fragment: "",
+      name: `focus-and-draft:${joined || "<empty>"}`,
+      run: () => {
+        const state = reduce(
+          graphFilterEditorStateFromText(joined),
+          { type: "focus_input" },
+          { type: "set_draft", draft: "-node:alp" },
+        );
+        const expectedText = joined.length > 0 ? `${joined} -node:alp` : "-node:alp";
+        expect(state.ast).toEqual(tokens);
+        expect(state.draft).toBe("-node:alp");
+        expect(serializeGraphFilterEditorState(state)).toBe(expectedText);
+      },
     });
+
     cases.push({
-      name: `edit-fragment:${joined || "<empty>"}`,
-      text: joined,
-      editing: true,
-      committed: tokens.length > 0 ? tokens.slice(0, -1) : [],
-      fragment: tokens.length > 0 ? tokens[tokens.length - 1] : "",
+      name: `backspace-removes-previous-chip:${joined || "<empty>"}`,
+      run: () => {
+        const state = reduce(
+          graphFilterEditorStateFromText(joined),
+          { type: "focus_input" },
+          { type: "backspace_from_draft_start" },
+        );
+        const expectedTokens = tokens.slice(0, Math.max(0, tokens.length - 1));
+        expect(state.ast).toEqual(expectedTokens);
+        expect(state.draft).toBe("");
+        expect(state.insertionPoint).toBe(expectedTokens.length);
+        expect(serializeGraphFilterEditorState(state)).toBe(expectedTokens.join(" "));
+      },
     });
   }
 
-  // 156 * 3 = 468 cases
-  it.each(cases)("%s", ({ text, editing, committed, fragment }) => {
-    const out = graphFilterEditorParts(text, editing);
-    expect(out.committed).toEqual(committed);
-    expect(out.fragment).toBe(fragment);
+  // 156 * 3 = 468 matrix cases
+  it.each(cases)("%s", ({ run }) => run());
+
+  it("applies suggestion by inserting at current insertion point", () => {
+    const state = reduce(
+      graphFilterEditorStateFromText("colorBy:crate"),
+      { type: "focus_input" },
+      { type: "set_draft", draft: "-n" },
+      { type: "apply_suggestion", token: "-node:<id>" },
+    );
+    expect(state.ast).toEqual(["colorBy:crate", "-node:<id>"]);
+    expect(state.draft).toBe("");
+    expect(state.suggestionsOpen).toBe(false);
+    expect(serializeGraphFilterEditorState(state)).toBe("colorBy:crate -node:<id>");
   });
 
-  it("keeps quoted token intact when editing fragment", () => {
-    const out = graphFilterEditorParts('-node:1/a -location:"src/main.rs:42"', true);
-    expect(out.committed).toEqual(["-node:1/a"]);
-    expect(out.fragment).toBe('-location:"src/main.rs:42"');
-  });
-
-  it("treats quoted token as committed when not editing", () => {
-    const out = graphFilterEditorParts('-node:1/a -location:"src/main.rs:42"', false);
-    expect(out.committed).toEqual(["-node:1/a", '-location:"src/main.rs:42"']);
-    expect(out.fragment).toBe("");
-  });
-
-  it("creates empty fragment when text ends with space", () => {
-    const out = graphFilterEditorParts("-node:1/a -location:src/main.rs:42 ", true);
-    expect(out.committed).toEqual(["-node:1/a", "-location:src/main.rs:42"]);
-    expect(out.fragment).toBe("");
+  it("move_suggestion cycles using total", () => {
+    const state = reduce(
+      graphFilterEditorStateFromText(""),
+      { type: "move_suggestion", delta: 1, total: 5 },
+      { type: "move_suggestion", delta: -1, total: 5 },
+      { type: "move_suggestion", delta: -1, total: 5 },
+    );
+    expect(state.suggestionIndex).toBe(4);
   });
 });
 

@@ -5,7 +5,7 @@
     padding: 0 8px;
     height: 28px;
     border-radius: var(--radius-control);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
     background: var(--bg-surface);
     color: var(--text-primary);
     font-size: var(--font-size-sm);
@@ -59,7 +59,7 @@
 
 .ui-action-button--ghost:hover {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
-    border-color: var(--border-subtle);
+    border-color: var(--border-default);
 }
 
 .ui-action-button--sm {

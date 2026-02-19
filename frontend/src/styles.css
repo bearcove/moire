@@ -31,6 +31,7 @@
     --font-size-md: calc(14px * var(--font-scale-ui));
     --font-size-lg: calc(18px * var(--font-scale-ui));
     --radius-control: 3px;
+    --graph-border-width: 1.4px;
     font-family: var(--font-ui);
     font-size: var(--font-size-md);
     line-height: 1.4;

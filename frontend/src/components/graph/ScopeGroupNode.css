@@ -1,7 +1,7 @@
 .scope-group {
     width: 100%;
     height: 100%;
-    border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+    border: var(--graph-border-width) solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
     border-radius: var(--radius-control);
 }
 
@@ -10,9 +10,9 @@
     align-items: center;
     gap: 8px;
     padding: 4px 6px;
-    border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+    border-bottom: var(--graph-border-width) solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
     background: var(--bg-surface);
-    font-family: var(--font-ui);
+    font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     font-weight: 400;
     color: var(--text-secondary);

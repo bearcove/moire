@@ -97,9 +97,9 @@
     overflow-y: hidden;
     gap: 6px;
     border: 2px solid var(--border-default);
-    border-radius: var(--radius-control);
+    border-radius: 6px;
     background: var(--bg-elevated);
-    padding: 4px 8px;
+    padding: 2px 10px;
     box-sizing: border-box;
 }
 

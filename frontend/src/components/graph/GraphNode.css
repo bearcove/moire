@@ -1,7 +1,7 @@
 .graph-card {
     --graph-card-bg: var(--bg-surface);
     --graph-card-border-color: var(--border-default);
-    --graph-card-border-width: 1px;
+    --graph-card-border-width: var(--graph-border-width);
     font-family: var(--font-ui);
     white-space: nowrap;
     background: var(--graph-card-bg);

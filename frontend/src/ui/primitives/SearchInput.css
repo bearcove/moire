@@ -46,7 +46,7 @@
 }
 
 .ui-search-results {
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
     background: var(--bg-surface);
     padding: 2px;
@@ -57,7 +57,7 @@
     width: var(--trigger-width);
     max-height: min(50vh, 420px);
     overflow: auto;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
     background: var(--bg-surface);
     box-shadow: 0 14px 30px var(--shadow-strong);
@@ -103,7 +103,7 @@
 }
 
 .ui-search-result-item {
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
     background: var(--bg-surface);
     text-align: left;

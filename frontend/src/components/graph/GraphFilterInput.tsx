@@ -1,14 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { Crosshair } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { Badge } from "../../ui/primitives/Badge";
 import type { FilterMenuItem } from "../../ui/primitives/FilterMenu";
 import {
-  ensureTrailingSpaceForNewFilter,
-  graphFilterEditorParts,
+  graphFilterEditorReducer,
+  graphFilterEditorStateFromText,
   graphFilterSuggestions,
   parseGraphFilterQuery,
-  replaceTrailingFragment,
+  serializeGraphFilterEditorState,
 } from "../../graphFilter";
 
 export function GraphFilterInput({
@@ -38,17 +38,36 @@ export function GraphFilterInput({
 }) {
   const graphFilterInputRef = useRef<HTMLInputElement | null>(null);
   const graphFilterRootRef = useRef<HTMLDivElement | null>(null);
-  const [graphFilterSuggestionIndex, setGraphFilterSuggestionIndex] = useState(0);
-  const [graphFilterSuggestOpen, setGraphFilterSuggestOpen] = useState(false);
-  const [graphFilterEditing, setGraphFilterEditing] = useState(false);
-
-  const parsedGraphFilters = useMemo(() => parseGraphFilterQuery(graphFilterText), [graphFilterText]);
-  const graphFilterTokens = parsedGraphFilters.tokens;
-  const filterParts = useMemo(
-    () => graphFilterEditorParts(graphFilterText, graphFilterEditing),
-    [graphFilterText, graphFilterEditing],
+  const [editorState, dispatchEditor] = useReducer(
+    graphFilterEditorReducer,
+    graphFilterText,
+    graphFilterEditorStateFromText,
   );
-  const currentFragment = useMemo(() => filterParts.fragment.trim(), [filterParts.fragment]);
+
+  const serializedEditor = useMemo(
+    () => serializeGraphFilterEditorState(editorState),
+    [editorState],
+  );
+
+  useEffect(() => {
+    if (graphFilterText === serializedEditor) return;
+    dispatchEditor({ type: "sync_from_text", text: graphFilterText });
+  }, [graphFilterText, serializedEditor]);
+
+  useEffect(() => {
+    if (graphFilterText === serializedEditor) return;
+    onGraphFilterTextChange(serializedEditor);
+  }, [graphFilterText, onGraphFilterTextChange, serializedEditor]);
+
+  const graphFilterTokens = useMemo(
+    () =>
+      editorState.ast.map((raw) => {
+        const parsed = parseGraphFilterQuery(raw).tokens[0];
+        return parsed ?? { raw, key: null, value: null, valid: false };
+      }),
+    [editorState.ast],
+  );
+  const currentFragment = useMemo(() => editorState.draft.trim(), [editorState.draft]);
   const graphFilterSuggestionsList = useMemo(
     () =>
       graphFilterSuggestions({
@@ -61,45 +80,33 @@ export function GraphFilterInput({
       }),
     [currentFragment, nodeIds, locations, crateItems, processItems, kindItems],
   );
-
-  const applyGraphFilterSuggestion = useCallback(
-    (token: string) => {
-      onGraphFilterTextChange(replaceTrailingFragment(graphFilterText, token));
-      setGraphFilterSuggestOpen(false);
-      setGraphFilterSuggestionIndex(0);
-      graphFilterInputRef.current?.focus();
-    },
-    [graphFilterText, onGraphFilterTextChange],
-  );
-
-  const setFilterFragment = useCallback(
-    (fragment: string) => {
-      const prefix = filterParts.committed.join(" ");
-      if (prefix.length === 0) {
-        onGraphFilterTextChange(fragment);
-        return;
-      }
-      if (fragment.length === 0) {
-        onGraphFilterTextChange(`${prefix} `);
-        return;
-      }
-      onGraphFilterTextChange(`${prefix} ${fragment}`);
-    },
-    [filterParts.committed, onGraphFilterTextChange],
-  );
+  const activeSuggestionIndex =
+    graphFilterSuggestionsList.length === 0
+      ? 0
+      : Math.min(editorState.suggestionIndex, graphFilterSuggestionsList.length - 1);
 
   useEffect(() => {
-    if (graphFilterSuggestionIndex < graphFilterSuggestionsList.length) return;
-    setGraphFilterSuggestionIndex(0);
-  }, [graphFilterSuggestionIndex, graphFilterSuggestionsList.length]);
+    if (graphFilterSuggestionsList.length === 0) {
+      if (editorState.suggestionIndex !== 0) {
+        dispatchEditor({ type: "set_suggestion_index", index: 0 });
+      }
+      return;
+    }
+    if (editorState.suggestionIndex < graphFilterSuggestionsList.length) return;
+    dispatchEditor({ type: "set_suggestion_index", index: 0 });
+  }, [editorState.suggestionIndex, graphFilterSuggestionsList.length]);
+
+  const applyGraphFilterSuggestion = useCallback((token: string) => {
+    dispatchEditor({ type: "apply_suggestion", token });
+    graphFilterInputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
       const root = graphFilterRootRef.current;
       if (!root) return;
       if (event.target instanceof Node && root.contains(event.target)) return;
-      setGraphFilterEditing(false);
-      setGraphFilterSuggestOpen(false);
+      dispatchEditor({ type: "blur_input" });
       if (document.activeElement === graphFilterInputRef.current) {
         graphFilterInputRef.current?.blur();
       }
@@ -118,7 +125,7 @@ export function GraphFilterInput({
             graphFilterInputRef.current?.focus();
           }}
         >
-          {filterParts.committed.map((raw, index) => {
+          {editorState.ast.map((raw, index) => {
             const parsed = graphFilterTokens[index];
             const valid = parsed?.valid ?? false;
             return (
@@ -131,8 +138,7 @@ export function GraphFilterInput({
                 ].join(" ")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  const next = filterParts.committed.filter((_, i) => i !== index);
-                  onGraphFilterTextChange(next.join(" "));
+                  dispatchEditor({ type: "remove_chip", index });
                   graphFilterInputRef.current?.focus();
                 }}
                 title={valid ? "remove filter token" : "invalid filter token"}
@@ -145,70 +151,62 @@ export function GraphFilterInput({
           <input
             ref={graphFilterInputRef}
             type="text"
-            value={filterParts.fragment}
+            value={editorState.draft}
             onChange={(event) => {
-              setFilterFragment(event.target.value);
-              setGraphFilterSuggestOpen(true);
-              setGraphFilterSuggestionIndex(0);
+              dispatchEditor({ type: "set_draft", draft: event.target.value });
             }}
             onFocus={() => {
-              setGraphFilterEditing(true);
-              const nextText = ensureTrailingSpaceForNewFilter(graphFilterText);
-              if (nextText !== graphFilterText) onGraphFilterTextChange(nextText);
-              setGraphFilterSuggestOpen(true);
+              dispatchEditor({ type: "focus_input" });
             }}
             onBlur={() => {
-              setGraphFilterEditing(false);
-              window.setTimeout(() => setGraphFilterSuggestOpen(false), 100);
+              dispatchEditor({ type: "blur_input" });
             }}
             onKeyDown={(event) => {
-              if (event.key === "Backspace" && filterParts.fragment.length === 0 && filterParts.committed.length > 0) {
+              if (event.key === "Backspace" && editorState.draft.length === 0 && editorState.insertionPoint > 0) {
                 event.preventDefault();
-                const next = filterParts.committed.slice(0, -1);
-                onGraphFilterTextChange(next.length > 0 ? `${next.join(" ")} ` : "");
-                setGraphFilterSuggestOpen(true);
-                setGraphFilterSuggestionIndex(0);
+                dispatchEditor({ type: "backspace_from_draft_start" });
                 return;
               }
               if (event.key === "Tab") {
                 event.preventDefault();
-                if (!graphFilterSuggestOpen || graphFilterSuggestionsList.length === 0) {
-                  setGraphFilterSuggestOpen(true);
+                if (!editorState.suggestionsOpen || graphFilterSuggestionsList.length === 0) {
+                  dispatchEditor({ type: "open_suggestions" });
                   return;
                 }
                 if (event.shiftKey) {
-                  setGraphFilterSuggestionIndex(
-                    (idx) => (idx + graphFilterSuggestionsList.length - 1) % graphFilterSuggestionsList.length,
-                  );
+                  dispatchEditor({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length });
                   return;
                 }
-                const choice = graphFilterSuggestionsList[graphFilterSuggestionIndex];
+                const choice = graphFilterSuggestionsList[activeSuggestionIndex];
                 if (!choice) return;
                 applyGraphFilterSuggestion(choice.token);
                 return;
               }
-              if (!graphFilterSuggestOpen || graphFilterSuggestionsList.length === 0) return;
+              if (!editorState.suggestionsOpen || graphFilterSuggestionsList.length === 0) return;
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                setGraphFilterSuggestionIndex((idx) => (idx + 1) % graphFilterSuggestionsList.length);
+                dispatchEditor({ type: "move_suggestion", delta: 1, total: graphFilterSuggestionsList.length });
                 return;
               }
               if (event.key === "ArrowUp") {
                 event.preventDefault();
-                setGraphFilterSuggestionIndex(
-                  (idx) => (idx + graphFilterSuggestionsList.length - 1) % graphFilterSuggestionsList.length,
-                );
+                dispatchEditor({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length });
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                dispatchEditor({ type: "close_suggestions" });
                 return;
               }
               if (event.key === "Enter") {
-                const choice = graphFilterSuggestionsList[graphFilterSuggestionIndex];
+                const choice = graphFilterSuggestionsList[activeSuggestionIndex];
                 if (!choice) return;
                 event.preventDefault();
                 applyGraphFilterSuggestion(choice.token);
               }
             }}
             placeholder={
-              filterParts.committed.length === 0
+              editorState.ast.length === 0
                 ? "filters: node:.. location:.. crate:.. process:.. kind:.. loners:on|off colorBy:.. groupBy:.."
                 : "add filter…"
             }
@@ -216,7 +214,7 @@ export function GraphFilterInput({
             aria-label="Graph filter query"
           />
         </div>
-        {graphFilterSuggestOpen && graphFilterSuggestionsList.length > 0 && (
+        {editorState.suggestionsOpen && graphFilterSuggestionsList.length > 0 && (
           <div className="graph-filter-suggestions">
             {graphFilterSuggestionsList.map((suggestion, index) => (
               <button
@@ -224,7 +222,7 @@ export function GraphFilterInput({
                 type="button"
                 className={[
                   "graph-filter-suggestion",
-                  index === graphFilterSuggestionIndex && "graph-filter-suggestion--active",
+                  index === activeSuggestionIndex && "graph-filter-suggestion--active",
                 ].filter(Boolean).join(" ")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => applyGraphFilterSuggestion(suggestion.token)}
