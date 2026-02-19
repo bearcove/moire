@@ -39,8 +39,14 @@ crate::define_entity_body! {
         // Tokio core and sync primitives
         Future(FutureEntity),
         Lock(LockEntity),
-        ChannelTx(ChannelEndpointEntity),
-        ChannelRx(ChannelEndpointEntity),
+        MpscTx(MpscTxEntity),
+        MpscRx(MpscRxEntity),
+        BroadcastTx(BroadcastTxEntity),
+        BroadcastRx(BroadcastRxEntity),
+        WatchTx(WatchTxEntity),
+        WatchRx(WatchRxEntity),
+        OneshotTx(OneshotTxEntity),
+        OneshotRx(OneshotRxEntity),
         Semaphore(SemaphoreEntity),
         Notify(NotifyEntity),
         OnceCell(OnceCellEntity),
@@ -80,83 +86,41 @@ pub enum LockKind {
 }
 
 #[derive(Facet)]
-pub struct ChannelEndpointEntity {
-    /// Endpoint lifecycle state.
-    pub lifecycle: ChannelEndpointLifecycle,
-    /// Channel-kind-specific runtime details.
-    pub details: ChannelDetails,
-}
-
-#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum ChannelEndpointLifecycle {
-    Open,
-    Closed(ChannelCloseCause),
-}
-
-#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum ChannelCloseCause {
-    SenderDropped,
-    ReceiverDropped,
-    ReceiverClosed,
-}
-
-#[derive(Facet)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum ChannelDetails {
-    Mpsc(MpscChannelDetails),
-    Broadcast(BroadcastChannelDetails),
-    Watch(WatchChannelDetails),
-    Oneshot(OneshotChannelDetails),
-}
-
-#[derive(Facet)]
-pub struct MpscChannelDetails {
-    /// Buffer state when observable for this endpoint.
-    pub buffer: Option<BufferState>,
-}
-
-#[derive(Facet)]
-pub struct BroadcastChannelDetails {
-    /// Buffer state when observable for this endpoint.
-    pub buffer: Option<BufferState>,
-}
-
-#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferState {
-    /// Current number of buffered items.
-    pub occupancy: u32,
-    /// Maximum buffered items when bounded; `None` means unbounded.
+pub struct MpscTxEntity {
+    /// Current queue length.
+    pub queue_len: u32,
+    /// Configured capacity (`None` for unbounded).
     pub capacity: Option<u32>,
 }
 
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MpscRxEntity {}
+
 #[derive(Facet)]
-pub struct WatchChannelDetails {
-    /// Last update timestamp observed for this watch channel.
+pub struct BroadcastTxEntity {
+    pub capacity: u32,
+}
+
+#[derive(Facet)]
+pub struct BroadcastRxEntity {
+    pub lag: u32,
+}
+
+#[derive(Facet)]
+pub struct WatchTxEntity {
     pub last_update_at: Option<PTime>,
 }
 
 #[derive(Facet)]
-pub struct OneshotChannelDetails {
-    /// Current oneshot lifecycle state.
-    pub state: OneshotState,
+pub struct WatchRxEntity {}
+
+#[derive(Facet)]
+pub struct OneshotTxEntity {
+    pub sent: bool,
 }
 
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum OneshotState {
-    Pending,
-    Sent,
-    Received,
-    SenderDropped,
-    ReceiverDropped,
-}
+pub struct OneshotRxEntity {}
 
 #[derive(Facet)]
 pub struct SemaphoreEntity {

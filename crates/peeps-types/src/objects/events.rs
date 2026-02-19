@@ -1,7 +1,7 @@
 use facet::Facet;
 use peeps_source::SourceId;
 
-use crate::{next_event_id, ChannelCloseCause, EntityId, EventId, PTime, ScopeId};
+use crate::{next_event_id, EntityId, EventId, PTime, ScopeId};
 
 #[derive(Facet)]
 pub struct Event {
@@ -53,9 +53,6 @@ pub enum EventKind {
     StateChanged,
     ChannelSent,
     ChannelReceived,
-    ChannelClosed,
-    ChannelWaitStarted,
-    ChannelWaitEnded,
 }
 
 crate::impl_sqlite_json!(EventTarget);
@@ -70,70 +67,20 @@ crate::declare_event_kind_slots!(
     StateChangedKindSlot::StateChanged,
     ChannelSentKindSlot::ChannelSent,
     ChannelReceivedKindSlot::ChannelReceived,
-    ChannelClosedKindSlot::ChannelClosed,
-    ChannelWaitStartedKindSlot::ChannelWaitStarted,
-    ChannelWaitEndedKindSlot::ChannelWaitEnded,
 );
 
 #[derive(Facet)]
-pub struct ChannelSendEvent {
-    /// Send attempt outcome.
-    pub outcome: ChannelSendOutcome,
-    /// Queue length after the operation, when observable.
-    pub queue_len: Option<u32>,
+pub struct ChannelSentEvent {
+    /// Observed wait duration in nanoseconds, if this operation suspended.
+    pub wait_ns: Option<u64>,
+    /// True if the send failed because the other side was gone.
+    pub closed: bool,
 }
 
 #[derive(Facet)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum ChannelSendOutcome {
-    Ok,
-    Full,
-    Closed,
-}
-
-#[derive(Facet)]
-pub struct ChannelReceiveEvent {
-    /// Receive attempt outcome.
-    pub outcome: ChannelReceiveOutcome,
-    /// Queue length after the operation, when observable.
-    pub queue_len: Option<u32>,
-}
-
-#[derive(Facet)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum ChannelReceiveOutcome {
-    Ok,
-    Empty,
-    Closed,
-}
-
-#[derive(Facet)]
-pub struct ChannelClosedEvent {
-    /// Reason the endpoint transitioned to closed.
-    pub cause: ChannelCloseCause,
-}
-
-#[derive(Facet)]
-pub struct ChannelWaitStartedEvent {
-    /// Wait reason being started.
-    pub kind: ChannelWaitKind,
-}
-
-#[derive(Facet)]
-pub struct ChannelWaitEndedEvent {
-    /// Wait reason that ended.
-    pub kind: ChannelWaitKind,
-    /// Observed wait duration in nanoseconds.
-    pub wait_ns: u64,
-}
-
-#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum ChannelWaitKind {
-    SendFull,
-    ReceiveEmpty,
-    Change,
+pub struct ChannelReceivedEvent {
+    /// Observed wait duration in nanoseconds, if this operation suspended.
+    pub wait_ns: Option<u64>,
+    /// True if the recv failed because the other side was gone.
+    pub closed: bool,
 }
