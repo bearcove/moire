@@ -39,7 +39,6 @@ pub struct DiagnosticInterval {
 pub type Interval = DiagnosticInterval;
 
 impl Command {
-    #[track_caller]
     pub fn new(program: impl AsRef<OsStr>) -> Self {
         let program = String::from(program.as_ref().to_string_lossy().as_ref());
         Self {
@@ -49,16 +48,12 @@ impl Command {
             env: Vec::new(),
         }
     }
-
-    #[track_caller]
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
         let arg = arg.as_ref().to_owned();
         self.args.push(String::from(arg.to_string_lossy().as_ref()));
         self.inner.arg(&arg);
         self
     }
-
-    #[track_caller]
     pub fn args(&mut self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
         let args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
         for arg in &args {
@@ -67,8 +62,6 @@ impl Command {
         self.inner.args(args);
         self
     }
-
-    #[track_caller]
     pub fn env(&mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> &mut Self {
         let key = key.as_ref().to_owned();
         let val = val.as_ref().to_owned();
@@ -80,8 +73,6 @@ impl Command {
         self.inner.env(&key, &val);
         self
     }
-
-    #[track_caller]
     pub fn envs(
         &mut self,
         vars: impl IntoIterator<Item = (impl AsRef<OsStr>, impl AsRef<OsStr>)>,
@@ -100,15 +91,11 @@ impl Command {
         self.inner.envs(vars);
         self
     }
-
-    #[track_caller]
     pub fn env_clear(&mut self) -> &mut Self {
         self.env.clear();
         self.inner.env_clear();
         self
     }
-
-    #[track_caller]
     pub fn env_remove(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
         let key = key.as_ref().to_owned();
         let key_prefix = format!("{}=", key.to_string_lossy());
@@ -117,32 +104,22 @@ impl Command {
         self.inner.env_remove(&key);
         self
     }
-
-    #[track_caller]
     pub fn current_dir(&mut self, dir: impl AsRef<std::path::Path>) -> &mut Self {
         self.inner.current_dir(dir);
         self
     }
-
-    #[track_caller]
     pub fn stdin(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
         self.inner.stdin(cfg);
         self
     }
-
-    #[track_caller]
     pub fn stdout(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
         self.inner.stdout(cfg);
         self
     }
-
-    #[track_caller]
     pub fn stderr(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
         self.inner.stderr(cfg);
         self
     }
-
-    #[track_caller]
     pub fn kill_on_drop(&mut self, kill_on_drop: bool) -> &mut Self {
         self.inner.kill_on_drop(kill_on_drop);
         self
@@ -187,8 +164,6 @@ impl Command {
             None,
         )
     }
-
-    #[track_caller]
     pub fn as_std(&self) -> &std::process::Command {
         self.inner.as_std()
     }
@@ -201,13 +176,9 @@ impl Command {
         self.inner.pre_exec(f);
         self
     }
-
-    #[track_caller]
     pub fn into_inner(self) -> tokio::process::Command {
         self.inner
     }
-
-    #[track_caller]
     pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
         let diag = CommandDiagnostics {
             program: self.program.clone(),
@@ -231,7 +202,6 @@ impl Command {
 }
 
 impl Child {
-    #[track_caller]
     pub fn from_tokio_with_diagnostics(
         child: tokio::process::Child,
         diag: CommandDiagnostics,
@@ -256,8 +226,6 @@ impl Child {
     fn inner_mut(&mut self) -> &mut tokio::process::Child {
         self.inner.as_mut().expect("child already consumed")
     }
-
-    #[track_caller]
     pub fn id(&self) -> Option<u32> {
         self.inner().id()
     }
@@ -292,43 +260,27 @@ impl Child {
             None,
         )
     }
-
-    #[track_caller]
     pub fn start_kill(&mut self) -> io::Result<()> {
         self.inner_mut().start_kill()
     }
-
-    #[track_caller]
     pub fn kill(&mut self) -> io::Result<()> {
         self.start_kill()
     }
-
-    #[track_caller]
     pub fn stdin(&mut self) -> &mut Option<tokio::process::ChildStdin> {
         &mut self.inner_mut().stdin
     }
-
-    #[track_caller]
     pub fn stdout(&mut self) -> &mut Option<tokio::process::ChildStdout> {
         &mut self.inner_mut().stdout
     }
-
-    #[track_caller]
     pub fn stderr(&mut self) -> &mut Option<tokio::process::ChildStderr> {
         &mut self.inner_mut().stderr
     }
-
-    #[track_caller]
     pub fn take_stdin(&mut self) -> Option<tokio::process::ChildStdin> {
         self.inner_mut().stdin.take()
     }
-
-    #[track_caller]
     pub fn take_stdout(&mut self) -> Option<tokio::process::ChildStdout> {
         self.inner_mut().stdout.take()
     }
-
-    #[track_caller]
     pub fn take_stderr(&mut self) -> Option<tokio::process::ChildStderr> {
         self.inner_mut().stderr.take()
     }
