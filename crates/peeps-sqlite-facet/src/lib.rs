@@ -9,7 +9,7 @@
 
 use compact_str::CompactString;
 use peeps_types::{Edge, Entity, Event, PTime, Scope, Snapshot, SourceId};
-use rusqlite::types::{Value as SqlValue, ValueRef};
+use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, Value as SqlValue, ValueRef};
 use std::fmt;
 
 #[derive(Debug)]
@@ -26,6 +26,35 @@ impl fmt::Display for EncodeError {
 }
 
 impl std::error::Error for EncodeError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Json(String);
+
+impl Json {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self(text.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl ToSql for Json {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(self.0.as_str().into())
+    }
+}
+
+impl FromSql for Json {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(Self(String::column_result(value)?))
+    }
+}
 
 pub fn sqlite_value_ref_to_facet(value: ValueRef<'_>) -> facet_value::Value {
     match value {
@@ -70,7 +99,7 @@ pub struct EncodedEntityRow {
     pub birth: PTime,
     pub source_id: SourceId,
     pub name: CompactString,
-    pub body_json: String,
+    pub body_json: Json,
 }
 
 #[derive(Debug, Clone)]
@@ -79,24 +108,24 @@ pub struct EncodedScopeRow {
     pub birth: PTime,
     pub source_id: SourceId,
     pub name: CompactString,
-    pub body_json: String,
+    pub body_json: Json,
 }
 
 #[derive(Debug, Clone)]
 pub struct EncodedEdgeRow {
     pub src_id: CompactString,
     pub dst_id: CompactString,
-    pub kind_json: String,
-    pub meta_json: String,
+    pub kind_json: Json,
+    pub meta_json: Json,
 }
 
 #[derive(Debug, Clone)]
 pub struct EncodedEventRow {
     pub id: CompactString,
     pub at: PTime,
-    pub source: CompactString,
-    pub target_json: String,
-    pub kind_json: String,
+    pub source_id: SourceId,
+    pub target_json: Json,
+    pub kind_json: Json,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -113,8 +142,9 @@ pub fn encode_entity_row(entity: &Entity) -> Result<EncodedEntityRow, EncodeErro
         birth: entity.birth,
         source_id: entity.source,
         name: entity.name.clone(),
-        body_json: facet_json::to_string(&entity.body)
-            .map_err(|e| EncodeError::Json(e.to_string()))?,
+        body_json: Json::new(
+            facet_json::to_string(&entity.body).map_err(|e| EncodeError::Json(e.to_string()))?,
+        ),
     })
 }
 
@@ -124,8 +154,9 @@ pub fn encode_scope_row(scope: &Scope) -> Result<EncodedScopeRow, EncodeError> {
         birth: scope.birth,
         source_id: scope.source,
         name: scope.name.clone(),
-        body_json: facet_json::to_string(&scope.body)
-            .map_err(|e| EncodeError::Json(e.to_string()))?,
+        body_json: Json::new(
+            facet_json::to_string(&scope.body).map_err(|e| EncodeError::Json(e.to_string()))?,
+        ),
     })
 }
 
@@ -133,10 +164,12 @@ pub fn encode_edge_row(edge: &Edge) -> Result<EncodedEdgeRow, EncodeError> {
     Ok(EncodedEdgeRow {
         src_id: CompactString::new(edge.src.as_str()),
         dst_id: CompactString::new(edge.dst.as_str()),
-        kind_json: facet_json::to_string(&edge.kind)
-            .map_err(|e| EncodeError::Json(e.to_string()))?,
-        meta_json: facet_json::to_string(&edge.meta)
-            .map_err(|e| EncodeError::Json(e.to_string()))?,
+        kind_json: Json::new(
+            facet_json::to_string(&edge.kind).map_err(|e| EncodeError::Json(e.to_string()))?,
+        ),
+        meta_json: Json::new(
+            facet_json::to_string(&edge.meta).map_err(|e| EncodeError::Json(e.to_string()))?,
+        ),
     })
 }
 
@@ -144,11 +177,13 @@ pub fn encode_event_row(event: &Event) -> Result<EncodedEventRow, EncodeError> {
     Ok(EncodedEventRow {
         id: CompactString::new(event.id.as_str()),
         at: event.at,
-        source: event.source.clone(),
-        target_json: facet_json::to_string(&event.target)
-            .map_err(|e| EncodeError::Json(e.to_string()))?,
-        kind_json: facet_json::to_string(&event.kind)
-            .map_err(|e| EncodeError::Json(e.to_string()))?,
+        source_id: event.source,
+        target_json: Json::new(
+            facet_json::to_string(&event.target).map_err(|e| EncodeError::Json(e.to_string()))?,
+        ),
+        kind_json: Json::new(
+            facet_json::to_string(&event.kind).map_err(|e| EncodeError::Json(e.to_string()))?,
+        ),
     })
 }
 
@@ -242,7 +277,7 @@ pub fn insert_encoded_snapshot_batch(
         tables.edges.as_str()
     );
     let events_sql = format!(
-        "{} [{}] (snapshot_id, id, at_ms, source, target_json, kind_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "{} [{}] (snapshot_id, id, at_ms, source_id, target_json, kind_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         mode.verb(),
         tables.events.as_str()
     );
@@ -298,7 +333,7 @@ pub fn insert_encoded_snapshot_batch(
                 snapshot_id,
                 row.id.as_str(),
                 row.at,
-                row.source.as_str(),
+                row.source_id,
                 row.target_json,
                 row.kind_json,
             ])?;
