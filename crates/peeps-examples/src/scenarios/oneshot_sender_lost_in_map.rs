@@ -11,8 +11,8 @@ const SOURCE_LEFT: peeps::SourceLeft =
     peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
 #[track_caller]
-fn source() -> peeps::Source {
-    SOURCE_LEFT.resolve()
+fn source() -> peeps::SourceId {
+    SOURCE_LEFT.resolve().into()
 }
 
 fn storage_key_for_request(request_id: RequestId) -> RequestId {
@@ -29,17 +29,16 @@ pub async fn run() -> Result<(), String> {
     let pending_by_request_id: PendingMap = Arc::new(peeps::Mutex::new(
         "demo.pending_oneshot_senders",
         HashMap::new(),
-        peeps::SourceRight::caller(),
+        source(),
     ));
-    let (response_bus_tx, mut response_bus_rx) =
-        peeps::channel("demo.response_bus", 4, peeps::SourceRight::caller());
+    let (response_bus_tx, mut response_bus_rx) = peeps::channel("demo.response_bus", 4, source());
 
     let pending_for_request = Arc::clone(&pending_by_request_id);
     peeps::spawn_tracked(
         "client.request_42.await_response",
         async move {
             let request_id = 42_u64;
-            let (tx, rx) = peeps::oneshot("demo.request_42.response", peeps::SourceRight::caller());
+            let (tx, rx) = peeps::oneshot("demo.request_42.response", source());
 
             let storage_key = storage_key_for_request(request_id);
             pending_for_request.lock().insert(storage_key, tx);

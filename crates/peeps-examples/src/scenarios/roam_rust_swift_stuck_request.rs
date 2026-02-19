@@ -8,8 +8,8 @@ const SOURCE_LEFT: peeps::SourceLeft =
     peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
 #[track_caller]
-fn source() -> peeps::Source {
-    SOURCE_LEFT.resolve()
+fn source() -> peeps::SourceId {
+    SOURCE_LEFT.resolve().into()
 }
 
 fn swift_package_path(workspace_root: &Path) -> PathBuf {

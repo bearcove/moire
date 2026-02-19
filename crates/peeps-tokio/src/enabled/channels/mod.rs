@@ -1,4 +1,4 @@
-pub(super) use super::{local_source, Source, SourceRight};
+pub(super) use super::SourceId;
 
 pub(crate) mod broadcast;
 pub use broadcast::{broadcast, broadcast_channel, BroadcastReceiver, BroadcastSender};

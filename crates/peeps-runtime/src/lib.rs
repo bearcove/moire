@@ -79,7 +79,7 @@ impl Drop for TaskScopeRegistration {
 
 pub fn register_current_task_scope(
     task_name: &str,
-    source: Source,
+    source: SourceId,
 ) -> Option<TaskScopeRegistration> {
     let task_key = current_tokio_task_key()?;
     let scope = ScopeHandle::new(
@@ -99,7 +99,7 @@ pub fn register_current_task_scope(
 pub fn spawn_tracked<F>(
     name: impl Into<String>,
     fut: F,
-    source: Source,
+    source: SourceId,
 ) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
@@ -108,7 +108,7 @@ where
     let name: String = name.into();
     tokio::spawn(
         FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
-            let _task_scope = register_current_task_scope(name.as_str(), source.clone());
+            let _task_scope = register_current_task_scope(name.as_str(), source);
             instrument_future(name, fut, source, None, None).await
         }),
     )
@@ -118,7 +118,7 @@ where
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<String>,
     f: F,
-    source: Source,
+    source: SourceId,
 ) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
@@ -131,8 +131,8 @@ where
     })
 }
 
-pub fn record_event_with_source(mut event: Event, source: &Source) {
-    event.source = source.clone().into();
+pub fn record_event_with_source(mut event: Event, source: SourceId) {
+    event.source = source;
     if let Ok(mut db) = db::runtime_db().lock() {
         db.record_event(event);
     }

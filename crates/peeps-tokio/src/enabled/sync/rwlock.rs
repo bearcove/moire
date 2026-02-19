@@ -1,6 +1,6 @@
 use peeps_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 
-use super::super::{local_source, Source, SourceRight};
+use super::super::SourceId;
 use peeps_runtime::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 
 pub struct RwLock<T> {
@@ -9,13 +9,13 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
-    pub fn new(name: &'static str, value: T, source: SourceRight) -> Self {
+    pub fn new(name: &'static str, value: T, source: SourceId) -> Self {
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
                 kind: LockKind::RwLock,
             }),
-            local_source(source),
+            source,
         )
         .into_typed::<peeps_types::Lock>();
         Self {
@@ -25,7 +25,7 @@ impl<T> RwLock<T> {
     }
 
     #[doc(hidden)]
-    pub fn read_with_source(&self, source: Source) -> parking_lot::RwLockReadGuard<'_, T> {
+    pub fn read_with_source(&self, source: SourceId) -> parking_lot::RwLockReadGuard<'_, T> {
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
@@ -34,7 +34,7 @@ impl<T> RwLock<T> {
     }
 
     #[doc(hidden)]
-    pub fn write_with_source(&self, source: Source) -> parking_lot::RwLockWriteGuard<'_, T> {
+    pub fn write_with_source(&self, source: SourceId) -> parking_lot::RwLockWriteGuard<'_, T> {
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
@@ -45,7 +45,7 @@ impl<T> RwLock<T> {
     #[doc(hidden)]
     pub fn try_read_with_source(
         &self,
-        source: Source,
+        source: SourceId,
     ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
         if let Some(caller) = current_causal_target() {
             self.handle
@@ -57,7 +57,7 @@ impl<T> RwLock<T> {
     #[doc(hidden)]
     pub fn try_write_with_source(
         &self,
-        source: Source,
+        source: SourceId,
     ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
         if let Some(caller) = current_causal_target() {
             self.handle

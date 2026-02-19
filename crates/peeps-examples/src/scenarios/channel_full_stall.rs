@@ -6,16 +6,15 @@ const SOURCE_LEFT: peeps::SourceLeft =
     peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
 #[track_caller]
-fn source() -> peeps::Source {
-    SOURCE_LEFT.resolve()
+fn source() -> peeps::SourceId {
+    SOURCE_LEFT.resolve().into()
 }
 
 pub async fn run() -> Result<(), String> {
     peeps::__init_from_macro();
 
-    let (tx, mut rx) = peeps::channel("demo.work_queue", 16, peeps::SourceRight::caller());
-    let (_idle_tx, mut idle_rx) =
-        peeps::channel("demo.idle_queue", 1, peeps::SourceRight::caller());
+    let (tx, mut rx) = peeps::channel("demo.work_queue", 16, source());
+    let (_idle_tx, mut idle_rx) = peeps::channel("demo.idle_queue", 1, source());
 
     peeps::spawn_tracked(
         "stalled_receiver",

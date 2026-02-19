@@ -1,4 +1,4 @@
-use super::{local_source, Source, SourceRight};
+use super::SourceId;
 
 use peeps_runtime::{
     current_causal_target, instrument_operation_on_with_source, record_event_with_source,
@@ -78,11 +78,10 @@ impl<T> Sender<T> {
     pub async fn send_with_source(
         &self,
         value: T,
-        source: Source,
+        source: SourceId,
     ) -> Result<(), mpsc::error::SendError<T>> {
         let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.send(value), &source)
-                .await;
+            instrument_operation_on_with_source(&self.handle, self.inner.send(value), source).await;
         if result.is_ok() {
             let _ = self
                 .handle
@@ -91,9 +90,9 @@ impl<T> Sender<T> {
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::ChannelSent,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
         result
     }
 }
@@ -105,9 +104,9 @@ impl<T> Receiver<T> {
     }
 
     #[doc(hidden)]
-    pub async fn recv_with_source(&mut self, source: Source) -> Option<T> {
+    pub async fn recv_with_source(&mut self, source: SourceId) -> Option<T> {
         let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.recv(), &source).await;
+            instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
         if result.is_some() {
             let _ = self
                 .tx_handle
@@ -116,9 +115,9 @@ impl<T> Receiver<T> {
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::ChannelReceived,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
         result
     }
 
@@ -137,7 +136,7 @@ impl<T> UnboundedSender<T> {
     pub fn send_with_source(
         &self,
         value: T,
-        source: Source,
+        source: SourceId,
     ) -> Result<(), mpsc::error::SendError<T>> {
         if let Some(caller) = current_causal_target() {
             self.handle.link_to(&caller, EdgeKind::Polls);
@@ -150,18 +149,18 @@ impl<T> UnboundedSender<T> {
                 let event = Event::new_with_source(
                     EventTarget::Entity(self.handle.id().clone()),
                     EventKind::ChannelSent,
-                    source.clone(),
+                    source,
                 );
-                record_event_with_source(event, &source);
+                record_event_with_source(event, source);
                 Ok(())
             }
             Err(err) => {
                 let event = Event::new_with_source(
                     EventTarget::Entity(self.handle.id().clone()),
                     EventKind::ChannelSent,
-                    source.clone(),
+                    source,
                 );
-                record_event_with_source(event, &source);
+                record_event_with_source(event, source);
                 Err(err)
             }
         }
@@ -179,9 +178,9 @@ impl<T> UnboundedReceiver<T> {
     }
 
     #[doc(hidden)]
-    pub async fn recv_with_source(&mut self, source: Source) -> Option<T> {
+    pub async fn recv_with_source(&mut self, source: SourceId) -> Option<T> {
         let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.recv(), &source).await;
+            instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
         if result.is_some() {
             let _ = self
                 .tx_handle
@@ -190,9 +189,9 @@ impl<T> UnboundedReceiver<T> {
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::ChannelReceived,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
         result
     }
 
@@ -204,7 +203,7 @@ impl<T> UnboundedReceiver<T> {
 pub fn channel<T>(
     name: impl Into<String>,
     capacity: usize,
-    source: SourceRight,
+    source: SourceId,
 ) -> (Sender<T>, Receiver<T>) {
     let name = name.into();
     let (tx, rx) = mpsc::channel(capacity);
@@ -216,22 +215,18 @@ pub fn channel<T>(
             queue_len: 0,
             capacity: Some(capacity_u32),
         }),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::MpscRx>();
 
-    tx_handle.link_to_handle_with_source(
-        &rx_handle,
-        EdgeKind::PairedWith,
-        local_source(source),
-    );
+    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
 
     (
         Sender {
@@ -249,7 +244,7 @@ pub fn channel<T>(
 pub fn mpsc_channel<T>(
     name: impl Into<String>,
     capacity: usize,
-    source: SourceRight,
+    source: SourceId,
 ) -> (Sender<T>, Receiver<T>) {
     #[allow(deprecated)]
     channel(name, capacity, source)
@@ -257,7 +252,7 @@ pub fn mpsc_channel<T>(
 
 pub fn unbounded_channel<T>(
     name: impl Into<String>,
-    source: SourceRight,
+    source: SourceId,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let name = name.into();
     let (tx, rx) = mpsc::unbounded_channel();
@@ -268,22 +263,18 @@ pub fn unbounded_channel<T>(
             queue_len: 0,
             capacity: None,
         }),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::MpscRx>();
 
-    tx_handle.link_to_handle_with_source(
-        &rx_handle,
-        EdgeKind::PairedWith,
-        local_source(source),
-    );
+    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
 
     (
         UnboundedSender {
@@ -300,7 +291,7 @@ pub fn unbounded_channel<T>(
 
 pub fn mpsc_unbounded_channel<T>(
     name: impl Into<String>,
-    source: SourceRight,
+    source: SourceId,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     #[allow(deprecated)]
     unbounded_channel(name, source)

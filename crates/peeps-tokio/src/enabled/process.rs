@@ -4,7 +4,7 @@ use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 
-use super::{local_source, Source, SourceRight};
+use super::{local_source, SourceId, SourceRight};
 use peeps_runtime::{instrument_future, EntityHandle};
 
 pub struct Command {
@@ -126,7 +126,7 @@ impl Command {
     }
 
     #[doc(hidden)]
-    pub fn spawn_with_source(&mut self, source: Source) -> io::Result<Child> {
+    pub fn spawn_with_source(&mut self, source: SourceId) -> io::Result<Child> {
         let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         Ok(Child {
@@ -138,9 +138,9 @@ impl Command {
     #[doc(hidden)]
     pub fn status_with_source(
         &mut self,
-        source: Source,
+        source: SourceId,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source.clone());
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future(
             "command.status",
             self.inner.status(),
@@ -153,9 +153,9 @@ impl Command {
     #[doc(hidden)]
     pub fn output_with_source(
         &mut self,
-        source: Source,
+        source: SourceId,
     ) -> impl Future<Output = io::Result<Output>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source.clone());
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future(
             "command.output",
             self.inner.output(),
@@ -212,11 +212,7 @@ impl Child {
             env: diag.env.clone(),
         });
         let name = String::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new(
-            name,
-            body,
-            local_source(SourceRight::caller()),
-        );
+        let handle = EntityHandle::new(name, body, local_source(SourceRight::caller()));
         Self {
             inner: Some(child),
             handle,
@@ -237,7 +233,7 @@ impl Child {
     #[doc(hidden)]
     pub fn wait_with_source(
         &mut self,
-        source: Source,
+        source: SourceId,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
@@ -253,7 +249,7 @@ impl Child {
     #[doc(hidden)]
     pub fn wait_with_output_with_source(
         mut self,
-        source: Source,
+        source: SourceId,
     ) -> impl Future<Output = io::Result<Output>> {
         let child = self.inner.take().expect("child already consumed");
         instrument_future(

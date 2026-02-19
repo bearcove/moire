@@ -3,7 +3,7 @@ use peeps_types::{
     ResponseError, ResponseStatus,
 };
 
-use super::{local_source, Source, SourceRight};
+use super::{local_source, SourceId, SourceRight};
 use peeps_runtime::{record_event_with_source, EntityHandle, EntityRef};
 
 #[derive(Clone)]
@@ -44,7 +44,7 @@ impl RpcResponseHandle {
     }
 
     #[doc(hidden)]
-    pub fn set_status_with_source(&self, status: ResponseStatus, source: Source) {
+    pub fn set_status_with_source(&self, status: ResponseStatus, source: SourceId) {
         let changed = self.handle.mutate(|body| body.status = status);
         if !changed {
             return;
@@ -52,9 +52,9 @@ impl RpcResponseHandle {
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::StateChanged,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
     }
 
     #[track_caller]
@@ -64,7 +64,10 @@ impl RpcResponseHandle {
 
     #[track_caller]
     pub fn mark_ok_json(&self, body_json: peeps_types::Json) {
-        self.set_status_with_source(ResponseStatus::Ok(body_json), local_source(SourceRight::caller()));
+        self.set_status_with_source(
+            ResponseStatus::Ok(body_json),
+            local_source(SourceRight::caller()),
+        );
     }
 
     #[track_caller]
@@ -100,51 +103,94 @@ impl RpcResponseHandle {
 pub fn rpc_request(
     method: impl Into<String>,
     args_json: impl Into<String>,
-    source: SourceRight,
+    source: SourceId,
 ) -> RpcRequestHandle {
     let method = method.into();
     let (service_name, method_name) = split_method_parts(method.as_str());
-    let body = EntityBody::Request(RequestEntity {
-        service_name: String::from(service_name),
-        method_name: String::from(method_name),
-        args_json: peeps_types::Json::new(args_json),
-    });
+    let service_name = String::from(service_name);
+    let method_name = String::from(method_name);
+    rpc_request_with_body(
+        method,
+        RequestEntity {
+            service_name,
+            method_name,
+            args_json: peeps_types::Json::new(args_json),
+        },
+        source,
+    )
+}
+
+pub fn rpc_request_with_body(
+    name: impl Into<String>,
+    body: RequestEntity,
+    source: SourceId,
+) -> RpcRequestHandle {
+    let name = name.into();
+    let body = EntityBody::Request(body);
     RpcRequestHandle {
-        handle: EntityHandle::new(method, body, local_source(source))
-            .into_typed::<peeps_types::Request>(),
+        handle: EntityHandle::new(name, body, source).into_typed::<peeps_types::Request>(),
     }
 }
 
-pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcResponseHandle {
+pub fn rpc_response(method: impl Into<String>, source: SourceId) -> RpcResponseHandle {
     let method = method.into();
     let (service_name, method_name) = split_method_parts(method.as_str());
-    let body = EntityBody::Response(ResponseEntity {
-        service_name: String::from(service_name),
-        method_name: String::from(method_name),
-        status: ResponseStatus::Pending,
-    });
+    let service_name = String::from(service_name);
+    let method_name = String::from(method_name);
+    rpc_response_with_body(
+        method,
+        ResponseEntity {
+            service_name,
+            method_name,
+            status: ResponseStatus::Pending,
+        },
+        source,
+    )
+}
+
+pub fn rpc_response_with_body(
+    name: impl Into<String>,
+    body: ResponseEntity,
+    source: SourceId,
+) -> RpcResponseHandle {
+    let name = name.into();
+    let body = EntityBody::Response(body);
     RpcResponseHandle {
-        handle: EntityHandle::new(method, body, local_source(source))
-            .into_typed::<peeps_types::Response>(),
+        handle: EntityHandle::new(name, body, source).into_typed::<peeps_types::Response>(),
     }
 }
 
 pub fn rpc_response_for(
     method: impl Into<String>,
     request: &EntityRef,
-    source: SourceRight,
+    source: SourceId,
 ) -> RpcResponseHandle {
     let method = method.into();
     let (service_name, method_name) = split_method_parts(method.as_str());
-    let body = EntityBody::Response(ResponseEntity {
-        service_name: String::from(service_name),
-        method_name: String::from(method_name),
-        status: ResponseStatus::Pending,
-    });
-    let source = local_source(source);
+    let service_name = String::from(service_name);
+    let method_name = String::from(method_name);
+    rpc_response_for_with_body(
+        method,
+        request,
+        ResponseEntity {
+            service_name,
+            method_name,
+            status: ResponseStatus::Pending,
+        },
+        source,
+    )
+}
+
+pub fn rpc_response_for_with_body(
+    name: impl Into<String>,
+    request: &EntityRef,
+    body: ResponseEntity,
+    source: SourceId,
+) -> RpcResponseHandle {
+    let name = name.into();
+    let body = EntityBody::Response(body);
     let response = RpcResponseHandle {
-        handle: EntityHandle::new(method, body, source.clone())
-            .into_typed::<peeps_types::Response>(),
+        handle: EntityHandle::new(name, body, source).into_typed::<peeps_types::Response>(),
     };
     response
         .handle

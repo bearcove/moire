@@ -1,7 +1,7 @@
 use peeps_types::{EntityBody, OnceCellEntity, OnceCellState};
 use std::future::Future;
 
-use super::super::{local_source, Source, SourceRight};
+use super::super::SourceId;
 use peeps_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 pub struct OnceCell<T> {
@@ -10,14 +10,14 @@ pub struct OnceCell<T> {
 }
 
 impl<T> OnceCell<T> {
-    pub fn new(name: impl Into<String>, source: SourceRight) -> Self {
+    pub fn new(name: impl Into<String>, source: SourceId) -> Self {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {
                 waiter_count: 0,
                 state: OnceCellState::Empty,
             }),
-            local_source(source),
+            source,
         )
         .into_typed::<peeps_types::OnceCell>();
         Self {
@@ -35,7 +35,7 @@ impl<T> OnceCell<T> {
     }
 
     #[doc(hidden)]
-    pub async fn get_or_init_with_source<'a, F, Fut>(&'a self, f: F, source: Source) -> &'a T
+    pub async fn get_or_init_with_source<'a, F, Fut>(&'a self, f: F, source: SourceId) -> &'a T
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
@@ -46,7 +46,7 @@ impl<T> OnceCell<T> {
         });
 
         let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.get_or_init(f), &source)
+            instrument_operation_on_with_source(&self.handle, self.inner.get_or_init(f), source)
                 .await;
 
         let initialized = self.inner.initialized();
@@ -68,7 +68,7 @@ impl<T> OnceCell<T> {
     pub async fn get_or_try_init_with_source<'a, F, Fut, E>(
         &'a self,
         f: F,
-        source: Source,
+        source: SourceId,
     ) -> Result<&'a T, E>
     where
         F: FnOnce() -> Fut + 'a,
@@ -82,7 +82,7 @@ impl<T> OnceCell<T> {
         let result = instrument_operation_on_with_source(
             &self.handle,
             self.inner.get_or_try_init(f),
-            &source,
+            source,
         )
         .await;
 

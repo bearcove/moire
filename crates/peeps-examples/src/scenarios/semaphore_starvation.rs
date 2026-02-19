@@ -7,18 +7,14 @@ const SOURCE_LEFT: peeps::SourceLeft =
     peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
 #[track_caller]
-fn source() -> peeps::Source {
-    SOURCE_LEFT.resolve()
+fn source() -> peeps::SourceId {
+    SOURCE_LEFT.resolve().into()
 }
 
 pub async fn run() -> Result<(), String> {
     peeps::__init_from_macro();
 
-    let gate = Arc::new(peeps::Semaphore::new(
-        "demo.api_gate",
-        1,
-        peeps::SourceRight::caller(),
-    ));
+    let gate = Arc::new(peeps::Semaphore::new("demo.api_gate", 1, source()));
 
     let holder_gate = Arc::clone(&gate);
     peeps::spawn_tracked(

@@ -1,3 +1,4 @@
+use peeps_source::SourceId;
 use peeps_types::{
     EdgeKind, Entity, EntityBody, EntityBodySlot, EntityId, Scope, ScopeBody, ScopeId,
 };
@@ -5,7 +6,6 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Weak};
 
 use super::db::runtime_db;
-use super::Source;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityRef {
@@ -67,9 +67,9 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<String>, body: ScopeBody, source: impl Into<Source>) -> Self {
-        let source: Source = source.into();
-        let scope = Scope::new(source.clone(), name, body);
+    pub fn new(name: impl Into<String>, body: ScopeBody, source: impl Into<SourceId>) -> Self {
+        let source: SourceId = source.into();
+        let scope = Scope::new(source, name, body);
         let id = ScopeId::new(scope.id.as_str());
 
         if let Ok(mut db) = runtime_db().lock() {
@@ -122,16 +122,16 @@ impl<S> Clone for EntityHandle<S> {
 }
 
 impl EntityHandle<()> {
-    pub fn new(name: impl Into<String>, body: EntityBody, source: impl Into<Source>) -> Self {
+    pub fn new(name: impl Into<String>, body: EntityBody, source: impl Into<SourceId>) -> Self {
         Self::new_with_source(name, body, source)
     }
 
     pub fn new_with_source(
         name: impl Into<String>,
         body: EntityBody,
-        source: impl Into<Source>,
+        source: impl Into<SourceId>,
     ) -> Self {
-        let source: Source = source.into();
+        let source: SourceId = source.into();
         let entity = Entity::new(source, name, body);
         Self::from_entity(entity)
     }
@@ -187,7 +187,7 @@ impl<S> EntityHandle<S> {
         &self,
         target: &EntityRef,
         kind: EdgeKind,
-        source: impl Into<Source>,
+        source: impl Into<SourceId>,
     ) {
         if let Ok(mut db) = runtime_db().lock() {
             db.upsert_edge_with_source(self.id(), target.id(), kind, source.into());
@@ -203,7 +203,7 @@ impl<S> EntityHandle<S> {
         &self,
         target: &EntityHandle<T>,
         kind: EdgeKind,
-        source: impl Into<Source>,
+        source: impl Into<SourceId>,
     ) {
         self.link_to_with_source(&target.entity_ref(), kind, source);
     }
@@ -349,7 +349,7 @@ impl<S> EntityHandle<S> {
         &self,
         target: &EntityRef,
         kind: EdgeKind,
-        source: impl Into<Source>,
+        source: impl Into<SourceId>,
     ) -> EdgeHandle {
         let src = self.id().clone();
         let dst = target.id().clone();

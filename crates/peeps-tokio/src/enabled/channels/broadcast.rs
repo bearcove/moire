@@ -1,4 +1,4 @@
-use super::{local_source, Source, SourceRight};
+use super::SourceId;
 
 use peeps_runtime::{
     record_event_with_source, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
@@ -30,15 +30,9 @@ impl<T> Clone for BroadcastSender<T> {
 
 impl<T: Clone> Clone for BroadcastReceiver<T> {
     fn clone(&self) -> Self {
-        let handle = EntityHandle::new(
-            "broadcast:rx.clone",
-            EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-            local_source(SourceRight::caller()),
-        )
-        .into_typed::<peeps_types::BroadcastRx>();
         Self {
             inner: self.inner.resubscribe(),
-            handle,
+            handle: self.handle.clone(),
             tx_handle: self.tx_handle.clone(),
         }
     }
@@ -50,18 +44,16 @@ impl<T: Clone> BroadcastSender<T> {
         &self.handle
     }
 
-    pub fn subscribe(&self) -> BroadcastReceiver<T> {
+    #[doc(hidden)]
+    pub fn subscribe_with_source(&self, source: SourceId) -> BroadcastReceiver<T> {
         let handle = EntityHandle::new(
             "broadcast:rx.subscribe",
             EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-            local_source(SourceRight::caller()),
+            source,
         )
         .into_typed::<peeps_types::BroadcastRx>();
-        self.handle.link_to_handle_with_source(
-            &handle,
-            EdgeKind::PairedWith,
-            local_source(SourceRight::caller()),
-        );
+        self.handle
+            .link_to_handle_with_source(&handle, EdgeKind::PairedWith, source);
         BroadcastReceiver {
             inner: self.inner.subscribe(),
             handle,
@@ -73,15 +65,15 @@ impl<T: Clone> BroadcastSender<T> {
     pub fn send_with_source(
         &self,
         value: T,
-        source: Source,
+        source: SourceId,
     ) -> Result<usize, broadcast::error::SendError<T>> {
         let result = self.inner.send(value);
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::ChannelSent,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
         result
     }
 }
@@ -95,7 +87,7 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[doc(hidden)]
     pub async fn recv_with_source(
         &mut self,
-        source: Source,
+        source: SourceId,
     ) -> Result<T, broadcast::error::RecvError> {
         match self.inner.recv().await {
             Ok(value) => {
@@ -104,9 +96,9 @@ impl<T: Clone> BroadcastReceiver<T> {
                 let event = Event::new_with_source(
                     EventTarget::Entity(self.handle.id().clone()),
                     EventKind::ChannelReceived,
-                    source.clone(),
+                    source,
                 );
-                record_event_with_source(event, &source);
+                record_event_with_source(event, source);
                 Ok(value)
             }
             Err(err) => {
@@ -117,9 +109,9 @@ impl<T: Clone> BroadcastReceiver<T> {
                 let event = Event::new_with_source(
                     EventTarget::Entity(self.handle.id().clone()),
                     EventKind::ChannelReceived,
-                    source.clone(),
+                    source,
                 );
-                record_event_with_source(event, &source);
+                record_event_with_source(event, source);
                 Err(err)
             }
         }
@@ -129,7 +121,7 @@ impl<T: Clone> BroadcastReceiver<T> {
 pub fn broadcast<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
-    source: SourceRight,
+    source: SourceId,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
     let name = name.into();
     let (tx, rx) = broadcast::channel(capacity);
@@ -140,22 +132,18 @@ pub fn broadcast<T: Clone>(
         EntityBody::BroadcastTx(BroadcastTxEntity {
             capacity: capacity_u32,
         }),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::BroadcastTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::BroadcastRx>();
 
-    tx_handle.link_to_handle_with_source(
-        &rx_handle,
-        EdgeKind::PairedWith,
-        local_source(source),
-    );
+    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
 
     (
         BroadcastSender {
@@ -173,7 +161,7 @@ pub fn broadcast<T: Clone>(
 pub fn broadcast_channel<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
-    source: SourceRight,
+    source: SourceId,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
     #[allow(deprecated)]
     broadcast(name, capacity, source)

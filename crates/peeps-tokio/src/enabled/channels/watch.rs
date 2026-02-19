@@ -1,4 +1,4 @@
-use super::{local_source, Source, SourceRight};
+use super::SourceId;
 
 use peeps_runtime::{
     instrument_operation_on_with_source, record_event_with_source, AsEntityRef, EntityHandle,
@@ -31,15 +31,9 @@ impl<T> Clone for WatchSender<T> {
 
 impl<T> Clone for WatchReceiver<T> {
     fn clone(&self) -> Self {
-        let handle = EntityHandle::new(
-            "watch:rx.clone",
-            EntityBody::WatchRx(WatchRxEntity {}),
-            local_source(SourceRight::caller()),
-        )
-        .into_typed::<peeps_types::WatchRx>();
         Self {
             inner: self.inner.clone(),
-            handle,
+            handle: self.handle.clone(),
             tx_handle: self.tx_handle.clone(),
         }
     }
@@ -55,7 +49,7 @@ impl<T: Clone> WatchSender<T> {
     pub fn send_with_source(
         &self,
         value: T,
-        source: Source,
+        source: SourceId,
     ) -> Result<(), watch::error::SendError<T>> {
         let result = self.inner.send(value);
         if result.is_ok() {
@@ -66,14 +60,14 @@ impl<T: Clone> WatchSender<T> {
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::ChannelSent,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
         result
     }
 
     #[doc(hidden)]
-    pub fn send_replace_with_source(&self, value: T, source: Source) -> T {
+    pub fn send_replace_with_source(&self, value: T, source: SourceId) -> T {
         let old = self.inner.send_replace(value);
         let _ = self
             .handle
@@ -81,24 +75,22 @@ impl<T: Clone> WatchSender<T> {
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::ChannelSent,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
         old
     }
 
-    pub fn subscribe(&self) -> WatchReceiver<T> {
+    #[doc(hidden)]
+    pub fn subscribe_with_source(&self, source: SourceId) -> WatchReceiver<T> {
         let handle = EntityHandle::new(
             "watch:rx.subscribe",
             EntityBody::WatchRx(WatchRxEntity {}),
-            local_source(SourceRight::caller()),
+            source,
         )
         .into_typed::<peeps_types::WatchRx>();
-        self.handle.link_to_handle_with_source(
-            &handle,
-            EdgeKind::PairedWith,
-            local_source(SourceRight::caller()),
-        );
+        self.handle
+            .link_to_handle_with_source(&handle, EdgeKind::PairedWith, source);
         WatchReceiver {
             inner: self.inner.subscribe(),
             handle,
@@ -116,16 +108,16 @@ impl<T: Clone> WatchReceiver<T> {
     #[doc(hidden)]
     pub async fn changed_with_source(
         &mut self,
-        source: Source,
+        source: SourceId,
     ) -> Result<(), watch::error::RecvError> {
         let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.changed(), &source).await;
+            instrument_operation_on_with_source(&self.handle, self.inner.changed(), source).await;
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::ChannelReceived,
-            source.clone(),
+            source,
         );
-        record_event_with_source(event, &source);
+        record_event_with_source(event, source);
         result
     }
 
@@ -145,7 +137,7 @@ impl<T: Clone> WatchReceiver<T> {
 pub fn watch<T: Clone>(
     name: impl Into<String>,
     initial: T,
-    source: SourceRight,
+    source: SourceId,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     let name = name.into();
     let (tx, rx) = watch::channel(initial);
@@ -155,22 +147,18 @@ pub fn watch<T: Clone>(
         EntityBody::WatchTx(WatchTxEntity {
             last_update_at: None,
         }),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::WatchTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::WatchRx(WatchRxEntity {}),
-        local_source(source),
+        source,
     )
     .into_typed::<peeps_types::WatchRx>();
 
-    tx_handle.link_to_handle_with_source(
-        &rx_handle,
-        EdgeKind::PairedWith,
-        local_source(source),
-    );
+    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
 
     (
         WatchSender {
@@ -188,7 +176,7 @@ pub fn watch<T: Clone>(
 pub fn watch_channel<T: Clone>(
     name: impl Into<String>,
     initial: T,
-    source: SourceRight,
+    source: SourceId,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     #[allow(deprecated)]
     watch(name, initial, source)

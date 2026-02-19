@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 
 use super::db::runtime_db;
 use super::handles::{current_causal_target, EntityHandle, EntityRef};
-use super::{Source, FUTURE_CAUSAL_STACK};
+use super::FUTURE_CAUSAL_STACK;
 
 pub struct OperationFuture<F> {
     inner: F,
@@ -81,16 +81,12 @@ impl<F> Drop for OperationFuture<F> {
 pub fn instrument_operation_on_with_source<F, S>(
     on: &EntityHandle<S>,
     fut: F,
-    source: &Source,
+    source: SourceId,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    OperationFuture::new(
-        fut.into_future(),
-        EntityId::new(on.id().as_str()),
-        source.clone().into(),
-    )
+    OperationFuture::new(fut.into_future(), EntityId::new(on.id().as_str()), source)
 }
 
 pub struct InstrumentedFuture<F> {
@@ -260,14 +256,13 @@ impl<F> Drop for InstrumentedFuture<F> {
 pub fn instrument_future<F>(
     name: impl Into<String>,
     fut: F,
-    source: Source,
+    source: SourceId,
     on: Option<EntityRef>,
     _meta: Option<facet_value::Value>,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    let source_id: SourceId = source.clone().into();
     let handle = EntityHandle::new_with_source(name, EntityBody::Future(FutureEntity {}), source);
-    InstrumentedFuture::new(fut.into_future(), handle, on, source_id)
+    InstrumentedFuture::new(fut.into_future(), handle, on, source)
 }

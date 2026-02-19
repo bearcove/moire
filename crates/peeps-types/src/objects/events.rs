@@ -23,15 +23,11 @@ pub struct Event {
 
 impl Event {
     /// Builds an event with explicit source context.
-    pub fn new_with_source(
-        target: EventTarget,
-        kind: EventKind,
-        source: impl Into<SourceId>,
-    ) -> Self {
+    pub fn new_with_source(target: EventTarget, kind: EventKind, source: SourceId) -> Self {
         Self {
             id: next_event_id(),
             at: PTime::now(),
-            source: source.into(),
+            source,
             target,
             kind,
         }

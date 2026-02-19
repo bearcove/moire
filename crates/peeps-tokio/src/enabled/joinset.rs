@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use super::process::JoinSet;
-use super::Source;
+use super::SourceId;
 use peeps_runtime::{
     instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
 };
@@ -11,7 +11,7 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    pub fn named(name: impl Into<String>, source: Source) -> Self {
+    pub fn named(name: impl Into<String>, source: SourceId) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(
             format!("joinset.{name}"),
@@ -24,20 +24,20 @@ where
         }
     }
 
-    pub fn with_name(name: impl Into<String>, source: Source) -> Self {
+    pub fn with_name(name: impl Into<String>, source: SourceId) -> Self {
         #[allow(deprecated)]
         Self::named(name, source)
     }
 
     #[doc(hidden)]
-    pub fn spawn_with_source<F>(&mut self, label: &'static str, future: F, source: Source)
+    pub fn spawn_with_source<F>(&mut self, label: &'static str, future: F, source: SourceId)
     where
         F: Future<Output = T> + Send + 'static,
     {
         let joinset_handle = self.handle.clone();
         self.inner.spawn(
             FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
-                let _task_scope = register_current_task_scope(label, source.clone());
+                let _task_scope = register_current_task_scope(label, source);
                 instrument_future(
                     label,
                     future,
@@ -65,7 +65,7 @@ where
     #[doc(hidden)]
     pub fn join_next_with_source(
         &mut self,
-        source: Source,
+        source: SourceId,
     ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
         let handle = self.handle.clone();
         let fut = self.inner.join_next();

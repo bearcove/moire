@@ -8,8 +8,8 @@ const SOURCE_LEFT: peeps::SourceLeft =
     peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
 #[track_caller]
-fn source() -> peeps::Source {
-    SOURCE_LEFT.resolve()
+fn source() -> peeps::SourceId {
+    SOURCE_LEFT.resolve().into()
 }
 
 fn spawn_lock_order_worker(
@@ -44,16 +44,8 @@ fn spawn_lock_order_worker(
 pub async fn run() -> Result<(), String> {
     peeps::__init_from_macro();
 
-    let left = Arc::new(peeps::Mutex::new(
-        "demo.shared.left",
-        (),
-        peeps::SourceRight::caller(),
-    ));
-    let right = Arc::new(peeps::Mutex::new(
-        "demo.shared.right",
-        (),
-        peeps::SourceRight::caller(),
-    ));
+    let left = Arc::new(peeps::Mutex::new("demo.shared.left", (), source()));
+    let right = Arc::new(peeps::Mutex::new("demo.shared.right", (), source()));
     let ready_barrier = Arc::new(Barrier::new(2));
 
     let (alpha_done_tx, alpha_done_rx) = oneshot::channel::<()>();

@@ -1,7 +1,7 @@
 use peeps_types::{EntityBody, NotifyEntity};
 use std::sync::Arc;
 
-use super::super::{local_source, Source, SourceRight};
+use super::super::SourceId;
 use peeps_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 #[derive(Clone)]
@@ -11,11 +11,11 @@ pub struct Notify {
 }
 
 impl Notify {
-    pub fn new(name: impl Into<String>, source: SourceRight) -> Self {
+    pub fn new(name: impl Into<String>, source: SourceId) -> Self {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
-            local_source(source),
+            source,
         )
         .into_typed::<peeps_types::Notify>();
         Self {
@@ -25,12 +25,12 @@ impl Notify {
     }
 
     #[doc(hidden)]
-    pub async fn notified_with_source(&self, source: Source) {
+    pub async fn notified_with_source(&self, source: SourceId) {
         let _ = self
             .handle
             .mutate(|body| body.waiter_count = body.waiter_count.saturating_add(1));
 
-        instrument_operation_on_with_source(&self.handle, self.inner.notified(), &source).await;
+        instrument_operation_on_with_source(&self.handle, self.inner.notified(), source).await;
 
         let _ = self
             .handle

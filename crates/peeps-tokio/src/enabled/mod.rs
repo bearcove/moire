@@ -13,8 +13,8 @@ pub use peeps_runtime::*;
 const PEEPS_LOCAL_SOURCE_LEFT: SourceLeft =
     SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
-pub(crate) fn local_source(right: SourceRight) -> Source {
-    PEEPS_LOCAL_SOURCE_LEFT.join(right)
+pub(crate) fn local_source(right: SourceRight) -> SourceId {
+    PEEPS_LOCAL_SOURCE_LEFT.join(right).into()
 }
 
 // facade! expands to a call to this
@@ -32,9 +32,9 @@ macro_rules! facade {
                 $crate::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
             #[track_caller]
-            fn __source() -> $crate::Source {
+            fn __source() -> $crate::SourceId {
                 $crate::__init_from_macro();
-                PEEPS_SOURCE_LEFT.resolve()
+                PEEPS_SOURCE_LEFT.resolve().into()
             }
 
             pub trait MutexExt<T> {
@@ -174,6 +174,7 @@ macro_rules! facade {
             }
 
             pub trait BroadcastSenderExt<T: Clone> {
+                fn subscribe(&self) -> $crate::BroadcastReceiver<T>;
                 fn send(
                     &self,
                     value: T,
@@ -181,6 +182,11 @@ macro_rules! facade {
             }
 
             impl<T: Clone> BroadcastSenderExt<T> for $crate::BroadcastSender<T> {
+                #[track_caller]
+                fn subscribe(&self) -> $crate::BroadcastReceiver<T> {
+                    self.subscribe_with_source(__source())
+                }
+
                 #[track_caller]
                 fn send(
                     &self,
@@ -210,6 +216,7 @@ macro_rules! facade {
             }
 
             pub trait WatchSenderExt<T: Clone> {
+                fn subscribe(&self) -> $crate::WatchReceiver<T>;
                 fn send(
                     &self,
                     value: T,
@@ -218,6 +225,11 @@ macro_rules! facade {
             }
 
             impl<T: Clone> WatchSenderExt<T> for $crate::WatchSender<T> {
+                #[track_caller]
+                fn subscribe(&self) -> $crate::WatchReceiver<T> {
+                    self.subscribe_with_source(__source())
+                }
+
                 #[track_caller]
                 fn send(
                     &self,
