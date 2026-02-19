@@ -36,14 +36,33 @@ export function EdgeLayer({
         const polyline = edge.polyline.map((p) => ({ ...p }));
         if (polyline.length > 0 && sourceAnchor) polyline[0] = sourceAnchor;
         if (polyline.length > 0 && targetAnchor) polyline[polyline.length - 1] = targetAnchor;
-        const d = polylineToPath(polyline);
-        const hitD = hitTestPath(polyline);
         const edgeStyle = edge.data?.style ?? {};
         const stroke = isSelected
           ? "var(--accent)"
           : (edgeStyle.stroke ?? "var(--edge-stroke-muted)");
         const markerSize = (edge.data?.markerSize as number | undefined) ?? 8;
         const markerEnd = `url(#arrowhead-${markerSize})`;
+
+        // Shorten the path end so the stroke terminates at the arrowhead base,
+        // not the tip. Combined with refX=0 on the marker, the tip lands exactly
+        // at the original target anchor (node border) with no bleed-through.
+        const visPolyline = polyline.map((p) => ({ ...p }));
+        if (visPolyline.length >= 2) {
+          const tip = visPolyline[visPolyline.length - 1];
+          const prev = visPolyline[visPolyline.length - 2];
+          const dx = tip.x - prev.x;
+          const dy = tip.y - prev.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > markerSize) {
+            visPolyline[visPolyline.length - 1] = {
+              x: tip.x - (dx / len) * markerSize,
+              y: tip.y - (dy / len) * markerSize,
+            };
+          }
+        }
+
+        const d = polylineToPath(visPolyline);
+        const hitD = hitTestPath(polyline);
 
         const visibleStyle: React.CSSProperties = isSelected
           ? { stroke, strokeWidth: 2.5 }

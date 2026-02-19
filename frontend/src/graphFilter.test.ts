@@ -72,6 +72,12 @@ describe("graphFilterSuggestions", () => {
     expect(out.map((s) => s.token)).toContain(expectedToken);
   });
 
+  it("provides two-stage apply token for key placeholders", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "+kin" });
+    const kindKey = out.find((s) => s.token === "+kind:<kind>");
+    expect(kindKey?.applyToken).toBe("+kind:");
+  });
+
   it.each([
     ["+crate:web", "+crate:peeps-web"],
     ["-crate:core", "-crate:peeps-core"],
@@ -193,5 +199,11 @@ describe("parseGraphFilterQuery include/exclude syntax", () => {
   it("parses -location", () => {
     const out = parseGraphFilterQuery('-location:"src/main.rs:12"');
     expect(out.excludeLocations.has("src/main.rs:12")).toBe(true);
+  });
+
+  it("treats placeholder value as invalid for signed filters", () => {
+    const out = parseGraphFilterQuery("+kind:<kind>");
+    expect(out.includeKinds.size).toBe(0);
+    expect(out.tokens[0]?.valid).toBe(false);
   });
 });

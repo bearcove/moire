@@ -245,10 +245,12 @@ export function GraphFilterInput({
                 ? "filters: node:.. location:.. crate:.. process:.. kind:.. loners:on|off colorBy:.. groupBy:.."
                 : "add filter…"
             }
-            title="⌘K"
             className="graph-filter-fragment-input"
             aria-label="Graph filter query"
           />
+          {!editorState.focused && editorState.draft.length === 0 && (
+            <kbd className="graph-filter-shortcut">⌘K</kbd>
+          )}
         </div>
         {editorState.suggestionsOpen && graphFilterSuggestionsList.length > 0 && (
           <div className="graph-filter-suggestions">

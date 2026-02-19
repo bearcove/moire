@@ -120,6 +120,19 @@
     flex: 1 1 120px;
 }
 
+.graph-filter-shortcut {
+    margin-left: auto;
+    font-family: var(--font-ui);
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    padding: 1px 5px;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
 .graph-filter-chip {
     display: inline-flex;
     align-items: center;

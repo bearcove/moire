@@ -12,7 +12,7 @@
 }
 
 .ui-input::placeholder {
-    color: var(--text-muted);
+    color: var(--text-secondary);
 }
 
 .ui-input:focus-visible {
