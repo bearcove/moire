@@ -1,4 +1,7 @@
-use peeps_types::{EdgeKind, Entity, EntityBody, EntityId, Scope, ScopeBody, ScopeId};
+use peeps_types::{
+    EdgeKind, Entity, EntityBody, EntityBodySlot, EntityId, Scope, ScopeBody, ScopeId,
+};
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::db::runtime_db;
@@ -99,6 +102,7 @@ impl ScopeHandle {
 
 struct HandleInner {
     id: EntityId,
+    kind_name: &'static str,
 }
 
 impl Drop for HandleInner {
@@ -110,16 +114,13 @@ impl Drop for HandleInner {
 }
 
 #[derive(Clone)]
-pub struct EntityHandle {
+pub struct EntityHandle<S = ()> {
     inner: Arc<HandleInner>,
+    _slot: PhantomData<S>,
 }
 
-impl EntityHandle {
-    pub fn new(
-        name: impl Into<String>,
-        body: EntityBody,
-        source: impl Into<Source>,
-    ) -> Self {
+impl EntityHandle<()> {
+    pub fn new(name: impl Into<String>, body: EntityBody, source: impl Into<Source>) -> Self {
         Self::new_with_source(name, body, source)
     }
 
@@ -140,6 +141,7 @@ impl EntityHandle {
     }
 
     pub(super) fn from_entity(entity: Entity) -> Self {
+        let kind_name = entity.body.kind_name();
         let id = EntityId::new(entity.id.as_str());
 
         if let Ok(mut db) = runtime_db().lock() {
@@ -147,13 +149,21 @@ impl EntityHandle {
         }
 
         Self {
-            inner: Arc::new(HandleInner { id }),
+            inner: Arc::new(HandleInner { id, kind_name }),
+            _slot: PhantomData,
         }
     }
+}
 
+impl<S> EntityHandle<S> {
     #[track_caller]
     pub fn id(&self) -> &EntityId {
         &self.inner.id
+    }
+
+    #[track_caller]
+    pub fn kind_name(&self) -> &'static str {
+        self.inner.kind_name
     }
 
     #[track_caller]
@@ -171,7 +181,7 @@ impl EntityHandle {
     }
 
     #[track_caller]
-    pub fn link_to_handle(&self, target: &EntityHandle, kind: EdgeKind) {
+    pub fn link_to_handle<T>(&self, target: &EntityHandle<T>, kind: EdgeKind) {
         self.link_to(&target.entity_ref(), kind);
     }
 
@@ -200,12 +210,43 @@ impl EntityHandle {
     }
 }
 
+impl<S> EntityHandle<S>
+where
+    S: EntityBodySlot,
+{
+    #[track_caller]
+    pub fn mutate(&self, f: impl FnOnce(&mut S::Value)) -> bool {
+        if self.kind_name() != S::KIND_NAME {
+            panic!(
+                "entity kind mismatch for mutate: handle kind={} slot kind={} entity_id={}",
+                self.kind_name(),
+                S::KIND_NAME,
+                self.id().as_str(),
+            );
+        }
+
+        let mut db = runtime_db()
+            .lock()
+            .expect("runtime db lock poisoned during entity mutate");
+        db.mutate_entity_body_and_maybe_upsert(self.id(), |body| {
+            let slot = S::project_mut(body).unwrap_or_else(|| {
+                panic!(
+                    "entity body projection failed after kind check: kind={} entity_id={}",
+                    S::KIND_NAME,
+                    self.id().as_str(),
+                )
+            });
+            f(slot);
+        })
+    }
+}
+
 /// A type that can be used as the `on =` argument of the `peeps!()` macro.
 pub trait AsEntityRef {
     fn as_entity_ref(&self) -> EntityRef;
 }
 
-impl AsEntityRef for EntityHandle {
+impl<S> AsEntityRef for EntityHandle<S> {
     fn as_entity_ref(&self) -> EntityRef {
         self.entity_ref()
     }

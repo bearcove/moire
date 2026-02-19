@@ -40,7 +40,7 @@
     line-height: 1.4;
 
     /* Role tokens */
-    --bg-base: light-dark(#ffffff, #17171a);
+    --bg-base: light-dark(#ffffff, #19191a);
     --bg-surface: var(--bg-base);
     --bg-elevated: var(--bg-base);
 

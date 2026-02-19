@@ -4,12 +4,6 @@
 //! - `enabled`: real diagnostics runtime
 //! - `disabled`: zero-cost pass-through API
 
-#[cfg(not(target_arch = "wasm32"))]
-pub mod fs;
-#[cfg(target_arch = "wasm32")]
-pub mod fs {}
-pub mod net;
-
 #[doc(hidden)]
 pub use facet_value;
 #[doc(hidden)]

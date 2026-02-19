@@ -336,7 +336,7 @@ impl RuntimeDb {
         hasher.finish()
     }
 
-    fn mutate_entity_body_and_maybe_upsert(
+    pub(super) fn mutate_entity_body_and_maybe_upsert(
         &mut self,
         id: &EntityId,
         mutate: impl FnOnce(&mut EntityBody),

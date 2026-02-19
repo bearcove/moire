@@ -112,6 +112,16 @@ macro_rules! define_entity_body {
             )+
         }
 
+        impl EntityBody {
+            pub fn kind_name(&self) -> &'static str {
+                match self {
+                    $(
+                        Self::$variant(_) => stringify!($variant),
+                    )+
+                }
+            }
+        }
+
         $crate::impl_sqlite_json!(EntityBody);
 
         $(
