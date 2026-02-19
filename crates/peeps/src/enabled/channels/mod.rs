@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::{
     BufferState, ChannelCloseCause, ChannelClosedEvent, ChannelEndpointLifecycle,
     ChannelWaitEndedEvent, ChannelWaitKind, ChannelWaitStartedEvent, EntityId, Event, EventTarget,
@@ -23,28 +22,28 @@ pub struct Sender<T> {
     inner: tokio::sync::mpsc::Sender<T>,
     handle: EntityHandle,
     channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct Receiver<T> {
     inner: tokio::sync::mpsc::Receiver<T>,
     handle: EntityHandle,
     channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct UnboundedSender<T> {
     inner: tokio::sync::mpsc::UnboundedSender<T>,
     handle: EntityHandle,
     channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct UnboundedReceiver<T> {
     inner: tokio::sync::mpsc::UnboundedReceiver<T>,
     handle: EntityHandle,
     channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct OneshotSender<T> {
@@ -57,7 +56,7 @@ pub struct OneshotReceiver<T> {
     inner: Option<tokio::sync::oneshot::Receiver<T>>,
     handle: EntityHandle,
     channel: Arc<StdMutex<OneshotRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct BroadcastSender<T> {
@@ -65,14 +64,14 @@ pub struct BroadcastSender<T> {
     handle: EntityHandle,
     receiver_handle: EntityHandle,
     channel: Arc<StdMutex<BroadcastRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct BroadcastReceiver<T> {
     inner: tokio::sync::broadcast::Receiver<T>,
     handle: EntityHandle,
     channel: Arc<StdMutex<BroadcastRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct WatchSender<T> {
@@ -80,14 +79,14 @@ pub struct WatchSender<T> {
     handle: EntityHandle,
     receiver_handle: EntityHandle,
     channel: Arc<StdMutex<WatchRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub struct WatchReceiver<T> {
     inner: tokio::sync::watch::Receiver<T>,
     handle: EntityHandle,
     channel: Arc<StdMutex<WatchRuntimeState>>,
-    name: CompactString,
+    name: String,
 }
 
 pub(super) struct ChannelRuntimeState {

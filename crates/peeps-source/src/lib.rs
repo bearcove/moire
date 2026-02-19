@@ -1,6 +1,5 @@
 #![doc = include_str!("README.md")]
 
-use compact_str::CompactString;
 use facet::Facet;
 #[cfg(feature = "rusqlite")]
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
@@ -25,6 +24,10 @@ impl SourceRight {
     #[cfg(test)]
     pub const fn from_location(location: &'static Location<'static>) -> Self {
         Self { location }
+    }
+
+    pub fn into_string(self) -> String {
+        format!("{}:{}", self.location.file(), self.location.line())
     }
 }
 
@@ -56,12 +59,12 @@ impl SourceLeft {
 /// are being done, where futures are being polled, where locks are being awaited on, etc.
 #[derive(Clone, Debug)]
 pub struct Source {
-    source: CompactString,
-    krate: Option<CompactString>,
+    source: String,
+    krate: Option<String>,
 }
 
 impl Source {
-    pub fn new(source: impl Into<CompactString>, krate: Option<CompactString>) -> Self {
+    pub fn new(source: impl Into<String>, krate: Option<String>) -> Self {
         Self {
             source: source.into(),
             krate,
@@ -83,7 +86,7 @@ impl Source {
         } else {
             Path::new(manifest_dir).join(file)
         };
-        let source = CompactString::from(format!("{}:{}", resolved.display(), line));
+        let source = String::from(format!("{}:{}", resolved.display(), line));
         let krate = infer_crate_name_from_manifest_dir(manifest_dir);
         Self { source, krate }
     }
@@ -96,7 +99,7 @@ impl Source {
         self.krate.as_ref().map(|k| k.as_str())
     }
 
-    pub fn into_compact_string(self) -> CompactString {
+    pub fn into_string(self) -> String {
         self.source
     }
 }
@@ -175,7 +178,7 @@ impl From<SourceRight> for Source {
     }
 }
 
-fn infer_crate_name_from_manifest_dir(manifest_dir: &str) -> Option<CompactString> {
+fn infer_crate_name_from_manifest_dir(manifest_dir: &str) -> Option<String> {
     let manifest_path = Path::new(manifest_dir).join("Cargo.toml");
     let content = std::fs::read_to_string(manifest_path).ok()?;
     let mut in_package = false;
@@ -193,14 +196,14 @@ fn infer_crate_name_from_manifest_dir(manifest_dir: &str) -> Option<CompactStrin
         if value.len() < 2 || !value.starts_with('"') || !value.ends_with('"') {
             return None;
         }
-        return Some(CompactString::from(&value[1..value.len() - 1]));
+        return Some(String::from(&value[1..value.len() - 1]));
     }
     None
 }
 
 struct SourceIntern {
     next_id: u64,
-    by_key: BTreeMap<(CompactString, Option<CompactString>), SourceId>,
+    by_key: BTreeMap<(String, Option<String>), SourceId>,
     by_id: BTreeMap<SourceId, Source>,
 }
 
@@ -215,11 +218,11 @@ impl SourceIntern {
 
     fn intern(&mut self, source: Source) -> SourceId {
         let key = (
-            CompactString::from(source.source.as_str()),
+            String::from(source.source.as_str()),
             source
                 .krate
                 .as_ref()
-                .map(|k| CompactString::from(k.as_str())),
+                .map(|k| String::from(k.as_str())),
         );
         if let Some(existing) = self.by_key.get(&key).copied() {
             return existing;
@@ -315,7 +318,7 @@ mod tests {
 
     #[test]
     fn intern_round_trips_source() {
-        let source = Source::new("/repo/src/lib.rs:12", Some(CompactString::from("peeps")));
+        let source = Source::new("/repo/src/lib.rs:12", Some(String::from("peeps")));
         let source_id = intern_source(source.clone());
         assert_eq!(
             source_for_id(source_id)

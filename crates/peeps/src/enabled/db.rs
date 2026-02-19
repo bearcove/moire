@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::{
     BufferState, Change, ChannelDetails, ChannelEndpointLifecycle, Edge, EdgeKind, Entity,
     EntityBody, EntityId, Event, OnceCellState, OneshotState, PTime, PullChangesResponse,
@@ -21,7 +20,7 @@ pub(super) fn runtime_stream_id() -> StreamId {
     static STREAM_ID: OnceLock<StreamId> = OnceLock::new();
     STREAM_ID
         .get_or_init(|| {
-            StreamId(CompactString::from(format!(
+            StreamId(String::from(format!(
                 "{DEFAULT_STREAM_ID_PREFIX}:{}",
                 std::process::id()
             )))
@@ -44,7 +43,7 @@ pub(super) struct RuntimeDb {
     compacted_before_seq_no: Option<SeqNo>,
     pub(super) entities: BTreeMap<EntityId, Entity>,
     pub(super) scopes: BTreeMap<ScopeId, Scope>,
-    task_scope_ids: BTreeMap<CompactString, ScopeId>,
+    task_scope_ids: BTreeMap<String, ScopeId>,
     pub(super) entity_scope_links: BTreeMap<(EntityId, ScopeId), ()>,
     pub(super) edges: BTreeMap<EdgeKey, Edge>,
     pub(super) events: VecDeque<Event>,
@@ -196,16 +195,16 @@ impl RuntimeDb {
         }
     }
 
-    pub(super) fn register_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
+    pub(super) fn register_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
         self.task_scope_ids.insert(
-            CompactString::from(task_key.as_str()),
+            String::from(task_key.as_str()),
             ScopeId::new(scope_id.as_str()),
         );
     }
 
     pub(super) fn unregister_task_scope_id(
         &mut self,
-        task_key: &CompactString,
+        task_key: &String,
         scope_id: &ScopeId,
     ) {
         if self

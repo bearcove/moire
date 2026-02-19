@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use facet::Facet;
 use figue as args;
 use std::time::{Duration, Instant};
@@ -10,14 +9,14 @@ const DEFAULT_QUERY_LIMIT: u32 = 50;
 
 #[derive(Facet)]
 struct TriggerCutResponse {
-    cut_id: CompactString,
+    cut_id: String,
     requested_at_ns: i64,
     requested_connections: usize,
 }
 
 #[derive(Facet)]
 struct CutStatusResponse {
-    cut_id: CompactString,
+    cut_id: String,
     requested_at_ns: i64,
     pending_connections: usize,
     acked_connections: usize,
@@ -26,12 +25,12 @@ struct CutStatusResponse {
 
 #[derive(Facet)]
 struct SqlRequest {
-    sql: CompactString,
+    sql: String,
 }
 
 #[derive(Facet)]
 struct QueryRequest {
-    name: CompactString,
+    name: String,
     #[facet(skip_unless_truthy)]
     limit: Option<u32>,
 }
@@ -49,7 +48,7 @@ struct Cli {
 enum Command {
     Cut {
         #[facet(args::named, default)]
-        url: Option<CompactString>,
+        url: Option<String>,
         #[facet(args::named, default)]
         poll_ms: Option<u64>,
         #[facet(args::named, default)]
@@ -57,21 +56,21 @@ enum Command {
     },
     Sql {
         #[facet(args::named, default)]
-        url: Option<CompactString>,
+        url: Option<String>,
         #[facet(args::named)]
-        query: CompactString,
+        query: String,
     },
     Query {
         #[facet(args::named, default)]
-        url: Option<CompactString>,
+        url: Option<String>,
         #[facet(args::named)]
-        name: CompactString,
+        name: String,
         #[facet(args::named, default)]
         limit: Option<u32>,
     },
     Snapshot {
         #[facet(args::named, default)]
-        url: Option<CompactString>,
+        url: Option<String>,
     },
 }
 
@@ -110,7 +109,7 @@ fn run() -> Result<(), String> {
 }
 
 fn run_cut(
-    url: Option<CompactString>,
+    url: Option<String>,
     poll_ms: Option<u64>,
     timeout_ms: Option<u64>,
 ) -> Result<(), String> {
@@ -153,7 +152,7 @@ fn run_cut(
     }
 }
 
-fn run_sql(url: Option<CompactString>, query: CompactString) -> Result<(), String> {
+fn run_sql(url: Option<String>, query: String) -> Result<(), String> {
     let base_url = url
         .map(|value| value.to_string())
         .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
@@ -172,8 +171,8 @@ fn run_sql(url: Option<CompactString>, query: CompactString) -> Result<(), Strin
 }
 
 fn run_query_pack(
-    url: Option<CompactString>,
-    name: CompactString,
+    url: Option<String>,
+    name: String,
     limit: Option<u32>,
 ) -> Result<(), String> {
     let base_url = url
@@ -196,7 +195,7 @@ fn run_query_pack(
     Ok(())
 }
 
-fn run_snapshot(url: Option<CompactString>) -> Result<(), String> {
+fn run_snapshot(url: Option<String>) -> Result<(), String> {
     let base_url = url
         .map(|value| value.to_string())
         .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());

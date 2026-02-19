@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::{EdgeKind, Entity, EntityBody, EntityId, Scope, ScopeBody, ScopeId};
 use std::sync::Arc;
 
@@ -18,7 +17,7 @@ impl EntityRef {
 }
 
 #[track_caller]
-pub fn entity_ref_from_wire(id: impl Into<CompactString>) -> EntityRef {
+pub fn entity_ref_from_wire(id: impl Into<String>) -> EntityRef {
     EntityRef {
         id: EntityId::new(id.into()),
     }
@@ -65,7 +64,7 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<CompactString>, body: ScopeBody, source: impl Into<Source>) -> Self {
+    pub fn new(name: impl Into<String>, body: ScopeBody, source: impl Into<Source>) -> Self {
         let source: Source = source.into();
         let mut builder = Scope::builder(name, body).source(source.as_str());
         if let Some(krate) = source.krate() {
@@ -117,7 +116,7 @@ pub struct EntityHandle {
 
 impl EntityHandle {
     pub fn new(
-        name: impl Into<CompactString>,
+        name: impl Into<String>,
         body: EntityBody,
         source: impl Into<Source>,
     ) -> Self {
@@ -125,7 +124,7 @@ impl EntityHandle {
     }
 
     pub fn new_with_source(
-        name: impl Into<CompactString>,
+        name: impl Into<String>,
         body: EntityBody,
         source: impl Into<Source>,
     ) -> Self {

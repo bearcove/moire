@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::{CommandEntity, EntityBody};
 use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
@@ -13,16 +12,16 @@ use super::{register_current_task_scope, Source, SourceLeft, SourceRight, FUTURE
 
 pub struct Command {
     inner: tokio::process::Command,
-    program: CompactString,
-    args: Vec<CompactString>,
-    env: Vec<CompactString>,
+    program: String,
+    args: Vec<String>,
+    env: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct CommandDiagnostics {
-    pub program: CompactString,
-    pub args: Vec<CompactString>,
-    pub env: Vec<CompactString>,
+    pub program: String,
+    pub args: Vec<String>,
+    pub env: Vec<String>,
 }
 
 pub struct Child {
@@ -45,7 +44,7 @@ pub type Interval = DiagnosticInterval;
 impl Command {
     #[track_caller]
     pub fn new(program: impl AsRef<OsStr>) -> Self {
-        let program = CompactString::from(program.as_ref().to_string_lossy().as_ref());
+        let program = String::from(program.as_ref().to_string_lossy().as_ref());
         Self {
             inner: tokio::process::Command::new(program.as_str()),
             program,
@@ -58,7 +57,7 @@ impl Command {
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
         let arg = arg.as_ref().to_owned();
         self.args
-            .push(CompactString::from(arg.to_string_lossy().as_ref()));
+            .push(String::from(arg.to_string_lossy().as_ref()));
         self.inner.arg(&arg);
         self
     }
@@ -68,7 +67,7 @@ impl Command {
         let args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
         for arg in &args {
             self.args
-                .push(CompactString::from(arg.to_string_lossy().as_ref()));
+                .push(String::from(arg.to_string_lossy().as_ref()));
         }
         self.inner.args(args);
         self
@@ -78,7 +77,7 @@ impl Command {
     pub fn env(&mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> &mut Self {
         let key = key.as_ref().to_owned();
         let val = val.as_ref().to_owned();
-        self.env.push(CompactString::from(format!(
+        self.env.push(String::from(format!(
             "{}={}",
             key.to_string_lossy(),
             val.to_string_lossy()
@@ -97,7 +96,7 @@ impl Command {
             .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
             .collect();
         for (k, v) in &vars {
-            self.env.push(CompactString::from(format!(
+            self.env.push(String::from(format!(
                 "{}={}",
                 k.to_string_lossy(),
                 v.to_string_lossy()
@@ -241,8 +240,8 @@ impl Command {
         (self.inner, diag)
     }
 
-    fn entity_name(&self) -> CompactString {
-        CompactString::from(format!("command.{}", self.program))
+    fn entity_name(&self) -> String {
+        String::from(format!("command.{}", self.program))
     }
 
     fn entity_body(&self) -> EntityBody {
@@ -265,7 +264,7 @@ impl Child {
             args: diag.args.clone(),
             env: diag.env.clone(),
         });
-        let name = CompactString::from(format!("command.{}", diag.program));
+        let name = String::from(format!("command.{}", diag.program));
         let handle = EntityHandle::new(name, body, SourceRight::caller());
         Self {
             inner: Some(child),

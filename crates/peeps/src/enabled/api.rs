@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::{
     CutAck, CutId, Edge, Entity, Event, PullChangesResponse, Scope, SeqNo,
     StreamCursor,
@@ -64,7 +63,7 @@ pub fn current_cursor() -> StreamCursor {
 }
 
 #[track_caller]
-pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
+pub fn ack_cut(cut_id: impl Into<String>) -> CutAck {
     CutAck {
         cut_id: CutId(cut_id.into()),
         cursor: current_cursor(),

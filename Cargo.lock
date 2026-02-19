@@ -190,15 +190,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e629a66d692cb9ff1a1c664e41771b3dcaf961985a9774c0eb0bd1b51cf60a48"
 
 [[package]]
-name = "castaway"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dec551ab6e7578819132c713a93c022a05d60159dc86e7a7050223577484c55a"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -213,20 +204,6 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
-
-[[package]]
-name = "compact_str"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fdb1325a1cece981e8a296ab8f0f9b63ae357bd0784a9faaf548cc7b480707a"
-dependencies = [
- "castaway",
- "cfg-if",
- "itoa",
- "rustversion",
- "ryu",
- "static_assertions",
-]
 
 [[package]]
 name = "concurrent-queue"
@@ -379,7 +356,6 @@ source = "git+https://github.com/facet-rs/facet?branch=main#2dd2fca4fca85dfc3903
 dependencies = [
  "autocfg",
  "camino",
- "compact_str",
  "const-fnv1a-hash",
  "iddqd",
  "impls",
@@ -1158,7 +1134,6 @@ dependencies = [
 name = "peeps"
 version = "0.1.0"
 dependencies = [
- "compact_str",
  "facet-json",
  "facet-value",
  "parking_lot",
@@ -1172,7 +1147,6 @@ dependencies = [
 name = "peeps-cli"
 version = "0.1.0"
 dependencies = [
- "compact_str",
  "facet",
  "facet-json",
  "facet-value",
@@ -1184,7 +1158,6 @@ dependencies = [
 name = "peeps-examples"
 version = "0.1.0"
 dependencies = [
- "compact_str",
  "facet",
  "figue",
  "libc",
@@ -1200,7 +1173,6 @@ dependencies = [
 name = "peeps-source"
 version = "0.1.0"
 dependencies = [
- "compact_str",
  "facet",
  "rusqlite",
 ]
@@ -1209,7 +1181,6 @@ dependencies = [
 name = "peeps-sqlite-facet"
 version = "0.1.0"
 dependencies = [
- "compact_str",
  "facet-json",
  "facet-value",
  "peeps-source",
@@ -1221,7 +1192,6 @@ dependencies = [
 name = "peeps-types"
 version = "0.1.0"
 dependencies = [
- "compact_str",
  "facet",
  "facet-format",
  "facet-value",
@@ -1234,7 +1204,6 @@ name = "peeps-web"
 version = "0.1.0"
 dependencies = [
  "axum",
- "compact_str",
  "facet",
  "facet-json",
  "facet-value",
@@ -1255,7 +1224,6 @@ dependencies = [
 name = "peeps-wire"
 version = "0.1.0"
 dependencies = [
- "compact_str",
  "facet",
  "facet-json",
  "peeps-types",

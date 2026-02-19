@@ -229,7 +229,7 @@ impl<T: Clone> WatchReceiver<T> {
 }
 
 pub fn watch<T: Clone>(
-    name: impl Into<CompactString>,
+    name: impl Into<String>,
     initial: T,
     source: SourceRight,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
@@ -285,7 +285,7 @@ pub fn watch<T: Clone>(
 }
 
 pub fn watch_channel<T: Clone>(
-    name: impl Into<CompactString>,
+    name: impl Into<String>,
     initial: T,
     source: SourceRight,
 ) -> (WatchSender<T>, WatchReceiver<T>) {

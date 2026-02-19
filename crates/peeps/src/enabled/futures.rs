@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::PTime;
 use peeps_types::{
     EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, OperationEdgeMeta,
@@ -17,8 +16,8 @@ pub(super) struct OperationFuture<F> {
     actor_id: Option<EntityId>,
     resource_id: EntityId,
     op_kind: OperationKind,
-    source: CompactString,
-    krate: Option<CompactString>,
+    source: String,
+    krate: Option<String>,
     poll_count: u64,
     pending_since_ptime_ms: Option<u64>,
     has_edge: bool,
@@ -29,8 +28,8 @@ impl<F> OperationFuture<F> {
         inner: F,
         resource_id: EntityId,
         op_kind: OperationKind,
-        source: CompactString,
-        krate: Option<CompactString>,
+        source: String,
+        krate: Option<String>,
     ) -> Self {
         let actor_id = current_causal_target().map(|target| target.id().clone());
         if let Some(actor_id) = actor_id.as_ref() {
@@ -57,8 +56,8 @@ impl<F> OperationFuture<F> {
             state,
             pending_since_ptime_ms: self.pending_since_ptime_ms,
             last_change_ptime_ms: PTime::now().as_millis(),
-            source: CompactString::from(self.source.as_str()),
-            krate: self.krate.as_ref().map(|k| CompactString::from(k.as_str())),
+            source: String::from(self.source.as_str()),
+            krate: self.krate.as_ref().map(|k| String::from(k.as_str())),
             poll_count: Some(self.poll_count),
             details: None,
         };
@@ -138,8 +137,8 @@ pub(super) fn instrument_operation_on_with_source<F>(
 where
     F: IntoFuture,
 {
-    let source_text = CompactString::from(source.as_str());
-    let krate = source.krate().map(CompactString::from);
+    let source_text = String::from(source.as_str());
+    let krate = source.krate().map(String::from);
     OperationFuture::new(
         fut.into_future(),
         EntityId::new(on.id().as_str()),
@@ -304,7 +303,7 @@ impl<F> Drop for InstrumentedFuture<F> {
 }
 
 pub fn instrument_future<F>(
-    name: impl Into<CompactString>,
+    name: impl Into<String>,
     fut: F,
     source: Source,
     on: Option<EntityRef>,

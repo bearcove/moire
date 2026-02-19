@@ -1,4 +1,3 @@
-use compact_str::{CompactString, ToCompactString};
 use facet::Facet;
 #[cfg(feature = "rusqlite")]
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
@@ -73,20 +72,20 @@ impl FromSql for PTime {
 /// Opaque textual entity identifier suitable for wire formats and JS runtimes.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
-pub struct EntityId(pub(crate) CompactString);
+pub struct EntityId(pub(crate) String);
 
 /// Opaque textual scope identifier suitable for wire formats and JS runtimes.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
-pub struct ScopeId(pub(crate) CompactString);
+pub struct ScopeId(pub(crate) String);
 
 /// Opaque textual event identifier suitable for wire formats and JS runtimes.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
-pub struct EventId(pub(crate) CompactString);
+pub struct EventId(pub(crate) String);
 
 impl EntityId {
-    pub fn new(id: impl Into<CompactString>) -> Self {
+    pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
@@ -96,7 +95,7 @@ impl EntityId {
 }
 
 impl ScopeId {
-    pub fn new(id: impl Into<CompactString>) -> Self {
+    pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
@@ -106,7 +105,7 @@ impl ScopeId {
 }
 
 impl EventId {
-    pub fn new(id: impl Into<CompactString>) -> Self {
+    pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
@@ -169,7 +168,7 @@ pub(crate) fn next_event_id() -> EventId {
     EventId(next_opaque_id())
 }
 
-fn next_opaque_id() -> CompactString {
+fn next_opaque_id() -> String {
     static PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
     static COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -184,13 +183,13 @@ fn next_opaque_id() -> CompactString {
 
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_FFFF_FFFF_FFFF;
     let raw = ((prefix as u64) << 48) | counter;
-    PeepsHex(raw).to_compact_string()
+    PeepsHex(raw).to_string()
 }
 
 #[track_caller]
-pub(crate) fn caller_source() -> CompactString {
+pub(crate) fn caller_source() -> String {
     let location = std::panic::Location::caller();
-    CompactString::from(format!("{}:{}", location.file(), location.line()))
+    String::from(format!("{}:{}", location.file(), location.line()))
 }
 
 /// `peeps-hex-2` formatter:

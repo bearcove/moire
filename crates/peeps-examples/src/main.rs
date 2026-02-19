@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use facet::Facet;
 use figue as args;
 use std::path::PathBuf;
@@ -22,9 +21,9 @@ struct Cli {
     #[facet(args::named, default)]
     no_open: bool,
     #[facet(args::named, default)]
-    peeps_listen: Option<CompactString>,
+    peeps_listen: Option<String>,
     #[facet(args::named, default)]
-    peeps_http: Option<CompactString>,
+    peeps_http: Option<String>,
     #[facet(args::subcommand)]
     command: CommandKind,
 }
@@ -38,7 +37,7 @@ enum CommandKind {
     RoamRpcStuckRequest,
     RoamRpcStuckRequestClient {
         #[facet(args::named)]
-        peer_addr: CompactString,
+        peer_addr: String,
     },
     RoamRustSwiftStuckRequest,
     SemaphoreStarvation,

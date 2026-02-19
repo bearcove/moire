@@ -9,7 +9,6 @@ name = "peeps"
 path = "src/main.rs"
 
 [dependencies]
-compact_str.workspace = true
 facet.workspace = true
 facet-json.workspace = true
 facet-value.workspace = true

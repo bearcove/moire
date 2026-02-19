@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use facet::Facet;
 
 use crate::{next_scope_id, PTime, ScopeId, SourceId};
@@ -18,7 +17,7 @@ pub struct Scope {
     pub source: SourceId,
 
     /// Human-facing name for this scope.
-    pub name: CompactString,
+    pub name: String,
 
     /// More specific info about the scope.
     pub body: ScopeBody,
@@ -28,7 +27,7 @@ impl Scope {
     /// Create a new scope: ID and birth time are generated automatically.
     pub fn new(
         source: impl Into<SourceId>,
-        name: impl Into<CompactString>,
+        name: impl Into<String>,
         body: ScopeBody,
     ) -> Scope {
         Scope {

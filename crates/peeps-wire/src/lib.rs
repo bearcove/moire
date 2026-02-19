@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use facet::Facet;
 use peeps_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
 use std::fmt;
@@ -115,7 +114,7 @@ pub fn decode_frame_default(frame: &[u8]) -> Result<&[u8], FrameCodecError> {
 
 #[derive(Facet)]
 pub struct Handshake {
-    pub process_name: CompactString,
+    pub process_name: String,
     pub pid: u32,
 }
 
@@ -136,12 +135,12 @@ pub struct SnapshotReply {
 
 #[derive(Facet)]
 pub struct ClientError {
-    pub process_name: CompactString,
+    pub process_name: String,
     pub pid: u32,
-    pub stage: CompactString,
-    pub error: CompactString,
+    pub stage: String,
+    pub error: String,
     #[facet(skip_unless_truthy)]
-    pub last_frame_utf8: Option<CompactString>,
+    pub last_frame_utf8: Option<String>,
 }
 
 #[derive(Facet)]

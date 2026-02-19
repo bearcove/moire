@@ -24,11 +24,11 @@ The macro expands `on = $on` to `&$on` and passes it to:
 
 ```rust
 pub fn instrument_future_on_with_krate<F>(
-    name: impl Into<CompactString>,
+    name: impl Into<String>,
     on: &EntityHandle,   // ← currently hardcoded to &EntityHandle
     fut: F,
-    source: impl Into<CompactString>,
-    krate: impl Into<CompactString>,
+    source: impl Into<String>,
+    krate: impl Into<String>,
 ) -> InstrumentedFuture<F>
 ```
 
@@ -73,7 +73,7 @@ counterparts) hold `handle: EntityHandle` and expose it via `.handle() -> &Entit
 
    ```rust
    pub fn instrument_future_on_with_krate<F>(
-       name: impl Into<CompactString>,
+       name: impl Into<String>,
        on: &impl AsEntityRef,   // ← accepts any wrapped type
        ...
    )

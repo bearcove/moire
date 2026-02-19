@@ -6,7 +6,6 @@ license.workspace = true
 
 [dependencies]
 axum.workspace = true
-compact_str.workspace = true
 facet.workspace = true
 facet-json.workspace = true
 facet-value.workspace = true

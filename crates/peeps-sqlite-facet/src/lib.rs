@@ -7,7 +7,6 @@
 //! membership/link tables) should stay normalized at the SQLite layer instead
 //! of being modeled as arrays in JSON fields.
 
-use compact_str::CompactString;
 use peeps_types::{
     Edge, Entity, EntityId, Event, EventId, PTime, Scope, ScopeId, Snapshot, SourceId,
 };
@@ -100,7 +99,7 @@ pub struct EncodedEntityRow {
     pub id: EntityId,
     pub birth: PTime,
     pub source_id: SourceId,
-    pub name: CompactString,
+    pub name: String,
     pub body_json: Json,
 }
 
@@ -109,7 +108,7 @@ pub struct EncodedScopeRow {
     pub id: ScopeId,
     pub birth: PTime,
     pub source_id: SourceId,
-    pub name: CompactString,
+    pub name: String,
     pub body_json: Json,
 }
 
@@ -213,19 +212,19 @@ pub struct SnapshotTableNames {
     // Core snapshot projection tables.
     // Keep this focused on canonical model rows; relationship/index helper
     // tables (entity_scope_links, etc.) are managed separately by callers.
-    pub entities: CompactString,
-    pub scopes: CompactString,
-    pub edges: CompactString,
-    pub events: CompactString,
+    pub entities: String,
+    pub scopes: String,
+    pub edges: String,
+    pub events: String,
 }
 
 impl Default for SnapshotTableNames {
     fn default() -> Self {
         Self {
-            entities: CompactString::from("entities"),
-            scopes: CompactString::from("scopes"),
-            edges: CompactString::from("edges"),
-            events: CompactString::from("events"),
+            entities: String::from("entities"),
+            scopes: String::from("scopes"),
+            edges: String::from("edges"),
+            events: String::from("events"),
         }
     }
 }

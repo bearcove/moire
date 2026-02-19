@@ -213,7 +213,7 @@ impl<T: Clone> BroadcastReceiver<T> {
 
 #[track_caller]
 pub fn broadcast<T: Clone>(
-    name: impl Into<CompactString>,
+    name: impl Into<String>,
     capacity: usize,
     source: SourceRight,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {

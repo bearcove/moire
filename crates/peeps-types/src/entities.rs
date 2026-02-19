@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use facet::Facet;
 
 use crate::{next_entity_id, EntityId, PTime, SourceId};
@@ -17,7 +16,7 @@ pub struct Entity {
     pub source: SourceId,
 
     /// Human-facing name for this entity.
-    pub name: CompactString,
+    pub name: String,
 
     /// More specific info about the entity (depending on its kind)
     pub body: EntityBody,
@@ -27,7 +26,7 @@ impl Entity {
     /// Create a new entity: ID and birth time are generated automatically.
     pub fn new(
         source: impl Into<SourceId>,
-        name: impl Into<CompactString>,
+        name: impl Into<String>,
         body: EntityBody,
     ) -> Entity {
         Entity {
@@ -201,11 +200,11 @@ pub enum OnceCellState {
 #[derive(Facet)]
 pub struct CommandEntity {
     /// Executable path or program name.
-    pub program: CompactString,
+    pub program: String,
     /// Command-line arguments.
-    pub args: Vec<CompactString>,
+    pub args: Vec<String>,
     /// Environment entries in `KEY=VALUE` form.
-    pub env: Vec<CompactString>,
+    pub env: Vec<String>,
 }
 
 #[derive(Facet)]
@@ -213,7 +212,7 @@ pub struct FileOpEntity {
     /// File operation type.
     pub op: FileOpKind,
     /// Absolute or process-relative file path.
-    pub path: CompactString,
+    pub path: String,
 }
 
 #[derive(Facet)]
@@ -233,7 +232,7 @@ pub enum FileOpKind {
 #[derive(Facet)]
 pub struct NetEntity {
     /// Endpoint address string (for example `127.0.0.1:8080`).
-    pub addr: CompactString,
+    pub addr: String,
 }
 
 /// Correlation token for RPC is the request entity id propagated in metadata.
@@ -241,15 +240,15 @@ pub struct NetEntity {
 #[derive(Facet)]
 pub struct RequestEntity {
     /// RPC method name.
-    pub method: CompactString,
+    pub method: String,
     /// Stable, human-oriented preview of request arguments.
-    pub args_preview: CompactString,
+    pub args_preview: String,
 }
 
 #[derive(Facet)]
 pub struct ResponseEntity {
     /// RPC method name this response belongs to.
-    pub method: CompactString,
+    pub method: String,
     /// Canonical response outcome.
     pub status: ResponseStatus,
 }

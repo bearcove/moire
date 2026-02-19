@@ -9,6 +9,5 @@ default = []
 rusqlite = ["dep:rusqlite"]
 
 [dependencies]
-compact_str.workspace = true
 facet.workspace = true
 rusqlite = { workspace = true, optional = true }

@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use facet::Facet;
 
 use crate::{Edge, EdgeKind, Entity, EntityId, Event, Scope, ScopeId, Snapshot};
@@ -24,12 +23,12 @@ impl SeqNo {
 /// for the lifetime of that runtime stream.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
-pub struct StreamId(pub CompactString);
+pub struct StreamId(pub String);
 
 /// Logical barrier identifier used to coordinate multi-process "cuts".
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
-pub struct CutId(pub CompactString);
+pub struct CutId(pub String);
 
 /// One canonical graph mutation in the append-only stream.
 #[derive(Facet)]

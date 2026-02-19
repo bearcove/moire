@@ -12,7 +12,6 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
 use axum::Router;
-use compact_str::CompactString;
 use facet::Facet;
 use figue as args;
 use peeps_types::Change;
@@ -136,19 +135,19 @@ struct ApiError {
 
 #[derive(Facet)]
 struct SqlRequest {
-    sql: CompactString,
+    sql: String,
 }
 
 #[derive(Facet)]
 struct QueryRequest {
-    name: CompactString,
+    name: String,
     #[facet(skip_unless_truthy)]
     limit: Option<u32>,
 }
 
 #[derive(Facet)]
 struct SqlResponse {
-    columns: Vec<CompactString>,
+    columns: Vec<String>,
     rows: Vec<facet_value::Value>,
     row_count: u32,
 }
@@ -186,8 +185,8 @@ struct ProcessSnapshotView {
 /// Maps a scope to one of its member entities, within a single process.
 #[derive(Facet)]
 struct ScopeEntityLink {
-    scope_id: CompactString,
-    entity_id: CompactString,
+    scope_id: String,
+    entity_id: String,
 }
 
 /// A process that was connected but did not reply to the snapshot request in time.
@@ -453,7 +452,7 @@ async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse {
         let cut_num = guard.next_cut_id;
         guard.next_cut_id += 1;
         let cut_id_string = format!("cut:{cut_num}");
-        let cut_id = peeps_types::CutId(CompactString::from(cut_id_string.as_str()));
+        let cut_id = peeps_types::CutId(String::from(cut_id_string.as_str()));
         let now_ns = now_nanos();
         let mut pending_conn_ids = BTreeSet::new();
         let mut outbound = Vec::new();
@@ -1828,8 +1827,8 @@ fn sql_query_blocking(db_path: &PathBuf, sql: &str) -> Result<SqlResponse, Strin
     }
 
     let column_count = stmt.column_count();
-    let columns: Vec<CompactString> = (0..column_count)
-        .map(|i| CompactString::from(stmt.column_name(i).unwrap_or("?")))
+    let columns: Vec<String> = (0..column_count)
+        .map(|i| String::from(stmt.column_name(i).unwrap_or("?")))
         .collect();
 
     let mut rows = Vec::new();

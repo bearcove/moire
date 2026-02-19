@@ -9,7 +9,6 @@ default = []
 rusqlite = ["dep:rusqlite"]
 
 [dependencies]
-compact_str.workspace = true
 facet.workspace = true
 facet-format.workspace = true
 facet-value.workspace = true

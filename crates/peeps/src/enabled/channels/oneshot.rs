@@ -209,7 +209,7 @@ pub fn oneshot<T>(
     name: impl Into<String>,
     source: SourceRight,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let name: CompactString = name.into().into();
+    let name: String = name.into().into();
     let (tx, rx) = oneshot::channel();
     let details = ChannelDetails::Oneshot(OneshotChannelDetails {
         state: OneshotState::Pending,

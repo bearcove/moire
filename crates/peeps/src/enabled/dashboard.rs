@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::SeqNo;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -27,7 +26,7 @@ pub(super) fn init_dashboard_push_loop(process_name: &str) {
         return;
     };
 
-    let process_name = CompactString::from(process_name);
+    let process_name = String::from(process_name);
 
     if tokio::runtime::Handle::try_current().is_ok() {
         tokio::spawn(async move {
@@ -48,7 +47,7 @@ pub(super) fn init_dashboard_push_loop(process_name: &str) {
     });
 }
 
-async fn run_dashboard_push_loop(addr: String, process_name: CompactString) {
+async fn run_dashboard_push_loop(addr: String, process_name: String) {
     loop {
         let connected = run_dashboard_session(&addr, process_name.clone()).await;
         let _ = connected;
@@ -56,7 +55,7 @@ async fn run_dashboard_push_loop(addr: String, process_name: CompactString) {
     }
 }
 
-async fn run_dashboard_session(addr: &str, process_name: CompactString) -> Result<(), String> {
+async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), String> {
     let stream = TcpStream::connect(addr)
         .await
         .map_err(|e| format!("dashboard connect: {e}"))?;

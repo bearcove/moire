@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use facet::Facet;
 use peeps_source::SourceId;
 
@@ -100,8 +99,8 @@ pub struct OperationEdgeMeta {
     pub state: OperationState,
     pub pending_since_ptime_ms: Option<u64>,
     pub last_change_ptime_ms: u64,
-    pub source: CompactString,
-    pub krate: Option<CompactString>,
+    pub source: String,
+    pub krate: Option<String>,
     pub poll_count: Option<u64>,
     pub details: Option<facet_value::Value>,
 }

@@ -530,7 +530,7 @@ pub fn channel<T>(
     capacity: usize,
     source: SourceRight,
 ) -> (Sender<T>, Receiver<T>) {
-    let name: CompactString = name.into().into();
+    let name: String = name.into().into();
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
@@ -594,7 +594,7 @@ pub fn unbounded_channel<T>(
     name: impl Into<String>,
     source: SourceRight,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    let name: CompactString = name.into().into();
+    let name: String = name.into().into();
     let (tx, rx) = mpsc::unbounded_channel();
     let details = ChannelDetails::Mpsc(MpscChannelDetails {
         buffer: Some(BufferState {

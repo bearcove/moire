@@ -1,4 +1,3 @@
-use compact_str::{CompactString, ToCompactString};
 use peeps_types::{EntityBody, EntityId, Event, ScopeBody, ScopeId};
 use std::cell::RefCell;
 use std::future::Future;
@@ -49,7 +48,7 @@ pub fn __init_from_macro() {
     let process_name = std::env::current_exe()
         .unwrap()
         .display()
-        .to_compact_string();
+        .to_string();
     PROCESS_SCOPE.get_or_init(|| {
         ScopeHandle::new(
             process_name.clone(),
@@ -66,12 +65,12 @@ pub(super) fn current_process_scope_id() -> Option<ScopeId> {
         .map(|scope| ScopeId::new(scope.id().as_str()))
 }
 
-pub(super) fn current_tokio_task_key() -> Option<CompactString> {
-    tokio::task::try_id().map(|id| CompactString::from(id.to_string()))
+pub(super) fn current_tokio_task_key() -> Option<String> {
+    tokio::task::try_id().map(|id| String::from(id.to_string()))
 }
 
 pub(super) struct TaskScopeRegistration {
-    task_key: CompactString,
+    task_key: String,
     scope: ScopeHandle,
 }
 
@@ -101,7 +100,7 @@ pub(super) fn register_current_task_scope(
 
 #[track_caller]
 pub fn spawn_tracked<F>(
-    name: impl Into<CompactString>,
+    name: impl Into<String>,
     fut: F,
     source: Source,
 ) -> tokio::task::JoinHandle<F::Output>
@@ -109,7 +108,7 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    let name: CompactString = name.into();
+    let name: String = name.into();
     tokio::spawn(
         FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
             let _task_scope = register_current_task_scope(name.as_str(), source);
@@ -120,7 +119,7 @@ where
 
 #[track_caller]
 pub fn spawn_blocking_tracked<F, T>(
-    name: impl Into<CompactString>,
+    name: impl Into<String>,
     f: F,
     source: Source,
 ) -> tokio::task::JoinHandle<T>
@@ -136,8 +135,8 @@ where
 }
 
 pub(super) fn record_event_with_source(mut event: Event, source: &Source) {
-    event.krate = source.krate().map(CompactString::from);
-    event.source = CompactString::from(source.as_str());
+    event.krate = source.krate().map(String::from);
+    event.source = String::from(source.as_str());
     if let Ok(mut db) = db::runtime_db().lock() {
         db.record_event(event);
     }
@@ -146,11 +145,11 @@ pub(super) fn record_event_with_source(mut event: Event, source: &Source) {
 pub(super) fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
     if let Ok(mut db) = db::runtime_db().lock() {
         if let Some(entity) = db.entities.get(entity_id) {
-            event.source = CompactString::from(entity.source.as_str());
+            event.source = String::from(entity.source.as_str());
             event.krate = entity
                 .krate
                 .as_ref()
-                .map(|k| CompactString::from(k.as_str()));
+                .map(|k| String::from(k.as_str()));
         }
         db.record_event(event);
     }

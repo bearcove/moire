@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use peeps_types::{
     EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, RequestEntity,
     ResponseEntity, ResponseStatus,
@@ -19,8 +18,8 @@ impl RpcRequestHandle {
     }
 
     #[track_caller]
-    pub fn id_for_wire(&self) -> CompactString {
-        CompactString::from(self.handle.id().as_str())
+    pub fn id_for_wire(&self) -> String {
+        String::from(self.handle.id().as_str())
     }
 
     #[track_caller]
@@ -64,7 +63,7 @@ impl RpcResponseHandle {
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::StateChanged,
             &status,
-            source.into_compact_string(),
+            source.into_string(),
             None,
         ) {
             if let Ok(mut db) = super::db::runtime_db().lock() {
@@ -91,8 +90,8 @@ impl RpcResponseHandle {
 
 #[track_caller]
 pub fn rpc_request(
-    method: impl Into<CompactString>,
-    args_preview: impl Into<CompactString>,
+    method: impl Into<String>,
+    args_preview: impl Into<String>,
     source: SourceRight,
 ) -> RpcRequestHandle {
     let method = method.into();
@@ -112,7 +111,7 @@ macro_rules! rpc_request {
     };
 }
 
-pub fn rpc_response(method: impl Into<CompactString>, source: SourceRight) -> RpcResponseHandle {
+pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcResponseHandle {
     let method = method.into();
     let body = EntityBody::Response(ResponseEntity {
         method: method.clone(),
@@ -131,7 +130,7 @@ macro_rules! rpc_response {
 }
 
 pub fn rpc_response_for(
-    method: impl Into<CompactString>,
+    method: impl Into<String>,
     request: &EntityRef,
     source: SourceRight,
 ) -> RpcResponseHandle {
@@ -161,7 +160,7 @@ pub fn rpc_response_for(
             builder = builder.krate(request_krate);
         }
     } else {
-        builder = builder.source(source.into_compact_string());
+        builder = builder.source(source.into_string());
     }
     let entity = builder
         .build(&())
