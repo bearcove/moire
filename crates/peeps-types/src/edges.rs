@@ -11,10 +11,13 @@ use crate::{
 pub struct Edge {
     /// Source entity in the causal relationship.
     pub src: EntityId,
+
     /// Destination entity in the causal relationship.
     pub dst: EntityId,
+
     /// Causal edge kind.
     pub kind: EdgeKind,
+
     /// Extensible metadata for optional edge context.
     pub meta: facet_value::Value,
 }
@@ -45,16 +48,22 @@ impl Edge {
 pub enum EdgeKind {
     /// Contextual resource-touch relationship (actor has interacted with resource).
     Touches,
+
     /// Polled relationship (non-blocking observation of dependency).
     Polls,
+
     /// Waiting/blocked-on relationship.
     Needs,
+
     /// Resource ownership relationship (resource -> current holder).
     Holds,
+
     /// Closure/cancellation cause relationship.
     ClosedBy,
+
     /// Structural channel endpoint pairing (`tx -> rx`).
     ChannelLink,
+
     /// Structural request/response pairing.
     RpcLink,
 }

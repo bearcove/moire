@@ -1,11 +1,7 @@
 use compact_str::CompactString;
 use facet::Facet;
-use facet_value::Value;
-use peeps_source::Source;
 
-use crate::{
-    caller_source_id, intern_source, next_entity_id, EntityId, MetaSerializeError, PTime, SourceId,
-};
+use crate::{next_entity_id, EntityId, PTime, SourceId};
 
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
 #[derive(Facet)]
@@ -33,14 +29,14 @@ impl Entity {
         source: impl Into<SourceId>,
         name: impl Into<CompactString>,
         body: EntityBody,
-    ) -> Result<Entity, MetaSerializeError> {
-        Ok(Entity {
+    ) -> Entity {
+        Entity {
             id: next_entity_id(),
             birth: PTime::now(),
             source: source.into(),
             name: name.into(),
             body,
-        })
+        }
     }
 }
 
