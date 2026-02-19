@@ -1,7 +1,7 @@
 use peeps_types::{EntityBody, LockEntity, LockKind};
 
 use super::super::handles::{AsEntityRef, EntityHandle, EntityRef};
-use super::super::{CrateContext, Source, UnqualSource};
+use super::super::{Source, SourceLeft, SourceRight};
 
 pub struct RwLock<T> {
     inner: parking_lot::RwLock<T>,
@@ -9,7 +9,7 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
-    pub fn new(name: &'static str, value: T, source: UnqualSource) -> Self {
+    pub fn new(name: &'static str, value: T, source: SourceRight) -> Self {
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
@@ -24,8 +24,8 @@ impl<T> RwLock<T> {
     }
 
     #[track_caller]
-    pub fn read_with_cx(&self, cx: CrateContext) -> parking_lot::RwLockReadGuard<'_, T> {
-        self.read_with_source(cx.join(UnqualSource::caller()))
+    pub fn read_with_cx(&self, cx: SourceLeft) -> parking_lot::RwLockReadGuard<'_, T> {
+        self.read_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn read_with_source(&self, _source: Source) -> parking_lot::RwLockReadGuard<'_, T> {
@@ -33,8 +33,8 @@ impl<T> RwLock<T> {
     }
 
     #[track_caller]
-    pub fn write_with_cx(&self, cx: CrateContext) -> parking_lot::RwLockWriteGuard<'_, T> {
-        self.write_with_source(cx.join(UnqualSource::caller()))
+    pub fn write_with_cx(&self, cx: SourceLeft) -> parking_lot::RwLockWriteGuard<'_, T> {
+        self.write_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn write_with_source(&self, _source: Source) -> parking_lot::RwLockWriteGuard<'_, T> {
@@ -42,11 +42,8 @@ impl<T> RwLock<T> {
     }
 
     #[track_caller]
-    pub fn try_read_with_cx(
-        &self,
-        cx: CrateContext,
-    ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
-        self.try_read_with_source(cx.join(UnqualSource::caller()))
+    pub fn try_read_with_cx(&self, cx: SourceLeft) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+        self.try_read_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn try_read_with_source(
@@ -59,9 +56,9 @@ impl<T> RwLock<T> {
     #[track_caller]
     pub fn try_write_with_cx(
         &self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
-        self.try_write_with_source(cx.join(UnqualSource::caller()))
+        self.try_write_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn try_write_with_source(

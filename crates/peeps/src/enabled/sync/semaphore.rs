@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
 use super::super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
-use super::super::{CrateContext, Source, UnqualSource};
+use super::super::{Source, SourceLeft, SourceRight};
 
 #[derive(Clone)]
 pub struct Semaphore {
@@ -81,7 +81,7 @@ pub(super) fn release_semaphore_holder_edge(
 }
 
 impl Semaphore {
-    pub fn new(name: impl Into<String>, permits: usize, source: UnqualSource) -> Self {
+    pub fn new(name: impl Into<String>, permits: usize, source: SourceRight) -> Self {
         let max_permits = permits.min(u32::MAX as usize) as u32;
         let handle = EntityHandle::new(
             name.into(),
@@ -129,9 +129,9 @@ impl Semaphore {
     #[allow(clippy::manual_async_fn)]
     pub fn acquire_with_cx(
         &self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_with_source(cx.join(UnqualSource::caller()))
+        self.acquire_with_source(cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -168,9 +168,9 @@ impl Semaphore {
     pub fn acquire_many_with_cx(
         &self,
         n: u32,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_with_source(n, cx.join(UnqualSource::caller()))
+        self.acquire_many_with_source(n, cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -207,9 +207,9 @@ impl Semaphore {
     #[allow(clippy::manual_async_fn)]
     pub fn acquire_owned_with_cx(
         &self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_owned_with_source(cx.join(UnqualSource::caller()))
+        self.acquire_owned_with_source(cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -246,9 +246,9 @@ impl Semaphore {
     pub fn acquire_many_owned_with_cx(
         &self,
         n: u32,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_owned_with_source(n, cx.join(UnqualSource::caller()))
+        self.acquire_many_owned_with_source(n, cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]

@@ -3,7 +3,7 @@ use std::future::Future;
 
 use super::futures::instrument_future;
 use super::process::JoinSet;
-use super::{register_current_task_scope, CrateContext, Source, UnqualSource, FUTURE_CAUSAL_STACK};
+use super::{register_current_task_scope, Source, SourceLeft, SourceRight, FUTURE_CAUSAL_STACK};
 
 impl<T> JoinSet<T>
 where
@@ -28,11 +28,11 @@ where
     }
 
     #[track_caller]
-    pub fn spawn_with_cx<F>(&mut self, label: &'static str, future: F, cx: CrateContext)
+    pub fn spawn_with_cx<F>(&mut self, label: &'static str, future: F, cx: SourceLeft)
     where
         F: Future<Output = T> + Send + 'static,
     {
-        self.spawn_with_source(label, future, cx.join(UnqualSource::caller()));
+        self.spawn_with_source(label, future, cx.join(SourceRight::caller()));
     }
 
     pub fn spawn_with_source<F>(&mut self, label: &'static str, future: F, source: Source)
@@ -73,9 +73,9 @@ where
     #[track_caller]
     pub fn join_next_with_cx(
         &mut self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
-        self.join_next_with_source(cx.join(UnqualSource::caller()))
+        self.join_next_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn join_next_with_source(

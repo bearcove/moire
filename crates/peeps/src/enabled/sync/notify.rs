@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
 use super::super::handles::EntityHandle;
-use super::super::{CrateContext, Source, UnqualSource};
+use super::super::{Source, SourceLeft, SourceRight};
 
 #[derive(Clone)]
 pub struct Notify {
@@ -16,7 +16,7 @@ pub struct Notify {
 }
 
 impl Notify {
-    pub fn new(name: impl Into<String>, source: UnqualSource) -> Self {
+    pub fn new(name: impl Into<String>, source: SourceRight) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(
             name,
@@ -32,8 +32,8 @@ impl Notify {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn notified_with_cx(&self, cx: CrateContext) -> impl Future<Output = ()> + '_ {
-        self.notified_with_source(cx.join(UnqualSource::caller()))
+    pub fn notified_with_cx(&self, cx: SourceLeft) -> impl Future<Output = ()> + '_ {
+        self.notified_with_source(cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]

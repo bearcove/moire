@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 
 use super::super::db::runtime_db;
 use super::super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
-use super::super::{CrateContext, Source, UnqualSource, HELD_MUTEX_STACK};
+use super::super::{Source, SourceLeft, SourceRight, HELD_MUTEX_STACK};
 
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
@@ -31,7 +31,7 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 }
 
 impl<T> Mutex<T> {
-    pub fn new(name: &'static str, value: T, source: UnqualSource) -> Self {
+    pub fn new(name: &'static str, value: T, source: SourceRight) -> Self {
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
@@ -46,8 +46,8 @@ impl<T> Mutex<T> {
     }
 
     #[track_caller]
-    pub fn lock_with_cx(&self, cx: CrateContext) -> MutexGuard<'_, T> {
-        self._lock(cx.join(UnqualSource::caller()))
+    pub fn lock_with_cx(&self, cx: SourceLeft) -> MutexGuard<'_, T> {
+        self._lock(cx.join(SourceRight::caller()))
     }
 
     pub fn lock_with_source(&self, source: Source) -> MutexGuard<'_, T> {
@@ -67,8 +67,8 @@ impl<T> Mutex<T> {
     }
 
     #[track_caller]
-    pub fn try_lock_with_cx(&self, cx: CrateContext) -> Option<MutexGuard<'_, T>> {
-        self._try_lock(cx.join(UnqualSource::caller()))
+    pub fn try_lock_with_cx(&self, cx: SourceLeft) -> Option<MutexGuard<'_, T>> {
+        self._try_lock(cx.join(SourceRight::caller()))
     }
 
     pub fn try_lock_with_source(&self, source: Source) -> Option<MutexGuard<'_, T>> {

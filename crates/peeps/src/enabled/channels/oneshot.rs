@@ -64,15 +64,11 @@ impl<T> OneshotSender<T> {
     }
 
     #[track_caller]
-    pub fn send_with_cx(self, value: T, cx: CrateContext) -> Result<(), T> {
-        self.send_with_source(value, cx.join(UnqualSource::caller()))
+    pub fn send_with_cx(self, value: T, cx: SourceLeft) -> Result<(), T> {
+        self.send_with_source(value, cx.join(SourceRight::caller()))
     }
 
-    pub fn send_with_source(
-        mut self,
-        value: T,
-        source: Source,
-    ) -> Result<(), T> {
+    pub fn send_with_source(mut self, value: T, source: Source) -> Result<(), T> {
         let Some(inner) = self.inner.take() else {
             return Err(value);
         };
@@ -138,9 +134,9 @@ impl<T> OneshotReceiver<T> {
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_cx(
         self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
-        self.recv_with_source(cx.join(UnqualSource::caller()))
+        self.recv_with_source(cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -211,7 +207,7 @@ impl<T> OneshotReceiver<T> {
 
 pub fn oneshot<T>(
     name: impl Into<String>,
-    source: UnqualSource,
+    source: SourceRight,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = oneshot::channel();
@@ -262,7 +258,7 @@ pub fn oneshot<T>(
 
 pub fn oneshot_channel<T>(
     name: impl Into<String>,
-    source: UnqualSource,
+    source: SourceRight,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
     #[allow(deprecated)]
     oneshot(name, source)

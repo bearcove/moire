@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
 use super::super::handles::EntityHandle;
-use super::super::{CrateContext, Source, UnqualSource};
+use super::super::{Source, SourceLeft, SourceRight};
 
 pub struct OnceCell<T> {
     inner: tokio::sync::OnceCell<T>,
@@ -14,7 +14,7 @@ pub struct OnceCell<T> {
 }
 
 impl<T> OnceCell<T> {
-    pub fn new(name: impl Into<String>, source: UnqualSource) -> Self {
+    pub fn new(name: impl Into<String>, source: SourceRight) -> Self {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {
@@ -45,13 +45,13 @@ impl<T> OnceCell<T> {
     pub fn get_or_init_with_cx<'a, F, Fut>(
         &'a self,
         f: F,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = &'a T> + 'a
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-        self.get_or_init_with_source(f, cx.join(UnqualSource::caller()))
+        self.get_or_init_with_source(f, cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -105,13 +105,13 @@ impl<T> OnceCell<T> {
     pub fn get_or_try_init_with_cx<'a, F, Fut, E>(
         &'a self,
         f: F,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<&'a T, E>> + 'a
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-        self.get_or_try_init_with_source(f, cx.join(UnqualSource::caller()))
+        self.get_or_try_init_with_source(f, cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]

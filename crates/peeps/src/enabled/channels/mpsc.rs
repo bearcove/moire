@@ -121,9 +121,9 @@ impl<T> Sender<T> {
     pub fn send_with_cx(
         &self,
         value: T,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
-        self.send_with_source(value, cx.join(UnqualSource::caller()))
+        self.send_with_source(value, cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -235,8 +235,8 @@ impl<T> Receiver<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_cx(&mut self, cx: CrateContext) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_source(cx.join(UnqualSource::caller()))
+    pub fn recv_with_cx(&mut self, cx: SourceLeft) -> impl Future<Output = Option<T>> + '_ {
+        self.recv_with_source(cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -343,12 +343,8 @@ impl<T> UnboundedSender<T> {
     }
 
     #[track_caller]
-    pub fn send_with_cx(
-        &self,
-        value: T,
-        cx: CrateContext,
-    ) -> Result<(), mpsc::error::SendError<T>> {
-        self.send_with_source(value, cx.join(UnqualSource::caller()))
+    pub fn send_with_cx(&self, value: T, cx: SourceLeft) -> Result<(), mpsc::error::SendError<T>> {
+        self.send_with_source(value, cx.join(SourceRight::caller()))
     }
 
     pub fn send_with_source(
@@ -429,8 +425,8 @@ impl<T> UnboundedReceiver<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_cx(&mut self, cx: CrateContext) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_source(cx.join(UnqualSource::caller()))
+    pub fn recv_with_cx(&mut self, cx: SourceLeft) -> impl Future<Output = Option<T>> + '_ {
+        self.recv_with_source(cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -532,7 +528,7 @@ impl<T> UnboundedReceiver<T> {
 pub fn channel<T>(
     name: impl Into<String>,
     capacity: usize,
-    source: UnqualSource,
+    source: SourceRight,
 ) -> (Sender<T>, Receiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::channel(capacity);
@@ -596,7 +592,7 @@ pub fn channel<T>(
 
 pub fn unbounded_channel<T>(
     name: impl Into<String>,
-    source: UnqualSource,
+    source: SourceRight,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::unbounded_channel();

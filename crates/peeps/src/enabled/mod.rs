@@ -46,8 +46,8 @@ pub use self::sync::*;
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 
 #[track_caller]
-pub fn source(left: CrateContext) -> source::Source {
-    left.join(UnqualSource::caller())
+pub fn source(left: SourceLeft) -> source::Source {
+    left.join(SourceRight::caller())
 }
 
 // facade! expands to a call to this
@@ -61,7 +61,7 @@ pub fn __init_from_macro() {
         ScopeHandle::new(
             process_name.clone(),
             ScopeBody::Process,
-            UnqualSource::caller(),
+            SourceRight::caller(),
         )
     });
     dashboard::init_dashboard_push_loop(&process_name);

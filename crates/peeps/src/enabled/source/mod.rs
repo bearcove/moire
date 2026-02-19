@@ -1,4 +1,5 @@
 #![doc = include_str!("README.md")]
+
 use compact_str::CompactString;
 use std::panic::Location;
 use std::path::Path;
@@ -115,15 +116,13 @@ impl Source {
 
 impl From<SourceRight> for Source {
     fn from(right: SourceRight) -> Self {
-        Self {
-            source: CompactString::from(format!("{}:{}", right.file(), right.line())),
-            krate: None,
-        }
+        panic!(
+            "invalid Source conversion: SourceRight ({}:{}) cannot be used without SourceLeft; join explicitly via SourceLeft::join(SourceRight)",
+            right.file(),
+            right.line()
+        );
     }
 }
-
-pub type UnqualSource = SourceRight;
-pub type CrateContext = SourceLeft;
 
 fn infer_crate_name_from_manifest_dir(manifest_dir: &str) -> Option<CompactString> {
     let manifest_path = Path::new(manifest_dir).join("Cargo.toml");

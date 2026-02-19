@@ -64,9 +64,9 @@ impl<T: Clone> WatchSender<T> {
     pub fn send_with_cx(
         &self,
         value: T,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> Result<(), watch::error::SendError<T>> {
-        self.send_with_source(value, cx.join(UnqualSource::caller()))
+        self.send_with_source(value, cx.join(SourceRight::caller()))
     }
 
     pub fn send_with_source(
@@ -117,15 +117,11 @@ impl<T: Clone> WatchSender<T> {
     }
 
     #[track_caller]
-    pub fn send_replace_with_cx(&self, value: T, cx: CrateContext) -> T {
-        self.send_replace_with_source(value, cx.join(UnqualSource::caller()))
+    pub fn send_replace_with_cx(&self, value: T, cx: SourceLeft) -> T {
+        self.send_replace_with_source(value, cx.join(SourceRight::caller()))
     }
 
-    pub fn send_replace_with_source(
-        &self,
-        value: T,
-        _source: Source,
-    ) -> T {
+    pub fn send_replace_with_source(&self, value: T, _source: Source) -> T {
         let old = self.inner.send_replace(value);
         let now = peeps_types::PTime::now();
         if let Ok(mut state) = self.channel.lock() {
@@ -160,9 +156,9 @@ impl<T: Clone> WatchReceiver<T> {
     #[allow(clippy::manual_async_fn)]
     pub fn changed_with_cx(
         &mut self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
-        self.changed_with_source(cx.join(UnqualSource::caller()))
+        self.changed_with_source(cx.join(SourceRight::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -235,7 +231,7 @@ impl<T: Clone> WatchReceiver<T> {
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
-    source: UnqualSource,
+    source: SourceRight,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     let name = name.into();
     let (tx, rx) = watch::channel(initial);
@@ -291,7 +287,7 @@ pub fn watch<T: Clone>(
 pub fn watch_channel<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
-    source: UnqualSource,
+    source: SourceRight,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     #[allow(deprecated)]
     watch(name, initial, source)

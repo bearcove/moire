@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use super::futures::instrument_future;
 use super::handles::EntityHandle;
-use super::{register_current_task_scope, CrateContext, Source, UnqualSource, FUTURE_CAUSAL_STACK};
+use super::{register_current_task_scope, Source, SourceLeft, SourceRight, FUTURE_CAUSAL_STACK};
 
 pub struct Command {
     inner: tokio::process::Command,
@@ -155,8 +155,8 @@ impl Command {
     }
 
     #[track_caller]
-    pub fn spawn_with_cx(&mut self, cx: CrateContext) -> io::Result<Child> {
-        self.spawn_with_source(cx.join(UnqualSource::caller()))
+    pub fn spawn_with_cx(&mut self, cx: SourceLeft) -> io::Result<Child> {
+        self.spawn_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn spawn_with_source(&mut self, source: Source) -> io::Result<Child> {
@@ -171,9 +171,9 @@ impl Command {
     #[track_caller]
     pub fn status_with_cx(
         &mut self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.status_with_source(cx.join(UnqualSource::caller()))
+        self.status_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn status_with_source(
@@ -193,9 +193,9 @@ impl Command {
     #[track_caller]
     pub fn output_with_cx(
         &mut self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = io::Result<Output>> + '_ {
-        self.output_with_source(cx.join(UnqualSource::caller()))
+        self.output_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn output_with_source(
@@ -266,7 +266,7 @@ impl Child {
             env: diag.env.clone(),
         });
         let name = CompactString::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new(name, body, UnqualSource::caller());
+        let handle = EntityHandle::new(name, body, SourceRight::caller());
         Self {
             inner: Some(child),
             handle,
@@ -289,9 +289,9 @@ impl Child {
     #[track_caller]
     pub fn wait_with_cx(
         &mut self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.wait_with_source(cx.join(UnqualSource::caller()))
+        self.wait_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn wait_with_source(
@@ -312,9 +312,9 @@ impl Child {
     #[track_caller]
     pub fn wait_with_output_with_cx(
         self,
-        cx: CrateContext,
+        cx: SourceLeft,
     ) -> impl Future<Output = io::Result<Output>> {
-        self.wait_with_output_with_source(cx.join(UnqualSource::caller()))
+        self.wait_with_output_with_source(cx.join(SourceRight::caller()))
     }
 
     pub fn wait_with_output_with_source(
