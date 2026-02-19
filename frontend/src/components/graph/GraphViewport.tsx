@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CircleNotch } from "@phosphor-icons/react";
 import type { EntityDef } from "../../snapshot";
 import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
@@ -38,6 +38,26 @@ export function GraphViewport({
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
 }) {
+  const effectiveGhostNodeIds = useMemo(() => {
+    if (!geometry || selection?.kind !== "entity") return ghostNodeIds;
+    const selected = selection.id;
+    const s = new Set<string>(ghostNodeIds);
+    for (const node of geometry.nodes) {
+      if (node.id !== selected) s.add(node.id);
+    }
+    return s;
+  }, [geometry, selection, ghostNodeIds]);
+
+  const effectiveGhostEdgeIds = useMemo(() => {
+    if (!geometry || selection?.kind !== "entity") return ghostEdgeIds;
+    const selected = selection.id;
+    const s = new Set<string>(ghostEdgeIds);
+    for (const edge of geometry.edges) {
+      if (edge.sourceId !== selected && edge.targetId !== selected) s.add(edge.id);
+    }
+    return s;
+  }, [geometry, selection, ghostEdgeIds]);
+
   const [portAnchors, setPortAnchors] = useState<Map<string, Point>>(new Map());
   const [hasFitted, setHasFitted] = useState(false);
   const graphFlowRef = useRef<HTMLDivElement | null>(null);
@@ -162,7 +182,7 @@ export function GraphViewport({
             <EdgeLayer
               edges={geometry.edges}
               selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
-              ghostEdgeIds={ghostEdgeIds}
+              ghostEdgeIds={effectiveGhostEdgeIds}
               portAnchors={portAnchors}
               onEdgeClick={(id) => {
                 closeNodeContextMenu();
@@ -172,7 +192,7 @@ export function GraphViewport({
             <NodeLayer
               nodes={nodes}
               selectedNodeId={selection?.kind === "entity" ? selection.id : null}
-              ghostNodeIds={ghostNodeIds}
+              ghostNodeIds={effectiveGhostNodeIds}
               onNodeClick={(id) => {
                 closeNodeContextMenu();
                 onSelect({ kind: "entity", id });

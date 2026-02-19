@@ -19,6 +19,7 @@ export type GraphFilterParseResult = {
   excludeProcesses: Set<string>;
   includeKinds: Set<string>;
   excludeKinds: Set<string>;
+  focusedNodeId?: string;
   showLoners?: boolean;
   colorBy?: GraphFilterMode;
   groupBy?: GraphFilterMode | "none";
@@ -137,6 +138,7 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
   let colorBy: GraphFilterMode | undefined;
   let groupBy: GraphFilterMode | "none" | undefined;
   let showLoners: boolean | undefined;
+  let focusedNodeId: string | undefined;
 
   for (const raw of tokens) {
     const colon = raw.indexOf(":");
@@ -194,6 +196,11 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         groupBy = value;
         valid = true;
       }
+    } else if (keyLower === "focus" || keyLower === "subgraph") {
+      if (!isPlaceholderValue) {
+        focusedNodeId = value;
+        valid = true;
+      }
     }
 
     parsed.push({ raw, key, value: valueRaw, valid });
@@ -211,6 +218,7 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     excludeProcesses,
     includeKinds,
     excludeKinds,
+    focusedNodeId,
     showLoners,
     colorBy,
     groupBy,

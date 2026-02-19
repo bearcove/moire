@@ -221,9 +221,8 @@ export function GraphFilterInput({
               </button>
             );
           })}
-          {editorState.ast.length === 0 &&
-            editorState.draft.length === 0 &&
-            !editorState.focused && <kbd className="graph-filter-shortcut">⌘ K</kbd>}
+          {editorState.draft.length === 0 &&
+            !editorState.focused && <kbd className="graph-filter-shortcut">⌘K</kbd>}
           <input
             ref={graphFilterInputRef}
             type="text"

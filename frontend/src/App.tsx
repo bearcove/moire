@@ -36,6 +36,7 @@ import {
   appendFilterToken,
   parseGraphFilterQuery,
   quoteFilterValue,
+  tokenizeFilterQuery,
 } from "./graphFilter";
 
 // ── Snapshot state machine ─────────────────────────────────────
@@ -120,7 +121,6 @@ export function App() {
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
-  const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
@@ -160,10 +160,14 @@ export function App() {
       const flowTop = flowRect.top - mainRect.top;
       const flowRight = flowRect.right - mainRect.left;
       const flowBottom = flowRect.bottom - mainRect.top;
+      const toolbar = main.querySelector(".graph-toolbar") as HTMLElement | null;
+      const toolbarClearance = toolbar
+        ? toolbar.getBoundingClientRect().bottom - mainRect.top
+        : flowTop;
       const preferredX = flowRight - overlay.offsetWidth - INSPECTOR_MARGIN;
-      const preferredY = flowTop + INSPECTOR_MARGIN;
+      const preferredY = toolbarClearance + INSPECTOR_MARGIN;
       const clamped = clampInspectorPosition(preferredX, preferredY);
-      const minY = flowTop + INSPECTOR_MARGIN;
+      const minY = toolbarClearance + INSPECTOR_MARGIN;
       const maxY = Math.max(minY, flowBottom - overlay.offsetHeight - INSPECTOR_MARGIN);
       return {
         x: Math.max(clamped.x, flowLeft + INSPECTOR_MARGIN),
@@ -216,6 +220,18 @@ export function App() {
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode =
     graphTextFilters.groupBy === "none" ? "none" : (graphTextFilters.groupBy ?? "none");
+  const focusedEntityId = graphTextFilters.focusedNodeId ?? null;
+
+  const setFocusedEntityFilter = useCallback((entityId: string | null) => {
+    setGraphFilterText((prev) => {
+      const tokens = tokenizeFilterQuery(prev).filter((token) => {
+        const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
+        return !key.toLowerCase().startsWith("focus:");
+      });
+      if (entityId) tokens.push(`focus:${quoteFilterValue(entityId)}`);
+      return tokens.join(" ");
+    });
+  }, []);
   const applyBaseFilters = useCallback(
     (ignore: "crate" | "process" | "kind" | null) => {
       let entities = allEntities.filter(
@@ -385,7 +401,7 @@ where l.conn_id = ${connId}
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
     setSelection(null);
-    setFocusedEntityId(null);
+    setFocusedEntityFilter(null);
     try {
       const triggered = await apiClient.triggerCut();
       let status = await apiClient.fetchCutStatus(triggered.cut_id);
@@ -400,7 +416,7 @@ where l.conn_id = ${connId}
     } catch (err) {
       setSnap({ phase: "error", message: err instanceof Error ? err.message : String(err) });
     }
-  }, [effectiveSubgraphScopeMode]);
+  }, [effectiveSubgraphScopeMode, setFocusedEntityFilter]);
 
   const handleStartRecording = useCallback(async () => {
     try {
@@ -837,17 +853,22 @@ where l.conn_id = ${connId}
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA") return;
+      }
       if (e.key === "Escape" && focusedEntityId) {
-        setFocusedEntityId(null);
+        setFocusedEntityFilter(null);
       } else if (e.key === "f" || e.key === "F") {
         if (selection?.kind === "entity") {
-          setFocusedEntityId(selection.id);
+          setFocusedEntityFilter(selection.id);
         }
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [focusedEntityId, selection]);
+  }, [focusedEntityId, selection, setFocusedEntityFilter]);
 
   const isBusy = snap.phase === "cutting" || snap.phase === "loading";
   const connCount = connections?.connected_processes ?? 0;
@@ -962,13 +983,13 @@ where l.conn_id = ${connId}
                     setSelectedScopeKind(null);
                     setSelectedScope(null);
                   } else {
-                    setFocusedEntityId(null);
+                    setFocusedEntityFilter(null);
                     setInspectorOpen(false);
                   }
                 }}
                 focusedEntityId={focusedEntityId}
                 onExitFocus={() => {
-                  setFocusedEntityId(null);
+                  setFocusedEntityFilter(null);
                   setSelection(null);
                   setInspectorOpen(false);
                 }}
@@ -1009,7 +1030,7 @@ where l.conn_id = ${connId}
                     await applyScopeEntityFilter(scope);
                     setLeftPaneTab("graph");
                     setSelection(null);
-                    setFocusedEntityId(null);
+                    setFocusedEntityFilter(null);
                   })();
                 }}
                 onViewScopeEntities={(scope) => {
@@ -1017,7 +1038,7 @@ where l.conn_id = ${connId}
                     await applyScopeEntityFilter(scope);
                     setLeftPaneTab("entities");
                     setSelection(null);
-                    setFocusedEntityId(null);
+                    setFocusedEntityFilter(null);
                   })();
                 }}
               />
@@ -1057,7 +1078,7 @@ where l.conn_id = ${connId}
               edgeDefs={allEdges}
               focusedEntityId={focusedEntityId}
               onToggleFocusEntity={(id) => {
-                setFocusedEntityId((prev) => (prev === id ? null : id));
+                setFocusedEntityFilter(focusedEntityId === id ? null : id);
               }}
               onOpenScopeKind={(kind) => {
                 setLeftPaneTab("scopes");

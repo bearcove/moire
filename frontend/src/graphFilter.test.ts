@@ -220,4 +220,10 @@ describe("parseGraphFilterQuery include/exclude syntax", () => {
     expect(out.includeKinds.size).toBe(0);
     expect(out.tokens[0]?.valid).toBe(false);
   });
+
+  it("parses focus token", () => {
+    const out = parseGraphFilterQuery('focus:"1/alpha"');
+    expect(out.focusedNodeId).toBe("1/alpha");
+    expect(out.tokens[0]?.valid).toBe(true);
+  });
 });

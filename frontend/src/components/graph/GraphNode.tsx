@@ -64,6 +64,8 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     ageMs: def.ageMs,
     stat: def.stat,
     statTone: def.statTone,
+    portTopId: `${def.id}:in`,
+    portBottomId: `${def.id}:out`,
   };
 }
 

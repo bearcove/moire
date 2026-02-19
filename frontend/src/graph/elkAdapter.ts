@@ -123,26 +123,31 @@ export async function layoutGraph(
   const edgeSourceRef = (edge: EdgeDef) => edge.sourcePort ?? defaultOutPortId(edge.source);
   const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target);
 
+  // How far outside the node boundary ELK places port positions.
+  // This creates a short perpendicular stub before any bend, keeping arrowheads
+  // visually clear of nearby edge segments.
+  const PORT_BORDER_OFFSET = "8";
+
   const portsForEntity = (
     entity: EntityDef,
   ): Array<{ id: string; layoutOptions: Record<string, string> }> => {
     if (entity.channelPair) {
       const mergedId = entity.id;
       return [
-        { id: `${mergedId}:tx`, layoutOptions: { "elk.port.side": "SOUTH" } },
-        { id: `${mergedId}:rx`, layoutOptions: { "elk.port.side": "NORTH" } },
+        { id: `${mergedId}:tx`, layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
+        { id: `${mergedId}:rx`, layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
       ];
     }
     if (entity.rpcPair) {
       const mergedId = entity.id;
       return [
-        { id: `${mergedId}:req`, layoutOptions: { "elk.port.side": "SOUTH" } },
-        { id: `${mergedId}:resp`, layoutOptions: { "elk.port.side": "NORTH" } },
+        { id: `${mergedId}:req`, layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
+        { id: `${mergedId}:resp`, layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
       ];
     }
     return [
-      { id: defaultInPortId(entity.id), layoutOptions: { "elk.port.side": "NORTH" } },
-      { id: defaultOutPortId(entity.id), layoutOptions: { "elk.port.side": "SOUTH" } },
+      { id: defaultInPortId(entity.id), layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
+      { id: defaultOutPortId(entity.id), layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
     ];
   };
 

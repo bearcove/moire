@@ -1820,6 +1820,65 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              order by scope_name asc, entity_name asc \
              limit {limit}"
         )),
+        "missing-scope-links" => Ok(format!(
+            "select \
+             e.conn_id as process_id, \
+             c.process_name, \
+             c.pid, \
+             e.stream_id, \
+             e.entity_id, \
+             json_extract(e.entity_json, '$.name') as entity_name, \
+             json_extract(e.entity_json, '$.body') as entity_body, \
+             case \
+               when p.process_scope_count is null then 1 \
+               else 0 \
+             end as missing_process_scope_link, \
+             case \
+               when json_extract(e.entity_json, '$.body') = 'future' and t.task_scope_count is null then 1 \
+               else 0 \
+             end as missing_task_scope_link \
+             from entities e \
+             left join connections c \
+               on c.conn_id = e.conn_id \
+             left join ( \
+               select \
+                 l.conn_id, \
+                 l.stream_id, \
+                 l.entity_id, \
+                 count(*) as process_scope_count \
+               from entity_scope_links l \
+               join scopes s \
+                 on s.conn_id = l.conn_id \
+                and s.stream_id = l.stream_id \
+                and s.scope_id = l.scope_id \
+               where json_extract(s.scope_json, '$.body') = 'process' \
+               group by l.conn_id, l.stream_id, l.entity_id \
+             ) p \
+               on p.conn_id = e.conn_id \
+              and p.stream_id = e.stream_id \
+              and p.entity_id = e.entity_id \
+             left join ( \
+               select \
+                 l.conn_id, \
+                 l.stream_id, \
+                 l.entity_id, \
+                 count(*) as task_scope_count \
+               from entity_scope_links l \
+               join scopes s \
+                 on s.conn_id = l.conn_id \
+                and s.stream_id = l.stream_id \
+                and s.scope_id = l.scope_id \
+               where json_extract(s.scope_json, '$.body') = 'task' \
+               group by l.conn_id, l.stream_id, l.entity_id \
+             ) t \
+               on t.conn_id = e.conn_id \
+              and t.stream_id = e.stream_id \
+              and t.entity_id = e.entity_id \
+             where p.process_scope_count is null \
+                or (json_extract(e.entity_json, '$.body') = 'future' and t.task_scope_count is null) \
+             order by c.process_name asc, entity_name asc, e.entity_id asc \
+             limit {limit}"
+        )),
         "stale-blockers" => Ok(format!(
             "select \
              e.src_id as waiter_id, \
@@ -1835,7 +1894,7 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              limit {limit}"
         )),
         _ => Err(format!(
-            "unknown query pack: {name}. expected one of: blockers, blocked-senders, blocked-receivers, stalled-sends, channel-pressure, channel-health, scope-membership, stale-blockers"
+            "unknown query pack: {name}. expected one of: blockers, blocked-senders, blocked-receivers, stalled-sends, channel-pressure, channel-health, scope-membership, missing-scope-links, stale-blockers"
         )),
     }
 }

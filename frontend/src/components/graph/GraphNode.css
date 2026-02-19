@@ -17,10 +17,8 @@
 }
 
 .graph-card--scope {
-    box-shadow: inset 3px 0 0 0 light-dark(
-        rgb(var(--scope-rgb-light) / 0.95),
-        rgb(var(--scope-rgb-dark) / 0.9)
-    );
+    box-shadow: inset 3px 0 0 0
+        light-dark(rgb(var(--scope-rgb-light) / 0.95), rgb(var(--scope-rgb-dark) / 0.9));
 }
 
 .graph-card--stat-crit {
@@ -32,7 +30,7 @@
 }
 
 .graph-card--ghost {
-    opacity: 0.68;
+    opacity: 0.28;
     filter: saturate(0);
 }
 

@@ -1,9 +1,9 @@
 import React from "react";
-import { Crosshair, Info } from "@phosphor-icons/react";
+import { Crosshair } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { ActionButton } from "../../ui/primitives/ActionButton";
-import { Popover } from "../../ui/primitives/Popover";
-import { formatProcessLabel } from "../../processLabel";
+import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
+import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import type { EntityDef } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
 import { EntityBodySection } from "./EntityBodySection";
@@ -17,79 +17,35 @@ type MergedSection = {
   entity: EntityDef;
 };
 
-function DetailsInfoAffordance({
-  entity,
-  align = "start",
-}: {
-  entity: EntityDef;
-  align?: "start" | "end";
-}) {
-  const [hovered, setHovered] = React.useState(false);
-  const [pinned, setPinned] = React.useState(false);
-  const anchorRef = React.useRef<HTMLSpanElement>(null);
-  const birthAbsolute = isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
-    ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })
-    : null;
-  const isOpen = hovered || pinned;
+function EntityDetailsSection({ entity }: { entity: EntityDef }) {
+  const birthAbsolute =
+    isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
+      ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "long",
+        })
+      : null;
+  const birthTitle = [
+    `P+${entity.birthPtime}ms into process`,
+    birthAbsolute,
+  ].filter(Boolean).join(" · ");
 
   return (
-    <span
-      ref={anchorRef}
-      className={[
-        "inspector-details-popover-anchor",
-        align === "end" && "inspector-details-popover-anchor--end",
-      ].filter(Boolean).join(" ")}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <button
-        type="button"
-        className={["inspector-details-trigger", pinned && "inspector-details-trigger--pinned"].filter(Boolean).join(" ")}
-        onClick={() => setPinned((v) => !v)}
-        aria-expanded={isOpen}
-        aria-label="Show details"
-        title="Details"
-      >
-        <Info size={14} weight={pinned ? "fill" : "bold"} />
-      </button>
-      <Popover
-        open={isOpen}
-        anchorRef={anchorRef}
-        onClose={() => {
-          setHovered(false);
-          setPinned(false);
-        }}
-        side="bottom"
-        align={align}
-        className="inspector-tooltip"
-      >
-        <span role="tooltip">
-          <span className="inspector-tooltip-row">
-            <span className="inspector-tooltip-label">Process</span>
-            <span className="inspector-tooltip-value">{formatProcessLabel(entity.processName, entity.processPid)}</span>
-          </span>
-          <span className="inspector-tooltip-row">
-            <span className="inspector-tooltip-label">Source</span>
-            <span className="inspector-tooltip-value"><Source source={entity.source} /></span>
-          </span>
-          {entity.krate && (
-            <span className="inspector-tooltip-row">
-              <span className="inspector-tooltip-label">Crate</span>
-              <span className="inspector-tooltip-value">{entity.krate}</span>
-            </span>
-          )}
-          <span className="inspector-tooltip-row">
-            <span className="inspector-tooltip-label">Birth</span>
-            <span className="inspector-tooltip-value">
-              P+{entity.birthPtime}ms ({entity.ageMs}ms old)
-              {birthAbsolute && (
-                <span className="inspector-tooltip-subvalue">{birthAbsolute}</span>
-              )}
-            </span>
-          </span>
+    <div className="inspector-section">
+      <KeyValueRow label="Source" labelWidth={52}>
+        <Source source={entity.source} />
+      </KeyValueRow>
+      {entity.krate && (
+        <KeyValueRow label="Crate" labelWidth={52}>
+          {entity.krate}
+        </KeyValueRow>
+      )}
+      <KeyValueRow label="Age" labelWidth={52}>
+        <span title={birthTitle}>
+          <DurationDisplay ms={entity.ageMs} />
         </span>
-      </Popover>
-    </span>
+      </KeyValueRow>
+    </div>
   );
 }
 
@@ -106,7 +62,6 @@ function EntityInspectorActions({
 
   return (
     <div className="inspector-entity-actions">
-      <DetailsInfoAffordance entity={entity} align="start" />
       <ActionButton size="sm" className="inspector-focus-button" onPress={() => onToggleFocus(entity.id)}>
         <Crosshair size={14} weight="bold" />
         {isFocused ? "Unfocus" : "Focus"}
@@ -164,7 +119,6 @@ function MergedEntityInspectorContent({
         <fieldset className="inspector-lane-card" key={`${merged.id}:${section.label}`}>
           <legend className="inspector-lane-legend">
             <span>{section.label}</span>
-            <DetailsInfoAffordance entity={section.entity} />
           </legend>
           <EntityInspectorBody
             entity={section.entity}
@@ -301,6 +255,7 @@ function EntityInspectorBody({
         </div>
       )}
 
+      <EntityDetailsSection entity={entity} />
       {showScopeLinks && <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />}
       <EntityBodySection entity={entity} />
       {showMeta && <MetaSection meta={entity.meta} />}

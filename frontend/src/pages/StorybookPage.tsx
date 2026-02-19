@@ -62,7 +62,6 @@ type DemoConnectionRow = {
   lastSentTone: DemoTone;
 };
 
-
 export function useStorybookState() {
   const [textValue, setTextValue] = useState("Hello");
   const [searchValue, setSearchValue] = useState("");
@@ -91,7 +90,9 @@ export function useStorybookState() {
   const [showLoners, setShowLoners] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
-  const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
+  const [graphFilterText, setGraphFilterText] = useState(
+    "colorBy:crate groupBy:process loners:off",
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tones = useMemo<BadgeTone[]>(() => ["neutral", "ok", "warn", "crit"], []);
   const searchDataset = useMemo(
@@ -282,7 +283,7 @@ export function useStorybookState() {
         healthLabel: "Warning",
         healthTone: "warn",
         connectionKind: "channel_tx",
-        connectionLabel: "vx-store \u00b7 channel.v1.mpsc.send",
+        connectionLabel: "vx-store ⇄ channel.v1.mpsc.send",
         pending: 3,
         lastRecvBasis: "P",
         lastRecvBasisLabel: "process started",
@@ -300,7 +301,7 @@ export function useStorybookState() {
         healthLabel: "Critical",
         healthTone: "crit",
         connectionKind: "request",
-        connectionLabel: "example-roam-rpc-stuck-request \u00b7 DemoRpc.sleepy_forever",
+        connectionLabel: "example-roam-rpc-stuck-request ⇄ DemoRpc.sleepy_forever",
         pending: 12,
         lastRecvBasis: "N",
         lastRecvBasisLabel: "node opened",
@@ -318,7 +319,7 @@ export function useStorybookState() {
         healthLabel: "Warning",
         healthTone: "warn",
         connectionKind: "connection",
-        connectionLabel: "vxd \u00b7 connection: initiator<->acceptor",
+        connectionLabel: "vxd ⇄ connection: initiator<->acceptor",
         pending: 8,
         lastRecvBasis: "P",
         lastRecvBasisLabel: "process started",
@@ -336,7 +337,7 @@ export function useStorybookState() {
         healthLabel: "Ok",
         healthTone: "ok",
         connectionKind: "request",
-        connectionLabel: "vx-vfsd \u00b7 net.readable.wait",
+        connectionLabel: "vx-vfsd ⇄ net.readable.wait",
         pending: 1,
         lastRecvBasis: "N",
         lastRecvBasisLabel: "socket opened",
@@ -677,40 +678,43 @@ export function useStorybookState() {
     ] as EntityDef[];
   }, []);
 
-  const sampleGraphEdges = useMemo(() => [
-    {
-      id: "e1",
-      source: "p1/future_a",
-      target: "p1/mutex_a",
-      kind: "needs" as const,
-      meta: {},
-      opKind: "lock",
-      state: "pending",
-    },
-    {
-      id: "e2",
-      source: "p1/mutex_a",
-      target: "p1/sem_a",
-      kind: "holds" as const,
-      meta: {},
-    },
-    {
-      id: "e3",
-      source: "p2/future_b",
-      target: "p1/sem_a",
-      kind: "needs" as const,
-      meta: {},
-      opKind: "acquire",
-      state: "pending",
-    },
-    {
-      id: "e4",
-      source: "p2/future_c",
-      target: "p2/future_b",
-      kind: "touches" as const,
-      meta: {},
-    },
-  ], []);
+  const sampleGraphEdges = useMemo(
+    () => [
+      {
+        id: "e1",
+        source: "p1/future_a",
+        target: "p1/mutex_a",
+        kind: "needs" as const,
+        meta: {},
+        opKind: "lock",
+        state: "pending",
+      },
+      {
+        id: "e2",
+        source: "p1/mutex_a",
+        target: "p1/sem_a",
+        kind: "holds" as const,
+        meta: {},
+      },
+      {
+        id: "e3",
+        source: "p2/future_b",
+        target: "p1/sem_a",
+        kind: "needs" as const,
+        meta: {},
+        opKind: "acquire",
+        state: "pending",
+      },
+      {
+        id: "e4",
+        source: "p2/future_c",
+        target: "p2/future_b",
+        kind: "touches" as const,
+        meta: {},
+      },
+    ],
+    [],
+  );
 
   return {
     textValue,
@@ -918,40 +922,6 @@ export function StorybookPage({
     >
       <PanelHeader title="Storybook" hint="Primitives and tone language" />
       <div className="lab-body">
-        <Section title="UI font — Satoshi" subtitle="UI font in the sizes we actually use" wide>
-          <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
-          <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">
-            Inspector, Graph, Timeline, Resources
-          </div>
-          <div className="ui-typo-sample ui-typo-ui ui-typo-ui--sm ui-typo-muted">
-            Buttons, labels, helper text, and navigation should mostly live here.
-          </div>
-          <div className="ui-typo-weights">
-            <span className="ui-typo-pill ui-typo-ui ui-typo-w-400">400</span>
-            <span className="ui-typo-pill ui-typo-ui ui-typo-w-700">700</span>
-          </div>
-        </Section>
-
-        <Section
-          title="Mono font — Maple Mono"
-          subtitle="Mono font in the sizes we actually use"
-          wide
-        >
-          <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">
-            request:01KHNGCY&hellip;
-          </div>
-          <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">
-            connection: initiator-&gt;acceptor
-          </div>
-          <div className="ui-typo-sample ui-typo-mono ui-typo-mono--sm ui-typo-muted">
-            IDs, paths, tokens, and anything users copy/paste.
-          </div>
-          <div className="ui-typo-weights">
-            <span className="ui-typo-pill ui-typo-mono ui-typo-w-400">400</span>
-            <span className="ui-typo-pill ui-typo-mono ui-typo-w-700">700</span>
-          </div>
-        </Section>
-
         <Section title="Control Strip" subtitle="All core controls on one line" wide>
           <div className="ui-control-line" aria-label="One-line controls strip">
             <div className="ui-control-line__text">
@@ -1138,7 +1108,13 @@ export function StorybookPage({
           </div>
         </Section>
 
-        <Section title="Color System" subtitle="Role tokens + scope palette (graph only)" wide collapsible defaultCollapsed>
+        <Section
+          title="Color System"
+          subtitle="Role tokens + scope palette (graph only)"
+          wide
+          collapsible
+          defaultCollapsed
+        >
           <div className="ui-section-stack">
             <div className="ui-color-vars">
               <div className="ui-typo-kicker">
@@ -1236,7 +1212,7 @@ export function StorybookPage({
           <TextInput
             value={textValue}
             onChange={setTextValue}
-            placeholder="Type\u2026"
+            placeholder="Type…"
             aria-label="Text input"
           />
         </Section>
@@ -1289,7 +1265,11 @@ export function StorybookPage({
           />
         </Section>
 
-        <Section title="Sample Graph" subtitle="ELK layout + full renderer — two processes, five nodes" wide>
+        <Section
+          title="Sample Graph"
+          subtitle="ELK layout + full renderer — two processes, five nodes"
+          wide
+        >
           <div className="ui-sample-graph">
             <SampleGraph
               entityDefs={sampleGraphEntities}
@@ -1327,11 +1307,10 @@ export function StorybookPage({
 
         <Section title="Menu" subtitle="Action menus for context operations">
           <p className="ui-section-description">
-            <strong>Click</strong> to open. Click the trigger again or click outside to close.
-            Click an item to trigger it.{" "}
-            <strong>Press and hold</strong> the trigger to open, then drag to an item and release
-            — the action fires without a separate click. You can also drag from one menu trigger to
-            another while holding to switch menus mid-drag.
+            <strong>Click</strong> to open. Click the trigger again or click outside to close. Click
+            an item to trigger it. <strong>Press and hold</strong> the trigger to open, then drag to
+            an item and release — the action fires without a separate click. You can also drag from
+            one menu trigger to another while holding to switch menus mid-drag.
           </p>
           <Row>
             <Menu

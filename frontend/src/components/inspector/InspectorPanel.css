@@ -20,7 +20,7 @@
     overflow: hidden;
     background: color-mix(in srgb, var(--inspector-lum-1) 88%, transparent);
     backdrop-filter: blur(8px);
-    border: 1px solid var(--border-default);
+    border: 2px solid var(--border-default);
     border-radius: var(--radius-control);
 }
 

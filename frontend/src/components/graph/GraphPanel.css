@@ -88,20 +88,19 @@
 
 .graph-filter-input {
     width: 100%;
-    height: auto;
-    min-height: 44px;
+    height: 44px;
     display: flex;
-    align-items: flex-start;
-    align-content: flex-start;
-    flex-wrap: wrap;
-    overflow-x: hidden;
-    overflow-y: auto;
-    row-gap: 6px;
+    align-items: center;
+    align-content: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    row-gap: 0;
     gap: 6px;
     border: 2px solid var(--border-default);
     border-radius: 8px;
     background: var(--bg-elevated);
-    padding: 6px;
+    padding: 1px 6px;
     box-sizing: border-box;
 }
 
