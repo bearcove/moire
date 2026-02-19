@@ -247,7 +247,7 @@
 .panel--lab {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
 }
 
 /* ── Timeline Panel ───────────────────────────────────────── */

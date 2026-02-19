@@ -6,7 +6,7 @@
 }
 
 .ui-relative-timestamp__prefix {
-    color: var(--text-secondary);
+    color: var(--text-muted);
 }
 
 .ui-relative-timestamp--ok .ui-relative-timestamp__value {

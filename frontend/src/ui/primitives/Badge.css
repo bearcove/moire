@@ -18,7 +18,7 @@
 
 .badge--ok {
     color: var(--text-primary);
-    background: color-mix(in srgb, var(--status-success) 15%, transparent);
+    background: var(--bg-elevated);
 }
 
 .badge--ok::before {
@@ -33,7 +33,7 @@
 
 .badge--warn {
     color: var(--text-primary);
-    background: color-mix(in srgb, var(--status-warning) 15%, transparent);
+    background: var(--bg-elevated);
 }
 
 .badge--warn::before {
@@ -48,7 +48,7 @@
 
 .badge--crit {
     color: var(--text-primary);
-    background: color-mix(in srgb, var(--status-danger) 15%, transparent);
+    background: var(--bg-elevated);
 }
 
 .badge--crit::before {
