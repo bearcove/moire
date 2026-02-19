@@ -40,7 +40,9 @@ export function GraphFilterInput({
   const graphFilterInputRef = useRef<HTMLInputElement | null>(null);
   const graphFilterRootRef = useRef<HTMLDivElement | null>(null);
   const graphFilterTextRef = useRef(graphFilterText);
-  const [editorState, setEditorState] = useState(() => graphFilterEditorStateFromText(graphFilterText));
+  const [editorState, setEditorState] = useState(() =>
+    graphFilterEditorStateFromText(graphFilterText),
+  );
   const editorStateRef = useRef(editorState);
   const pendingOutboundTextRef = useRef<string | null>(null);
 
@@ -90,7 +92,10 @@ export function GraphFilterInput({
         nodeIds,
         locations,
         crates: crateItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
-        processes: processItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
+        processes: processItems.map((item) => ({
+          id: item.id,
+          label: String(item.label ?? item.id),
+        })),
         kinds: kindItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
       }),
     [currentFragment, nodeIds, locations, crateItems, processItems, kindItems],
@@ -156,7 +161,8 @@ export function GraphFilterInput({
           className="graph-filter-input"
           onMouseDown={(event) => {
             if (event.target === graphFilterInputRef.current) return;
-            if (event.target instanceof HTMLElement && event.target.closest(".graph-filter-chip")) return;
+            if (event.target instanceof HTMLElement && event.target.closest(".graph-filter-chip"))
+              return;
             event.preventDefault();
             graphFilterInputRef.current?.focus();
           }}
@@ -180,13 +186,15 @@ export function GraphFilterInput({
                 title={valid ? "remove filter token" : "invalid filter token"}
               >
                 {raw}
-                <span className="graph-filter-chip-x" aria-hidden="true">×</span>
+                <span className="graph-filter-chip-x" aria-hidden="true">
+                  ×
+                </span>
               </button>
             );
           })}
-          {editorState.ast.length === 0 && editorState.draft.length === 0 && !editorState.focused && (
-            <kbd className="graph-filter-shortcut">⌘K</kbd>
-          )}
+          {editorState.ast.length === 0 &&
+            editorState.draft.length === 0 &&
+            !editorState.focused && <kbd className="graph-filter-shortcut">⌘ K</kbd>}
           <input
             ref={graphFilterInputRef}
             type="text"
@@ -206,7 +214,11 @@ export function GraphFilterInput({
                 applyEditorAction({ type: "clear_all" });
                 return;
               }
-              if (event.key === "Backspace" && editorState.draft.length === 0 && editorState.insertionPoint > 0) {
+              if (
+                event.key === "Backspace" &&
+                editorState.draft.length === 0 &&
+                editorState.insertionPoint > 0
+              ) {
                 event.preventDefault();
                 applyEditorAction({ type: "backspace_from_draft_start" });
                 return;
@@ -218,7 +230,14 @@ export function GraphFilterInput({
                   return;
                 }
                 if (event.shiftKey) {
-                  applyEditorAction({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length }, false);
+                  applyEditorAction(
+                    {
+                      type: "move_suggestion",
+                      delta: -1,
+                      total: graphFilterSuggestionsList.length,
+                    },
+                    false,
+                  );
                   return;
                 }
                 const choice = graphFilterSuggestionsList[activeSuggestionIndex];
@@ -229,12 +248,18 @@ export function GraphFilterInput({
               if (!editorState.suggestionsOpen || graphFilterSuggestionsList.length === 0) return;
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                applyEditorAction({ type: "move_suggestion", delta: 1, total: graphFilterSuggestionsList.length }, false);
+                applyEditorAction(
+                  { type: "move_suggestion", delta: 1, total: graphFilterSuggestionsList.length },
+                  false,
+                );
                 return;
               }
               if (event.key === "ArrowUp") {
                 event.preventDefault();
-                applyEditorAction({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length }, false);
+                applyEditorAction(
+                  { type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length },
+                  false,
+                );
                 return;
               }
               if (event.key === "Escape") {
@@ -249,9 +274,7 @@ export function GraphFilterInput({
                 applyGraphFilterSuggestion(choice.applyToken ?? choice.token);
               }
             }}
-            placeholder={
-              "to add filter"
-            }
+            placeholder={"to add filter"}
             className="graph-filter-fragment-input"
             aria-label="Graph filter query"
           />
@@ -265,9 +288,13 @@ export function GraphFilterInput({
                 className={[
                   "graph-filter-suggestion",
                   index === activeSuggestionIndex && "graph-filter-suggestion--active",
-                ].filter(Boolean).join(" ")}
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => applyGraphFilterSuggestion(suggestion.applyToken ?? suggestion.token)}
+                onClick={() =>
+                  applyGraphFilterSuggestion(suggestion.applyToken ?? suggestion.token)
+                }
               >
                 <span className="graph-filter-suggestion-token">{suggestion.token}</span>
                 <span className="graph-filter-suggestion-sep"> - </span>
@@ -287,7 +314,9 @@ export function GraphFilterInput({
         {scopeFilterLabel && (
           <>
             <Badge tone="warn">in:{scopeFilterLabel}</Badge>
-            <ActionButton size="sm" onPress={onClearScopeFilter}>Clear scope</ActionButton>
+            <ActionButton size="sm" onPress={onClearScopeFilter}>
+              Clear scope
+            </ActionButton>
           </>
         )}
       </div>

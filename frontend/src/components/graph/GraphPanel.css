@@ -121,8 +121,8 @@
 }
 
 .graph-filter-shortcut {
-    margin-left: 0;
-    margin-right: 6px;
+    margin-left: 6px;
+    margin-right: 3px;
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     color: var(--text-secondary);
