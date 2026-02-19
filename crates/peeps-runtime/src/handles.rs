@@ -2,7 +2,7 @@ use peeps_types::{
     EdgeKind, Entity, EntityBody, EntityBodySlot, EntityId, Scope, ScopeBody, ScopeId,
 };
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use super::db::runtime_db;
 use super::Source;
@@ -238,6 +238,79 @@ where
             });
             f(slot);
         })
+    }
+}
+
+impl<S> EntityHandle<S> {
+    pub fn downgrade(&self) -> WeakEntityHandle<S> {
+        WeakEntityHandle {
+            inner: Arc::downgrade(&self.inner),
+            _slot: PhantomData,
+        }
+    }
+}
+
+/// A non-owning reference to an entity. Does not keep the entity alive.
+/// When the last `EntityHandle` for the entity drops, the entity is removed
+/// from the graph and subsequent `mutate` calls on any `WeakEntityHandle`
+/// pointing to it become no-ops.
+pub struct WeakEntityHandle<S = ()> {
+    inner: Weak<HandleInner>,
+    _slot: PhantomData<S>,
+}
+
+impl<S> WeakEntityHandle<S>
+where
+    S: EntityBodySlot,
+{
+    pub fn mutate(&self, f: impl FnOnce(&mut S::Value)) -> bool {
+        let Some(inner) = self.inner.upgrade() else {
+            return false;
+        };
+        let mut db = runtime_db()
+            .lock()
+            .expect("runtime db lock poisoned during weak entity mutate");
+        db.mutate_entity_body_and_maybe_upsert(&inner.id, |body| {
+            let slot = S::project_mut(body).unwrap_or_else(|| {
+                panic!(
+                    "entity body projection failed: kind={} entity_id={}",
+                    S::KIND_NAME,
+                    inner.id.as_str(),
+                )
+            });
+            f(slot);
+        })
+    }
+}
+
+/// An owned edge that removes itself from the graph when dropped.
+///
+/// Does not keep either endpoint entity alive — it only stores `EntityId` values.
+/// If an endpoint entity is removed before this handle drops, the edge is already
+/// gone and the Drop impl becomes a no-op.
+pub struct EdgeHandle {
+    src: EntityId,
+    dst: EntityId,
+    kind: EdgeKind,
+}
+
+impl Drop for EdgeHandle {
+    fn drop(&mut self) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.remove_edge(&self.src, &self.dst, self.kind);
+        }
+    }
+}
+
+impl<S> EntityHandle<S> {
+    /// Create an edge and return a handle that removes it when dropped.
+    pub fn link_to_owned(&self, target: &EntityRef, kind: EdgeKind) -> EdgeHandle {
+        let src = self.id().clone();
+        let dst = target.id().clone();
+        if let Ok(mut db) = runtime_db().lock() {
+            db.upsert_edge(&src, &dst, kind);
+        }
+        EdgeHandle { src, dst, kind }
     }
 }
 
