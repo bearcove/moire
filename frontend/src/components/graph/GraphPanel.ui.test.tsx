@@ -16,6 +16,12 @@ vi.mock("../../graph/elkAdapter", () => ({
 
 afterEach(() => cleanup());
 
+function findChipButtonsByName(pattern: RegExp): HTMLButtonElement[] {
+  return screen
+    .queryAllByRole("button", { name: pattern })
+    .filter((node) => node.classList.contains("graph-filter-chip")) as HTMLButtonElement[];
+}
+
 function Harness({ initialFilter }: { initialFilter: string }) {
   const [graphFilterText, setGraphFilterText] = useState(initialFilter);
   const [subgraphScopeMode] = useState<"none" | "process" | "crate">("none");
@@ -111,8 +117,11 @@ describe("GraphPanel filter input interactions", () => {
 
     await user.keyboard("{Backspace}");
 
-    expect(screen.queryByRole("button", { name: /groupBy:process/i })).toBeNull();
-    expect(screen.getByRole("button", { name: /colorBy:crate/i })).toBeTruthy();
+    expect(findChipButtonsByName(/groupBy:process/i)).toHaveLength(0);
+    const chipTexts = Array.from(document.querySelectorAll<HTMLButtonElement>(".graph-filter-chip")).map(
+      (chip) => chip.textContent ?? "",
+    );
+    expect(chipTexts.some((text) => /colorBy:crate/i.test(text))).toBe(true);
     expect(input.value).toBe("");
   });
 
@@ -232,9 +241,9 @@ describe("GraphPanel filter input interactions", () => {
     await user.click(input);
     await user.keyboard("{Meta>}{Backspace}{/Meta}");
 
-    expect(screen.queryByRole("button", { name: /\+kind:request/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /-kind:response/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /colorBy:crate/i })).toBeNull();
+    expect(findChipButtonsByName(/\+kind:request/i)).toHaveLength(0);
+    expect(findChipButtonsByName(/-kind:response/i)).toHaveLength(0);
+    expect(findChipButtonsByName(/colorBy:crate/i)).toHaveLength(0);
     expect(input.value).toBe("");
     expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
   });

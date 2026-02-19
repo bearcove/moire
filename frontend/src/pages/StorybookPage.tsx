@@ -227,6 +227,18 @@ export function useStorybookState() {
     () => ["main.rs:20", "server.rs:45", "handler.rs:12", "session.rs:88"],
     [],
   );
+  const graphFilterFocusItems = useMemo(
+    () =>
+      graphFilterNodeIds.map((id) => {
+        const tail = id.split("/").pop() ?? id;
+        return {
+          id,
+          label: `${tail} (storybook)`,
+          searchText: `${id} ${tail} storybook`,
+        };
+      }),
+    [graphFilterNodeIds],
+  );
 
   const toggleKind = useCallback((id: string) => {
     setHiddenKinds((prev) => {
@@ -1306,6 +1318,7 @@ export function StorybookPage({
             kindItems={filterKindItems}
             nodeIds={graphFilterNodeIds}
             locations={graphFilterLocations}
+            focusItems={graphFilterFocusItems}
           />
         </Section>
 

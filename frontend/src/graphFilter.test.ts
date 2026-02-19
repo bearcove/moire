@@ -11,6 +11,11 @@ import {
 
 const baseInput = {
   nodeIds: ["1/alpha", "1/beta", "2/worker-loop"],
+  entities: [
+    { id: "1/alpha", label: "sleepy forever (web:1234)", searchText: "sleepy forever future web 1234" },
+    { id: "1/beta", label: "semaphore gate (web:1234)", searchText: "semaphore gate lock web 1234" },
+    { id: "2/worker-loop", label: "worker loop (worker:5678)", searchText: "worker loop process worker 5678" },
+  ],
   locations: ["src/main.rs:12", "crates/peeps/src/enabled.rs:505"],
   crates: [
     { id: "peeps-core", label: "peeps-core" },
@@ -37,9 +42,46 @@ function reduce(state: GraphFilterEditorState, ...actions: GraphFilterEditorActi
 describe("graphFilterSuggestions", () => {
   it("shows root plus/minus suggestions first", () => {
     const out = graphFilterSuggestions({ ...baseInput, fragment: "" });
-    expect(out.map((s) => s.token)).toEqual(["+", "-"]);
+    expect(out.map((s) => s.token).slice(0, 2)).toEqual(["+", "-"]);
     expect(out[0]?.description).toBe("Include only filter");
     expect(out[1]?.description).toBe("Exclude everything matching this filter");
+  });
+
+  it("suggests unsiged settings filters at root stage", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "co" });
+    expect(out.map((s) => s.token)).toContain("colorBy:process");
+    expect(out.map((s) => s.token)).toContain("colorBy:crate");
+  });
+
+  it("suggests groupBy filters at root stage", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "group" });
+    expect(out.map((s) => s.token)).toContain("groupBy:process");
+    expect(out.map((s) => s.token)).toContain("groupBy:crate");
+    expect(out.map((s) => s.token)).not.toContain("groupBy:none");
+  });
+
+  it("suggests focus two-stage key", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "fo" });
+    const focus = out.find((s) => s.token === "focus:<id>");
+    expect(focus?.applyToken).toBe("focus:");
+  });
+
+  it("suggests focus concrete node values", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "focus:alp" });
+    expect(out.map((s) => s.token)).toContain("focus:1/alpha");
+    expect(out.map((s) => s.token)).not.toContain("focus:1/beta");
+  });
+
+  it("matches focus values by human label text", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "focus:sleepy" });
+    expect(out.map((s) => s.token)).toContain("focus:1/alpha");
+  });
+
+  it("offers entity-first suggestions at root", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "sleepy" });
+    expect(out.map((s) => s.token)).toContain("focus:1/alpha");
+    expect(out.map((s) => s.token)).toContain("+node:1/alpha");
+    expect(out.map((s) => s.token)).toContain("-node:1/alpha");
   });
 
   it("filters key suggestions when no colon is present", () => {
@@ -101,7 +143,6 @@ describe("graphFilterSuggestions", () => {
     ["-location:enabled", "-location:crates/peeps/src/enabled.rs:505"],
     ["groupBy:pro", "groupBy:process"],
     ["groupBy:cr", "groupBy:crate"],
-    ["groupBy:n", "groupBy:none"],
     ["colorBy:pro", "colorBy:process"],
     ["colorBy:cr", "colorBy:crate"],
   ])("suggests value for %s", (fragment, expectedToken) => {
@@ -224,6 +265,12 @@ describe("parseGraphFilterQuery include/exclude syntax", () => {
   it("parses focus token", () => {
     const out = parseGraphFilterQuery('focus:"1/alpha"');
     expect(out.focusedNodeId).toBe("1/alpha");
+    expect(out.tokens[0]?.valid).toBe(true);
+  });
+
+  it("treats groupBy:none as valid no-op", () => {
+    const out = parseGraphFilterQuery("groupBy:none");
+    expect(out.groupBy).toBeUndefined();
     expect(out.tokens[0]?.valid).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Crosshair } from "@phosphor-icons/react";
+import { Crosshair, X } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { Badge } from "../../ui/primitives/Badge";
 import type { FilterMenuItem } from "../../ui/primitives/FilterMenu";
@@ -11,6 +11,7 @@ import {
   serializeGraphFilterEditorState,
   type GraphFilterEditorAction,
   type ParsedGraphFilterToken,
+  type GraphFilterEntitySuggestion,
 } from "../../graphFilter";
 
 function renderLocationChipValue(rawLocation: string): string {
@@ -87,7 +88,7 @@ export function GraphFilterInput({
   kindItems: FilterMenuItem[];
   nodeIds: string[];
   locations: string[];
-  focusItems: Array<{ id: string; label: string }>;
+  focusItems: Array<{ id: string; label: string; searchText?: string }>;
 }) {
   const graphFilterInputRef = useRef<HTMLInputElement | null>(null);
   const graphFilterRootRef = useRef<HTMLDivElement | null>(null);
@@ -140,6 +141,15 @@ export function GraphFilterInput({
     [processItems],
   );
   const focusLabelById = useMemo(() => new Map(focusItems.map((item) => [item.id, item.label])), [focusItems]);
+  const entitySuggestions = useMemo<GraphFilterEntitySuggestion[]>(
+    () =>
+      focusItems.map((item) => ({
+        id: item.id,
+        label: item.label,
+        searchText: item.searchText ?? item.label,
+      })),
+    [focusItems],
+  );
   const currentFragment = useMemo(() => editorState.draft.trim(), [editorState.draft]);
   const graphFilterSuggestionsList = useMemo(
     () =>
@@ -147,6 +157,7 @@ export function GraphFilterInput({
         fragment: currentFragment,
         existingTokens: editorState.ast,
         nodeIds,
+        entities: entitySuggestions,
         locations,
         crates: crateItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
         processes: processItems.map((item) => ({
@@ -155,7 +166,7 @@ export function GraphFilterInput({
         })),
         kinds: kindItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
       }),
-    [currentFragment, nodeIds, locations, crateItems, processItems, kindItems],
+    [currentFragment, nodeIds, entitySuggestions, locations, crateItems, processItems, kindItems],
   );
   const activeSuggestionIndex =
     graphFilterSuggestionsList.length === 0
@@ -232,25 +243,38 @@ export function GraphFilterInput({
               : raw;
             const chipTitle = parsed ? renderFilterChipTitle(parsed) : "remove filter token";
             return (
-              <button
+              <div
                 key={`${raw}:${index}`}
-                type="button"
                 className={[
                   "graph-filter-chip",
                   valid ? "graph-filter-chip--valid" : "graph-filter-chip--invalid",
                 ].join(" ")}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  applyEditorAction({ type: "remove_chip", index });
-                  graphFilterInputRef.current?.focus();
-                }}
-                title={chipTitle}
               >
-                {chipLabel}
-                <span className="graph-filter-chip-x" aria-hidden="true">
-                  ×
-                </span>
-              </button>
+                <button
+                  type="button"
+                  className="graph-filter-chip__label"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    applyEditorAction({ type: "remove_chip", index });
+                    graphFilterInputRef.current?.focus();
+                  }}
+                  title={chipTitle}
+                >
+                  {chipLabel}
+                </button>
+                <button
+                  type="button"
+                  className="graph-filter-chip__x"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    applyEditorAction({ type: "remove_chip", index });
+                    graphFilterInputRef.current?.focus();
+                  }}
+                  aria-label="Remove filter"
+                >
+                  <X size={12} weight="bold" aria-hidden="true" />
+                </button>
+              </div>
             );
           })}
           {editorState.draft.length === 0 &&

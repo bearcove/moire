@@ -136,6 +136,19 @@ export function GraphPanel({
       entityDefs.map((entity) => ({
         id: entity.id,
         label: `${entity.name} (${entity.processName}:${entity.processPid})`,
+        searchText: [
+          entity.id,
+          entity.name,
+          entity.kind,
+          entity.source,
+          entity.processId,
+          entity.processName,
+          String(entity.processPid),
+          entity.krate ?? "",
+          JSON.stringify(entity.meta),
+        ]
+          .filter((part) => part.length > 0)
+          .join(" "),
       })),
     [entityDefs],
   );

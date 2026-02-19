@@ -138,20 +138,49 @@
 
 .graph-filter-chip {
     display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    align-items: stretch;
+    gap: 2px;
     border: 1px solid transparent;
     border-radius: var(--radius-control);
-    padding: 4px 10px;
     font-size: var(--font-size-sm);
     font-family: var(--font-mono);
-    cursor: pointer;
-    background: var(--accent);
+    background: var(--bg-elevated);
     color: var(--accent-fg);
     flex-shrink: 0;
     max-width: 100%;
+    overflow: hidden;
+}
+
+.graph-filter-chip__label {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: var(--accent);
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
     white-space: normal;
     overflow-wrap: anywhere;
+}
+
+.graph-filter-chip__x {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: var(--accent);
+    border: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.8;
+    flex-shrink: 0;
+}
+
+.graph-filter-chip__x:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--accent-fg) 15%, var(--accent));
 }
 
 .graph-filter-chip--valid {
@@ -160,14 +189,12 @@
 
 .graph-filter-chip--invalid {
     border-color: color-mix(in srgb, var(--status-danger) 65%, var(--border-default));
-    background: color-mix(in srgb, var(--status-danger) 25%, var(--bg-elevated));
     color: color-mix(in srgb, var(--status-danger) 92%, var(--text-primary));
 }
 
-.graph-filter-chip-x {
-    font-size: var(--font-size-sm);
-    line-height: 1;
-    opacity: 0.75;
+.graph-filter-chip--invalid .graph-filter-chip__label,
+.graph-filter-chip--invalid .graph-filter-chip__x {
+    background: color-mix(in srgb, var(--status-danger) 25%, var(--bg-elevated));
 }
 
 .graph-filter-suggestions {

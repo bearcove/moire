@@ -22,7 +22,7 @@ export type GraphFilterParseResult = {
   focusedNodeId?: string;
   showLoners?: boolean;
   colorBy?: GraphFilterMode;
-  groupBy?: GraphFilterMode | "none";
+  groupBy?: GraphFilterMode;
 };
 
 export type GraphFilterSuggestion = {
@@ -36,10 +36,17 @@ export type GraphFilterSuggestionItem = {
   label: string;
 };
 
+export type GraphFilterEntitySuggestion = {
+  id: string;
+  label: string;
+  searchText?: string;
+};
+
 export type GraphFilterSuggestionInput = {
   fragment: string;
   existingTokens?: readonly string[];
   nodeIds: readonly string[];
+  entities?: readonly GraphFilterEntitySuggestion[];
   locations: readonly string[];
   crates: readonly GraphFilterSuggestionItem[];
   processes: readonly GraphFilterSuggestionItem[];
@@ -136,7 +143,7 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
   const tokens = tokenizeFilterQuery(filterText);
   const parsed: ParsedGraphFilterToken[] = [];
   let colorBy: GraphFilterMode | undefined;
-  let groupBy: GraphFilterMode | "none" | undefined;
+  let groupBy: GraphFilterMode | undefined;
   let showLoners: boolean | undefined;
   let focusedNodeId: string | undefined;
 
@@ -192,8 +199,10 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         valid = true;
       }
     } else if (keyLower === "groupby") {
-      if (value === "process" || value === "crate" || value === "none") {
+      if (value === "process" || value === "crate") {
         groupBy = value;
+        valid = true;
+      } else if (value === "none") {
         valid = true;
       }
     } else if (keyLower === "focus" || keyLower === "subgraph") {
@@ -493,9 +502,30 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     const rootSuggestions = [
       { token: "+", description: "Include only filter", applyToken: "+" },
       { token: "-", description: "Exclude everything matching this filter", applyToken: "-" },
+      { token: "focus:<id>", description: "Focus connected subgraph from one node", applyToken: "focus:" },
+      { token: "loners:on", description: "Show unconnected nodes" },
+      { token: "loners:off", description: "Hide unconnected nodes" },
+      { token: "colorBy:process", description: "Color nodes by process" },
+      { token: "colorBy:crate", description: "Color nodes by crate" },
+      { token: "groupBy:process", description: "Group by process subgraphs" },
+      { token: "groupBy:crate", description: "Group by crate subgraphs" },
     ];
     for (const item of sortedMatches(rootSuggestions, lowerFragment, (v) => `${v.token} ${v.description}`)) {
       uniquePush(out, item.token, item.description, item.applyToken, existingTokens);
+    }
+    if (lowerFragment.length > 0 && input.entities && input.entities.length > 0) {
+      const entityMatches = sortedMatches(
+        input.entities,
+        lowerFragment,
+        (entity) => `${entity.id} ${entity.label} ${entity.searchText ?? ""}`,
+        8,
+      );
+      for (const entity of entityMatches.slice(0, 3)) {
+        const quoted = quoteFilterValue(entity.id);
+        uniquePush(out, `focus:${quoted}`, `Focus ${entity.label}`, undefined, existingTokens);
+        uniquePush(out, `+node:${quoted}`, `Include only ${entity.label}`, undefined, existingTokens);
+        uniquePush(out, `-node:${quoted}`, `Exclude ${entity.label}`, undefined, existingTokens);
+      }
     }
     return out;
   }
@@ -514,11 +544,11 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "-kind:<kind>", label: "Exclude matching kinds", applyToken: "-kind:" },
       { key: "loners:on", label: "Show unconnected nodes" },
       { key: "loners:off", label: "Hide unconnected nodes" },
+      { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
       { key: "colorBy:process", label: "Color nodes by process" },
       { key: "colorBy:crate", label: "Color nodes by crate" },
       { key: "groupBy:process", label: "Group by process subgraphs" },
       { key: "groupBy:crate", label: "Group by crate subgraphs" },
-      { key: "groupBy:none", label: "Disable grouping" },
     ];
     const matched = sortedMatches(keySuggestions, lowerFragment, (entry) => `${entry.key} ${entry.label}`);
     for (const entry of matched) uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);
@@ -573,8 +603,30 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     return out;
   }
   if (keyLower === "groupby") {
-    for (const mode of sortedMatches(["process", "crate", "none"], valueLower, (v) => v)) {
-      uniquePush(out, `groupBy:${mode}`, mode === "none" ? "Disable grouping" : `Group by ${mode}`, undefined, existingTokens);
+    for (const mode of sortedMatches(["process", "crate"], valueLower, (v) => v)) {
+      uniquePush(out, `groupBy:${mode}`, `Group by ${mode}`, undefined, existingTokens);
+    }
+    return out;
+  }
+  if (keyLower === "focus" || keyLower === "subgraph") {
+    if (input.entities && input.entities.length > 0) {
+      for (const entity of sortedMatches(
+        input.entities,
+        valueLower,
+        (candidate) => `${candidate.id} ${candidate.label} ${candidate.searchText ?? ""}`,
+      )) {
+        uniquePush(
+          out,
+          `focus:${quoteFilterValue(entity.id)}`,
+          `Focus connected subgraph around ${entity.label}`,
+          undefined,
+          existingTokens,
+        );
+      }
+      return out;
+    }
+    for (const id of sortedMatches(input.nodeIds, valueLower, (v) => v)) {
+      uniquePush(out, `focus:${quoteFilterValue(id)}`, `Focus connected subgraph around ${id}`, undefined, existingTokens);
     }
     return out;
   }
@@ -594,7 +646,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
         { key: "colorBy:crate", label: "Color nodes by crate" },
         { key: "groupBy:process", label: "Group by process subgraphs" },
         { key: "groupBy:crate", label: "Group by crate subgraphs" },
-        { key: "groupBy:none", label: "Disable grouping" },
+        { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
       ];
   for (const entry of sortedMatches(fallbackKeys, signed ? unsignedLower : lowerFragment, (v) => `${v.key} ${v.label}`)) {
     uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);

@@ -219,8 +219,7 @@ export function App() {
   const effectiveHiddenKinds = graphTextFilters.excludeKinds;
   const effectiveShowLoners = graphTextFilters.showLoners ?? false;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
-  const effectiveSubgraphScopeMode: SubgraphScopeMode =
-    graphTextFilters.groupBy === "none" ? "none" : (graphTextFilters.groupBy ?? "none");
+  const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
   const focusedEntityId = graphTextFilters.focusedNodeId ?? null;
 
   const setFocusedEntityFilter = useCallback((entityId: string | null) => {
