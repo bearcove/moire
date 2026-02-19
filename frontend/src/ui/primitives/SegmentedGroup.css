@@ -39,9 +39,9 @@
     position: relative;
     z-index: 1;
     border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--bg-elevated) 88%, var(--bg-surface));
-    color: var(--accent-hover);
-    border-color: var(--border-default);
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
 }
 
 .ui-segmented-option:hover:not(.ui-segmented-option--selected) {

@@ -42,6 +42,8 @@ export function EdgeLayer({
         const stroke = isSelected
           ? "var(--accent)"
           : (edgeStyle.stroke ?? "var(--edge-stroke-muted)");
+        const markerSize = (edge.data?.markerSize as number | undefined) ?? 8;
+        const markerEnd = `url(#arrowhead-${markerSize})`;
 
         const visibleStyle: React.CSSProperties = isSelected
           ? { stroke, strokeWidth: 2.5 }
@@ -98,6 +100,7 @@ export function EdgeLayer({
               d={d}
               fill="none"
               style={visibleStyle}
+              markerEnd={markerEnd}
             />
 
           </g>

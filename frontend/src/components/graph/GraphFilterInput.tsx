@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Crosshair } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { Badge } from "../../ui/primitives/Badge";
@@ -9,6 +9,7 @@ import {
   graphFilterSuggestions,
   parseGraphFilterQuery,
   serializeGraphFilterEditorState,
+  type GraphFilterEditorAction,
 } from "../../graphFilter";
 
 export function GraphFilterInput({
@@ -38,26 +39,39 @@ export function GraphFilterInput({
 }) {
   const graphFilterInputRef = useRef<HTMLInputElement | null>(null);
   const graphFilterRootRef = useRef<HTMLDivElement | null>(null);
-  const [editorState, dispatchEditor] = useReducer(
-    graphFilterEditorReducer,
-    graphFilterText,
-    graphFilterEditorStateFromText,
-  );
-
-  const serializedEditor = useMemo(
-    () => serializeGraphFilterEditorState(editorState),
-    [editorState],
-  );
+  const graphFilterTextRef = useRef(graphFilterText);
+  const [editorState, setEditorState] = useState(() => graphFilterEditorStateFromText(graphFilterText));
+  const editorStateRef = useRef(editorState);
+  const pendingOutboundTextRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (graphFilterText === serializedEditor) return;
-    dispatchEditor({ type: "sync_from_text", text: graphFilterText });
-  }, [graphFilterText, serializedEditor]);
+    graphFilterTextRef.current = graphFilterText;
+    const localText = serializeGraphFilterEditorState(editorStateRef.current);
+    if (graphFilterText === localText) return;
+    if (pendingOutboundTextRef.current === graphFilterText) {
+      pendingOutboundTextRef.current = null;
+      return;
+    }
+    const next = graphFilterEditorStateFromText(graphFilterText);
+    editorStateRef.current = next;
+    setEditorState(next);
+  }, [graphFilterText]);
 
-  useEffect(() => {
-    if (graphFilterText === serializedEditor) return;
-    onGraphFilterTextChange(serializedEditor);
-  }, [graphFilterText, onGraphFilterTextChange, serializedEditor]);
+  const applyEditorAction = useCallback(
+    (action: GraphFilterEditorAction, emitChange = true) => {
+      const prev = editorStateRef.current;
+      const next = graphFilterEditorReducer(prev, action);
+      if (next === prev) return;
+      editorStateRef.current = next;
+      setEditorState(next);
+      if (!emitChange) return;
+      const nextText = serializeGraphFilterEditorState(next);
+      if (nextText === graphFilterTextRef.current) return;
+      pendingOutboundTextRef.current = nextText;
+      onGraphFilterTextChange(nextText);
+    },
+    [onGraphFilterTextChange],
+  );
 
   const graphFilterTokens = useMemo(
     () =>
@@ -88,32 +102,35 @@ export function GraphFilterInput({
   useEffect(() => {
     if (graphFilterSuggestionsList.length === 0) {
       if (editorState.suggestionIndex !== 0) {
-        dispatchEditor({ type: "set_suggestion_index", index: 0 });
+        applyEditorAction({ type: "set_suggestion_index", index: 0 }, false);
       }
       return;
     }
     if (editorState.suggestionIndex < graphFilterSuggestionsList.length) return;
-    dispatchEditor({ type: "set_suggestion_index", index: 0 });
-  }, [editorState.suggestionIndex, graphFilterSuggestionsList.length]);
+    applyEditorAction({ type: "set_suggestion_index", index: 0 }, false);
+  }, [applyEditorAction, editorState.suggestionIndex, graphFilterSuggestionsList.length]);
 
-  const applyGraphFilterSuggestion = useCallback((token: string) => {
-    dispatchEditor({ type: "apply_suggestion", token });
-    graphFilterInputRef.current?.focus();
-  }, []);
+  const applyGraphFilterSuggestion = useCallback(
+    (token: string) => {
+      applyEditorAction({ type: "apply_suggestion", token });
+      graphFilterInputRef.current?.focus();
+    },
+    [applyEditorAction],
+  );
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
       const root = graphFilterRootRef.current;
       if (!root) return;
       if (event.target instanceof Node && root.contains(event.target)) return;
-      dispatchEditor({ type: "blur_input" });
+      applyEditorAction({ type: "blur_input" }, false);
       if (document.activeElement === graphFilterInputRef.current) {
         graphFilterInputRef.current?.blur();
       }
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+  }, [applyEditorAction]);
 
   return (
     <div className="graph-toolbar">
@@ -138,7 +155,7 @@ export function GraphFilterInput({
                 ].join(" ")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  dispatchEditor({ type: "remove_chip", index });
+                  applyEditorAction({ type: "remove_chip", index });
                   graphFilterInputRef.current?.focus();
                 }}
                 title={valid ? "remove filter token" : "invalid filter token"}
@@ -153,28 +170,28 @@ export function GraphFilterInput({
             type="text"
             value={editorState.draft}
             onChange={(event) => {
-              dispatchEditor({ type: "set_draft", draft: event.target.value });
+              applyEditorAction({ type: "set_draft", draft: event.target.value });
             }}
             onFocus={() => {
-              dispatchEditor({ type: "focus_input" });
+              applyEditorAction({ type: "focus_input" }, false);
             }}
             onBlur={() => {
-              dispatchEditor({ type: "blur_input" });
+              applyEditorAction({ type: "blur_input" }, false);
             }}
             onKeyDown={(event) => {
               if (event.key === "Backspace" && editorState.draft.length === 0 && editorState.insertionPoint > 0) {
                 event.preventDefault();
-                dispatchEditor({ type: "backspace_from_draft_start" });
+                applyEditorAction({ type: "backspace_from_draft_start" });
                 return;
               }
               if (event.key === "Tab") {
                 event.preventDefault();
                 if (!editorState.suggestionsOpen || graphFilterSuggestionsList.length === 0) {
-                  dispatchEditor({ type: "open_suggestions" });
+                  applyEditorAction({ type: "open_suggestions" }, false);
                   return;
                 }
                 if (event.shiftKey) {
-                  dispatchEditor({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length });
+                  applyEditorAction({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length }, false);
                   return;
                 }
                 const choice = graphFilterSuggestionsList[activeSuggestionIndex];
@@ -185,17 +202,17 @@ export function GraphFilterInput({
               if (!editorState.suggestionsOpen || graphFilterSuggestionsList.length === 0) return;
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                dispatchEditor({ type: "move_suggestion", delta: 1, total: graphFilterSuggestionsList.length });
+                applyEditorAction({ type: "move_suggestion", delta: 1, total: graphFilterSuggestionsList.length }, false);
                 return;
               }
               if (event.key === "ArrowUp") {
                 event.preventDefault();
-                dispatchEditor({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length });
+                applyEditorAction({ type: "move_suggestion", delta: -1, total: graphFilterSuggestionsList.length }, false);
                 return;
               }
               if (event.key === "Escape") {
                 event.preventDefault();
-                dispatchEditor({ type: "close_suggestions" });
+                applyEditorAction({ type: "close_suggestions" }, false);
                 return;
               }
               if (event.key === "Enter") {

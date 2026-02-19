@@ -14,12 +14,12 @@
     transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-.ui-action-button:hover {
+.ui-action-button:hover:not(.ui-action-button--primary):not(.ui-action-button--ghost) {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
     border-color: var(--border-default);
 }
 
-.ui-action-button:active {
+.ui-action-button:active:not(.ui-action-button--primary):not(.ui-action-button--ghost) {
     background: color-mix(in srgb, white 8%, var(--bg-surface));
 }
 

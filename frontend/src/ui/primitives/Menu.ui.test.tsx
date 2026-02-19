@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Menu } from "./Menu";
+
+// jsdom doesn't implement CSS.escape, which react-aria uses to build data-key selectors.
+beforeAll(() => {
+  if (!globalThis.CSS?.escape) {
+    Object.defineProperty(globalThis, "CSS", {
+      value: { escape: (s: string) => s.replace(/[^\w-]/g, (c) => `\\${c}`) },
+    });
+  }
+});
 
 afterEach(() => cleanup());
 

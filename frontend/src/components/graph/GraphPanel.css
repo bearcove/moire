@@ -99,7 +99,7 @@
     border: 2px solid var(--border-default);
     border-radius: 6px;
     background: var(--bg-elevated);
-    padding: 2px 10px;
+    padding: 1px 8px;
     box-sizing: border-box;
 }
 
@@ -126,7 +126,7 @@
     gap: 6px;
     border: 1px solid transparent;
     border-radius: var(--radius-control);
-    padding: 2px 8px;
+    padding: 4px 10px;
     font-size: var(--font-size-sm);
     font-family: var(--font-ui);
     cursor: pointer;
