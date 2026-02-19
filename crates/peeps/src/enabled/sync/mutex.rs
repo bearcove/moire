@@ -1,9 +1,10 @@
 use peeps_types::{EdgeKind, EntityBody, EntityId, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 
-use super::super::db::runtime_db;
-use super::super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
-use super::super::{Source, SourceLeft, SourceRight, HELD_MUTEX_STACK};
+use super::super::{Source, SourceLeft, SourceRight};
+use peeps_runtime::{
+    current_causal_target, runtime_db, AsEntityRef, EntityHandle, EntityRef, HELD_MUTEX_STACK,
+};
 
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
@@ -163,11 +164,4 @@ impl<'a, T> Drop for MutexGuard<'a, T> {
             }
         });
     }
-}
-
-#[macro_export]
-macro_rules! mutex {
-    ($name:expr, $value:expr $(,)?) => {{
-        $crate::Mutex::new($name, $value, $crate::Source::caller())
-    }};
 }

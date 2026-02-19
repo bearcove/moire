@@ -1,7 +1,7 @@
 use peeps_types::{EntityBody, LockEntity, LockKind};
 
-use super::super::handles::{AsEntityRef, EntityHandle, EntityRef};
 use super::super::{Source, SourceLeft, SourceRight};
+use peeps_runtime::{AsEntityRef, EntityHandle, EntityRef};
 
 pub struct RwLock<T> {
     inner: parking_lot::RwLock<T>,
@@ -73,11 +73,4 @@ impl<T> AsEntityRef for RwLock<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
     }
-}
-
-#[macro_export]
-macro_rules! rwlock {
-    ($name:expr, $value:expr $(,)?) => {{
-        $crate::RwLock::new($name, $value, $crate::Source::caller())
-    }};
 }

@@ -1,20 +1,16 @@
 [package]
-name = "peeps"
+name = "peeps-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[features]
-default = []
-diagnostics = []
-
 [dependencies]
 facet-json.workspace = true
 facet-value.workspace = true
-peeps-types.workspace = true
 peeps-source.workspace = true
-peeps-runtime.workspace = true
+peeps-types.workspace = true
 peeps-wire.workspace = true
+peeps-sqlite-facet.workspace = true
 parking_lot.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

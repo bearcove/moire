@@ -1,9 +1,11 @@
 use std::cell::RefCell;
 use std::future::Future;
 
-use super::futures::instrument_future;
 use super::process::JoinSet;
-use super::{register_current_task_scope, Source, SourceLeft, SourceRight, FUTURE_CAUSAL_STACK};
+use super::{Source, SourceLeft, SourceRight};
+use peeps_runtime::{
+    instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
+};
 
 impl<T> JoinSet<T>
 where
@@ -11,7 +13,7 @@ where
 {
     pub fn named(name: impl Into<String>, source: Source) -> Self {
         let name = name.into();
-        let handle = super::handles::EntityHandle::new(
+        let handle = EntityHandle::new(
             format!("joinset.{name}"),
             peeps_types::EntityBody::Future,
             source,

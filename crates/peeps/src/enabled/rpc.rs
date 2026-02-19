@@ -3,8 +3,8 @@ use peeps_types::{
     ResponseEntity, ResponseStatus,
 };
 
-use super::handles::{EntityHandle, EntityRef};
 use super::SourceRight;
+use peeps_runtime::{current_process_scope_id, runtime_db, EntityHandle, EntityRef};
 
 #[derive(Clone)]
 pub struct RpcRequestHandle {
@@ -52,7 +52,7 @@ impl RpcResponseHandle {
     #[track_caller]
     pub fn set_status(&self, status: ResponseStatus) {
         let mut changed = false;
-        if let Ok(mut db) = super::db::runtime_db().lock() {
+        if let Ok(mut db) = runtime_db().lock() {
             changed = db.update_response_status(self.handle.id(), status);
         }
         if !changed {
@@ -66,7 +66,7 @@ impl RpcResponseHandle {
             source.into_string(),
             None,
         ) {
-            if let Ok(mut db) = super::db::runtime_db().lock() {
+            if let Ok(mut db) = runtime_db().lock() {
                 db.record_event(event);
             }
         }
@@ -104,13 +104,6 @@ pub fn rpc_request(
     }
 }
 
-#[macro_export]
-macro_rules! rpc_request {
-    ($method:expr, $args_preview:expr $(,)?) => {
-        $crate::rpc_request($method, $args_preview, $crate::Source::caller())
-    };
-}
-
 pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcResponseHandle {
     let method = method.into();
     let body = EntityBody::Response(ResponseEntity {
@@ -122,25 +115,18 @@ pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcRespon
     }
 }
 
-#[macro_export]
-macro_rules! rpc_response {
-    ($method:expr $(,)?) => {
-        $crate::rpc_response($method, $crate::Source::caller())
-    };
-}
-
 pub fn rpc_response_for(
     method: impl Into<String>,
     request: &EntityRef,
     source: SourceRight,
 ) -> RpcResponseHandle {
     let method = method.into();
-    let request_source_and_krate = if let Ok(db) = super::db::runtime_db().lock() {
+    let request_source_and_krate = if let Ok(db) = runtime_db().lock() {
         db.entities
             .get(request.id())
             .map(|entity| (entity.source.clone(), entity.krate.clone()))
             .or_else(|| {
-                let process_scope_id = super::current_process_scope_id()?;
+                let process_scope_id = current_process_scope_id()?;
                 db.scopes
                     .get(&process_scope_id)
                     .map(|scope| (scope.source.clone(), scope.krate.clone()))
@@ -168,15 +154,8 @@ pub fn rpc_response_for(
     let response = RpcResponseHandle {
         handle: EntityHandle::from_entity(entity),
     };
-    if let Ok(mut db) = super::db::runtime_db().lock() {
+    if let Ok(mut db) = runtime_db().lock() {
         db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
     }
     response
-}
-
-#[macro_export]
-macro_rules! rpc_response_for {
-    ($method:expr, $request:expr $(,)?) => {
-        $crate::rpc_response_for($method, $request, $crate::Source::caller())
-    };
 }

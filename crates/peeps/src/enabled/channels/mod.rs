@@ -6,244 +6,28 @@ use peeps_types::{
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 
-pub(super) use super::db::runtime_db;
-pub(super) use super::futures::instrument_operation_on_with_source;
-pub(super) use super::handles::{AsEntityRef, EntityHandle, EntityRef};
-pub(super) use super::{
-    record_event_with_entity_source, record_event_with_source, Source, SourceLeft, SourceRight,
+pub(super) use super::{Source, SourceLeft, SourceRight};
+pub(super) use peeps_runtime::runtime_db;
+pub(super) use peeps_runtime::{
+    instrument_operation_on_with_source, record_event_with_entity_source, record_event_with_source,
+    AsEntityRef, EntityHandle, EntityRef,
 };
 
-pub mod broadcast;
-pub mod mpsc;
-pub mod oneshot;
-pub mod watch;
+pub(crate) mod broadcast;
+use broadcast::BroadcastRuntimeState;
+pub use broadcast::{BroadcastReceiver, BroadcastSender};
 
-pub struct Sender<T> {
-    inner: tokio::sync::mpsc::Sender<T>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: String,
-}
+pub(crate) mod mpsc;
+use mpsc::{ChannelRuntimeState, ReceiverState};
+pub use mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 
-pub struct Receiver<T> {
-    inner: tokio::sync::mpsc::Receiver<T>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: String,
-}
+pub(crate) mod oneshot;
+use oneshot::OneshotRuntimeState;
+pub use oneshot::{OneshotReceiver, OneshotSender};
 
-pub struct UnboundedSender<T> {
-    inner: tokio::sync::mpsc::UnboundedSender<T>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: String,
-}
-
-pub struct UnboundedReceiver<T> {
-    inner: tokio::sync::mpsc::UnboundedReceiver<T>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<ChannelRuntimeState>>,
-    name: String,
-}
-
-pub struct OneshotSender<T> {
-    inner: Option<tokio::sync::oneshot::Sender<T>>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<OneshotRuntimeState>>,
-}
-
-pub struct OneshotReceiver<T> {
-    inner: Option<tokio::sync::oneshot::Receiver<T>>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<OneshotRuntimeState>>,
-    name: String,
-}
-
-pub struct BroadcastSender<T> {
-    inner: tokio::sync::broadcast::Sender<T>,
-    handle: EntityHandle,
-    receiver_handle: EntityHandle,
-    channel: Arc<StdMutex<BroadcastRuntimeState>>,
-    name: String,
-}
-
-pub struct BroadcastReceiver<T> {
-    inner: tokio::sync::broadcast::Receiver<T>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<BroadcastRuntimeState>>,
-    name: String,
-}
-
-pub struct WatchSender<T> {
-    inner: tokio::sync::watch::Sender<T>,
-    handle: EntityHandle,
-    receiver_handle: EntityHandle,
-    channel: Arc<StdMutex<WatchRuntimeState>>,
-    name: String,
-}
-
-pub struct WatchReceiver<T> {
-    inner: tokio::sync::watch::Receiver<T>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<WatchRuntimeState>>,
-    name: String,
-}
-
-pub(super) struct ChannelRuntimeState {
-    tx_id: EntityId,
-    rx_id: EntityId,
-    tx_ref_count: u32,
-    rx_state: ReceiverState,
-    queue_len: u32,
-    capacity: Option<u32>,
-    tx_close_cause: Option<ChannelCloseCause>,
-    rx_close_cause: Option<ChannelCloseCause>,
-}
-
-pub(super) struct OneshotRuntimeState {
-    tx_id: EntityId,
-    rx_id: EntityId,
-    tx_lifecycle: ChannelEndpointLifecycle,
-    rx_lifecycle: ChannelEndpointLifecycle,
-    state: OneshotState,
-}
-
-pub(super) struct BroadcastRuntimeState {
-    tx_id: EntityId,
-    rx_id: EntityId,
-    tx_ref_count: u32,
-    rx_ref_count: u32,
-    capacity: u32,
-    tx_close_cause: Option<ChannelCloseCause>,
-    rx_close_cause: Option<ChannelCloseCause>,
-}
-
-pub(super) struct WatchRuntimeState {
-    tx_id: EntityId,
-    rx_id: EntityId,
-    tx_ref_count: u32,
-    rx_ref_count: u32,
-    tx_close_cause: Option<ChannelCloseCause>,
-    rx_close_cause: Option<ChannelCloseCause>,
-    last_update_at: Option<peeps_types::PTime>,
-}
-
-pub(super) enum ReceiverState {
-    Alive,
-    Dropped,
-}
-
-impl ChannelRuntimeState {
-    pub(super) fn tx_lifecycle(&self) -> ChannelEndpointLifecycle {
-        match self.tx_close_cause {
-            Some(cause) => ChannelEndpointLifecycle::Closed(cause),
-            None => ChannelEndpointLifecycle::Open,
-        }
-    }
-
-    pub(super) fn rx_lifecycle(&self) -> ChannelEndpointLifecycle {
-        match self.rx_close_cause {
-            Some(cause) => ChannelEndpointLifecycle::Closed(cause),
-            None => ChannelEndpointLifecycle::Open,
-        }
-    }
-
-    pub(super) fn is_send_full(&self) -> bool {
-        self.capacity
-            .map(|capacity| self.queue_len >= capacity)
-            .unwrap_or(false)
-    }
-
-    pub(super) fn is_receive_empty(&self) -> bool {
-        self.queue_len == 0
-    }
-}
-
-impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
-        }
-        Self {
-            inner: self.inner.clone(),
-            handle: self.handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
-        }
-    }
-}
-
-impl<T> Clone for UnboundedSender<T> {
-    fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
-        }
-        Self {
-            inner: self.inner.clone(),
-            handle: self.handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
-        }
-    }
-}
-
-impl<T> Clone for BroadcastSender<T> {
-    fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
-        }
-        Self {
-            inner: self.inner.clone(),
-            handle: self.handle.clone(),
-            receiver_handle: self.receiver_handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
-        }
-    }
-}
-
-impl<T: Clone> Clone for BroadcastReceiver<T> {
-    fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
-        }
-        Self {
-            inner: self.inner.resubscribe(),
-            handle: self.handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
-        }
-    }
-}
-
-impl<T> Clone for WatchSender<T> {
-    fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
-        }
-        Self {
-            inner: self.inner.clone(),
-            handle: self.handle.clone(),
-            receiver_handle: self.receiver_handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
-        }
-    }
-}
-
-impl<T> Clone for WatchReceiver<T> {
-    fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
-        }
-        Self {
-            inner: self.inner.clone(),
-            handle: self.handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
-        }
-    }
-}
+pub(crate) mod watch;
+use watch::WatchRuntimeState;
+pub use watch::{WatchReceiver, WatchSender};
 
 pub(super) fn sync_channel_state(
     channel: &Arc<StdMutex<ChannelRuntimeState>>,

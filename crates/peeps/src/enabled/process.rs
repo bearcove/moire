@@ -6,9 +6,10 @@ use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 
-use super::futures::instrument_future;
-use super::handles::EntityHandle;
-use super::{register_current_task_scope, Source, SourceLeft, SourceRight, FUTURE_CAUSAL_STACK};
+use super::{Source, SourceLeft, SourceRight};
+use peeps_runtime::{
+    instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
+};
 
 pub struct Command {
     inner: tokio::process::Command,
@@ -56,8 +57,7 @@ impl Command {
     #[track_caller]
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
         let arg = arg.as_ref().to_owned();
-        self.args
-            .push(String::from(arg.to_string_lossy().as_ref()));
+        self.args.push(String::from(arg.to_string_lossy().as_ref()));
         self.inner.arg(&arg);
         self
     }
@@ -66,8 +66,7 @@ impl Command {
     pub fn args(&mut self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
         let args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
         for arg in &args {
-            self.args
-                .push(String::from(arg.to_string_lossy().as_ref()));
+            self.args.push(String::from(arg.to_string_lossy().as_ref()));
         }
         self.inner.args(args);
         self

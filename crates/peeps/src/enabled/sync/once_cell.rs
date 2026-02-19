@@ -2,10 +2,8 @@ use peeps_types::{EntityBody, OnceCellEntity, OnceCellState, OperationKind};
 use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use super::super::db::runtime_db;
-use super::super::futures::instrument_operation_on_with_source;
-use super::super::handles::EntityHandle;
 use super::super::{Source, SourceLeft, SourceRight};
+use peeps_runtime::{instrument_operation_on_with_source, runtime_db, EntityHandle};
 
 pub struct OnceCell<T> {
     inner: tokio::sync::OnceCell<T>,
@@ -182,11 +180,4 @@ impl<T> OnceCell<T> {
         }
         result
     }
-}
-
-#[macro_export]
-macro_rules! once_cell {
-    ($name:expr $(,)?) => {
-        $crate::OnceCell::new($name, $crate::Source::caller())
-    };
 }

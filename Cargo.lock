@@ -1137,6 +1137,7 @@ dependencies = [
  "facet-json",
  "facet-value",
  "parking_lot",
+ "peeps-runtime",
  "peeps-source",
  "peeps-types",
  "peeps-wire",
@@ -1167,6 +1168,20 @@ dependencies = [
  "tokio",
  "ur-taking-me-with-you",
  "ureq",
+]
+
+[[package]]
+name = "peeps-runtime"
+version = "0.1.0"
+dependencies = [
+ "facet-json",
+ "facet-value",
+ "parking_lot",
+ "peeps-source",
+ "peeps-sqlite-facet",
+ "peeps-types",
+ "peeps-wire",
+ "tokio",
 ]
 
 [[package]]

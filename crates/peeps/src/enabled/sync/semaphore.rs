@@ -5,10 +5,11 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use super::super::db::runtime_db;
-use super::super::futures::instrument_operation_on_with_source;
-use super::super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 use super::super::{Source, SourceLeft, SourceRight};
+use peeps_runtime::{
+    current_causal_target, instrument_operation_on_with_source, runtime_db, AsEntityRef,
+    EntityHandle, EntityRef,
+};
 
 #[derive(Clone)]
 pub struct Semaphore {
@@ -451,11 +452,4 @@ impl Drop for OwnedSemaphorePermit {
             self.max_permits.load(Ordering::Relaxed),
         );
     }
-}
-
-#[macro_export]
-macro_rules! semaphore {
-    ($name:expr, $permits:expr $(,)?) => {
-        $crate::Semaphore::new($name, $permits, $crate::Source::caller())
-    };
 }

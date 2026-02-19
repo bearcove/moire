@@ -3,10 +3,8 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use super::super::db::runtime_db;
-use super::super::futures::instrument_operation_on_with_source;
-use super::super::handles::EntityHandle;
 use super::super::{Source, SourceLeft, SourceRight};
+use peeps_runtime::{instrument_operation_on_with_source, runtime_db, EntityHandle};
 
 #[derive(Clone)]
 pub struct Notify {
@@ -74,11 +72,4 @@ impl Notify {
     pub fn notify_waiters(&self) {
         self.inner.notify_waiters();
     }
-}
-
-#[macro_export]
-macro_rules! notify {
-    ($name:expr $(,)?) => {
-        $crate::Notify::new($name, $crate::Source::caller())
-    };
 }

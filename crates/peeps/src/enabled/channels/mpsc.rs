@@ -11,6 +11,104 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
+pub(super) struct ChannelRuntimeState {
+    pub(super) tx_id: EntityId,
+    pub(super) rx_id: EntityId,
+    pub(super) tx_ref_count: u32,
+    pub(super) rx_state: ReceiverState,
+    pub(super) queue_len: u32,
+    pub(super) capacity: Option<u32>,
+    pub(super) tx_close_cause: Option<ChannelCloseCause>,
+    pub(super) rx_close_cause: Option<ChannelCloseCause>,
+}
+
+pub(super) enum ReceiverState {
+    Alive,
+    Dropped,
+}
+
+impl ChannelRuntimeState {
+    pub(super) fn tx_lifecycle(&self) -> ChannelEndpointLifecycle {
+        match self.tx_close_cause {
+            Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+            None => ChannelEndpointLifecycle::Open,
+        }
+    }
+
+    pub(super) fn rx_lifecycle(&self) -> ChannelEndpointLifecycle {
+        match self.rx_close_cause {
+            Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+            None => ChannelEndpointLifecycle::Open,
+        }
+    }
+
+    pub(super) fn is_send_full(&self) -> bool {
+        self.capacity
+            .map(|capacity| self.queue_len >= capacity)
+            .unwrap_or(false)
+    }
+
+    pub(super) fn is_receive_empty(&self) -> bool {
+        self.queue_len == 0
+    }
+}
+
+pub struct Sender<T> {
+    inner: tokio::sync::mpsc::Sender<T>,
+    handle: EntityHandle,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
+    name: String,
+}
+
+pub struct Receiver<T> {
+    inner: tokio::sync::mpsc::Receiver<T>,
+    handle: EntityHandle,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
+    name: String,
+}
+
+pub struct UnboundedSender<T> {
+    inner: tokio::sync::mpsc::UnboundedSender<T>,
+    handle: EntityHandle,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
+    name: String,
+}
+
+pub struct UnboundedReceiver<T> {
+    inner: tokio::sync::mpsc::UnboundedReceiver<T>,
+    handle: EntityHandle,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
+    name: String,
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T> Clone for UnboundedSender<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         let mut emit_for_rx = None;

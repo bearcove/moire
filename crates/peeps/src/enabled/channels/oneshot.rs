@@ -10,6 +10,27 @@ use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::oneshot;
 
+pub(super) struct OneshotRuntimeState {
+    pub(super) tx_id: EntityId,
+    pub(super) rx_id: EntityId,
+    pub(super) tx_lifecycle: ChannelEndpointLifecycle,
+    pub(super) rx_lifecycle: ChannelEndpointLifecycle,
+    pub(super) state: OneshotState,
+}
+
+pub struct OneshotSender<T> {
+    inner: Option<tokio::sync::oneshot::Sender<T>>,
+    handle: EntityHandle,
+    channel: Arc<StdMutex<OneshotRuntimeState>>,
+}
+
+pub struct OneshotReceiver<T> {
+    inner: Option<tokio::sync::oneshot::Receiver<T>>,
+    handle: EntityHandle,
+    channel: Arc<StdMutex<OneshotRuntimeState>>,
+    name: String,
+}
+
 impl<T> Drop for OneshotSender<T> {
     fn drop(&mut self) {
         if self.inner.is_none() {

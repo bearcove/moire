@@ -9,6 +9,60 @@ use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::broadcast;
 
+pub(super) struct BroadcastRuntimeState {
+    pub(super) tx_id: EntityId,
+    pub(super) rx_id: EntityId,
+    pub(super) tx_ref_count: u32,
+    pub(super) rx_ref_count: u32,
+    pub(super) capacity: u32,
+    pub(super) tx_close_cause: Option<ChannelCloseCause>,
+    pub(super) rx_close_cause: Option<ChannelCloseCause>,
+}
+
+pub struct BroadcastSender<T> {
+    inner: tokio::sync::broadcast::Sender<T>,
+    handle: EntityHandle,
+    receiver_handle: EntityHandle,
+    channel: Arc<StdMutex<BroadcastRuntimeState>>,
+    name: String,
+}
+
+pub struct BroadcastReceiver<T> {
+    inner: tokio::sync::broadcast::Receiver<T>,
+    handle: EntityHandle,
+    channel: Arc<StdMutex<BroadcastRuntimeState>>,
+    name: String,
+}
+
+impl<T> Clone for BroadcastSender<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            receiver_handle: self.receiver_handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T: Clone> Clone for BroadcastReceiver<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.resubscribe(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
 impl<T> Drop for BroadcastSender<T> {
     fn drop(&mut self) {
         let mut emit_for_rx = None;
