@@ -272,7 +272,7 @@ export function GraphFilterInput({
                   }}
                   aria-label="Remove filter"
                 >
-                  <X size={12} weight="bold" aria-hidden="true" />
+                  <X size={10} weight="bold" aria-hidden="true" />
                 </button>
               </div>
             );
