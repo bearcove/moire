@@ -66,6 +66,10 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
     let handshake = ClientMessage::Handshake(moire_wire::Handshake {
         process_name: process_name.clone(),
         pid: std::process::id(),
+        args: std::env::args().collect(),
+        env: std::env::vars()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect(),
         trace_capabilities: moire_wire::TraceCapabilities {
             trace_v1: false,
             requires_frame_pointers: false,

@@ -32,7 +32,8 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
     }
 }
 
-impl<T> Mutex<T> {    pub fn new(name: &'static str, value: T) -> Self {
+impl<T> Mutex<T> {
+    pub fn new(name: &'static str, value: T) -> Self {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name,
@@ -46,7 +47,8 @@ impl<T> Mutex<T> {    pub fn new(name: &'static str, value: T) -> Self {
             inner: parking_lot::Mutex::new(value),
             handle,
         }
-    }    pub fn lock(&self) -> MutexGuard<'_, T> {
+    }
+    pub fn lock(&self) -> MutexGuard<'_, T> {
         self._lock()
     }
 
@@ -67,7 +69,8 @@ impl<T> Mutex<T> {    pub fn new(name: &'static str, value: T) -> Self {
         drop(waiting_edge);
 
         self.wrap_guard(inner, owner_ref.as_ref(), None)
-    }    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+    }
+    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
         self._try_lock()
     }
 

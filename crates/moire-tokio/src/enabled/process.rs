@@ -124,7 +124,8 @@ impl Command {
     pub fn kill_on_drop(&mut self, kill_on_drop: bool) -> &mut Self {
         self.inner.kill_on_drop(kill_on_drop);
         self
-    }    pub fn spawn(&mut self) -> io::Result<Child> {
+    }
+    pub fn spawn(&mut self) -> io::Result<Child> {
         let source = capture_backtrace_id();
         let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
@@ -132,7 +133,8 @@ impl Command {
             inner: Some(child),
             handle,
         })
-    }    pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+    }
+    pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future(
@@ -142,7 +144,8 @@ impl Command {
             Some(handle.entity_ref()),
             None,
         )
-    }    pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
+    }
+    pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future(
@@ -219,7 +222,8 @@ impl Child {
     }
     pub fn id(&self) -> Option<u32> {
         self.inner().id()
-    }    pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+    }
+    pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let source = capture_backtrace_id();
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
@@ -230,7 +234,8 @@ impl Child {
             Some(handle.entity_ref()),
             None,
         )
-    }    pub fn wait_with_output(mut self) -> impl Future<Output = io::Result<Output>> {
+    }
+    pub fn wait_with_output(mut self) -> impl Future<Output = io::Result<Output>> {
         let source = capture_backtrace_id();
         let child = self.inner.take().expect("child already consumed");
         instrument_future(

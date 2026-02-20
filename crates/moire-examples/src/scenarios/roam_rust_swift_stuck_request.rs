@@ -24,8 +24,6 @@ fn spawn_swift_peer(workspace_root: &Path, peer_addr: &str) -> std::io::Result<C
 }
 
 pub async fn run(workspace_root: &Path) -> Result<(), String> {
-    moire::__init_from_macro();
-
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .map_err(|e| format!("failed to bind listener: {e}"))?;

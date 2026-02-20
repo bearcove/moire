@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::future::Future;
 
-use super::process::JoinSet;
 use super::capture_backtrace_id;
+use super::process::JoinSet;
 use moire_runtime::{
     instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
 };
@@ -11,7 +11,8 @@ use moire_runtime::{
 impl<T> JoinSet<T>
 where
     T: Send + 'static,
-{    pub fn named(name: impl Into<String>) -> Self {
+{
+    pub fn named(name: impl Into<String>) -> Self {
         let source = capture_backtrace_id();
         let name = name.into();
         let handle = EntityHandle::new(
@@ -27,7 +28,8 @@ where
 
     pub fn with_name(name: impl Into<String>) -> Self {
         Self::named(name)
-    }    pub fn spawn<F>(&mut self, label: &'static str, future: F)
+    }
+    pub fn spawn<F>(&mut self, label: &'static str, future: F)
     where
         F: Future<Output = T> + Send + 'static,
     {
@@ -58,7 +60,10 @@ where
 
     pub fn abort_all(&mut self) {
         self.inner.abort_all();
-    }    pub fn join_next(&mut self) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
+    }
+    pub fn join_next(
+        &mut self,
+    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
         let source = capture_backtrace_id();
         let handle = self.handle.clone();
         let fut = self.inner.join_next();

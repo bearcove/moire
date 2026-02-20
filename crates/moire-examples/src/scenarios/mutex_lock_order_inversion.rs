@@ -30,8 +30,6 @@ fn spawn_lock_order_worker(
 }
 
 pub async fn run() -> Result<(), String> {
-    moire::__init_from_macro();
-
     let left = Arc::new(crate::moire::mutex("demo.shared.left", ()));
     let right = Arc::new(crate::moire::mutex("demo.shared.right", ()));
     let ready_barrier = Arc::new(Barrier::new(2));

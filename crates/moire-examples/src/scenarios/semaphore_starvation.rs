@@ -4,8 +4,6 @@ use std::time::Duration;
 use crate::moire::prelude::*;
 
 pub async fn run() -> Result<(), String> {
-    moire::__init_from_macro();
-
     let gate = Arc::new(crate::moire::semaphore("demo.api_gate", 1));
 
     let holder_gate = Arc::clone(&gate);

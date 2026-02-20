@@ -2,8 +2,20 @@ use std::sync::Once;
 
 static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
 
-#[doc(hidden)]
-pub fn __init_from_macro() {
+#[used]
+#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
+#[cfg_attr(
+    any(target_os = "linux", target_os = "android", target_os = "freebsd"),
+    link_section = ".init_array"
+)]
+static INIT_DISABLED_RUNTIME: extern "C" fn() = {
+    extern "C" fn init() {
+        emit_disabled_dashboard_warning_once();
+    }
+    init
+};
+
+fn emit_disabled_dashboard_warning_once() {
     // r[impl config.dashboard-feature-gate]
     let Some(value) = std::env::var_os("MOIRE_DASHBOARD") else {
         return;

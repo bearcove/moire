@@ -3,6 +3,7 @@ use moire_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
 use std::fmt;
 
 pub const DEFAULT_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
+pub const PROTOCOL_MAGIC: u32 = 0x4D4F4952;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FrameCodecError {
@@ -36,6 +37,7 @@ impl std::error::Error for FrameCodecError {}
 pub enum WireError {
     Frame(FrameCodecError),
     Json(String),
+    MagicMismatch { expected: u32, actual: u32 },
 }
 
 impl fmt::Display for WireError {
@@ -43,6 +45,12 @@ impl fmt::Display for WireError {
         match self {
             Self::Frame(err) => write!(f, "{err}"),
             Self::Json(err) => write!(f, "{err}"),
+            Self::MagicMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "protocol magic mismatch: expected 0x{expected:08x}, got 0x{actual:08x}"
+                )
+            }
         }
     }
 }
@@ -121,11 +129,18 @@ pub struct TraceCapabilities {
 }
 
 #[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ModuleIdentity {
+    BuildId(String),
+    DebugId(String),
+}
+
+#[derive(Facet)]
 pub struct ModuleManifestEntry {
     pub module_path: String,
     pub runtime_base: u64,
-    pub build_id: String,
-    pub debug_id: String,
+    pub identity: ModuleIdentity,
     pub arch: String,
 }
 
@@ -133,8 +148,25 @@ pub struct ModuleManifestEntry {
 pub struct Handshake {
     pub process_name: String,
     pub pid: u32,
+    pub args: Vec<String>,
+    pub env: Vec<String>,
     pub trace_capabilities: TraceCapabilities,
     pub module_manifest: Vec<ModuleManifestEntry>,
+}
+
+pub fn encode_protocol_magic() -> [u8; 4] {
+    PROTOCOL_MAGIC.to_be_bytes()
+}
+
+pub fn decode_protocol_magic(bytes: [u8; 4]) -> Result<(), WireError> {
+    let actual = u32::from_be_bytes(bytes);
+    if actual != PROTOCOL_MAGIC {
+        return Err(WireError::MagicMismatch {
+            expected: PROTOCOL_MAGIC,
+            actual,
+        });
+    }
+    Ok(())
 }
 
 #[derive(Facet)]
@@ -255,6 +287,8 @@ mod tests {
         let json = client_payload_json(&ClientMessage::Handshake(Handshake {
             process_name: "vixenfs-swift".into(),
             pid: 42,
+            args: vec!["/usr/bin/vixenfs-swift".into(), "--verbose".into()],
+            env: vec!["RUST_LOG=debug".into(), "HOME=/Users/dev".into()],
             trace_capabilities: TraceCapabilities {
                 trace_v1: true,
                 requires_frame_pointers: true,
@@ -264,15 +298,20 @@ mod tests {
             module_manifest: vec![ModuleManifestEntry {
                 module_path: "/usr/lib/libvixenfs_swift.dylib".into(),
                 runtime_base: 4_294_967_296,
-                build_id: "buildid:abc123".into(),
-                debug_id: "debugid:def456".into(),
+                identity: ModuleIdentity::DebugId("debugid:def456".into()),
                 arch: "aarch64".into(),
             }],
         }));
         assert_eq!(
             json,
-            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42,"trace_capabilities":{"trace_v1":true,"requires_frame_pointers":true,"sampling_supported":false,"alloc_tracking_supported":false},"module_manifest":[{"module_path":"/usr/lib/libvixenfs_swift.dylib","runtime_base":4294967296,"build_id":"buildid:abc123","debug_id":"debugid:def456","arch":"aarch64"}]}}"#
+            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42,"args":["/usr/bin/vixenfs-swift","--verbose"],"env":["RUST_LOG=debug","HOME=/Users/dev"],"trace_capabilities":{"trace_v1":true,"requires_frame_pointers":true,"sampling_supported":false,"alloc_tracking_supported":false},"module_manifest":[{"module_path":"/usr/lib/libvixenfs_swift.dylib","runtime_base":4294967296,"identity":{"debug_id":"debugid:def456"},"arch":"aarch64"}]}}"#
         );
+    }
+
+    #[test]
+    fn protocol_magic_roundtrip() {
+        let bytes = encode_protocol_magic();
+        decode_protocol_magic(bytes).expect("protocol magic should decode");
     }
 
     #[test]

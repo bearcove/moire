@@ -44,7 +44,8 @@ impl<T: Clone> WatchSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::WatchTx> {
         &self.handle
-    }    pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
+    }
+    pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
         let source = capture_backtrace_id();
         let result = self.inner.send(value);
         if result.is_ok() {
@@ -59,7 +60,8 @@ impl<T: Clone> WatchSender<T> {
         );
         record_event_with_source(event, source);
         result
-    }    pub fn send_replace(&self, value: T) -> T {
+    }
+    pub fn send_replace(&self, value: T) -> T {
         let source = capture_backtrace_id();
         let old = self.inner.send_replace(value);
         let _ = self
@@ -72,7 +74,8 @@ impl<T: Clone> WatchSender<T> {
         );
         record_event_with_source(event, source);
         old
-    }    pub fn subscribe(&self) -> WatchReceiver<T> {
+    }
+    pub fn subscribe(&self) -> WatchReceiver<T> {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             "watch:rx.subscribe",
@@ -94,7 +97,8 @@ impl<T: Clone> WatchReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::WatchRx> {
         &self.handle
-    }    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
+    }
+    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
         let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.changed(), source).await;

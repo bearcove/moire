@@ -16,8 +16,6 @@ fn lookup_key_for_response(response_id: RequestId) -> RequestId {
 }
 
 pub async fn run() -> Result<(), String> {
-    moire::__init_from_macro();
-
     let pending_by_request_id: PendingMap = Arc::new(crate::moire::mutex(
         "demo.pending_oneshot_senders",
         HashMap::new(),

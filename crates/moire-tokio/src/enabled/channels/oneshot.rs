@@ -24,7 +24,8 @@ impl<T> OneshotSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotTx> {
         &self.handle
-    }    pub fn send(mut self, value: T) -> Result<(), T> {
+    }
+    pub fn send(mut self, value: T) -> Result<(), T> {
         let source = capture_backtrace_id();
         let Some(inner) = self.inner.take() else {
             return Err(value);
@@ -57,7 +58,8 @@ impl<T> OneshotReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotRx> {
         &self.handle
-    }    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
+    }
+    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
         let source = capture_backtrace_id();
         let inner = self.inner.take().expect("oneshot receiver consumed");
         let result = instrument_operation_on_with_source(&self.handle, inner, source).await;

@@ -1,7 +1,10 @@
-use moire_trace_types::{BacktraceId, BacktraceRecord, FrameKey, InvariantError, ModuleId, ModulePath, TraceCapabilities};
+use moire_trace_types::{
+    BacktraceId, BacktraceRecord, FrameKey, InvariantError, ModuleId, ModulePath, TraceCapabilities,
+};
 use std::error::Error;
 use std::fmt;
 use std::num::NonZeroUsize;
+use std::sync::Once;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CaptureOptions {
@@ -12,7 +15,8 @@ pub struct CaptureOptions {
 impl Default for CaptureOptions {
     fn default() -> Self {
         Self {
-            max_frames: NonZeroUsize::new(256).expect("invariant violated: default max_frames must be non-zero"),
+            max_frames: NonZeroUsize::new(256)
+                .expect("invariant violated: default max_frames must be non-zero"),
             skip_frames: 0,
         }
     }
@@ -33,12 +37,23 @@ pub struct CapturedBacktrace {
 
 #[derive(Debug)]
 pub enum CaptureError {
-    UnsupportedPlatform { target_os: &'static str },
+    UnsupportedPlatform {
+        target_os: &'static str,
+    },
     EmptyBacktrace,
-    MissingModuleInfo { ip: u64 },
-    MissingModulePath { ip: u64 },
-    ZeroModuleBase { ip: u64 },
-    IpBeforeModuleBase { ip: u64, module_base: u64 },
+    MissingModuleInfo {
+        ip: u64,
+    },
+    MissingModulePath {
+        ip: u64,
+    },
+    ZeroModuleBase {
+        ip: u64,
+    },
+    IpBeforeModuleBase {
+        ip: u64,
+        module_base: u64,
+    },
     ModuleIdOverflow,
     InvariantViolation {
         context: &'static str,
@@ -98,7 +113,24 @@ pub fn trace_capabilities() -> TraceCapabilities {
     }
 }
 
-pub fn capture_current(backtrace_id: BacktraceId, options: CaptureOptions) -> Result<CapturedBacktrace, CaptureError> {
+static FRAME_POINTER_VALIDATION_ONCE: Once = Once::new();
+
+// r[impl process.frame-pointer-validation]
+pub fn validate_frame_pointers_or_panic() {
+    FRAME_POINTER_VALIDATION_ONCE.call_once(|| {
+        if let Err(reason) = platform::validate_frame_pointers_impl() {
+            panic!(
+                "frame-pointer validation failed: {reason}. \
+recompile with -C force-frame-pointers=yes"
+            );
+        }
+    });
+}
+
+pub fn capture_current(
+    backtrace_id: BacktraceId,
+    options: CaptureOptions,
+) -> Result<CapturedBacktrace, CaptureError> {
     platform::capture_current_impl(backtrace_id, options)
 }
 
@@ -110,7 +142,113 @@ mod platform {
     use std::collections::BTreeMap;
     use std::ffi::{c_void, CStr};
 
-    pub fn capture_current_impl(backtrace_id: BacktraceId, options: CaptureOptions) -> Result<CapturedBacktrace, CaptureError> {
+    pub fn validate_frame_pointers_impl() -> Result<(), String> {
+        #[inline(never)]
+        fn layer0() -> Result<(), String> {
+            layer1()
+        }
+        #[inline(never)]
+        fn layer1() -> Result<(), String> {
+            layer2()
+        }
+        #[inline(never)]
+        fn layer2() -> Result<(), String> {
+            layer3()
+        }
+        #[inline(never)]
+        fn layer3() -> Result<(), String> {
+            layer4()
+        }
+        #[inline(never)]
+        fn layer4() -> Result<(), String> {
+            validate_frame_pointer_chain(6)
+        }
+
+        layer0()
+    }
+
+    fn validate_frame_pointer_chain(min_depth: usize) -> Result<(), String> {
+        let mut frame_ptr = read_frame_pointer()?;
+        if frame_ptr == 0 {
+            return Err("current frame pointer is null".to_string());
+        }
+
+        let mut prev_frame_ptr = 0usize;
+        let mut depth = 0usize;
+        const MAX_FRAMES: usize = 4096;
+
+        for _ in 0..MAX_FRAMES {
+            if frame_ptr == 0 {
+                break;
+            }
+
+            if frame_ptr % std::mem::align_of::<usize>() != 0 {
+                return Err(format!("misaligned frame pointer 0x{frame_ptr:x}"));
+            }
+
+            if prev_frame_ptr != 0 && frame_ptr <= prev_frame_ptr {
+                return Err(format!(
+                    "frame pointer did not increase: current=0x{frame_ptr:x}, previous=0x{prev_frame_ptr:x}"
+                ));
+            }
+
+            let next_frame_ptr = unsafe { *(frame_ptr as *const usize) };
+            depth += 1;
+            if next_frame_ptr == 0 {
+                break;
+            }
+
+            prev_frame_ptr = frame_ptr;
+            frame_ptr = next_frame_ptr;
+        }
+
+        if depth < min_depth {
+            return Err(format!(
+                "frame pointer chain too shallow: got {depth}, need at least {min_depth}"
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    fn read_frame_pointer() -> Result<usize, String> {
+        let frame_ptr: usize;
+        unsafe {
+            core::arch::asm!(
+                "mov {}, rbp",
+                out(reg) frame_ptr,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        Ok(frame_ptr)
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn read_frame_pointer() -> Result<usize, String> {
+        let frame_ptr: usize;
+        unsafe {
+            core::arch::asm!(
+                "mov {}, x29",
+                out(reg) frame_ptr,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        Ok(frame_ptr)
+    }
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    fn read_frame_pointer() -> Result<usize, String> {
+        Err(format!(
+            "unsupported architecture for frame pointer validation: {}",
+            std::env::consts::ARCH
+        ))
+    }
+
+    pub fn capture_current_impl(
+        backtrace_id: BacktraceId,
+        options: CaptureOptions,
+    ) -> Result<CapturedBacktrace, CaptureError> {
         let mut raw_ips = Vec::new();
         let mut skip_remaining = options.skip_frames;
 
@@ -145,7 +283,9 @@ mod platform {
                 module_id
             } else {
                 let id_value = next_module_id;
-                next_module_id = next_module_id.checked_add(1).ok_or(CaptureError::ModuleIdOverflow)?;
+                next_module_id = next_module_id
+                    .checked_add(1)
+                    .ok_or(CaptureError::ModuleIdOverflow)?;
 
                 let module_id = ModuleId::new(id_value)
                     .map_err(|err| CaptureError::invariant("module_id", err))?;
@@ -223,7 +363,17 @@ mod platform {
     use super::{CaptureError, CaptureOptions, CapturedBacktrace};
     use moire_trace_types::BacktraceId;
 
-    pub fn capture_current_impl(_backtrace_id: BacktraceId, _options: CaptureOptions) -> Result<CapturedBacktrace, CaptureError> {
+    pub fn validate_frame_pointers_impl() -> Result<(), String> {
+        Err(format!(
+            "unsupported platform for trace capture backend: {}",
+            std::env::consts::OS
+        ))
+    }
+
+    pub fn capture_current_impl(
+        _backtrace_id: BacktraceId,
+        _options: CaptureOptions,
+    ) -> Result<CapturedBacktrace, CaptureError> {
         Err(CaptureError::UnsupportedPlatform {
             target_os: std::env::consts::OS,
         })

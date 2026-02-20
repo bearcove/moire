@@ -10,7 +10,8 @@ pub struct OnceCell<T> {
     handle: EntityHandle<moire_types::OnceCell>,
 }
 
-impl<T> OnceCell<T> {    pub fn new(name: impl Into<String>) -> Self {
+impl<T> OnceCell<T> {
+    pub fn new(name: impl Into<String>) -> Self {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name.into(),
@@ -33,7 +34,8 @@ impl<T> OnceCell<T> {    pub fn new(name: impl Into<String>) -> Self {
 
     pub fn initialized(&self) -> bool {
         self.inner.initialized()
-    }    pub async fn get_or_init<'a, F, Fut>(&'a self, f: F) -> &'a T
+    }
+    pub async fn get_or_init<'a, F, Fut>(&'a self, f: F) -> &'a T
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
@@ -61,10 +63,8 @@ impl<T> OnceCell<T> {    pub fn new(name: impl Into<String>) -> Self {
         });
 
         result
-    }    pub async fn get_or_try_init<'a, F, Fut, E>(
-        &'a self,
-        f: F,
-    ) -> Result<&'a T, E>
+    }
+    pub async fn get_or_try_init<'a, F, Fut, E>(&'a self, f: F) -> Result<&'a T, E>
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,

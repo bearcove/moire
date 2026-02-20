@@ -11,7 +11,8 @@ pub struct Notify {
     handle: EntityHandle<moire_types::Notify>,
 }
 
-impl Notify {    pub fn new(name: impl Into<String>) -> Self {
+impl Notify {
+    pub fn new(name: impl Into<String>) -> Self {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name.into(),
@@ -23,7 +24,8 @@ impl Notify {    pub fn new(name: impl Into<String>) -> Self {
             inner: Arc::new(tokio::sync::Notify::new()),
             handle,
         }
-    }    pub async fn notified(&self) {
+    }
+    pub async fn notified(&self) {
         let source = capture_backtrace_id();
         let _ = self
             .handle

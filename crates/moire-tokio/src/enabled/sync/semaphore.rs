@@ -42,7 +42,8 @@ pub struct OwnedSemaphorePermit {
     max_permits: Arc<AtomicU32>,
 }
 
-impl Semaphore {    pub fn new(name: impl Into<String>, permits: usize) -> Self {
+impl Semaphore {
+    pub fn new(name: impl Into<String>, permits: usize) -> Self {
         let source = capture_backtrace_id();
         let max_permits = permits.min(u32::MAX as usize) as u32;
         let handle = EntityHandle::new(
@@ -82,7 +83,8 @@ impl Semaphore {    pub fn new(name: impl Into<String>, permits: usize) -> Self 
             .fetch_add(delta, Ordering::Relaxed)
             .saturating_add(delta);
         self.sync_state(max);
-    }    pub async fn acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
+    }
+    pub async fn acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let source = capture_backtrace_id();
         let holder_ref = current_causal_target();
         let permit =
@@ -99,7 +101,11 @@ impl Semaphore {    pub fn new(name: impl Into<String>, permits: usize) -> Self 
             holder_counts: Arc::clone(&self.holder_counts),
             max_permits: Arc::clone(&self.max_permits),
         })
-    }    pub async fn acquire_many(&self, n: u32) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
+    }
+    pub async fn acquire_many(
+        &self,
+        n: u32,
+    ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let source = capture_backtrace_id();
         let holder_ref = current_causal_target();
         let permit =
@@ -117,7 +123,8 @@ impl Semaphore {    pub fn new(name: impl Into<String>, permits: usize) -> Self 
             holder_counts: Arc::clone(&self.holder_counts),
             max_permits: Arc::clone(&self.max_permits),
         })
-    }    pub async fn acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
+    }
+    pub async fn acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
         let source = capture_backtrace_id();
         let holder_ref = current_causal_target();
         let permit = instrument_operation_on_with_source(
@@ -138,7 +145,8 @@ impl Semaphore {    pub fn new(name: impl Into<String>, permits: usize) -> Self 
             holder_counts: Arc::clone(&self.holder_counts),
             max_permits: Arc::clone(&self.max_permits),
         })
-    }    pub async fn acquire_many_owned(
+    }
+    pub async fn acquire_many_owned(
         &self,
         n: u32,
     ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {

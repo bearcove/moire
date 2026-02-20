@@ -67,6 +67,11 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 > r[api.sql]
 > `POST /api/sql` executes a raw SQL query against the dashboard's SQLite database and returns a `SqlResponse` with `columns`, `rows`, and `row_count`. This endpoint is intended for debugging only.
 
+### Backtrace Resolution
+
+> r[api.backtrace]
+> `GET /api/connections/{conn_id}/backtraces/{backtrace_id}` returns a `BacktraceResponse` for the given `BacktraceId` within the identified connection. The server resolves each frame in the stored `BacktraceRecord` against the module's debug information and returns an ordered list of `ResolvedFrame` values. Each `ResolvedFrame` is either a resolved variant carrying `function_name` (demangled), `crate_name`, `module_path`, `source_file`, and optional `line` and `column`; or an unresolved variant carrying the raw `module_path` and `rel_pc` (as a hex string). The endpoint MUST NOT drop frames: every frame in the `BacktraceRecord` MUST appear in the response as either resolved or unresolved.
+
 ---
 
 ## Display Data Model
@@ -81,15 +86,10 @@ The dashboard converts raw wire types into richer display types before rendering
 > r[display.id.scope-key]
 > Every scope on the display side has a composite key of the form `"${process_id}:${scope_id}"`.
 
-### Source resolution
-
-> r[display.source.strict]
-> Source IDs MUST be resolved against the `sources` array in each process snapshot. If a `SourceId` is not present in the map, or the resolved `SnapshotSource` has a missing/empty `path`, a non-positive `line`, or a missing/empty `krate`, snapshot conversion MUST throw with an explicit error message identifying the process and the context (entity, scope, or edge). Silent fallback to placeholder values is not permitted.
-
 ### Backtrace IDs
 
-> r[display.backtrace.required]
-> Every entity and scope in a snapshot MUST carry a `backtrace_id` field that is a positive integer. If the field is absent, zero, or non-integer, conversion MUST throw with an explicit error message. This field will be used to resolve call stacks once backtrace capture is fully specified.
+> r[display.backtrace.validate]
+> Every entity and scope in a snapshot MUST carry a `backtrace_id` field that is a positive integer. If the field is absent, zero, or non-integer, snapshot conversion MUST throw with an explicit error message identifying the process and the context (entity ID or scope ID). Silent fallback is not permitted.
 
 ### Tone
 
@@ -98,7 +98,7 @@ The dashboard converts raw wire types into richer display types before rendering
 
 ### EntityDef
 
-> r[display.entity]
+> r[display.entity.fields]
 > An `EntityDef` is the dashboard-side representation of an entity. It carries:
 > - `id`: composite entity ID
 > - `rawEntityId`: the original ID as reported by the process
@@ -106,9 +106,7 @@ The dashboard converts raw wire types into richer display types before rendering
 > - `name`: human-facing label
 > - `kind`: the first key of `body` (e.g. `"future"`, `"lock"`, `"mpsc_tx"`)
 > - `body`: the raw `EntityBody` from the wire
-> - `backtraceId`: resolved backtrace ID
-> - `source`: resolved `SnapshotSource`
-> - `krate`: the `krate` field of the resolved source
+> - `backtraceId`: the `BacktraceId` from the wire entity, as a positive integer
 > - `birthPtime`: `PTime` when the entity was first registered
 > - `ageMs`: `max(0, ptime_now_ms - birthPtime)` at capture time
 > - `birthApproxUnixMs`: approximate wall-clock birth computed as `(captured_at_unix_ms - ptime_now_ms) + birthPtime`
@@ -174,15 +172,13 @@ The dashboard converts raw wire types into richer display types before rendering
 
 ### ScopeDef
 
-> r[display.scope]
+> r[display.scope.fields]
 > A `ScopeDef` is the dashboard-side representation of a scope. It carries:
 > - `key`: composite scope key (`"${processId}:${scopeId}"`)
 > - `processId`, `processName`, `processPid`
 > - `scopeId`, `scopeName`
 > - `scopeKind`: canonical kind string (`"process"`, `"thread"`, `"task"`, `"connection"`)
-> - `backtraceId`
-> - `source`: resolved `SnapshotSource`
-> - `krate`
+> - `backtraceId`: the `BacktraceId` from the wire scope, as a positive integer
 > - `birthPtime`, `ageMs`
 > - `memberEntityIds`: list of composite entity IDs currently associated with this scope
 
@@ -190,9 +186,9 @@ The dashboard converts raw wire types into richer display types before rendering
 
 ## Snapshot Conversion Pipeline
 
-> r[convert.order]
+> r[convert.pipeline]
 > Raw `SnapshotCutResponse` wire data is converted to display data through the following ordered pipeline:
-> 1. Collect all entities and edges across all processes, resolving source IDs and backtrace IDs strictly.
+> 1. Collect all entities and edges across all processes. Validate that every entity and scope carries a positive non-zero `backtrace_id`; throw with an explicit error message if any is missing or invalid.
 > 2. Build a raw-entity-ID-to-composite-ID lookup for cross-process edge resolution.
 > 3. Resolve edges: for `paired_with` edges, the `src` is looked up in the global raw-ID map (cross-process); for all other kinds, `src` is scoped to the current process.
 > 4. Merge channel pairs (`mergeChannelPairs`).
@@ -269,11 +265,11 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > r[filter.axis.node]
 > `+node:<id>` / `-node:<id>` — include or exclude the entity with the given composite ID. The key may also be spelled `id`.
 
-> r[filter.axis.location]
-> `+location:<src>` / `-location:<src>` — include or exclude entities whose source resolves to the given `"path:line"` string. The key may also be spelled `source`.
+> r[filter.axis.location.bt]
+> `+location:<src>` / `-location:<src>` — include or exclude entities whose backtrace has been resolved and whose top application frame's `"source_file:line"` matches the given string. The key may also be spelled `source`. Entities whose backtraces have not yet been resolved are treated as non-matching for this axis.
 
-> r[filter.axis.crate]
-> `+crate:<name>` / `-crate:<name>` — include or exclude entities whose source `krate` matches the given name.
+> r[filter.axis.crate.bt]
+> `+crate:<name>` / `-crate:<name>` — include or exclude entities whose backtrace has been resolved and whose top application frame's `crate_name` matches the given name. Entities whose backtraces have not yet been resolved are treated as non-matching for this axis.
 
 > r[filter.axis.process]
 > `+process:<id>` / `-process:<id>` — include or exclude entities belonging to the process with the given `processId` string.
@@ -289,14 +285,14 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > r[filter.control.loners]
 > `loners:on` / `loners:off` — when `off`, entities that have no edges to any other visible entity MUST be hidden from the graph. The default behavior (no token) is equivalent to `loners:on`.
 
-> r[filter.control.colorby]
-> `colorBy:process` / `colorBy:crate` — color entity nodes by their process or crate membership. When absent, all nodes use the default color.
+> r[filter.control.colorby.bt]
+> `colorBy:process` — color entity nodes by their process membership. `colorBy:crate` — color entity nodes by the `crate_name` of their resolved backtrace top frame; entities whose backtraces have not been resolved receive the default color. When absent, all nodes use the default color.
 
-> r[filter.control.groupby]
-> `groupBy:process` / `groupBy:crate` — render entities inside labeled subgraph boxes grouped by process or crate. `groupBy:none` removes grouping. Grouping also affects RPC pair merging: request and response entities in different groups are not merged.
+> r[filter.control.groupby.bt]
+> `groupBy:process` / `groupBy:crate` — render entities inside labeled subgraph boxes grouped by process or by the `crate_name` of their resolved backtrace top frame. `groupBy:none` removes grouping. Entities with unresolved backtraces are placed in an implicit ungrouped region when grouping by crate. Grouping also affects RPC pair merging: request and response entities in different groups are not merged.
 
-> r[filter.control.labelby]
-> `labelBy:process` / `labelBy:crate` / `labelBy:location` — display a secondary label on each entity card showing the process name, crate name, or source location respectively.
+> r[filter.control.labelby.bt]
+> `labelBy:process` / `labelBy:crate` / `labelBy:location` — display a secondary label on each entity card showing the process name, the `crate_name` of the resolved backtrace top frame, or the `source_file:line` of the resolved backtrace top frame respectively. When the relevant backtrace is not yet resolved, the secondary label is omitted.
 
 ### Filter application order
 
@@ -324,7 +320,23 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > The filter input MUST provide autocomplete suggestions based on the current draft token. Suggestions are ranked by prefix match, substring match, and fuzzy subsequence match (in that order). Suggestions that are already present as committed tokens MUST be omitted.
 
 > r[filter.suggest.fragment]
-> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, locations, crates, process IDs, and kinds.
+> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate` and `location` axes — the crate names and source locations from all already-resolved backtraces.
+
+---
+
+## Backtrace Display
+
+> r[display.backtrace.cache]
+> The frontend MUST cache resolved `BacktraceResponse` values keyed by `(conn_id, backtrace_id)`. A cached result MUST be reused without re-fetching for the lifetime of the dashboard session.
+
+> r[display.backtrace.fetch]
+> Backtrace resolution MUST be triggered by explicit user interaction — expanding an entity or scope card, or activating a dedicated call-stack indicator — rather than eagerly for all visible entities. The UI MUST reflect the loading state while a fetch is in progress.
+
+> r[display.backtrace.render.resolved]
+> Each resolved frame MUST be displayed showing the demangled `function_name`, the `crate_name`, and the `source_file:line` (omitting the line suffix if `line` is absent).
+
+> r[display.backtrace.render.unresolved]
+> Each unresolved frame MUST be displayed with a distinct visual indicator (e.g. a warning badge) and MUST show the raw `module_path` and `rel_pc` so the user can diagnose why symbolication failed.
 
 ---
 

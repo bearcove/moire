@@ -1,6 +1,6 @@
 use addr2line::Loader;
-use object::{Object, ObjectSegment};
 use moire_backtrace_poc::TraceBundle;
+use object::{Object, ObjectSegment};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

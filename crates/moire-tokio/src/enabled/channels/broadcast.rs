@@ -43,7 +43,8 @@ impl<T: Clone> BroadcastSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastTx> {
         &self.handle
-    }    pub fn subscribe(&self) -> BroadcastReceiver<T> {
+    }
+    pub fn subscribe(&self) -> BroadcastReceiver<T> {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             "broadcast:rx.subscribe",
@@ -58,7 +59,8 @@ impl<T: Clone> BroadcastSender<T> {
             handle,
             tx_handle: self.handle.downgrade(),
         }
-    }    pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
+    }
+    pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
         let source = capture_backtrace_id();
         let result = self.inner.send(value);
         let event = Event::new_with_source(
@@ -75,7 +77,8 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastRx> {
         &self.handle
-    }    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
+    }
+    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
         let source = capture_backtrace_id();
         match self.inner.recv().await {
             Ok(value) => {

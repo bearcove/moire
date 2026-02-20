@@ -44,10 +44,7 @@ pub fn rpc_request(method: impl Into<String>, args_json: impl Into<String>) -> R
 }
 
 #[doc(hidden)]
-pub fn rpc_request_with_body(
-    name: impl Into<String>,
-    body: RequestEntity,
-) -> RpcRequestHandle {
+pub fn rpc_request_with_body(name: impl Into<String>, body: RequestEntity) -> RpcRequestHandle {
     let source = capture_backtrace_id();
     let name = name.into();
     let body = EntityBody::Request(body);

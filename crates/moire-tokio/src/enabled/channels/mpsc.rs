@@ -70,7 +70,8 @@ impl<T> Sender<T> {
 
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
-    }    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+    }
+    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.send(value), source).await;
@@ -93,7 +94,8 @@ impl<T> Receiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscRx> {
         &self.handle
-    }    pub async fn recv(&mut self) -> Option<T> {
+    }
+    pub async fn recv(&mut self) -> Option<T> {
         let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
@@ -120,7 +122,8 @@ impl<T> UnboundedSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscTx> {
         &self.handle
-    }    pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+    }
+    pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         let source = capture_backtrace_id();
         match self.inner.send(value) {
             Ok(()) => {
@@ -156,7 +159,8 @@ impl<T> UnboundedReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscRx> {
         &self.handle
-    }    pub async fn recv(&mut self) -> Option<T> {
+    }
+    pub async fn recv(&mut self) -> Option<T> {
         let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
@@ -258,7 +262,9 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
     )
 }
 
-pub fn mpsc_unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+pub fn mpsc_unbounded_channel<T>(
+    name: impl Into<String>,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     unbounded_channel(name)
 }
 

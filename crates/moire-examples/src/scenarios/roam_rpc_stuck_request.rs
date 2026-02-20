@@ -37,8 +37,6 @@ impl Connector for TcpConnector {
 }
 
 pub async fn run() -> Result<(), String> {
-    moire::__init_from_macro();
-
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .map_err(|e| format!("server failed to bind tcp listener: {e}"))?;
@@ -87,7 +85,6 @@ pub async fn run() -> Result<(), String> {
 }
 
 pub async fn run_client_process(addr: String) -> Result<(), String> {
-    moire::__init_from_macro();
     run_client(addr).await
 }
 

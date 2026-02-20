@@ -9,7 +9,8 @@ pub struct RwLock<T> {
     handle: EntityHandle<moire_types::Lock>,
 }
 
-impl<T> RwLock<T> {    pub fn new(name: &'static str, value: T) -> Self {
+impl<T> RwLock<T> {
+    pub fn new(name: &'static str, value: T) -> Self {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name,
@@ -23,28 +24,32 @@ impl<T> RwLock<T> {    pub fn new(name: &'static str, value: T) -> Self {
             inner: parking_lot::RwLock::new(value),
             handle,
         }
-    }    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
+    }
+    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
         let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.read()
-    }    pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
+    }
+    pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
         let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.write()
-    }    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+    }
+    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
         let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.try_read()
-    }    pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+    }
+    pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
         let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle

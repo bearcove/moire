@@ -3,9 +3,9 @@
 #[doc(hidden)]
 pub use facet_value;
 #[doc(hidden)]
-pub use parking_lot;
-#[doc(hidden)]
 pub use moire_types;
+#[doc(hidden)]
+pub use parking_lot;
 #[doc(hidden)]
 pub use tokio;
 

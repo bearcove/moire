@@ -3,8 +3,6 @@ use std::time::Duration;
 use crate::moire::prelude::*;
 
 pub async fn run() -> Result<(), String> {
-    moire::__init_from_macro();
-
     let (tx, mut rx) = crate::moire::channel("demo.work_queue", 16);
     let (_idle_tx, mut idle_rx) = crate::moire::channel("demo.idle_queue", 1);
 

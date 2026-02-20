@@ -1,9 +1,7 @@
 pub(super) use super::capture_backtrace_id;
 
 pub(crate) mod broadcast;
-pub use broadcast::{
-    broadcast, broadcast_channel, BroadcastReceiver, BroadcastSender,
-};
+pub use broadcast::{broadcast, broadcast_channel, BroadcastReceiver, BroadcastSender};
 
 pub(crate) mod mpsc;
 pub use mpsc::{
