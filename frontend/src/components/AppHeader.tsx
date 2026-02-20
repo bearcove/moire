@@ -27,7 +27,6 @@ export function AppHeader({
   snapshotProcessCount,
   recording,
   connCount,
-  traceSummary,
   isBusy,
   isLive,
   onSetIsLive,
@@ -46,7 +45,6 @@ export function AppHeader({
   snapshotProcessCount: number;
   recording: RecordingState;
   connCount: number;
-  traceSummary?: { label: string; tone: "ok" | "warn" } | null;
   isBusy: boolean;
   isLive: boolean;
   onSetIsLive: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -95,16 +93,6 @@ export function AppHeader({
         >
           {connCount} {connCount === 1 ? "process" : "processes"}
         </button>
-      )}
-      {traceSummary && (
-        <span
-          className={[
-            "app-header-badge",
-            traceSummary.tone === "warn" ? "app-header-badge--warn" : "app-header-badge--active",
-          ].join(" ")}
-        >
-          {traceSummary.label}
-        </span>
       )}
       {apiMode === "lab" ? <span className="app-header-badge">mock data</span> : null}
       {snap.phase === "ready" && (

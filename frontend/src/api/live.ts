@@ -1,5 +1,6 @@
 import type { ApiClient } from "./client";
 import type {
+  ConnectionsResponse,
   CutStatusResponse,
   RecordCurrentResponse,
   RecordingSessionInfo,
@@ -8,7 +9,6 @@ import type {
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types.generated";
-import { parseConnectionsResponse } from "./trace";
 
 interface ApiErrorResponse {
   error?: string;
@@ -71,7 +71,7 @@ function expectRecordingSession(
 
 export function createLiveApiClient(): ApiClient {
   return {
-    fetchConnections: async () => parseConnectionsResponse(await getJson<unknown>("/api/connections")),
+    fetchConnections: () => getJson<ConnectionsResponse>("/api/connections"),
     fetchSql: (sql: string) => postJson<SqlResponse>("/api/sql", { sql }),
     triggerCut: () => postJson<TriggerCutResponse>("/api/cuts", {}),
     fetchCutStatus: (cutId: string) =>

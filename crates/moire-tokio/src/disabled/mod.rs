@@ -1,6 +1,14 @@
 use ctor::ctor;
 use std::sync::Once;
 
+pub mod task;
+pub mod process;
+pub mod sync;
+pub mod time;
+pub mod rpc;
+
+pub use task::{spawn, spawn_blocking};
+
 static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
 
 #[ctor]

@@ -1,5 +1,6 @@
 import type { ApiClient } from "./client";
 import type {
+  ConnectionsResponse,
   CutStatusResponse,
   FrameSummary,
   RecordCurrentResponse,
@@ -8,42 +9,19 @@ import type {
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types.generated";
-import type { ConnectionsResponseWithTrace } from "./trace";
 
-const sampleConnections: ConnectionsResponseWithTrace = {
+const sampleConnections: ConnectionsResponse = {
   connected_processes: 2,
   processes: [
     {
       conn_id: 101,
       process_name: "lab-server",
       pid: 4242,
-      trace_capabilities: {
-        trace_v1: true,
-        requires_frame_pointers: true,
-        sampling_supported: false,
-        alloc_tracking_supported: false,
-      },
-      module_manifest: [
-        {
-          module_path: "/usr/lib/lab-server",
-          runtime_base: 4_294_967_296,
-          build_id: "buildid:lab-server",
-          debug_id: "debugid:lab-server",
-          arch: "x86_64",
-        },
-      ],
     },
     {
       conn_id: 202,
       process_name: "lab-loader",
       pid: 1313,
-      trace_capabilities: {
-        trace_v1: false,
-        requires_frame_pointers: false,
-        sampling_supported: false,
-        alloc_tracking_supported: false,
-      },
-      module_manifest: [],
     },
   ],
 };

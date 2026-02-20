@@ -1,4 +1,5 @@
 import type {
+  ConnectionsResponse,
   CutStatusResponse,
   RecordCurrentResponse,
   RecordingSessionInfo,
@@ -7,12 +8,11 @@ import type {
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types.generated";
-import type { ConnectionsResponseWithTrace } from "./trace";
 
 export type ApiMode = "live" | "lab";
 
 export interface ApiClient {
-  fetchConnections(): Promise<ConnectionsResponseWithTrace>; // f[impl api.connections]
+  fetchConnections(): Promise<ConnectionsResponse>; // f[impl api.connections]
   fetchSql(sql: string): Promise<SqlResponse>; // f[impl api.sql]
   triggerCut(): Promise<TriggerCutResponse>; // f[impl api.cuts.trigger]
   fetchCutStatus(cutId: string): Promise<CutStatusResponse>; // f[impl api.cuts.status]
