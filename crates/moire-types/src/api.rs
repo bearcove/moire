@@ -58,23 +58,33 @@ pub struct SqlResponse {
 /// Top-level response for `/api/snapshot`.
 #[derive(Facet)]
 pub struct SnapshotCutResponse {
+    /// Monotonic server-side snapshot id for correlating stream updates.
+    pub snapshot_id: i64,
     /// Wall-clock milliseconds (Unix epoch) when this cut was assembled server-side.
     pub captured_at_unix_ms: i64,
     /// Processes that replied within the timeout window.
     pub processes: Vec<ProcessSnapshotView>,
     /// Processes connected at request time but timed out before response.
     pub timed_out_processes: Vec<TimedOutProcess>,
-    /// Expanded backtraces referenced by entities/scopes/edges/events in this snapshot.
+    /// Backtraces referenced by entities/scopes/edges/events in this snapshot.
     pub backtraces: Vec<SnapshotBacktrace>,
+    /// Deduplicated frame catalog keyed by frame_id.
+    pub frames: Vec<SnapshotFrameRecord>,
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Debug)]
 pub struct SnapshotBacktrace {
     pub backtrace_id: BacktraceId,
-    pub frames: Vec<SnapshotBacktraceFrame>,
+    pub frame_ids: Vec<u64>,
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Debug)]
+pub struct SnapshotFrameRecord {
+    pub frame_id: u64,
+    pub frame: SnapshotBacktraceFrame,
+}
+
+#[derive(Facet, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum SnapshotBacktraceFrame {
@@ -82,7 +92,7 @@ pub enum SnapshotBacktraceFrame {
     Unresolved(BacktraceFrameUnresolved),
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Debug, PartialEq, Eq)]
 pub struct BacktraceFrameResolved {
     pub module_path: String,
     pub function_name: String,
@@ -90,11 +100,20 @@ pub struct BacktraceFrameResolved {
     pub line: Option<u32>,
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Debug, PartialEq, Eq)]
 pub struct BacktraceFrameUnresolved {
     pub module_path: String,
     pub rel_pc: u64,
     pub reason: String,
+}
+
+#[derive(Facet, Clone, Debug)]
+pub struct SnapshotSymbolicationUpdate {
+    pub snapshot_id: i64,
+    pub total_frames: u32,
+    pub completed_frames: u32,
+    pub done: bool,
+    pub updated_frames: Vec<SnapshotFrameRecord>,
 }
 
 /// Per-process envelope inside a snapshot cut.

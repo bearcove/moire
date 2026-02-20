@@ -284,9 +284,15 @@ impl Drop for EdgeHandle {
 }
 
 impl<S> EntityHandle<S> {
-    pub fn link_to_owned(&self, target: &EntityRef, kind: EdgeKind) -> EdgeHandle {
+    pub fn link_to_owned(&self, target: &impl AsEntityRef, kind: EdgeKind) -> EdgeHandle {
+        self.as_entity_ref().link_to_owned(target, kind)
+    }
+}
+
+impl EntityRef {
+    pub fn link_to_owned(&self, target: &impl AsEntityRef, kind: EdgeKind) -> EdgeHandle {
         let src = self.id().clone();
-        let dst = target.id().clone();
+        let dst = target.as_entity_ref().id().clone();
         if let Ok(mut db) = runtime_db().lock() {
             db.upsert_edge(&src, &dst, kind, super::capture_backtrace_id());
         }
