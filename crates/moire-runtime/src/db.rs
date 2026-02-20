@@ -251,6 +251,33 @@ impl RuntimeDb {
         hasher.finish()
     }
 
+    pub(crate) fn rename_entity_and_maybe_upsert(
+        &mut self,
+        id: &EntityId,
+        name: impl Into<String>,
+    ) -> bool {
+        let name = name.into();
+        let entity_json = {
+            let Some(entity) = self.entities.get_mut(id) else {
+                return false;
+            };
+
+            if entity.name == name {
+                return false;
+            }
+            entity.name = name;
+            facet_json::to_vec(entity).ok()
+        };
+
+        if let Some(entity_json) = entity_json {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+        true
+    }
+
     pub(crate) fn mutate_entity_body_and_maybe_upsert(
         &mut self,
         id: &EntityId,

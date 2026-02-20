@@ -21,11 +21,17 @@
 //! | [`OnceCell`] | `tokio::sync::OnceCell` |
 
 pub mod broadcast;
-pub mod mutex;
-pub mod notify;
-pub mod once_cell;
-pub mod oneshot;
-pub mod rwlock;
-pub mod semaphore;
-pub mod watch;
 pub mod mpsc;
+pub mod oneshot;
+pub mod watch;
+
+mod mutex;
+pub use mutex::*;
+mod notify;
+pub use notify::*;
+mod once_cell;
+pub use once_cell::*;
+mod rwlock;
+pub use rwlock::*;
+mod semaphore;
+pub use semaphore::*;

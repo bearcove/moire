@@ -145,6 +145,13 @@ impl<S> EntityHandle<S> {
         &self.inner.id
     }
 
+    pub fn rename(&self, name: impl Into<String>) -> bool {
+        let mut db = runtime_db()
+            .lock()
+            .expect("runtime db lock poisoned during entity rename");
+        db.rename_entity_and_maybe_upsert(self.id(), name)
+    }
+
     pub fn kind_name(&self) -> &'static str {
         self.inner.kind_name
     }
@@ -227,6 +234,16 @@ impl<S> WeakEntityHandle<S>
 where
     S: EntityBodySlot,
 {
+    pub fn rename(&self, name: impl Into<String>) -> bool {
+        let Some(inner) = self.inner.upgrade() else {
+            return false;
+        };
+        let mut db = runtime_db()
+            .lock()
+            .expect("runtime db lock poisoned during weak entity rename");
+        db.rename_entity_and_maybe_upsert(&inner.id, name)
+    }
+
     pub fn mutate(&self, f: impl FnOnce(&mut S::Value)) -> bool {
         let Some(inner) = self.inner.upgrade() else {
             return false;
