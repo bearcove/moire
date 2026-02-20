@@ -5,6 +5,8 @@ pub use facet_value;
 #[doc(hidden)]
 pub use parking_lot;
 #[doc(hidden)]
+pub use peeps_types;
+#[doc(hidden)]
 pub use tokio;
 
 #[cfg(target_arch = "wasm32")]
