@@ -3,8 +3,9 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
-import { GraphNode, graphNodeDataFromEntity, type GraphNodeData } from "../../components/graph/GraphNode";
+import { GraphNode, graphNodeDataFromEntity, computeNodeSublabel, type GraphNodeData } from "../../components/graph/GraphNode";
 import { scopeKindIcon } from "../../scopeKindSpec";
+import type { GraphFilterLabelMode } from "../../graphFilter";
 import "../../components/graph/ScopeGroupNode.css";
 import "./NodeLayer.css";
 
@@ -39,6 +40,7 @@ export async function measureEntityDefs(
 export async function measureGraphLayout(
   defs: EntityDef[],
   subgraphScopeMode: SubgraphScopeMode = "none",
+  labelBy?: GraphFilterLabelMode,
 ): Promise<GraphMeasureResult> {
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
   await Promise.resolve();
@@ -63,7 +65,8 @@ export async function measureGraphLayout(
     container.appendChild(el);
     const root = createRoot(el);
 
-    flushSync(() => root.render(<GraphNode data={graphNodeDataFromEntity(def)} />));
+    const sublabel = labelBy ? computeNodeSublabel(def, labelBy) : undefined;
+    flushSync(() => root.render(<GraphNode data={{ ...graphNodeDataFromEntity(def), sublabel }} />));
     sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
     root.unmount();
   }

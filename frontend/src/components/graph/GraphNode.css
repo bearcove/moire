@@ -54,7 +54,18 @@
 
 .graph-node-content {
     display: flex;
+    flex-direction: column;
     min-width: 0;
+}
+
+.graph-node-sublabel {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .graph-node-main {

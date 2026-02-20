@@ -2,6 +2,7 @@ import React from "react";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { kindIcon } from "../../nodeKindSpec";
 import { type EntityDef, type Tone } from "../../snapshot";
+import type { GraphFilterLabelMode } from "../../graphFilter";
 import "./GraphNode.css";
 
 export type GraphNodeData = {
@@ -18,6 +19,7 @@ export type GraphNodeData = {
   ghost?: boolean;
   portTopId?: string;
   portBottomId?: string;
+  sublabel?: string;
 };
 
 export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
@@ -68,6 +70,16 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     portTopId: `${def.id}:in`,
     portBottomId: `${def.id}:out`,
   };
+}
+
+export function computeNodeSublabel(def: EntityDef, labelBy: GraphFilterLabelMode): string {
+  if (labelBy === "crate") return def.krate ?? "";
+  if (labelBy === "process") return def.processName;
+  // location
+  const { path, line } = def.source;
+  if (!path) return "";
+  const base = path.split(/[\\/]/).pop() ?? path;
+  return line ? `${base}:${line}` : base;
 }
 
 export function GraphNode({ data }: { data: GraphNodeData }) {
@@ -140,6 +152,9 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
             </>
           )}
         </div>
+        {data.sublabel && (
+          <div className="graph-node-sublabel">{data.sublabel}</div>
+        )}
       </div>
       {data.portBottomId && (
         <span

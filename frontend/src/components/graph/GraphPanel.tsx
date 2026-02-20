@@ -10,6 +10,8 @@ import { assignScopeColorRgbByKey } from "./scopeColors";
 import type { FrameRenderResult } from "../../recording/unionGraph";
 import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
+import { computeNodeSublabel } from "./GraphNode";
+import type { GraphFilterLabelMode } from "../../graphFilter";
 import "./GraphPanel.css";
 
 export type GraphSelection =
@@ -41,6 +43,7 @@ export function GraphPanel({
   kindItems,
   scopeColorMode,
   subgraphScopeMode,
+  labelByMode,
   scopeFilterLabel,
   onClearScopeFilter,
   unionFrameLayout,
@@ -65,6 +68,7 @@ export function GraphPanel({
   kindItems: FilterMenuItem[];
   scopeColorMode: ScopeColorMode;
   subgraphScopeMode: SubgraphScopeMode;
+  labelByMode?: GraphFilterLabelMode;
   scopeFilterLabel?: string | null;
   onClearScopeFilter?: () => void;
   unionFrameLayout?: FrameRenderResult;
@@ -81,7 +85,7 @@ export function GraphPanel({
   useEffect(() => {
     if (unionFrameLayout) return;
     if (entityDefs.length === 0) return;
-    measureGraphLayout(entityDefs, subgraphScopeMode)
+    measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode)
       .then((measurements) =>
         layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
@@ -89,7 +93,7 @@ export function GraphPanel({
       )
       .then(setLayout)
       .catch(console.error);
-  }, [entityDefs, edgeDefs, subgraphScopeMode, unionFrameLayout]);
+  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, unionFrameLayout]);
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
   const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
@@ -104,16 +108,18 @@ export function GraphPanel({
       const entity = entityById.get(n.id);
       const scopeKey = entity ? scopeKeyForEntity(entity, scopeColorMode) : undefined;
       const scopeRgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
+      const sublabel = entity && labelByMode ? computeNodeSublabel(entity, labelByMode) : undefined;
       return {
         ...n,
         data: {
           ...n.data,
           scopeRgbLight: scopeRgb?.light,
           scopeRgbDark: scopeRgb?.dark,
+          sublabel,
         },
       };
     });
-  }, [effectiveGeometry, entityById, scopeColorByKey, scopeColorMode]);
+  }, [effectiveGeometry, entityById, scopeColorByKey, scopeColorMode, labelByMode]);
 
   const groupsWithScopeColor = useMemo(() => {
     if (!effectiveGeometry) return [];

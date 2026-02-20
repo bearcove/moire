@@ -219,6 +219,7 @@ export function App() {
   const effectiveShowLoners = graphTextFilters.showLoners ?? false;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
+  const effectiveLabelBy = graphTextFilters.labelBy;
   const focusedEntityId = graphTextFilters.focusedNodeId ?? null;
 
   const setFocusedEntityFilter = useCallback((entityId: string | null) => {
@@ -989,6 +990,7 @@ export function App() {
                 kindItems={kindItems}
                 scopeColorMode={effectiveScopeColorMode}
                 subgraphScopeMode={effectiveSubgraphScopeMode}
+                labelByMode={effectiveLabelBy}
                 scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
                 onClearScopeFilter={() => setScopeEntityFilter(null)}
                 unionFrameLayout={unionFrameLayout}

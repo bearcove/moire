@@ -1,5 +1,7 @@
 export type GraphFilterMode = "process" | "crate";
 
+export type GraphFilterLabelMode = "process" | "crate" | "location";
+
 export type ParsedGraphFilterToken = {
   raw: string;
   key: string | null;
@@ -23,6 +25,7 @@ export type GraphFilterParseResult = {
   showLoners?: boolean;
   colorBy?: GraphFilterMode;
   groupBy?: GraphFilterMode;
+  labelBy?: GraphFilterLabelMode;
 };
 
 export type GraphFilterSuggestion = {
@@ -144,6 +147,7 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
   const parsed: ParsedGraphFilterToken[] = [];
   let colorBy: GraphFilterMode | undefined;
   let groupBy: GraphFilterMode | undefined;
+  let labelBy: GraphFilterLabelMode | undefined;
   let showLoners: boolean | undefined;
   let focusedNodeId: string | undefined;
 
@@ -205,6 +209,11 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
       } else if (value === "none") {
         valid = true;
       }
+    } else if (keyLower === "labelby") {
+      if (value === "process" || value === "crate" || value === "location") {
+        labelBy = value;
+        valid = true;
+      }
     } else if (keyLower === "focus" || keyLower === "subgraph") {
       if (!isPlaceholderValue) {
         focusedNodeId = value;
@@ -231,6 +240,7 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     showLoners,
     colorBy,
     groupBy,
+    labelBy,
   };
 }
 
@@ -509,6 +519,9 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { token: "colorBy:crate", description: "Color nodes by crate" },
       { token: "groupBy:process", description: "Group by process subgraphs" },
       { token: "groupBy:crate", description: "Group by crate subgraphs" },
+      { token: "labelBy:crate", description: "Show crate name on each card" },
+      { token: "labelBy:process", description: "Show process name on each card" },
+      { token: "labelBy:location", description: "Show source location on each card" },
     ];
     for (const item of sortedMatches(rootSuggestions, lowerFragment, (v) => `${v.token} ${v.description}`)) {
       uniquePush(out, item.token, item.description, item.applyToken, existingTokens);
@@ -549,6 +562,9 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "colorBy:crate", label: "Color nodes by crate" },
       { key: "groupBy:process", label: "Group by process subgraphs" },
       { key: "groupBy:crate", label: "Group by crate subgraphs" },
+      { key: "labelBy:crate", label: "Show crate name on each card" },
+      { key: "labelBy:process", label: "Show process name on each card" },
+      { key: "labelBy:location", label: "Show source location on each card" },
     ];
     const matched = sortedMatches(keySuggestions, lowerFragment, (entry) => `${entry.key} ${entry.label}`);
     for (const entry of matched) uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);
@@ -608,6 +624,13 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     }
     return out;
   }
+  if (keyLower === "labelby") {
+    for (const mode of sortedMatches(["crate", "process", "location"], valueLower, (v) => v)) {
+      const desc = mode === "crate" ? "Show crate name on each card" : mode === "process" ? "Show process name on each card" : "Show source location on each card";
+      uniquePush(out, `labelBy:${mode}`, desc, undefined, existingTokens);
+    }
+    return out;
+  }
   if (keyLower === "focus" || keyLower === "subgraph") {
     if (input.entities && input.entities.length > 0) {
       for (const entity of sortedMatches(
@@ -646,6 +669,9 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
         { key: "colorBy:crate", label: "Color nodes by crate" },
         { key: "groupBy:process", label: "Group by process subgraphs" },
         { key: "groupBy:crate", label: "Group by crate subgraphs" },
+        { key: "labelBy:crate", label: "Show crate name on each card" },
+        { key: "labelBy:process", label: "Show process name on each card" },
+        { key: "labelBy:location", label: "Show source location on each card" },
         { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
       ];
   for (const entry of sortedMatches(fallbackKeys, signed ? unsignedLower : lowerFragment, (v) => `${v.key} ${v.label}`)) {
