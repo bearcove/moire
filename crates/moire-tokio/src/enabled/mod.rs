@@ -11,6 +11,7 @@ pub use self::sync::*;
 pub use moire_runtime::*;
 
 use core::sync::atomic::{AtomicU64, Ordering};
+use ctor::ctor;
 use moire_trace_capture::{capture_current, trace_capabilities, CaptureOptions};
 use moire_trace_types::BacktraceId;
 use std::sync::Once;
@@ -19,18 +20,10 @@ static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
 static DIAGNOSTICS_INIT_ONCE: Once = Once::new();
 
 // r[impl process.auto-init]
-#[used]
-#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
-#[cfg_attr(
-    any(target_os = "linux", target_os = "android", target_os = "freebsd"),
-    link_section = ".init_array"
-)]
-static INIT_DIAGNOSTICS_RUNTIME: extern "C" fn() = {
-    extern "C" fn init() {
-        init_diagnostics_runtime_once();
-    }
-    init
-};
+#[ctor]
+fn init_diagnostics_runtime() {
+    init_diagnostics_runtime_once();
+}
 
 fn init_diagnostics_runtime_once() {
     DIAGNOSTICS_INIT_ONCE.call_once(|| {
@@ -54,10 +47,5 @@ pub(crate) fn capture_backtrace_id() -> SourceId {
         panic!("failed to capture backtrace for enabled API boundary: {err}")
     });
 
-    SourceId::new(backtrace_id.get()).unwrap_or_else(|_| {
-        panic!(
-            "failed to derive runtime source id from captured backtrace id {}; SourceId requires JSON-safe U53 range",
-            backtrace_id.get()
-        )
-    })
+    SourceId::new(backtrace_id.get())
 }

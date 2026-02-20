@@ -9,6 +9,7 @@ default = []
 diagnostics = []
 
 [dependencies]
+ctor.workspace = true
 facet-json.workspace = true
 facet-value.workspace = true
 moire-types.workspace = true

@@ -1,5 +1,5 @@
 use moire_trace_types::{
-    BacktraceId, BacktraceRecord, FrameKey, InvariantError, ModuleId, ModulePath, TraceCapabilities,
+    BacktraceId, BacktraceRecord, InvariantError, ModuleId, ModulePath, TraceCapabilities,
 };
 use std::error::Error;
 use std::fmt;
@@ -104,6 +104,7 @@ impl Error for CaptureError {
     }
 }
 
+// r[impl process.frame-pointers]
 pub fn trace_capabilities() -> TraceCapabilities {
     TraceCapabilities {
         trace_v1: cfg!(target_os = "macos"),

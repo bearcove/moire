@@ -1,19 +1,12 @@
+use ctor::ctor;
 use std::sync::Once;
 
 static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
 
-#[used]
-#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
-#[cfg_attr(
-    any(target_os = "linux", target_os = "android", target_os = "freebsd"),
-    link_section = ".init_array"
-)]
-static INIT_DISABLED_RUNTIME: extern "C" fn() = {
-    extern "C" fn init() {
-        emit_disabled_dashboard_warning_once();
-    }
-    init
-};
+#[ctor]
+fn init_disabled_runtime() {
+    emit_disabled_dashboard_warning_once();
+}
 
 fn emit_disabled_dashboard_warning_once() {
     // r[impl config.dashboard-feature-gate]

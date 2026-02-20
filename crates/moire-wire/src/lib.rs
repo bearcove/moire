@@ -137,6 +137,7 @@ pub enum ModuleIdentity {
 }
 
 #[derive(Facet)]
+// r[impl wire.handshake.module-manifest]
 pub struct ModuleManifestEntry {
     pub module_path: String,
     pub runtime_base: u64,
@@ -154,6 +155,7 @@ pub struct Handshake {
     pub module_manifest: Vec<ModuleManifestEntry>,
 }
 
+// r[impl wire.magic]
 pub fn encode_protocol_magic() -> [u8; 4] {
     PROTOCOL_MAGIC.to_be_bytes()
 }

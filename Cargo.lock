@@ -310,6 +310,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a2785755761f3ddc1492979ce1e48d2c00d09311c39e4466429188f3dd6501"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1253,14 +1263,32 @@ dependencies = [
 name = "moire-tokio"
 version = "0.1.0"
 dependencies = [
+ "ctor",
  "facet-json",
  "facet-value",
  "moire-runtime",
- "moire-source",
+ "moire-trace-capture",
+ "moire-trace-types",
  "moire-types",
  "moire-wire",
  "parking_lot",
  "tokio",
+]
+
+[[package]]
+name = "moire-trace-capture"
+version = "0.1.0"
+dependencies = [
+ "backtrace",
+ "libc",
+ "moire-trace-types",
+]
+
+[[package]]
+name = "moire-trace-types"
+version = "0.1.0"
+dependencies = [
+ "facet",
 ]
 
 [[package]]

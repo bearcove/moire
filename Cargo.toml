@@ -41,6 +41,7 @@ moire-sqlite-facet = { path = "crates/moire-sqlite-facet" }
 
 # External
 backtrace = "0.3"
+ctor = "0.2"
 inventory = "0.3"
 facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-format = { git = "https://github.com/facet-rs/facet", branch = "main" }

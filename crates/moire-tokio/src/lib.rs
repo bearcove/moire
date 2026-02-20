@@ -19,6 +19,7 @@ mod disabled;
 mod enabled;
 
 #[cfg(not(feature = "diagnostics"))]
+#[allow(unused_imports)]
 pub use disabled::*;
 #[cfg(feature = "diagnostics")]
 pub use enabled::*;

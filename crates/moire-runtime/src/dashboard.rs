@@ -63,6 +63,7 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
         .map_err(|e| format!("dashboard connect: {e}"))?;
     let (mut reader, mut writer) = stream.into_split();
 
+    // r[impl wire.handshake]
     let handshake = ClientMessage::Handshake(moire_wire::Handshake {
         process_name: process_name.clone(),
         pid: std::process::id(),
