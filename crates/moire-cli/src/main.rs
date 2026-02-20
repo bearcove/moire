@@ -1,39 +1,12 @@
 use facet::Facet;
 use figue as args;
+use moire_types::{CutStatusResponse, QueryRequest, SqlRequest, TriggerCutResponse};
 use std::time::{Duration, Instant};
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9130";
 const DEFAULT_POLL_MS: u64 = 100;
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
 const DEFAULT_QUERY_LIMIT: u32 = 50;
-
-#[derive(Facet)]
-struct TriggerCutResponse {
-    cut_id: String,
-    requested_at_ns: i64,
-    requested_connections: usize,
-}
-
-#[derive(Facet)]
-struct CutStatusResponse {
-    cut_id: String,
-    requested_at_ns: i64,
-    pending_connections: usize,
-    acked_connections: usize,
-    pending_conn_ids: Vec<u64>,
-}
-
-#[derive(Facet)]
-struct SqlRequest {
-    sql: String,
-}
-
-#[derive(Facet)]
-struct QueryRequest {
-    name: String,
-    #[facet(skip_unless_truthy)]
-    limit: Option<u32>,
-}
 
 #[derive(Facet, Debug)]
 struct Cli {

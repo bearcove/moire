@@ -13,4 +13,5 @@ facet.workspace = true
 facet-json.workspace = true
 facet-value.workspace = true
 figue.workspace = true
+moire-types.workspace = true
 ureq.workspace = true
