@@ -13,7 +13,7 @@ pub struct OperationFuture<F> {
     actor_id: Option<EntityId>,
     resource_id: EntityId,
     current_edge: Option<EdgeKind>,
-    source: BacktraceId,
+    backtrace: BacktraceId,
 }
 
 impl<F> OperationFuture<F> {
@@ -23,7 +23,7 @@ impl<F> OperationFuture<F> {
             actor_id: current_causal_target().map(|target| target.id().clone()),
             resource_id,
             current_edge: None,
-            source: super::capture_backtrace_id(),
+            backtrace: super::capture_backtrace_id(),
         }
     }
 
@@ -40,7 +40,7 @@ impl<F> OperationFuture<F> {
                 db.remove_edge(actor_id, &self.resource_id, current);
             }
             if let Some(edge) = next {
-                db.upsert_edge(actor_id, &self.resource_id, edge, self.source);
+                db.upsert_edge(actor_id, &self.resource_id, edge, self.backtrace);
             }
         }
         self.current_edge = next;
@@ -88,7 +88,7 @@ where
 pub struct InstrumentedFuture<F> {
     inner: F,
     pub(super) future_handle: EntityHandle<FutureEntity>,
-    source: BacktraceId,
+    backtrace: BacktraceId,
     awaited_by: Option<FutureEdgeRelation>,
     waits_on: Option<FutureEdgeRelation>,
 }
@@ -132,7 +132,7 @@ impl<F> InstrumentedFuture<F> {
         Self {
             inner,
             future_handle,
-            source: super::capture_backtrace_id(),
+            backtrace: super::capture_backtrace_id(),
             awaited_by,
             waits_on,
         }
@@ -150,7 +150,7 @@ impl<F> InstrumentedFuture<F> {
 
 fn transition_relation_edge(
     future_id: &EntityId,
-    source: BacktraceId,
+    backtrace: BacktraceId,
     relation: &mut FutureEdgeRelation,
     next_edge: Option<EdgeKind>,
 ) {
@@ -173,7 +173,7 @@ fn transition_relation_edge(
             db.remove_edge(&src, &dst, current_edge);
         }
         if let Some(edge) = next_edge {
-            db.upsert_edge(&src, &dst, edge, source);
+            db.upsert_edge(&src, &dst, edge, backtrace);
         }
     }
     relation.current_edge = next_edge;
@@ -195,10 +195,10 @@ where
             .is_ok();
 
         if let Some(relation) = this.awaited_by.as_mut() {
-            transition_relation_edge(&future_id, this.source, relation, Some(EdgeKind::Polls));
+            transition_relation_edge(&future_id, this.backtrace, relation, Some(EdgeKind::Polls));
         }
         if let Some(relation) = this.waits_on.as_mut() {
-            transition_relation_edge(&future_id, this.source, relation, Some(EdgeKind::Polls));
+            transition_relation_edge(&future_id, this.backtrace, relation, Some(EdgeKind::Polls));
         }
 
         let poll = unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx);
@@ -212,7 +212,7 @@ where
                 if let Some(relation) = this.awaited_by.as_mut() {
                     transition_relation_edge(
                         &future_id,
-                        this.source,
+                        this.backtrace,
                         relation,
                         Some(EdgeKind::WaitingOn),
                     );
@@ -220,7 +220,7 @@ where
                 if let Some(relation) = this.waits_on.as_mut() {
                     transition_relation_edge(
                         &future_id,
-                        this.source,
+                        this.backtrace,
                         relation,
                         Some(EdgeKind::WaitingOn),
                     );
@@ -229,10 +229,10 @@ where
             }
             Poll::Ready(output) => {
                 if let Some(relation) = this.awaited_by.as_mut() {
-                    transition_relation_edge(&future_id, this.source, relation, None);
+                    transition_relation_edge(&future_id, this.backtrace, relation, None);
                 }
                 if let Some(relation) = this.waits_on.as_mut() {
-                    transition_relation_edge(&future_id, this.source, relation, None);
+                    transition_relation_edge(&future_id, this.backtrace, relation, None);
                 }
 
                 Poll::Ready(output)
@@ -245,10 +245,10 @@ impl<F> Drop for InstrumentedFuture<F> {
     fn drop(&mut self) {
         let future_id = EntityId::new(self.future_handle.id().as_str());
         if let Some(relation) = self.awaited_by.as_mut() {
-            transition_relation_edge(&future_id, self.source, relation, None);
+            transition_relation_edge(&future_id, self.backtrace, relation, None);
         }
         if let Some(relation) = self.waits_on.as_mut() {
-            transition_relation_edge(&future_id, self.source, relation, None);
+            transition_relation_edge(&future_id, self.backtrace, relation, None);
         }
     }
 }

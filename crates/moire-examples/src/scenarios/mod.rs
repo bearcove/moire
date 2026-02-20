@@ -9,7 +9,7 @@ pub mod semaphore_starvation;
 
 use std::future::Future;
 
-use moire::task::{JoinHandle, TaskFutureExt};
+use moire::{task::JoinHandle, FutureExt};
 
 pub fn spawn_tracked<T>(
     name: impl Into<String>,
