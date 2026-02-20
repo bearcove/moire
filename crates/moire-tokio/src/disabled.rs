@@ -4,6 +4,7 @@ static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
 
 #[doc(hidden)]
 pub fn __init_from_macro() {
+    // r[impl config.dashboard-feature-gate]
     let Some(value) = std::env::var_os("MOIRE_DASHBOARD") else {
         return;
     };

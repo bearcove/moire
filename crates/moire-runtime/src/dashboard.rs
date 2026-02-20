@@ -18,6 +18,7 @@ pub(super) fn init_dashboard_push_loop(process_name: &str) {
         return;
     }
 
+    // r[impl config.dashboard-addr]
     let Some(addr) = std::env::var("MOIRE_DASHBOARD")
         .ok()
         .map(|s| s.trim().to_string())
@@ -51,6 +52,7 @@ async fn run_dashboard_push_loop(addr: String, process_name: String) {
     loop {
         let connected = run_dashboard_session(&addr, process_name.clone()).await;
         let _ = connected;
+        // r[impl config.dashboard-reconnect]
         tokio::time::sleep(Duration::from_millis(DASHBOARD_RECONNECT_DELAY_MS)).await;
     }
 }

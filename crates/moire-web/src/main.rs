@@ -179,9 +179,13 @@ async fn run() -> Result<(), String> {
         )
         .init();
 
+    // r[impl config.web.tcp-listen]
     let tcp_addr = std::env::var("MOIRE_LISTEN").unwrap_or_else(|_| "127.0.0.1:9119".into());
+    // r[impl config.web.http-listen]
     let http_addr = std::env::var("MOIRE_HTTP").unwrap_or_else(|_| "127.0.0.1:9130".into());
+    // r[impl config.web.vite-addr]
     let vite_addr = std::env::var("MOIRE_VITE_ADDR").unwrap_or_else(|_| DEFAULT_VITE_ADDR.into());
+    // r[impl config.web.db-path]
     let db_path =
         PathBuf::from(std::env::var("MOIRE_DB").unwrap_or_else(|_| "moire-web.sqlite".into()));
     init_sqlite(&db_path).map_err(|e| format!("failed to init sqlite at {:?}: {e}", db_path))?;
