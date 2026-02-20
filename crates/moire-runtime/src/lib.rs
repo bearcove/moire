@@ -3,7 +3,8 @@ use ctor::ctor;
 use moire_trace_capture::{capture_current, validate_frame_pointers_or_panic, CaptureOptions, CapturedBacktrace};
 use moire_trace_types::{BacktraceId, FrameKey, ModuleId};
 use moire_types::{
-    EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
+    process_prefix_u16, EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody,
+    ScopeId, TaskScopeBody,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -35,6 +36,7 @@ pub use self::futures::*;
 pub use self::handles::*;
 
 static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
+static BACKTRACE_ID_PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
@@ -69,7 +71,7 @@ pub fn init_runtime_from_macro() {
 }
 
 pub(crate) fn capture_backtrace_id() -> BacktraceId {
-    let raw = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
+    let raw = next_backtrace_id_raw();
     let backtrace_id = BacktraceId::new(raw)
         .expect("backtrace id invariant violated: generated id must be non-zero");
 
@@ -81,6 +83,22 @@ pub(crate) fn capture_backtrace_id() -> BacktraceId {
     remember_backtrace_record(remapped);
 
     backtrace_id
+}
+
+fn next_backtrace_id_raw() -> u64 {
+    const BACKTRACE_COUNTER_BITS: u32 = 37;
+    const BACKTRACE_COUNTER_MAX: u64 = (1u64 << BACKTRACE_COUNTER_BITS) - 1;
+
+    let prefix = *BACKTRACE_ID_PROCESS_PREFIX.get_or_init(process_prefix_u16);
+    let counter = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
+    if counter > BACKTRACE_COUNTER_MAX {
+        panic!(
+            "backtrace id invariant violated: per-process counter overflow (counter={counter})"
+        );
+    }
+    // JS-safe numeric ID layout:
+    // high 16 bits: process prefix, low 37 bits: per-process monotonic counter.
+    ((prefix as u64) << BACKTRACE_COUNTER_BITS) | counter
 }
 
 fn module_state() -> &'static StdMutex<ModuleState> {

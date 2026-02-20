@@ -203,19 +203,23 @@ pub(crate) fn next_event_id() -> EventId {
     EventId(next_opaque_id())
 }
 
-// r[impl model.id.uniqueness]
-fn next_opaque_id() -> String {
+pub fn process_prefix_u16() -> u16 {
     static PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-
-    let prefix = *PROCESS_PREFIX.get_or_init(|| {
+    *PROCESS_PREFIX.get_or_init(|| {
         let pid = std::process::id() as u64;
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(0);
         ((seed ^ pid) & 0xFFFF) as u16
-    });
+    })
+}
+
+// r[impl model.id.uniqueness]
+fn next_opaque_id() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+
+    let prefix = process_prefix_u16();
 
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_FFFF_FFFF_FFFF;
     let raw = ((prefix as u64) << 48) | counter;
