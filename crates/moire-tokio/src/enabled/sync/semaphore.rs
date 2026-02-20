@@ -1,3 +1,4 @@
+// r[impl api.semaphore]
 use moire_types::{EdgeKind, EntityBody, SemaphoreEntity};
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};

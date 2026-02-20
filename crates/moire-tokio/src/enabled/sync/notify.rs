@@ -1,3 +1,4 @@
+// r[impl api.notify]
 use moire_types::{EntityBody, NotifyEntity};
 use std::sync::Arc;
 

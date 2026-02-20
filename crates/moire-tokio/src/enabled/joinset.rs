@@ -7,6 +7,7 @@ use moire_runtime::{
     instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
 };
 
+// r[impl api.joinset]
 impl<T> JoinSet<T>
 where
     T: Send + 'static,

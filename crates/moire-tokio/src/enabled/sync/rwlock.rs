@@ -1,3 +1,4 @@
+// r[impl api.rwlock]
 use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 
 use super::super::capture_backtrace_id;

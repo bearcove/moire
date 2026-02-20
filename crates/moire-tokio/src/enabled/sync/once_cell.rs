@@ -1,3 +1,4 @@
+// r[impl api.once-cell]
 use moire_types::{EntityBody, OnceCellEntity, OnceCellState};
 use std::future::Future;
 

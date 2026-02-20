@@ -1,3 +1,4 @@
+// r[impl api.mutex]
 use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 

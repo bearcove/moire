@@ -92,6 +92,7 @@ pub fn register_current_task_scope(
 }
 
 #[track_caller]
+// r[impl api.spawn]
 pub fn spawn_tracked<F>(
     name: impl Into<String>,
     fut: F,
@@ -111,6 +112,7 @@ where
 }
 
 #[track_caller]
+// r[impl api.spawn-blocking]
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<String>,
     f: F,

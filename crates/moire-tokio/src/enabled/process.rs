@@ -1,3 +1,4 @@
+// r[impl api.command]
 use moire_types::{CommandEntity, EntityBody};
 use std::ffi::{OsStr, OsString};
 use std::future::Future;

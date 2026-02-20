@@ -27,6 +27,7 @@ impl RpcRequestHandle {
     }
 }
 
+// r[impl api.rpc-request]
 pub fn rpc_request(method: impl Into<String>, args_json: impl Into<String>) -> RpcRequestHandle {
     let method = method.into();
     let (service_name, method_name) = split_method_parts(method.as_str());
@@ -81,6 +82,7 @@ pub fn rpc_response_with_body(
     EntityHandle::new(name, body, source).into_typed::<moire_types::Response>()
 }
 
+// r[impl api.rpc-response]
 pub fn rpc_response_for(
     method: impl Into<String>,
     request: &EntityRef,

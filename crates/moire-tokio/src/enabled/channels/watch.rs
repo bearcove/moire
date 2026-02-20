@@ -1,3 +1,4 @@
+// r[impl api.watch]
 use super::capture_backtrace_id;
 
 use moire_runtime::{

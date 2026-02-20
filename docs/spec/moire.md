@@ -1,8 +1,21 @@
 # Moire Specification
 
-Moire is a low-overhead instrumentation library for production Rust systems built on Tokio.
+Moire is an instrumentation library for Rust systems built on Tokio. It captures stack traces, tracks async tasks, locks, channels, and RPC calls, and pushes structured data to a dashboard server.
 
-It provides structured observability into async task execution, lock contention, and channel behavior — with optional live push to a dashboard server.
+The dashboard presents the runtime state as a graph of entities connected by edges, grouped and colored by scope. Nodes can be inspected individually, and a filter bar allows grouping, coloring, and filtering the graph interactively.
+
+---
+
+## Instrumented Processes
+
+> r[process.dependency]
+> To be instrumented, a process MUST depend on the `moire` crate and use its wrappers in place of the underlying primitives — for example `moire::Mutex` instead of `parking_lot::Mutex`, `moire::mpsc` instead of `tokio::sync::mpsc`, and `moire::spawn` instead of `tokio::spawn`.
+
+> r[process.feature-gate]
+> Instrumentation is only active when the `diagnostics` feature of the `moire` crate is enabled. Without it, all instrumentation APIs compile to no-ops.
+
+> r[process.auto-init]
+> When the `diagnostics` feature is enabled, the `moire` crate MUST use the `ctor` crate to automatically initialize the runtime and start the dashboard push loop at program startup, with no user code required.
 
 ---
 
@@ -36,6 +49,73 @@ An instrumented process is any binary that depends on `moire` with the `diagnost
 
 > r[config.web.vite-addr]
 > In dev mode, `moire-web` reads `MOIRE_VITE_ADDR` for the Vite dev server proxy address.
+
+---
+
+## Public API
+
+The `moire` crate re-exports the appropriate backend based on target:
+
+> r[api.backend.native]
+> On native targets, `moire` re-exports `moire-tokio`. When the `diagnostics` feature is enabled, all wrappers are instrumented. When it is not, they compile to zero-overhead pass-throughs.
+
+> r[api.backend.wasm]
+> On `wasm32` targets, `moire` re-exports `moire-wasm`. Instrumentation is always a no-op on WASM, but the API surface is identical to the native surface so that code compiles for both targets without `#[cfg]` attributes.
+
+### Tasks
+
+> r[api.spawn]
+> `moire::spawn(name, future)` spawns a named async task. The task is registered as a `future` entity and its execution is tracked.
+
+> r[api.spawn-blocking]
+> `moire::spawn_blocking(name, f)` spawns a named blocking task on the blocking thread pool. The task is registered as a `future` entity.
+
+> r[api.joinset]
+> `moire::JoinSet::named(name)` creates a named join set. Tasks added via `JoinSet::spawn(label, future)` are individually tracked. Awaiting `JoinSet::join_next()` is instrumented.
+
+### Channels
+
+> r[api.mpsc]
+> `moire::channel(name, capacity)` creates a bounded mpsc channel. `moire::unbounded_channel(name)` creates an unbounded mpsc channel. Sends and receives are recorded as `channel_sent` and `channel_received` events, including wait duration and close status.
+
+> r[api.broadcast]
+> `moire::broadcast(name, capacity)` creates a broadcast channel. Sender lag is tracked on the `broadcast_rx` entity.
+
+> r[api.oneshot]
+> `moire::oneshot(name)` creates a oneshot channel. The sender's `sent` flag is tracked.
+
+> r[api.watch]
+> `moire::watch(name, initial)` creates a watch channel. The sender's `last_update_at` timestamp is tracked.
+
+### Synchronization
+
+> r[api.mutex]
+> `moire::Mutex::new(name, value)` creates an instrumented synchronous mutex (backed by `parking_lot`). Locking is blocking, not async. Contention is tracked on the `lock` entity with kind `mutex`.
+
+> r[api.rwlock]
+> `moire::RwLock::new(name, value)` creates an instrumented synchronous read-write lock (backed by `parking_lot`). Locking is blocking, not async. Contention is tracked on the `lock` entity with kind `rwlock`.
+
+> r[api.semaphore]
+> `moire::Semaphore::new(name, permits)` creates an instrumented semaphore. `max_permits` and `handed_out_permits` are tracked.
+
+> r[api.notify]
+> `moire::Notify::new(name)` creates an instrumented `Notify`. `waiter_count` is tracked.
+
+> r[api.once-cell]
+> `moire::OnceCell::new(name)` creates an instrumented `OnceCell`. `waiter_count` and initialization state are tracked.
+
+### Processes
+
+> r[api.command]
+> `moire::Command::new(program)` creates an instrumented child process handle. Program, arguments, and environment are recorded on the `command` entity. `spawn()`, `status()`, `output()`, and `wait()` are individually instrumented.
+
+### RPC
+
+> r[api.rpc-request]
+> `moire::rpc_request(method, args_json)` registers an outbound or inbound RPC request entity with the method name split into `service_name` and `method_name`.
+
+> r[api.rpc-response]
+> `moire::rpc_response_for(method, request)` registers a response entity paired with its request via a `paired_with` edge. The response status starts as `pending` and is updated as the call completes.
 
 ---
 
