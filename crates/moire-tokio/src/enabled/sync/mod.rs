@@ -10,15 +10,15 @@
 //!
 //! | Submodule / type | Tokio equivalent |
 //! |---|---|
-//! | [`mpsc`] | `tokio::sync::mpsc` |
-//! | [`broadcast`] | `tokio::sync::broadcast` |
-//! | [`oneshot`] | `tokio::sync::oneshot` |
-//! | [`watch`] | `tokio::sync::watch` |
-//! | [`Mutex`] | `tokio::sync::Mutex` |
-//! | [`RwLock`] | `tokio::sync::RwLock` |
-//! | [`Semaphore`] | `tokio::sync::Semaphore` |
-//! | [`Notify`] | `tokio::sync::Notify` |
-//! | [`OnceCell`] | `tokio::sync::OnceCell` |
+//! | [`mpsc`] | [`tokio::sync::mpsc`] |
+//! | [`broadcast`] | [`tokio::sync::broadcast`] |
+//! | [`oneshot`] | [`tokio::sync::oneshot`] |
+//! | [`watch`] | [`tokio::sync::watch`] |
+//! | [`Mutex`] | [`tokio::sync::Mutex`] |
+//! | [`RwLock`] | [`tokio::sync::RwLock`] |
+//! | [`Semaphore`] | [`tokio::sync::Semaphore`] |
+//! | [`Notify`] | [`tokio::sync::Notify`] |
+//! | [`OnceCell`] | [`tokio::sync::OnceCell`] |
 
 pub mod broadcast;
 pub mod mpsc;
@@ -27,11 +27,15 @@ pub mod watch;
 
 mod mutex;
 pub use mutex::*;
+
 mod notify;
 pub use notify::*;
+
 mod once_cell;
 pub use once_cell::*;
+
 mod rwlock;
 pub use rwlock::*;
+
 mod semaphore;
 pub use semaphore::*;

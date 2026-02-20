@@ -4,7 +4,7 @@
 //! Moiré replaces Tokio's primitives with named, instrumented wrappers. At every
 //! API boundary — every lock acquisition, channel send/receive, spawn, and RPC
 //! call — it captures the current call stack via frame-pointer walking and interns
-//! it as a [`BacktraceId`]. The resulting graph of entities (tasks, locks,
+//! it as a [`moire_trace_types::BacktraceId`]. The resulting graph of entities (tasks, locks,
 //! channels, RPC calls) connected by typed edges (polls, waiting\_on, paired\_with,
 //! holds) is pushed as a live stream to a `moire-web` dashboard for investigation.
 //!
