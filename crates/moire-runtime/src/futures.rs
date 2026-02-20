@@ -254,5 +254,17 @@ where
     F: IntoFuture,
 {
     let handle = EntityHandle::new(name, FutureEntity {});
+    instrument_future_with_handle(handle, fut, on, None)
+}
+
+pub fn instrument_future_with_handle<F>(
+    handle: EntityHandle<FutureEntity>,
+    fut: F,
+    on: Option<EntityRef>,
+    _meta: Option<facet_value::Value>,
+) -> InstrumentedFuture<F::IntoFuture>
+where
+    F: IntoFuture,
+{
     InstrumentedFuture::new(fut.into_future(), handle, on)
 }

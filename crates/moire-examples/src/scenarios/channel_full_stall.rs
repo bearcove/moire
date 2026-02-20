@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use moire::spawn_tracked;
+use moire::{sync::mpsc, task::spawn};
 
 pub async fn run() -> Result<(), String> {
-    let (tx, mut rx) = moire::channel("demo.work_queue", 16);
-    let (_idle_tx, mut idle_rx) = moire::channel("demo.idle_queue", 1);
+    let (tx, mut rx) = mpsc::channel("demo.work_queue", 16);
+    let (_idle_tx, mut idle_rx) = mpsc::channel("demo.idle_queue", 1);
 
     spawn_tracked("stalled_receiver", async move {
         println!("receiver started but is intentionally not draining the queue");
