@@ -1231,8 +1231,8 @@ dependencies = [
  "facet",
  "facet-json",
  "facet-value",
- "moire-source",
  "moire-sqlite-facet",
+ "moire-trace-types",
  "moire-types",
  "moire-wire",
  "parking_lot",
@@ -1254,7 +1254,6 @@ version = "0.1.0"
 dependencies = [
  "facet-json",
  "facet-value",
- "moire-source",
  "moire-types",
  "rusqlite",
 ]
@@ -1298,7 +1297,7 @@ dependencies = [
  "facet-format",
  "facet-json",
  "facet-value",
- "moire-source",
+ "moire-trace-types",
  "rusqlite",
 ]
 

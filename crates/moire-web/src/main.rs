@@ -667,8 +667,17 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
 fn collect_snapshot_backtrace_pairs(snapshot: &SnapshotCutResponse) -> Vec<(u64, u64)> {
     let mut pairs = Vec::new();
     for process in &snapshot.processes {
-        for source in &process.snapshot.sources {
-            pairs.push((process.process_id, source.id.as_u64()));
+        for entity in &process.snapshot.entities {
+            pairs.push((process.process_id, entity.source.get()));
+        }
+        for scope in &process.snapshot.scopes {
+            pairs.push((process.process_id, scope.source.get()));
+        }
+        for edge in &process.snapshot.edges {
+            pairs.push((process.process_id, edge.source.get()));
+        }
+        for event in &process.snapshot.events {
+            pairs.push((process.process_id, event.source.get()));
         }
     }
     pairs.sort_unstable();

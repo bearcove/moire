@@ -1,5 +1,5 @@
 use facet::Facet;
-use moire_source::SourceId;
+use moire_trace_types::BacktraceId;
 
 use crate::EntityId;
 
@@ -14,7 +14,7 @@ pub struct Edge {
     pub dst: EntityId,
 
     /// Location in source code and crate information.
-    pub source: SourceId,
+    pub source: BacktraceId,
 
     /// Causal edge kind.
     pub kind: EdgeKind,
@@ -22,7 +22,7 @@ pub struct Edge {
 
 impl Edge {
     /// Builds a causal edge.
-    pub fn new(src: EntityId, dst: EntityId, kind: EdgeKind, source: SourceId) -> Self {
+    pub fn new(src: EntityId, dst: EntityId, kind: EdgeKind, source: BacktraceId) -> Self {
         Self {
             src,
             dst,

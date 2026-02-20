@@ -29,11 +29,11 @@ fn init_diagnostics_runtime() {
 fn init_diagnostics_runtime_once() {
     DIAGNOSTICS_INIT_ONCE.call_once(|| {
         moire_trace_capture::validate_frame_pointers_or_panic();
-        init_runtime_from_macro();
+        init_runtime_from_macro(capture_backtrace_id());
     });
 }
 
-pub(crate) fn capture_backtrace_id() -> SourceId {
+pub(crate) fn capture_backtrace_id() -> BacktraceId {
     let capabilities = trace_capabilities();
     assert!(
         capabilities.trace_v1,
@@ -61,5 +61,5 @@ pub(crate) fn capture_backtrace_id() -> SourceId {
             .collect(),
     });
 
-    SourceId::new(backtrace_id.get())
+    backtrace_id
 }

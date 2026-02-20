@@ -1,4 +1,4 @@
-use moire_source::SourceId;
+use moire_trace_types::BacktraceId;
 use moire_types::{EdgeKind, EntityBody, EntityId, FutureEntity};
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
@@ -13,11 +13,11 @@ pub struct OperationFuture<F> {
     actor_id: Option<EntityId>,
     resource_id: EntityId,
     current_edge: Option<EdgeKind>,
-    source: SourceId,
+    source: BacktraceId,
 }
 
 impl<F> OperationFuture<F> {
-    fn new(inner: F, resource_id: EntityId, source: SourceId) -> Self {
+    fn new(inner: F, resource_id: EntityId, source: BacktraceId) -> Self {
         Self {
             inner,
             actor_id: current_causal_target().map(|target| target.id().clone()),
@@ -81,7 +81,7 @@ impl<F> Drop for OperationFuture<F> {
 pub fn instrument_operation_on_with_source<F, S>(
     on: &EntityHandle<S>,
     fut: F,
-    source: SourceId,
+    source: BacktraceId,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -92,7 +92,7 @@ where
 pub struct InstrumentedFuture<F> {
     inner: F,
     pub(super) future_handle: EntityHandle,
-    source: SourceId,
+    source: BacktraceId,
     awaited_by: Option<FutureEdgeRelation>,
     waits_on: Option<FutureEdgeRelation>,
 }
@@ -124,7 +124,7 @@ impl<F> InstrumentedFuture<F> {
         inner: F,
         future_handle: EntityHandle,
         target: Option<EntityRef>,
-        source: SourceId,
+        source: BacktraceId,
     ) -> Self {
         let awaited_by = current_causal_target().and_then(|parent| {
             if parent.id().as_str() == future_handle.id().as_str() {
@@ -150,7 +150,7 @@ impl<F> InstrumentedFuture<F> {
 
 fn transition_relation_edge(
     future_id: &EntityId,
-    source: SourceId,
+    source: BacktraceId,
     relation: &mut FutureEdgeRelation,
     next_edge: Option<EdgeKind>,
 ) {
@@ -256,7 +256,7 @@ impl<F> Drop for InstrumentedFuture<F> {
 pub fn instrument_future<F>(
     name: impl Into<String>,
     fut: F,
-    source: SourceId,
+    source: BacktraceId,
     on: Option<EntityRef>,
     _meta: Option<facet_value::Value>,
 ) -> InstrumentedFuture<F::IntoFuture>

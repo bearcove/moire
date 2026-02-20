@@ -1,4 +1,4 @@
-use moire_source::SourceId;
+use moire_trace_types::BacktraceId;
 use moire_types::{
     EdgeKind, Entity, EntityBody, EntityBodySlot, EntityId, Scope, ScopeBody, ScopeId,
 };
@@ -64,7 +64,7 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<String>, body: ScopeBody, source: SourceId) -> Self {
+    pub fn new(name: impl Into<String>, body: ScopeBody, source: BacktraceId) -> Self {
         let scope = Scope::new(source, name, body);
         let id = ScopeId::new(scope.id.as_str());
 
@@ -116,11 +116,11 @@ impl<S> Clone for EntityHandle<S> {
 }
 
 impl EntityHandle<()> {
-    pub fn new(name: impl Into<String>, body: EntityBody, source: SourceId) -> Self {
+    pub fn new(name: impl Into<String>, body: EntityBody, source: BacktraceId) -> Self {
         Self::new_with_source(name, body, source)
     }
 
-    pub fn new_with_source(name: impl Into<String>, body: EntityBody, source: SourceId) -> Self {
+    pub fn new_with_source(name: impl Into<String>, body: EntityBody, source: BacktraceId) -> Self {
         let entity = Entity::new(source, name, body);
         Self::from_entity(entity)
     }
@@ -162,7 +162,7 @@ impl<S> EntityHandle<S> {
         }
     }
 
-    pub fn link_to_with_source(&self, target: &EntityRef, kind: EdgeKind, source: SourceId) {
+    pub fn link_to_with_source(&self, target: &EntityRef, kind: EdgeKind, source: BacktraceId) {
         if let Ok(mut db) = runtime_db().lock() {
             db.upsert_edge_with_source(self.id(), target.id(), kind, source);
         }
@@ -172,7 +172,7 @@ impl<S> EntityHandle<S> {
         &self,
         target: &EntityHandle<T>,
         kind: EdgeKind,
-        source: SourceId,
+        source: BacktraceId,
     ) {
         self.link_to_with_source(&target.entity_ref(), kind, source);
     }
@@ -283,7 +283,7 @@ impl<S> EntityHandle<S> {
         &self,
         target: &EntityRef,
         kind: EdgeKind,
-        source: SourceId,
+        source: BacktraceId,
     ) -> EdgeHandle {
         let src = self.id().clone();
         let dst = target.id().clone();

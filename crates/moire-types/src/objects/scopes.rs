@@ -1,6 +1,6 @@
 use facet::Facet;
 
-use crate::{next_scope_id, PTime, ScopeId, SourceId};
+use crate::{next_scope_id, BacktraceId, PTime, ScopeId};
 
 // r[impl model.scope.fields]
 /// A scope groups execution context over time (for example process/thread/task/connection).
@@ -13,7 +13,7 @@ pub struct Scope {
     pub birth: PTime,
 
     /// Location in source code and crate information.
-    pub source: SourceId,
+    pub source: BacktraceId,
 
     /// Human-facing name for this scope.
     pub name: String,
@@ -24,7 +24,7 @@ pub struct Scope {
 
 impl Scope {
     /// Create a new scope: ID and birth time are generated automatically.
-    pub fn new(source: SourceId, name: impl Into<String>, body: ScopeBody) -> Scope {
+    pub fn new(source: BacktraceId, name: impl Into<String>, body: ScopeBody) -> Scope {
         Scope {
             id: next_scope_id(),
             birth: PTime::now(),

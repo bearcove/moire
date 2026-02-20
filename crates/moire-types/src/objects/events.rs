@@ -1,5 +1,5 @@
 use facet::Facet;
-use moire_source::SourceId;
+use moire_trace_types::BacktraceId;
 
 use crate::{next_event_id, EntityId, EventId, PTime, ScopeId};
 
@@ -13,7 +13,7 @@ pub struct Event {
     pub at: PTime,
 
     /// Event source.
-    pub source: SourceId,
+    pub source: BacktraceId,
 
     /// Event target (entity or scope).
     pub target: EventTarget,
@@ -24,7 +24,7 @@ pub struct Event {
 
 impl Event {
     /// Builds an event with explicit source context.
-    pub fn new_with_source(target: EventTarget, kind: EventKind, source: SourceId) -> Self {
+    pub fn new_with_source(target: EventTarget, kind: EventKind, source: BacktraceId) -> Self {
         Self {
             id: next_event_id(),
             at: PTime::now(),

@@ -1,6 +1,7 @@
 use moire_types::{
     EntityBody, EntityId, Event, FutureEntity, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
 };
+use moire_trace_types::BacktraceId;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -30,16 +31,12 @@ pub(crate) mod handles;
 pub use self::api::*;
 pub use self::futures::*;
 pub use self::handles::*;
-pub use moire_source::*;
-
-const RUNTIME_SOURCE_LEFT: SourceLeft =
-    SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
 
-pub fn init_runtime_from_macro() {
+pub fn init_runtime_from_macro(source: BacktraceId) {
     let process_name = std::env::current_exe().unwrap().display().to_string();
     PROCESS_SCOPE.get_or_init(|| {
         ScopeHandle::new(
@@ -47,7 +44,7 @@ pub fn init_runtime_from_macro() {
             ScopeBody::Process(ProcessScopeBody {
                 pid: std::process::id(),
             }),
-            RUNTIME_SOURCE_LEFT.join(SourceRight::caller()).into(),
+            source,
         )
     });
     dashboard::init_dashboard_push_loop(&process_name);
@@ -109,7 +106,7 @@ impl Drop for TaskScopeRegistration {
 
 pub fn register_current_task_scope(
     task_name: &str,
-    source: SourceId,
+    source: BacktraceId,
 ) -> Option<TaskScopeRegistration> {
     let task_key = current_tokio_task_key()?;
     let scope = ScopeHandle::new(
@@ -130,7 +127,7 @@ pub fn register_current_task_scope(
 pub fn spawn_tracked<F>(
     name: impl Into<String>,
     fut: F,
-    source: SourceId,
+    source: BacktraceId,
 ) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
@@ -150,7 +147,7 @@ where
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<String>,
     f: F,
-    source: SourceId,
+    source: BacktraceId,
 ) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
@@ -163,7 +160,7 @@ where
     })
 }
 
-pub fn record_event_with_source(mut event: Event, source: SourceId) {
+pub fn record_event_with_source(mut event: Event, source: BacktraceId) {
     event.source = source;
     if let Ok(mut db) = db::runtime_db().lock() {
         db.record_event(event);

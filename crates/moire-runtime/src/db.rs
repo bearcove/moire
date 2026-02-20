@@ -1,11 +1,10 @@
 use facet::Facet;
-use moire_source::{source_for_id, SourceId};
+use moire_trace_types::BacktraceId;
 use moire_types::{
     Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PTime, PullChangesResponse, Scope,
-    ScopeBody, ScopeId, SeqNo, SnapshotSource, StampedChange, StreamCursor, StreamId,
-    TaskScopeBody,
+    ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId, TaskScopeBody,
 };
-use std::collections::{hash_map::DefaultHasher, BTreeMap, BTreeSet, VecDeque};
+use std::collections::{hash_map::DefaultHasher, BTreeMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
@@ -372,7 +371,7 @@ impl RuntimeDb {
         src: &EntityId,
         dst: &EntityId,
         kind: EdgeKind,
-        source: SourceId,
+        source: BacktraceId,
     ) {
         if let Some(process_scope_id) = current_process_scope_id() {
             if self.entities.contains_key(src) {
@@ -544,7 +543,6 @@ struct InternalStampedChange {
 
 #[derive(Facet)]
 struct SnapshotRef<'a> {
-    sources: Vec<SnapshotSource>,
     entities: Vec<&'a Entity>,
     scopes: Vec<&'a Scope>,
     edges: Vec<&'a Edge>,
@@ -616,39 +614,6 @@ impl InternalStampedChange {
     }
 }
 
-fn collect_snapshot_sources(db: &RuntimeDb) -> Result<Vec<SnapshotSource>, String> {
-    let mut source_ids = BTreeSet::new();
-    for entity in db.entities.values() {
-        source_ids.insert(entity.source);
-    }
-    for scope in db.scopes.values() {
-        source_ids.insert(scope.source);
-    }
-    for edge in db.edges.values() {
-        source_ids.insert(edge.source);
-    }
-    for event in &db.events {
-        source_ids.insert(event.source);
-    }
-
-    let mut sources = Vec::with_capacity(source_ids.len());
-    for source_id in source_ids {
-        let Some(source) = source_for_id(source_id) else {
-            return Err(format!(
-                "snapshot references missing SourceId {}",
-                source_id.as_u64()
-            ));
-        };
-        sources.push(SnapshotSource {
-            id: source_id,
-            path: source.path().as_str().to_string(),
-            line: source.line(),
-            krate: source.krate().to_string(),
-        });
-    }
-    Ok(sources)
-}
-
 pub fn encode_snapshot_reply_frame(snapshot_id: i64) -> Result<Vec<u8>, String> {
     // Capture process-relative now before locking the db, so the timestamp
     // represents the moment this snapshot was requested.
@@ -665,13 +630,10 @@ pub fn encode_snapshot_reply_frame(snapshot_id: i64) -> Result<Vec<u8>, String> 
             .map_err(|e| format!("encode snapshot reply frame: {e}"));
     };
 
-    let sources = collect_snapshot_sources(&db)?;
-
     let message = SnapshotClientMessageRef::SnapshotReply(SnapshotReplyRef {
         snapshot_id,
         ptime_now_ms,
         snapshot: Some(SnapshotRef {
-            sources,
             entities: db.entities.values().collect(),
             scopes: db.scopes.values().collect(),
             edges: db.edges.values().collect(),

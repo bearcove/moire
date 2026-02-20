@@ -13,5 +13,5 @@ facet.workspace = true
 facet-format.workspace = true
 facet-value.workspace = true
 facet-json.workspace = true
-moire-source.workspace = true
+moire-trace-types.workspace = true
 rusqlite = { workspace = true, optional = true }

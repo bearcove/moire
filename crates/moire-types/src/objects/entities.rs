@@ -1,6 +1,6 @@
 use facet::Facet;
 
-use crate::{next_entity_id, EntityId, Json, PTime, SourceId};
+use crate::{next_entity_id, BacktraceId, EntityId, Json, PTime};
 
 // r[impl model.entity.fields]
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
@@ -13,7 +13,7 @@ pub struct Entity {
     pub birth: PTime,
 
     /// Location in source code and crate information.
-    pub source: SourceId,
+    pub source: BacktraceId,
 
     /// Human-facing name for this entity.
     pub name: String,
@@ -24,7 +24,7 @@ pub struct Entity {
 
 impl Entity {
     /// Create a new entity: ID and birth time are generated automatically.
-    pub fn new(source: SourceId, name: impl Into<String>, body: EntityBody) -> Entity {
+    pub fn new(source: BacktraceId, name: impl Into<String>, body: EntityBody) -> Entity {
         Entity {
             id: next_entity_id(),
             birth: PTime::now(),
