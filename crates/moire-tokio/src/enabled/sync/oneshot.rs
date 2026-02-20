@@ -61,8 +61,8 @@ impl<T> OneshotReceiver<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotRx> {
         &self.handle
     }
-    /// Waits for the oneshot message, matching [`tokio::sync::oneshot::Receiver::await`].
-    /// Equivalent to receiving the value in Tokio's oneshot receiver API.
+    /// Waits for the oneshot message. Tokio's [`tokio::sync::oneshot::Receiver`] implements
+    /// [`Future`] directly; this method is the explicit equivalent.
     pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
         let inner = self.inner.take().expect("oneshot receiver consumed");
         let result = instrument_operation_on(&self.handle, inner).await;

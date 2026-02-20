@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::future::Future;
 
-use crate::enabled::task::{IntoTaskFuture, TaskFutureExt};
 use moire_runtime::{
     instrument_future_with_handle, register_current_task_scope, EntityHandle,
     FUTURE_CAUSAL_STACK,
@@ -19,15 +18,15 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    /// Creates an instrumented join set with a caller-specified name.
+    /// Creates an instrumented join set, equivalent to [`tokio::task::JoinSet::new`].
     pub fn new() -> Self {
-                Self {
+        Self {
             inner: tokio::task::JoinSet::new(),
             handle: EntityHandle::new("joinset", FutureEntity {}),
         }
     }
 
-    /// Creates an instrumented join set equivalent to [`tokio::task::JoinSet::new`].
+    /// Creates a named instrumented join set.
     pub fn named(name: impl Into<String>) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(format!("joinset.{name}"), FutureEntity {});
@@ -38,31 +37,24 @@ where
     }
 
     /// Spawns a future into the set, matching [`tokio::task::JoinSet::spawn`].
-    pub fn spawn<TF>(&mut self, task: TF)
-    where
-        TF: IntoTaskFuture<T>,
-    {
-        let joinset_handle = self.handle.clone();
-        let task = task.into_task_future();
-        let name = task
-            .name
-            .unwrap_or_else(|| String::from("joinset.task"));
-        let on = task.on.or(Some(joinset_handle.entity_ref()));
-        let task_handle = EntityHandle::new(name, FutureEntity {});
-        self.inner.spawn(
-            FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
-                let _task_scope = register_current_task_scope("joinset.spawn");
-                instrument_future_with_handle(task_handle, task.future, on, None).await
-            }),
-        );
-    }
-
-    /// Spawns a named future into the set.
-    pub fn spawn_named<F>(&mut self, name: impl Into<String>, future: F)
+    pub fn spawn<F>(&mut self, future: F)
     where
         F: Future<Output = T> + Send + 'static,
     {
-        self.spawn(future.named(name));
+        let joinset_handle = self.handle.clone();
+        let task_handle = EntityHandle::new("joinset.task", FutureEntity {});
+        self.inner.spawn(
+            FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
+                let _task_scope = register_current_task_scope("joinset.spawn");
+                instrument_future_with_handle(
+                    task_handle,
+                    future,
+                    Some(joinset_handle.entity_ref()),
+                    None,
+                )
+                .await
+            }),
+        );
     }
 
     /// Returns whether the set is empty, matching [`tokio::task::JoinSet::is_empty`].

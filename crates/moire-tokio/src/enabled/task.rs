@@ -9,10 +9,11 @@
 //!
 //! | Item | Tokio equivalent |
 //! |---|---|
-//! | [`JoinSet`] | `tokio::task::JoinSet` |
-//! | [`JoinHandle`] | `tokio::task::JoinHandle` |
-//! | [`spawn`] | `tokio::task::spawn` |
-//! | [`spawn_blocking`] | `tokio::task::spawn_blocking` |
+//! | [`JoinSet`] | [`tokio::task::JoinSet`] |
+//! | [`JoinHandle`] | [`tokio::task::JoinHandle`] |
+//! | [`spawn`] | [`tokio::task::spawn`] |
+//! | [`spawn_blocking`] | [`tokio::task::spawn_blocking`] |
+//! | [`FutureExt`] | *(moire extension)* |
 
 pub mod joinset;
 pub mod join_handle;
@@ -24,94 +25,41 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use moire_runtime::{
-    instrument_future_with_handle, register_current_task_scope, AsEntityRef, EntityHandle,
-    EntityRef, FUTURE_CAUSAL_STACK,
+    instrument_future, instrument_future_with_handle, register_current_task_scope, EntityHandle,
+    FUTURE_CAUSAL_STACK,
 };
 use moire_types::FutureEntity;
 
-/// Future wrapper that carries task instrumentation metadata.
-pub struct TaskFuture<F> {
-    pub(crate) future: F,
-    pub(crate) name: Option<String>,
-    pub(crate) on: Option<EntityRef>,
-}
-
-impl<F> TaskFuture<F> {
-    fn new(future: F) -> Self {
-        Self {
-            future,
-            name: None,
-            on: None,
-        }
-    }
-
-    /// Sets the future/task name.
-    pub fn named(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Sets the target entity this future is waiting on.
-    pub fn on(mut self, target: impl AsEntityRef) -> Self {
-        self.on = Some(target.as_entity_ref());
-        self
+/// Extension trait for attaching a diagnostic name to any future.
+///
+/// Calling `.named("my_task")` wraps the future in Moiré's instrumentation so
+/// it appears as a named entity in the runtime graph. Works on any `Future`.
+///
+/// ```rust,no_run
+/// use moire::task::{spawn, FutureExt as _};
+///
+/// spawn(fetch_data().named("fetch_data"));
+/// ```
+pub trait FutureExt: Future + Sized {
+    /// Wraps this future with a diagnostic name visible in the Moiré dashboard.
+    fn named(self, name: impl Into<String>) -> impl Future<Output = Self::Output> {
+        instrument_future(name, self, None, None)
     }
 }
 
-/// Extension trait for adding instrumentation metadata to futures.
-pub trait TaskFutureExt: Future + Sized {
-    /// Sets the future/task name.
-    fn named(self, name: impl Into<String>) -> TaskFuture<Self> {
-        TaskFuture::new(self).named(name)
-    }
-
-    /// Sets the target entity this future is waiting on.
-    fn on(self, target: impl AsEntityRef) -> TaskFuture<Self> {
-        TaskFuture::new(self).on(target)
-    }
-}
-
-impl<F> TaskFutureExt for F where F: Future + Sized {}
-
-pub trait IntoTaskFuture<T> {
-    type Fut: Future<Output = T> + Send + 'static;
-    fn into_task_future(self) -> TaskFuture<Self::Fut>;
-}
-
-impl<T, F> IntoTaskFuture<T> for F
-where
-    F: Future<Output = T> + Send + 'static,
-{
-    type Fut = F;
-
-    fn into_task_future(self) -> TaskFuture<Self::Fut> {
-        TaskFuture::new(self)
-    }
-}
-
-impl<T, F> IntoTaskFuture<T> for TaskFuture<F>
-where
-    F: Future<Output = T> + Send + 'static,
-{
-    type Fut = F;
-
-    fn into_task_future(self) -> TaskFuture<Self::Fut> {
-        self
-    }
-}
+impl<F: Future + Sized> FutureExt for F {}
 
 /// Spawns a task, equivalent to [`tokio::task::spawn`].
-pub fn spawn<T, TF>(task: TF) -> JoinHandle<T>
+pub fn spawn<T, F>(future: F) -> JoinHandle<T>
 where
     T: Send + 'static,
-    TF: IntoTaskFuture<T>,
+    F: Future<Output = T> + Send + 'static,
 {
-    let TaskFuture { future, name, on } = task.into_task_future();
-    let handle = EntityHandle::new(name.unwrap_or_else(|| String::from("task.spawn")), FutureEntity {});
+    let handle = EntityHandle::new("task.spawn", FutureEntity {});
     let future_handle = handle.clone();
     let fut = FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
         let _task_scope = register_current_task_scope("spawn");
-        instrument_future_with_handle(future_handle, future, on, None).await
+        instrument_future_with_handle(future_handle, future, None, None).await
     });
     JoinHandle::new(tokio::spawn(fut), handle)
 }
