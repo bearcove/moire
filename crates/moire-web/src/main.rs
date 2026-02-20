@@ -3470,14 +3470,22 @@ fn resolve_frame_symbolication(
             Ok(Some(frame)) => {
                 if function_name.is_none() {
                     if let Some(function) = frame.function {
-                        match function.raw_name() {
-                            Ok(name) => function_name = Some(name.into_owned()),
-                            Err(e) => {
-                                return unresolved(format!(
-                                    "decode function name for '{}' +0x{:x}: {e}",
-                                    job.module_path, job.rel_pc
-                                ))
+                        match function.demangle() {
+                            Ok(name) => {
+                                function_name = Some(strip_rust_hash_suffix(name.as_ref()).to_owned())
                             }
+                            Err(_) => match function.raw_name() {
+                                Ok(name) => {
+                                    function_name =
+                                        Some(strip_rust_hash_suffix(name.as_ref()).to_owned())
+                                }
+                                Err(e) => {
+                                    return unresolved(format!(
+                                        "decode function name for '{}' +0x{:x}: {e}",
+                                        job.module_path, job.rel_pc
+                                    ))
+                                }
+                            },
                         }
                     }
                 }
@@ -3501,6 +3509,11 @@ fn resolve_frame_symbolication(
                     job.module_path, job.rel_pc
                 ))
             }
+        }
+    }
+    if function_name.is_none() {
+        if let Some(symbol) = loader.find_symbol(lookup_pc) {
+            function_name = Some(strip_rust_hash_suffix(symbol).to_owned());
         }
     }
 
@@ -3555,6 +3568,16 @@ fn resolve_frame_symbolication(
         source_col,
         unresolved_reason: None,
     }
+}
+
+fn strip_rust_hash_suffix(name: &str) -> &str {
+    if let Some(idx) = name.rfind("::h") {
+        let suffix = &name[idx + 3..];
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_hexdigit()) {
+            return &name[..idx];
+        }
+    }
+    name
 }
 
 fn linked_image_base_for_file(path: &FsPath) -> Result<u64, String> {
