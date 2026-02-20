@@ -18,7 +18,10 @@
       "Bash(git commit:*)",
       "mcp__playwright__browser_navigate",
       "mcp__playwright__browser_take_screenshot",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "mcp__tracey__tracey_status",
+      "mcp__tracey__tracey_uncovered",
+      "Bash(git push:*)"
     ]
   }
 }
