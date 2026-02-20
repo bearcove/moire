@@ -275,3 +275,36 @@ pub fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
 pub fn init_dashboard_push_loop(process_name: &str) {
     dashboard::init_dashboard_push_loop(process_name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // r[verify model.backtrace.id-layout]
+    #[test]
+    fn backtrace_id_layout_is_js_safe_and_prefixed() {
+        const BACKTRACE_COUNTER_BITS: u32 = 37;
+        const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
+        let expected_prefix = u64::from(process_prefix_u16());
+
+        let first = next_backtrace_id_raw();
+        let second = next_backtrace_id_raw();
+
+        assert!(first > 0, "backtrace id must be non-zero");
+        assert!(second > first, "backtrace ids must be monotonic per process");
+        assert!(
+            first <= JS_SAFE_MAX && second <= JS_SAFE_MAX,
+            "backtrace ids must stay JS-safe"
+        );
+        assert_eq!(
+            first >> BACKTRACE_COUNTER_BITS,
+            expected_prefix,
+            "upper bits must encode process prefix"
+        );
+        assert_eq!(
+            second >> BACKTRACE_COUNTER_BITS,
+            expected_prefix,
+            "upper bits must encode process prefix"
+        );
+    }
+}

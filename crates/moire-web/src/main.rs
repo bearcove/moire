@@ -4154,3 +4154,36 @@ fn persist_delta_batch_blocking(
         .map_err(|e| format!("commit transaction: {e}"))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // r[verify api.snapshot.frame-id-stable]
+    #[test]
+    fn stable_frame_id_is_deterministic_and_js_safe() {
+        const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
+        let key_a = FrameDedupKey {
+            module_identity: String::from("debug_id:abc"),
+            module_path: String::from("/tmp/a"),
+            rel_pc: 0x1234,
+        };
+        let key_b = FrameDedupKey {
+            module_identity: String::from("debug_id:abc"),
+            module_path: String::from("/tmp/a"),
+            rel_pc: 0x5678,
+        };
+
+        let a1 = stable_frame_id(&key_a).expect("frame id for key_a");
+        let a2 = stable_frame_id(&key_a).expect("frame id for key_a (repeat)");
+        let b = stable_frame_id(&key_b).expect("frame id for key_b");
+
+        assert_eq!(a1, a2, "same frame key must map to same frame_id");
+        assert_ne!(a1, b, "different frame keys should map to different frame_id");
+        assert!(a1 > 0 && b > 0, "frame ids must be non-zero");
+        assert!(
+            a1 <= JS_SAFE_MAX && b <= JS_SAFE_MAX,
+            "frame ids must remain JS-safe"
+        );
+    }
+}

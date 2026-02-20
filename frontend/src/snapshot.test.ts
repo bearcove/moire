@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { SnapshotCutResponse } from "./api/types.generated";
 import type { EdgeDef } from "./snapshot";
-import { collapseEdgesThroughHiddenNodes } from "./snapshot";
+import { buildBacktraceIndex, collapseEdgesThroughHiddenNodes } from "./snapshot";
 
 function edge(id: string, source: string, target: string): EdgeDef {
   return {
@@ -51,5 +52,31 @@ describe("collapseEdgesThroughHiddenNodes", () => {
         kind: "polls",
       }),
     );
+  });
+});
+
+describe("buildBacktraceIndex", () => {
+  // f[verify display.backtrace.catalog]
+  it("resolves frame_ids through catalog and rejects missing frame references", () => {
+    const snapshot: SnapshotCutResponse = {
+      snapshot_id: 1,
+      captured_at_unix_ms: 0,
+      processes: [],
+      timed_out_processes: [],
+      frames: [
+        { frame_id: 11, frame: { unresolved: { module_path: "/bin/app", rel_pc: 16, reason: "symbolication pending" } } },
+      ],
+      backtraces: [{ backtrace_id: 101, frame_ids: [11] }],
+    };
+
+    const index = buildBacktraceIndex(snapshot);
+    expect(index.get(101)?.frame_ids).toEqual([11]);
+    expect(index.get(101)?.frames).toHaveLength(1);
+
+    const broken: SnapshotCutResponse = {
+      ...snapshot,
+      backtraces: [{ backtrace_id: 102, frame_ids: [99] }],
+    };
+    expect(() => buildBacktraceIndex(broken)).toThrow("references missing frame id 99");
   });
 });
