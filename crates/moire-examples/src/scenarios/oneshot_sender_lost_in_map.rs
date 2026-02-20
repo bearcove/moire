@@ -35,7 +35,7 @@ pub async fn run() -> Result<(), String> {
             "inserted sender for request {request_id} under wrong key {storage_key}; receiver now waits"
         );
 
-        rx.recv().await.expect("request unexpectedly completed");
+        rx.await.expect("request unexpectedly completed");
     });
 
     let bus_tx_for_network = response_bus_tx.clone();
