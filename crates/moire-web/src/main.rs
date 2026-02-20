@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{self, Body, Bytes};
@@ -29,7 +29,7 @@ use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Child;
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{mpsc, Mutex, Notify, Semaphore};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
@@ -133,6 +133,8 @@ struct Cli {
 const DB_SCHEMA_VERSION: i64 = 4;
 const DEFAULT_VITE_ADDR: &str = "[::]:9131";
 const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
+const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
+const EAGER_SYMBOLICATION_CONCURRENCY: usize = 1;
 const SYMBOLICATION_UNRESOLVED_SCAFFOLD: &str =
     "symbolication engine not wired: eager scaffold stored unresolved marker";
 const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
@@ -360,6 +362,11 @@ async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse {
     };
 
     let request = ServerMessage::CutRequest(moire_types::CutRequest { cut_id });
+    info!(
+        cut_id = %cut_id_string,
+        requested_connections,
+        "cut requested via API"
+    );
     if let Err(e) = persist_cut_request(state.db_path.clone(), cut_id_string.clone(), now_ns).await
     {
         error!(%e, cut_id = %cut_id_string, "failed to persist cut request");
@@ -398,6 +405,12 @@ async fn api_cut_status(
     };
 
     let pending_conn_ids: Vec<u64> = cut.pending_conn_ids.iter().copied().collect();
+    info!(
+        cut_id = %cut_id,
+        pending_connections = cut.pending_conn_ids.len(),
+        acked_connections = cut.acks.len(),
+        "cut status requested"
+    );
     json_ok(&CutStatusResponse {
         cut_id,
         requested_at_ns: cut.requested_at_ns,
@@ -455,6 +468,7 @@ async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoRespo
 }
 
 async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
+    info!("snapshot requested via API");
     json_ok(&take_snapshot_internal(&state).await)
 }
 
@@ -464,13 +478,19 @@ async fn api_snapshot_current(State(state): State<AppState>) -> impl IntoRespons
         guard.last_snapshot_json.clone()
     };
     match snapshot_json {
-        Some(body) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
-            body,
-        )
-            .into_response(),
-        None => json_error(StatusCode::NOT_FOUND, "no snapshot available"),
+        Some(body) => {
+            info!("snapshot current requested: cache hit");
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+                body,
+            )
+                .into_response()
+        }
+        None => {
+            info!("snapshot current requested: cache miss");
+            json_error(StatusCode::NOT_FOUND, "no snapshot available")
+        }
     }
 }
 
@@ -515,6 +535,11 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             );
         }
     }
+    info!(
+        snapshot_id,
+        requested_connections = txs.len(),
+        "snapshot request fanout started"
+    );
 
     if txs.is_empty() {
         let response = SnapshotCutResponse {
@@ -646,6 +671,12 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         processes,
         timed_out_processes,
     };
+    info!(
+        snapshot_id,
+        process_count = response.processes.len(),
+        timed_out_count = response.timed_out_processes.len(),
+        "snapshot request completed"
+    );
     // r[impl symbolicate.cut-drain]
     wait_for_symbolication_cut_drain(state.db_path.clone(), &response).await;
     remember_snapshot(state, &response).await;
@@ -1662,7 +1693,7 @@ async fn read_messages(
                 }
             }
             ClientMessage::SnapshotReply(reply) => {
-                debug!(
+                info!(
                     conn_id,
                     snapshot_id = reply.snapshot_id,
                     has_snapshot = reply.snapshot.is_some(),
@@ -1705,6 +1736,13 @@ async fn read_messages(
                 if let Some(cut) = guard.cuts.get_mut(&cut_id) {
                     cut.pending_conn_ids.remove(&conn_id);
                     cut.acks.insert(conn_id, ack);
+                    info!(
+                        conn_id,
+                        cut_id = %cut_id,
+                        pending_connections = cut.pending_conn_ids.len(),
+                        acked_connections = cut.acks.len(),
+                        "received cut ack"
+                    );
                 } else {
                     warn!(conn_id, cut_id = %cut_id, "received cut ack for unknown cut");
                 }
@@ -2555,6 +2593,19 @@ async fn persist_backtrace_record(
 
 fn schedule_eager_symbolication(db_path: Arc<PathBuf>, conn_id: u64, backtrace_id: u64) {
     tokio::spawn(async move {
+        let permit = eager_symbolication_semaphore()
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| format!("acquire eager symbolication permit: {e}"));
+        let permit = match permit {
+            Ok(permit) => permit,
+            Err(e) => {
+                error!(conn_id, backtrace_id, error = %e, "eager symbolication scheduling failed");
+                return;
+            }
+        };
+
         let blocking = tokio::task::spawn_blocking(move || {
             eager_symbolicate_backtrace_blocking(&db_path, conn_id, backtrace_id)
         });
@@ -2577,7 +2628,13 @@ fn schedule_eager_symbolication(db_path: Arc<PathBuf>, conn_id: u64, backtrace_i
                 );
             }
         }
+        drop(permit);
     });
+}
+
+fn eager_symbolication_semaphore() -> &'static Arc<Semaphore> {
+    static SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    SEMAPHORE.get_or_init(|| Arc::new(Semaphore::new(EAGER_SYMBOLICATION_CONCURRENCY)))
 }
 
 struct SymbolicationCacheEntry {
@@ -2597,6 +2654,8 @@ fn eager_symbolicate_backtrace_blocking(
     backtrace_id: u64,
 ) -> Result<(), String> {
     let mut conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    conn.busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
+        .map_err(|e| format!("set sqlite busy_timeout: {e}"))?;
     let tx = conn
         .transaction()
         .map_err(|e| format!("start transaction: {e}"))?;
