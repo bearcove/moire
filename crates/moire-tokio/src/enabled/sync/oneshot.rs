@@ -1,11 +1,10 @@
 // r[impl api.oneshot]
-use moire_runtime::capture_backtrace_id;
 
 use moire_runtime::{
-    instrument_operation_on_with_source, record_event_with_source, EntityHandle, WeakEntityHandle,
+    instrument_operation_on, new_event, record_event, EntityHandle, WeakEntityHandle,
 };
 use moire_types::{
-    EdgeKind, EntityBody, Event, EventKind, EventTarget, OneshotRxEntity, OneshotTxEntity,
+    EdgeKind, EntityBody, EventKind, EventTarget, OneshotRxEntity, OneshotTxEntity,
 };
 use tokio::sync::oneshot;
 
@@ -34,28 +33,25 @@ impl<T> OneshotSender<T> {
     /// Sends a single value, equivalent to [`tokio::sync::oneshot::Sender::send`].
     /// Records a one-shot send event and consumption status.
     pub fn send(mut self, value: T) -> Result<(), T> {
-        let source = capture_backtrace_id();
-        let Some(inner) = self.inner.take() else {
+                let Some(inner) = self.inner.take() else {
             return Err(value);
         };
         match inner.send(value) {
             Ok(()) => {
                 let _ = self.handle.mutate(|body| body.sent = true);
-                let event = Event::new_with_source(
+                let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelSent,
-                    source,
+                    EventKind::ChannelSent, 
                 );
-                record_event_with_source(event, source);
+                record_event(event);
                 Ok(())
             }
             Err(value) => {
-                let event = Event::new_with_source(
+                let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelSent,
-                    source,
+                    EventKind::ChannelSent, 
                 );
-                record_event_with_source(event, source);
+                record_event(event);
                 Err(value)
             }
         }
@@ -70,40 +66,35 @@ impl<T> OneshotReceiver<T> {
     /// Waits for the oneshot message, matching [`tokio::sync::oneshot::Receiver::await`].
     /// Equivalent to receiving the value in Tokio's oneshot receiver API.
     pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
-        let source = capture_backtrace_id();
-        let inner = self.inner.take().expect("oneshot receiver consumed");
-        let result = instrument_operation_on_with_source(&self.handle, inner, source).await;
-        let event = Event::new_with_source(
+                let inner = self.inner.take().expect("oneshot receiver consumed");
+        let result = instrument_operation_on(&self.handle, inner).await;
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelReceived,
-            source,
+            EventKind::ChannelReceived, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         result
     }
 }
 
 /// Creates an instrumented oneshot channel, equivalent to [`tokio::sync::oneshot::channel`].
 pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let source = capture_backtrace_id();
-    let name: String = name.into();
+        let name: String = name.into();
     let (tx, rx) = oneshot::channel();
 
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
-        EntityBody::OneshotTx(OneshotTxEntity { sent: false }),
-        source,
+        EntityBody::OneshotTx(OneshotTxEntity { sent: false }), 
     )
     .into_typed::<moire_types::OneshotTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::OneshotRx(OneshotRxEntity {}),
-        source,
+        EntityBody::OneshotRx(OneshotRxEntity {}), 
     )
     .into_typed::<moire_types::OneshotRx>();
 
-    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
         OneshotSender {

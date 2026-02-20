@@ -126,8 +126,14 @@ macro_rules! define_entity_body {
         $crate::impl_sqlite_json!(EntityBody);
 
         $(
-            pub struct $variant;
-            $crate::impl_entity_body_slot!($variant::$variant($value));
+            impl ::core::convert::From<$value> for EntityBody {
+                fn from(value: $value) -> Self {
+                    Self::$variant(value)
+                }
+            }
+
+            $crate::impl_entity_body_slot!($value, $value, $variant, stringify!($variant));
+            pub type $variant = $value;
         )+
     };
 }

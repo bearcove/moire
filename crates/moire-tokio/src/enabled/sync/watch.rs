@@ -1,12 +1,11 @@
 // r[impl api.watch]
-use moire_runtime::capture_backtrace_id;
 
 use moire_runtime::{
-    instrument_operation_on_with_source, record_event_with_source, AsEntityRef, EntityHandle,
+    instrument_operation_on, new_event, record_event, AsEntityRef, EntityHandle,
     EntityRef, WeakEntityHandle,
 };
 use moire_types::{
-    EdgeKind, EntityBody, Event, EventKind, EventTarget, WatchRxEntity, WatchTxEntity,
+    EdgeKind, EntityBody, EventKind, EventTarget, WatchRxEntity, WatchTxEntity,
 };
 use tokio::sync::watch;
 
@@ -55,51 +54,45 @@ impl<T: Clone> WatchSender<T> {
     ///
     /// Updates receiver metadata and records a channel-sent event.
     pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
-        let source = capture_backtrace_id();
-        let result = self.inner.send(value);
+                let result = self.inner.send(value);
         if result.is_ok() {
             let _ = self
                 .handle
                 .mutate(|body| body.last_update_at = Some(moire_types::PTime::now()));
         }
-        let event = Event::new_with_source(
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelSent,
-            source,
+            EventKind::ChannelSent, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         result
     }
     /// Replaces the current value and returns the previous value.
     ///
     /// Mirrors [`tokio::sync::watch::Sender::send_replace`].
     pub fn send_replace(&self, value: T) -> T {
-        let source = capture_backtrace_id();
-        let old = self.inner.send_replace(value);
+                let old = self.inner.send_replace(value);
         let _ = self
             .handle
             .mutate(|body| body.last_update_at = Some(moire_types::PTime::now()));
-        let event = Event::new_with_source(
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelSent,
-            source,
+            EventKind::ChannelSent, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         old
     }
     /// Subscribes a receiver, equivalent to [`tokio::sync::watch::Sender::subscribe`].
     ///
     /// Returns a linked sender/receiver pair with diagnostic metadata.
     pub fn subscribe(&self) -> WatchReceiver<T> {
-        let source = capture_backtrace_id();
-        let handle = EntityHandle::new(
+                let handle = EntityHandle::new(
             "watch:rx.subscribe",
-            EntityBody::WatchRx(WatchRxEntity {}),
-            source,
+            EntityBody::WatchRx(WatchRxEntity {}), 
         )
         .into_typed::<moire_types::WatchRx>();
         self.handle
-            .link_to_handle_with_source(&handle, EdgeKind::PairedWith, source);
+            .link_to_handle(&handle, EdgeKind::PairedWith);
         WatchReceiver {
             inner: self.inner.subscribe(),
             handle,
@@ -117,15 +110,13 @@ impl<T: Clone> WatchReceiver<T> {
     ///
     /// Records notification wait timing for diagnostics.
     pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
-        let source = capture_backtrace_id();
-        let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.changed(), source).await;
-        let event = Event::new_with_source(
+                let result =
+            instrument_operation_on(&self.handle, self.inner.changed()).await;
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelReceived,
-            source,
+            EventKind::ChannelReceived, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         result
     }
 
@@ -153,27 +144,24 @@ impl<T: Clone> WatchReceiver<T> {
 
 /// Creates an instrumented watch channel, equivalent to [`tokio::sync::watch::channel`].
 pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, WatchReceiver<T>) {
-    let source = capture_backtrace_id();
-    let name = name.into();
+        let name = name.into();
     let (tx, rx) = watch::channel(initial);
 
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
         EntityBody::WatchTx(WatchTxEntity {
             last_update_at: None,
-        }),
-        source,
+        }), 
     )
     .into_typed::<moire_types::WatchTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::WatchRx(WatchRxEntity {}),
-        source,
+        EntityBody::WatchRx(WatchRxEntity {}), 
     )
     .into_typed::<moire_types::WatchRx>();
 
-    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
         WatchSender {

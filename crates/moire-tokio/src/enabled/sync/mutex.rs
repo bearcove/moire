@@ -2,7 +2,6 @@
 use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 
-use moire_runtime::capture_backtrace_id;
 use moire_runtime::{
     current_causal_target, AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK,
 };
@@ -37,13 +36,11 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 impl<T> Mutex<T> {
     /// Creates a new instrumented mutex, equivalent to [`parking_lot::Mutex::new`].
     pub fn new(name: &'static str, value: T) -> Self {
-        let source = capture_backtrace_id();
-        let handle = EntityHandle::new(
+                let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
                 kind: LockKind::Mutex,
-            }),
-            source,
+            }), 
         )
         .into_typed::<moire_types::Lock>();
         Self {
@@ -59,8 +56,7 @@ impl<T> Mutex<T> {
     #[doc(hidden)]
     /// Internal helper for lock acquisition with ownership edge tracking.
     pub fn _lock(&self) -> MutexGuard<'_, T> {
-        let source = capture_backtrace_id();
-        let owner_ref = current_causal_target();
+                let owner_ref = current_causal_target();
 
         if let Some(inner) = self.inner.try_lock() {
             return self.wrap_guard(inner, owner_ref.as_ref(), None);
@@ -68,7 +64,7 @@ impl<T> Mutex<T> {
 
         let waiting_edge = owner_ref.as_ref().map(|owner| {
             self.handle
-                .link_to_owned_with_source(owner, EdgeKind::WaitingOn, source)
+                .link_to_owned(owner, EdgeKind::WaitingOn)
         });
         let inner = self.inner.lock();
         drop(waiting_edge);
@@ -95,14 +91,13 @@ impl<T> Mutex<T> {
         owner_ref: Option<&EntityRef>,
         pre_edge_kind: Option<EdgeKind>,
     ) -> MutexGuard<'a, T> {
-        let source = capture_backtrace_id();
-        if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
-            self.handle.link_to_with_source(owner, kind, source);
+                if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
+            self.handle.link_to(owner, kind);
         }
 
         let holds_edge = owner_ref.map(|owner| {
             self.handle
-                .link_to_owned_with_source(owner, EdgeKind::Holds, source)
+                .link_to_owned(owner, EdgeKind::Holds)
         });
         let lock_id = self.handle.id().clone();
 

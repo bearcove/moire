@@ -1,12 +1,11 @@
 // r[impl api.mpsc]
-use moire_runtime::capture_backtrace_id;
 
 use moire_runtime::{
-    instrument_operation_on_with_source, record_event_with_source, AsEntityRef, EntityHandle,
+    instrument_operation_on, new_event, record_event, AsEntityRef, EntityHandle,
     EntityRef, WeakEntityHandle,
 };
 use moire_types::{
-    EdgeKind, EntityBody, Event, EventKind, EventTarget, MpscRxEntity, MpscTxEntity,
+    EdgeKind, EntityBody, EventKind, EventTarget, MpscRxEntity, MpscTxEntity,
 };
 use tokio::sync::mpsc;
 
@@ -86,20 +85,18 @@ impl<T> Sender<T> {
 
     /// Sends a value and awaits slot availability, matching [`tokio::sync::mpsc::Sender::send`].
     pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        let source = capture_backtrace_id();
-        let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.send(value), source).await;
+                let result =
+            instrument_operation_on(&self.handle, self.inner.send(value)).await;
         if result.is_ok() {
             let _ = self
                 .handle
                 .mutate(|body| body.queue_len = body.queue_len.saturating_add(1));
         }
-        let event = Event::new_with_source(
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelSent,
-            source,
+            EventKind::ChannelSent, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         result
     }
 }
@@ -111,20 +108,18 @@ impl<T> Receiver<T> {
     }
     /// Receives the next message, matching [`tokio::sync::mpsc::Receiver::recv`].
     pub async fn recv(&mut self) -> Option<T> {
-        let source = capture_backtrace_id();
-        let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
+                let result =
+            instrument_operation_on(&self.handle, self.inner.recv()).await;
         if result.is_some() {
             let _ = self
                 .tx_handle
                 .mutate(|body| body.queue_len = body.queue_len.saturating_sub(1));
         }
-        let event = Event::new_with_source(
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelReceived,
-            source,
+            EventKind::ChannelReceived, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         result
     }
 
@@ -141,27 +136,24 @@ impl<T> UnboundedSender<T> {
     }
     /// Sends a value on an unbounded channel, matching [`tokio::sync::mpsc::UnboundedSender::send`].
     pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        let source = capture_backtrace_id();
-        match self.inner.send(value) {
+                match self.inner.send(value) {
             Ok(()) => {
                 let _ = self
                     .handle
                     .mutate(|body| body.queue_len = body.queue_len.saturating_add(1));
-                let event = Event::new_with_source(
+                let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelSent,
-                    source,
+                    EventKind::ChannelSent, 
                 );
-                record_event_with_source(event, source);
+                record_event(event);
                 Ok(())
             }
             Err(err) => {
-                let event = Event::new_with_source(
+                let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelSent,
-                    source,
+                    EventKind::ChannelSent, 
                 );
-                record_event_with_source(event, source);
+                record_event(event);
                 Err(err)
             }
         }
@@ -180,20 +172,18 @@ impl<T> UnboundedReceiver<T> {
     }
     /// Receives the next unbounded message, matching [`tokio::sync::mpsc::UnboundedReceiver::recv`].
     pub async fn recv(&mut self) -> Option<T> {
-        let source = capture_backtrace_id();
-        let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
+                let result =
+            instrument_operation_on(&self.handle, self.inner.recv()).await;
         if result.is_some() {
             let _ = self
                 .tx_handle
                 .mutate(|body| body.queue_len = body.queue_len.saturating_sub(1));
         }
-        let event = Event::new_with_source(
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelReceived,
-            source,
+            EventKind::ChannelReceived, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         result
     }
 
@@ -205,8 +195,7 @@ impl<T> UnboundedReceiver<T> {
 
 /// Creates a bounded channel, equivalent to [`tokio::sync::mpsc::channel`].
 pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
-    let source = capture_backtrace_id();
-    let name = name.into();
+        let name = name.into();
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
@@ -215,19 +204,17 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
         EntityBody::MpscTx(MpscTxEntity {
             queue_len: 0,
             capacity: Some(capacity_u32),
-        }),
-        source,
+        }), 
     )
     .into_typed::<moire_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::MpscRx(MpscRxEntity {}),
-        source,
+        EntityBody::MpscRx(MpscRxEntity {}), 
     )
     .into_typed::<moire_types::MpscRx>();
 
-    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
         Sender {
@@ -244,8 +231,7 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
 
 /// Creates an unbounded channel, equivalent to [`tokio::sync::mpsc::unbounded_channel`].
 pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    let source = capture_backtrace_id();
-    let name = name.into();
+        let name = name.into();
     let (tx, rx) = mpsc::unbounded_channel();
 
     let tx_handle = EntityHandle::new(
@@ -253,19 +239,17 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
         EntityBody::MpscTx(MpscTxEntity {
             queue_len: 0,
             capacity: None,
-        }),
-        source,
+        }), 
     )
     .into_typed::<moire_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::MpscRx(MpscRxEntity {}),
-        source,
+        EntityBody::MpscRx(MpscRxEntity {}), 
     )
     .into_typed::<moire_types::MpscRx>();
 
-    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
         UnboundedSender {

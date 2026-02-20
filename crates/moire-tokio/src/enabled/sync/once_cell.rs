@@ -2,8 +2,7 @@
 use moire_types::{EntityBody, OnceCellEntity, OnceCellState};
 use std::future::Future;
 
-use moire_runtime::capture_backtrace_id;
-use moire_runtime::{instrument_operation_on_with_source, EntityHandle};
+use moire_runtime::{instrument_operation_on, EntityHandle};
 
 /// Instrumented version of [`tokio::sync::OnceCell`].
 pub struct OnceCell<T> {
@@ -14,14 +13,12 @@ pub struct OnceCell<T> {
 impl<T> OnceCell<T> {
     /// Creates a new instrumented once-cell, matching [`tokio::sync::OnceCell::new`].
     pub fn new(name: impl Into<String>) -> Self {
-        let source = capture_backtrace_id();
-        let handle = EntityHandle::new(
+                let handle = EntityHandle::new(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {
                 waiter_count: 0,
                 state: OnceCellState::Empty,
-            }),
-            source,
+            }), 
         )
         .into_typed::<moire_types::OnceCell>();
         Self {
@@ -46,14 +43,13 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-        let source = capture_backtrace_id();
-        let _ = self.handle.mutate(|body| {
+                let _ = self.handle.mutate(|body| {
             body.waiter_count = body.waiter_count.saturating_add(1);
             body.state = OnceCellState::Initializing;
         });
 
         let result =
-            instrument_operation_on_with_source(&self.handle, self.inner.get_or_init(f), source)
+            instrument_operation_on(&self.handle, self.inner.get_or_init(f))
                 .await;
 
         let initialized = self.inner.initialized();
@@ -76,16 +72,14 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-        let source = capture_backtrace_id();
-        let _ = self.handle.mutate(|body| {
+                let _ = self.handle.mutate(|body| {
             body.waiter_count = body.waiter_count.saturating_add(1);
             body.state = OnceCellState::Initializing;
         });
 
-        let result = instrument_operation_on_with_source(
+        let result = instrument_operation_on(
             &self.handle,
-            self.inner.get_or_try_init(f),
-            source,
+            self.inner.get_or_try_init(f), 
         )
         .await;
 

@@ -58,10 +58,10 @@ crate::define_entity_body! {
         FileOp(FileOpEntity),
 
         // Network boundaries
-        NetConnect(NetEntity),
-        NetAccept(NetEntity),
-        NetRead(NetEntity),
-        NetWrite(NetEntity),
+        NetConnect(NetConnectEntity),
+        NetAccept(NetAcceptEntity),
+        NetRead(NetReadEntity),
+        NetWrite(NetWriteEntity),
 
         // RPC lifecycle
         Request(RequestEntity),
@@ -188,7 +188,25 @@ pub enum FileOpKind {
 }
 
 #[derive(Facet)]
-pub struct NetEntity {
+pub struct NetConnectEntity {
+    /// Endpoint address string (for example `127.0.0.1:8080`).
+    pub addr: String,
+}
+
+#[derive(Facet)]
+pub struct NetAcceptEntity {
+    /// Endpoint address string (for example `127.0.0.1:8080`).
+    pub addr: String,
+}
+
+#[derive(Facet)]
+pub struct NetReadEntity {
+    /// Endpoint address string (for example `127.0.0.1:8080`).
+    pub addr: String,
+}
+
+#[derive(Facet)]
+pub struct NetWriteEntity {
     /// Endpoint address string (for example `127.0.0.1:8080`).
     pub addr: String,
 }

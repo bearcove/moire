@@ -3,11 +3,11 @@ use ctor::ctor;
 use moire_trace_capture::{capture_current, validate_frame_pointers_or_panic, CaptureOptions};
 use moire_trace_types::BacktraceId;
 use moire_types::{
-    EntityBody, EntityId, Event, FutureEntity, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
+    EntityBody, EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId,
+    TaskScopeBody,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::future::Future;
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 pub(crate) const MAX_EVENTS: usize = 16_384;
@@ -44,24 +44,18 @@ static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceR
 #[ctor]
 fn init_diagnostics_runtime() {
     validate_frame_pointers_or_panic();
-    init_runtime_from_macro(capture_backtrace_id());
+    init_runtime_from_macro();
 }
 
-pub fn init_runtime_from_macro(backtrace: BacktraceId) {
+pub fn init_runtime_from_macro() {
     let process_name = std::env::current_exe().unwrap().display().to_string();
     PROCESS_SCOPE.get_or_init(|| {
-        ScopeHandle::new(
-            process_name.clone(),
-            ScopeBody::Process(ProcessScopeBody {
-                pid: std::process::id(),
-            }),
-            backtrace,
-        )
+        ScopeHandle::new(process_name.clone(), ScopeBody::Process(ProcessScopeBody { pid: std::process::id() }))
     });
     dashboard::init_dashboard_push_loop(&process_name);
 }
 
-pub fn capture_backtrace_id() -> BacktraceId {
+pub(crate) fn capture_backtrace_id() -> BacktraceId {
     let raw = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
     let backtrace_id = BacktraceId::new(raw)
         .expect("backtrace id invariant violated: generated id must be non-zero");
@@ -91,7 +85,7 @@ fn backtrace_records() -> &'static StdMutex<BTreeMap<u64, moire_wire::BacktraceR
 }
 
 // r[impl wire.backtrace-record]
-pub fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
+pub(crate) fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
     let Ok(mut records) = backtrace_records().lock() else {
         panic!("backtrace record mutex poisoned; cannot continue");
     };
@@ -107,7 +101,7 @@ pub fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
     }
 }
 
-pub fn backtrace_records_after(last_sent_backtrace_id: u64) -> Vec<moire_wire::BacktraceRecord> {
+pub(crate) fn backtrace_records_after(last_sent_backtrace_id: u64) -> Vec<moire_wire::BacktraceRecord> {
     let Ok(records) = backtrace_records().lock() else {
         panic!("backtrace record mutex poisoned; cannot continue");
     };
@@ -142,15 +136,11 @@ impl Drop for TaskScopeRegistration {
 
 pub fn register_current_task_scope(
     task_name: &str,
-    source: BacktraceId,
 ) -> Option<TaskScopeRegistration> {
     let task_key = current_tokio_task_key()?;
     let scope = ScopeHandle::new(
         format!("task.{task_name}#{task_key}"),
-        ScopeBody::Task(TaskScopeBody {
-            task_key: task_key.clone(),
-        }),
-        source,
+        ScopeBody::Task(TaskScopeBody { task_key: task_key.clone() }),
     );
     if let Ok(mut db) = db::runtime_db().lock() {
         db.register_task_scope_id(&task_key, scope.id());
@@ -158,8 +148,11 @@ pub fn register_current_task_scope(
     Some(TaskScopeRegistration { task_key, scope })
 }
 
-pub fn record_event_with_source(mut event: Event, source: BacktraceId) {
-    event.source = source;
+pub fn new_event(target: EventTarget, kind: EventKind) -> Event {
+    Event::new_with_source(target, kind, capture_backtrace_id())
+}
+
+pub fn record_event(event: Event) {
     if let Ok(mut db) = db::runtime_db().lock() {
         db.record_event(event);
     }

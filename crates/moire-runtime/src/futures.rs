@@ -17,13 +17,13 @@ pub struct OperationFuture<F> {
 }
 
 impl<F> OperationFuture<F> {
-    fn new(inner: F, resource_id: EntityId, source: BacktraceId) -> Self {
+    fn new(inner: F, resource_id: EntityId) -> Self {
         Self {
             inner,
             actor_id: current_causal_target().map(|target| target.id().clone()),
             resource_id,
             current_edge: None,
-            source,
+            source: super::capture_backtrace_id(),
         }
     }
 
@@ -78,15 +78,11 @@ impl<F> Drop for OperationFuture<F> {
     }
 }
 
-pub fn instrument_operation_on_with_source<F, S>(
-    on: &EntityHandle<S>,
-    fut: F,
-    source: BacktraceId,
-) -> OperationFuture<F::IntoFuture>
+pub fn instrument_operation_on<F, S>(on: &EntityHandle<S>, fut: F) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    OperationFuture::new(fut.into_future(), EntityId::new(on.id().as_str()), source)
+    OperationFuture::new(fut.into_future(), EntityId::new(on.id().as_str()))
 }
 
 pub struct InstrumentedFuture<F> {
@@ -120,12 +116,7 @@ impl FutureEdgeRelation {
 }
 
 impl<F> InstrumentedFuture<F> {
-    fn new(
-        inner: F,
-        future_handle: EntityHandle,
-        target: Option<EntityRef>,
-        source: BacktraceId,
-    ) -> Self {
+    fn new(inner: F, future_handle: EntityHandle, target: Option<EntityRef>) -> Self {
         let awaited_by = current_causal_target().and_then(|parent| {
             if parent.id().as_str() == future_handle.id().as_str() {
                 None
@@ -141,7 +132,7 @@ impl<F> InstrumentedFuture<F> {
         Self {
             inner,
             future_handle,
-            source,
+            source: super::capture_backtrace_id(),
             awaited_by,
             waits_on,
         }
@@ -256,13 +247,12 @@ impl<F> Drop for InstrumentedFuture<F> {
 pub fn instrument_future<F>(
     name: impl Into<String>,
     fut: F,
-    source: BacktraceId,
     on: Option<EntityRef>,
     _meta: Option<facet_value::Value>,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    let handle = EntityHandle::new_with_source(name, EntityBody::Future(FutureEntity {}), source);
-    InstrumentedFuture::new(fut.into_future(), handle, on, source)
+    let handle = EntityHandle::new(name, EntityBody::Future(FutureEntity {}));
+    InstrumentedFuture::new(fut.into_future(), handle, on)
 }

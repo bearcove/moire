@@ -5,21 +5,17 @@ use std::time::Duration;
 use moire_types::EntityBody;
 use moire_runtime::{instrument_future, EntityHandle};
 
-use moire_runtime::capture_backtrace_id;
 
 /// Instrumented equivalent of [`tokio::time::sleep`].
 pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
-    let source = capture_backtrace_id();
-    let handle = EntityHandle::new(
+        let handle = EntityHandle::new(
         "time.sleep",
-        EntityBody::Future(moire_types::FutureEntity {}),
-        source,
+        EntityBody::Future(moire_types::FutureEntity {}), 
     );
 
     instrument_future(
         "time.sleep",
-        tokio::time::sleep(duration),
-        source,
+        tokio::time::sleep(duration), 
         Some(handle.entity_ref()),
         None,
     )
@@ -34,24 +30,20 @@ pub struct Interval {
 impl Interval {
     /// Creates an instrumented interval, equivalent to [`tokio::time::Interval::new`].
     pub fn new(period: Duration) -> Self {
-        let source = capture_backtrace_id();
-        Self {
+                Self {
             inner: tokio::time::interval(period),
             handle: EntityHandle::new(
                 "time.interval",
-                EntityBody::Future(moire_types::FutureEntity {}),
-                source,
+                EntityBody::Future(moire_types::FutureEntity {}), 
             ),
         }
     }
 
     /// Waits for the next tick, equivalent to [`tokio::time::Interval::tick`].
     pub fn tick(&mut self) -> impl Future<Output = tokio::time::Instant> + '_ {
-        let source = capture_backtrace_id();
-        instrument_future(
+                instrument_future(
             "time.interval.tick",
-            self.inner.tick(),
-            source,
+            self.inner.tick(), 
             Some(self.handle.entity_ref()),
             None,
         )

@@ -1,27 +1,20 @@
 // r[impl api.notify]
-use moire_types::{EntityBody, NotifyEntity};
+use moire_types::NotifyEntity;
 use std::sync::Arc;
 
-use moire_runtime::capture_backtrace_id;
-use moire_runtime::{instrument_operation_on_with_source, EntityHandle};
+use moire_runtime::{instrument_operation_on, EntityHandle};
 
 /// Instrumented version of [`tokio::sync::Notify`].
 #[derive(Clone)]
 pub struct Notify {
     inner: Arc<tokio::sync::Notify>,
-    handle: EntityHandle<moire_types::Notify>,
+    handle: EntityHandle<NotifyEntity>,
 }
 
 impl Notify {
     /// Creates a new instrumented notify, matching [`tokio::sync::Notify::new`].
     pub fn new(name: impl Into<String>) -> Self {
-        let source = capture_backtrace_id();
-        let handle = EntityHandle::new(
-            name.into(),
-            EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
-            source,
-        )
-        .into_typed::<moire_types::Notify>();
+        let handle = EntityHandle::new(name, NotifyEntity { waiter_count: 0 });
         Self {
             inner: Arc::new(tokio::sync::Notify::new()),
             handle,
@@ -29,12 +22,11 @@ impl Notify {
     }
     /// Waits for a notification, matching [`tokio::sync::Notify::notified`].
     pub async fn notified(&self) {
-        let source = capture_backtrace_id();
-        let _ = self
+                let _ = self
             .handle
             .mutate(|body| body.waiter_count = body.waiter_count.saturating_add(1));
 
-        instrument_operation_on_with_source(&self.handle, self.inner.notified(), source).await;
+        instrument_operation_on(&self.handle, self.inner.notified()).await;
 
         let _ = self
             .handle

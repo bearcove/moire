@@ -1,11 +1,10 @@
 // r[impl api.broadcast]
-use moire_runtime::capture_backtrace_id;
 
 use moire_runtime::{
-    record_event_with_source, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
+    new_event, record_event, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
 };
 use moire_types::{
-    BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EntityBody, Event, EventKind, EventTarget,
+    BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EntityBody, EventKind, EventTarget,
 };
 use tokio::sync::broadcast;
 
@@ -52,15 +51,13 @@ impl<T: Clone> BroadcastSender<T> {
     }
     /// Subscribes a receiver, equivalent to [`tokio::sync::broadcast::Sender::subscribe`].
     pub fn subscribe(&self) -> BroadcastReceiver<T> {
-        let source = capture_backtrace_id();
-        let handle = EntityHandle::new(
+                let handle = EntityHandle::new(
             "broadcast:rx.subscribe",
-            EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-            source,
+            EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }), 
         )
         .into_typed::<moire_types::BroadcastRx>();
         self.handle
-            .link_to_handle_with_source(&handle, EdgeKind::PairedWith, source);
+            .link_to_handle(&handle, EdgeKind::PairedWith);
         BroadcastReceiver {
             inner: self.inner.subscribe(),
             handle,
@@ -69,14 +66,12 @@ impl<T: Clone> BroadcastSender<T> {
     }
     /// Sends a value through the channel, mirroring [`tokio::sync::broadcast::Sender::send`].
     pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
-        let source = capture_backtrace_id();
-        let result = self.inner.send(value);
-        let event = Event::new_with_source(
+                let result = self.inner.send(value);
+        let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelSent,
-            source,
+            EventKind::ChannelSent, 
         );
-        record_event_with_source(event, source);
+        record_event(event);
         result
     }
 }
@@ -88,17 +83,15 @@ impl<T: Clone> BroadcastReceiver<T> {
     }
     /// Receives the next broadcast value, equivalent to [`tokio::sync::broadcast::Receiver::recv`].
     pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
-        let source = capture_backtrace_id();
-        match self.inner.recv().await {
+                match self.inner.recv().await {
             Ok(value) => {
                 let lag = self.inner.len().min(u32::MAX as usize) as u32;
                 let _ = self.handle.mutate(|body| body.lag = lag);
-                let event = Event::new_with_source(
+                let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelReceived,
-                    source,
+                    EventKind::ChannelReceived, 
                 );
-                record_event_with_source(event, source);
+                record_event(event);
                 Ok(value)
             }
             Err(err) => {
@@ -106,12 +99,11 @@ impl<T: Clone> BroadcastReceiver<T> {
                     let lag = n.min(u32::MAX as u64) as u32;
                     let _ = self.handle.mutate(|body| body.lag = lag);
                 }
-                let event = Event::new_with_source(
+                let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelReceived,
-                    source,
+                    EventKind::ChannelReceived, 
                 );
-                record_event_with_source(event, source);
+                record_event(event);
                 Err(err)
             }
         }
@@ -123,8 +115,7 @@ pub fn broadcast<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    let source = capture_backtrace_id();
-    let name = name.into();
+        let name = name.into();
     let (tx, rx) = broadcast::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
@@ -132,19 +123,17 @@ pub fn broadcast<T: Clone>(
         format!("{name}:tx"),
         EntityBody::BroadcastTx(BroadcastTxEntity {
             capacity: capacity_u32,
-        }),
-        source,
+        }), 
     )
     .into_typed::<moire_types::BroadcastTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-        source,
+        EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }), 
     )
     .into_typed::<moire_types::BroadcastRx>();
 
-    tx_handle.link_to_handle_with_source(&rx_handle, EdgeKind::PairedWith, source);
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
         BroadcastSender {

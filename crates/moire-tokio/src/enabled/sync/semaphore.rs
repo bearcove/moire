@@ -5,9 +5,8 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use moire_runtime::capture_backtrace_id;
 use moire_runtime::{
-    current_causal_target, instrument_operation_on_with_source, AsEntityRef, EdgeHandle,
+    current_causal_target, instrument_operation_on, AsEntityRef, EdgeHandle,
     EntityHandle, EntityRef, WeakEntityHandle,
 };
 
@@ -48,15 +47,13 @@ pub struct OwnedSemaphorePermit {
 impl Semaphore {
     /// Creates a new semaphore, matching [`tokio::sync::Semaphore::new`].
     pub fn new(name: impl Into<String>, permits: usize) -> Self {
-        let source = capture_backtrace_id();
-        let max_permits = permits.min(u32::MAX as usize) as u32;
+                let max_permits = permits.min(u32::MAX as usize) as u32;
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::Semaphore(SemaphoreEntity {
                 max_permits,
                 handed_out_permits: 0,
-            }),
-            source,
+            }), 
         )
         .into_typed::<moire_types::Semaphore>();
         Self {
@@ -94,10 +91,9 @@ impl Semaphore {
     }
     /// Acquires a permit asynchronously, matching [`tokio::sync::Semaphore::acquire`].
     pub async fn acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        let source = capture_backtrace_id();
-        let holder_ref = current_causal_target();
+                let holder_ref = current_causal_target();
         let permit =
-            instrument_operation_on_with_source(&self.handle, self.inner.acquire(), source).await?;
+            instrument_operation_on(&self.handle, self.inner.acquire()).await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
             self.note_holder_acquired(holder_ref);
         }
@@ -116,10 +112,9 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        let source = capture_backtrace_id();
-        let holder_ref = current_causal_target();
+                let holder_ref = current_causal_target();
         let permit =
-            instrument_operation_on_with_source(&self.handle, self.inner.acquire_many(n), source)
+            instrument_operation_on(&self.handle, self.inner.acquire_many(n))
                 .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
             self.note_holder_acquired(holder_ref);
@@ -136,12 +131,10 @@ impl Semaphore {
     }
     /// Acquires an owned permit asynchronously, matching [`tokio::sync::Semaphore::acquire_owned`].
     pub async fn acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        let source = capture_backtrace_id();
-        let holder_ref = current_causal_target();
-        let permit = instrument_operation_on_with_source(
+                let holder_ref = current_causal_target();
+        let permit = instrument_operation_on(
             &self.handle,
-            Arc::clone(&self.inner).acquire_owned(),
-            source,
+            Arc::clone(&self.inner).acquire_owned(), 
         )
         .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
@@ -162,12 +155,10 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        let source = capture_backtrace_id();
-        let holder_ref = current_causal_target();
-        let permit = instrument_operation_on_with_source(
+                let holder_ref = current_causal_target();
+        let permit = instrument_operation_on(
             &self.handle,
-            Arc::clone(&self.inner).acquire_many_owned(n),
-            source,
+            Arc::clone(&self.inner).acquire_many_owned(n), 
         )
         .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
@@ -260,15 +251,14 @@ impl Semaphore {
     }
 
     fn note_holder_acquired(&self, holder_ref: &EntityRef) {
-        let source = capture_backtrace_id();
-        if let Ok(mut holder_counts) = self.holder_counts.lock() {
+                if let Ok(mut holder_counts) = self.holder_counts.lock() {
             if let Some(entry) = holder_counts.get_mut(holder_ref) {
                 entry.count = entry.count.saturating_add(1);
                 return;
             }
             let edge = self
                 .handle
-                .link_to_owned_with_source(holder_ref, EdgeKind::Holds, source);
+                .link_to_owned(holder_ref, EdgeKind::Holds);
             holder_counts.insert(
                 holder_ref.clone(),
                 HolderEdge {

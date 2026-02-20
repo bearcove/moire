@@ -1,4 +1,3 @@
-use moire_trace_types::BacktraceId;
 use moire_types::{
     EdgeKind, Entity, EntityBody, EntityBodySlot, EntityId, Scope, ScopeBody, ScopeId,
 };
@@ -64,8 +63,8 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<String>, body: ScopeBody, backtrace: BacktraceId) -> Self {
-        let scope = Scope::new(backtrace, name, body);
+    pub fn new(name: impl Into<String>, body: ScopeBody) -> Self {
+        let scope = Scope::new(super::capture_backtrace_id(), name, body);
         let id = ScopeId::new(scope.id.as_str());
 
         if let Ok(mut db) = runtime_db().lock() {
@@ -106,6 +105,31 @@ pub struct EntityHandle<S = ()> {
     _slot: PhantomData<S>,
 }
 
+pub trait EntityHandleBody {
+    type Slot;
+
+    fn into_entity_body(self) -> EntityBody;
+}
+
+impl EntityHandleBody for EntityBody {
+    type Slot = ();
+
+    fn into_entity_body(self) -> EntityBody {
+        self
+    }
+}
+
+impl<T> EntityHandleBody for T
+where
+    T: EntityBodySlot<Value = T> + Into<EntityBody>,
+{
+    type Slot = T;
+
+    fn into_entity_body(self) -> EntityBody {
+        self.into()
+    }
+}
+
 impl<S> Clone for EntityHandle<S> {
     fn clone(&self) -> Self {
         Self {
@@ -116,13 +140,16 @@ impl<S> Clone for EntityHandle<S> {
 }
 
 impl EntityHandle<()> {
-    pub fn new(name: impl Into<String>, body: EntityBody, source: BacktraceId) -> Self {
-        Self::new_with_source(name, body, source)
-    }
-
-    pub fn new_with_source(name: impl Into<String>, body: EntityBody, source: BacktraceId) -> Self {
-        let entity = Entity::new(source, name, body);
-        Self::from_entity(entity)
+    pub fn new<B>(name: impl Into<String>, body: B) -> EntityHandle<B::Slot>
+    where
+        B: EntityHandleBody,
+    {
+        let entity = Entity::new(super::capture_backtrace_id(), name, body.into_entity_body());
+        let untyped = Self::from_entity(entity);
+        EntityHandle {
+            inner: untyped.inner,
+            _slot: PhantomData,
+        }
     }
 
     pub fn from_entity(entity: Entity) -> Self {
@@ -162,19 +189,14 @@ impl<S> EntityHandle<S> {
         }
     }
 
-    pub fn link_to_with_source(&self, target: &EntityRef, kind: EdgeKind, source: BacktraceId) {
+    pub fn link_to(&self, target: &EntityRef, kind: EdgeKind) {
         if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge_with_source(self.id(), target.id(), kind, source);
+            db.upsert_edge_with_source(self.id(), target.id(), kind, super::capture_backtrace_id());
         }
     }
 
-    pub fn link_to_handle_with_source<T>(
-        &self,
-        target: &EntityHandle<T>,
-        kind: EdgeKind,
-        source: BacktraceId,
-    ) {
-        self.link_to_with_source(&target.entity_ref(), kind, source);
+    pub fn link_to_handle<T>(&self, target: &EntityHandle<T>, kind: EdgeKind) {
+        self.link_to(&target.entity_ref(), kind);
     }
 }
 
@@ -279,16 +301,11 @@ impl Drop for EdgeHandle {
 }
 
 impl<S> EntityHandle<S> {
-    pub fn link_to_owned_with_source(
-        &self,
-        target: &EntityRef,
-        kind: EdgeKind,
-        source: BacktraceId,
-    ) -> EdgeHandle {
+    pub fn link_to_owned(&self, target: &EntityRef, kind: EdgeKind) -> EdgeHandle {
         let src = self.id().clone();
         let dst = target.id().clone();
         if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge_with_source(&src, &dst, kind, source);
+            db.upsert_edge_with_source(&src, &dst, kind, super::capture_backtrace_id());
         }
         EdgeHandle { src, dst, kind }
     }
