@@ -33,6 +33,9 @@ function EntityDetailsSection({ entity }: { entity: EntityDef }) {
 
   return (
     <>
+      <KeyValueRow label="Backtrace ID">
+        <span className="inspector-mono">{entity.backtraceId}</span>
+      </KeyValueRow>
       <KeyValueRow label="Source">
         <Source source={`${entity.source.path}:${entity.source.line}`} />
       </KeyValueRow>

@@ -11,7 +11,7 @@
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
-    width: min(560px, calc(100vw - 48px));
+    width: min(760px, calc(100vw - 48px));
     max-height: 80vh;
     display: flex;
     flex-direction: column;
@@ -41,6 +41,11 @@
 .modal-empty {
     padding: 32px;
     text-align: center;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+}
+
+.modal-subtle {
     color: var(--text-muted);
     font-size: var(--font-size-sm);
 }

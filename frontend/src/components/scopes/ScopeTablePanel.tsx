@@ -60,6 +60,7 @@ export function ScopeTablePanel({
         s.scopeName.toLowerCase().includes(q) ||
         s.processName.toLowerCase().includes(q) ||
         s.scopeId.toLowerCase().includes(q) ||
+        String(s.backtraceId).includes(q) ||
         (s.krate?.toLowerCase().includes(q) ?? false) ||
         `${s.source.path}:${s.source.line}`.toLowerCase().includes(q)
       );

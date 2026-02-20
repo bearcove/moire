@@ -25,6 +25,7 @@ export type EntityDef = {
   name: string;
   kind: string;
   body: EntityBody;
+  backtraceId: number;
   source: SnapshotSource;
   krate?: string;
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
@@ -67,6 +68,7 @@ export type ScopeDef = {
   scopeName: string;
   /** Canonical scope kind: "process" | "thread" | "task" | "connection" | … */
   scopeKind: string;
+  backtraceId: number;
   source: SnapshotSource;
   krate?: string;
   /** Process-relative birth time in ms. */
@@ -77,6 +79,34 @@ export type ScopeDef = {
   memberEntityIds: string[];
 };
 
+function resolveSourceStrict(
+  sourcesMap: Map<number, SnapshotSource>,
+  sourceId: number,
+  context: string,
+  processId: number,
+): SnapshotSource {
+  const source = sourcesMap.get(sourceId);
+  if (!source) throw new Error(`[snapshot] unknown source id ${sourceId} in process ${processId}`);
+  if (typeof source.path !== "string" || source.path.length === 0) {
+    throw new Error(`[snapshot] ${context} has invalid source.path in process ${processId}`);
+  }
+  if (!Number.isInteger(source.line) || source.line <= 0) {
+    throw new Error(`[snapshot] ${context} has invalid source.line in process ${processId}`);
+  }
+  if (typeof source.krate !== "string" || source.krate.length === 0) {
+    throw new Error(`[snapshot] ${context} has invalid source.krate in process ${processId}`);
+  }
+  return source;
+}
+
+function requireBacktraceId(owner: unknown, context: string, processId: number): number {
+  const value = (owner as { backtrace_id?: unknown }).backtrace_id;
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`[snapshot] ${context} missing/invalid backtrace_id in process ${processId}`);
+  }
+  return value;
+}
+
 export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
   const result: ScopeDef[] = [];
   for (const proc of snapshot.processes) {
@@ -84,11 +114,6 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
     const processIdStr = String(process_id);
 
     const sourcesMap = new Map(proc.snapshot.sources.map((s) => [s.id, s]));
-    const resolveSource = (id: number): SnapshotSource => {
-      const s = sourcesMap.get(id);
-      if (!s) throw new Error(`[snapshot] unknown source id ${id} in process ${process_id}`);
-      return s;
-    };
 
     const membersByScope = new Map<string, string[]>();
     for (const link of scope_entity_links ?? []) {
@@ -103,7 +128,13 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
 
     for (const scope of proc.snapshot.scopes) {
       const memberEntityIds = membersByScope.get(scope.id) ?? [];
-      const resolvedSource = resolveSource(scope.source);
+      const resolvedSource = resolveSourceStrict(
+        sourcesMap,
+        scope.source,
+        `scope ${processIdStr}/${scope.id}`,
+        process_id,
+      );
+      const backtraceId = requireBacktraceId(scope, `scope ${processIdStr}/${scope.id}`, process_id);
       result.push({
         key: `${processIdStr}:${scope.id}`,
         processId: processIdStr,
@@ -112,6 +143,7 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
         scopeId: scope.id,
         scopeName: scope.name,
         scopeKind: canonicalScopeKind(scope.body),
+        backtraceId,
         source: resolvedSource,
         krate: resolvedSource.krate,
         birthPtime: scope.birth,
@@ -458,16 +490,17 @@ export function convertSnapshot(
     const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
 
     const sourcesMap = new Map(proc.snapshot.sources.map((s) => [s.id, s]));
-    const resolveSource = (id: number): SnapshotSource => {
-      const s = sourcesMap.get(id);
-      if (!s) throw new Error(`[snapshot] unknown source id ${id} in process ${process_id}`);
-      return s;
-    };
 
     for (const e of proc.snapshot.entities) {
       const compositeId = `${process_id}/${e.id}`;
       const ageMs = Math.max(0, ptime_now_ms - e.birth);
-      const resolvedSource = resolveSource(e.source);
+      const resolvedSource = resolveSourceStrict(
+        sourcesMap,
+        e.source,
+        `entity ${compositeId}`,
+        process_id,
+      );
+      const backtraceId = requireBacktraceId(e, `entity ${compositeId}`, process_id);
       allEntities.push({
         id: compositeId,
         rawEntityId: e.id,
@@ -477,6 +510,7 @@ export function convertSnapshot(
         name: e.name,
         kind: bodyToKind(e.body),
         body: e.body,
+        backtraceId,
         source: resolvedSource,
         krate: resolvedSource.krate,
         birthPtime: e.birth,

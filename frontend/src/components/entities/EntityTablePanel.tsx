@@ -92,7 +92,8 @@ export function EntityTablePanel({
         canonicalKind,
         entity.processName,
         entity.processId,
-        entity.source,
+        `${entity.source.path}:${entity.source.line}`,
+        String(entity.backtraceId),
         entity.status.label,
       ].join(" ").toLowerCase();
       return haystack.includes(query);
@@ -137,7 +138,7 @@ export function EntityTablePanel({
       render: (row) => (
         <div className="entity-table-entity-cell">
           <span className="entity-table-name">{row.name}</span>
-          <span className="entity-table-subtle">{row.source.path}:{row.source.line}</span>
+          <span className="entity-table-subtle">bt:{row.backtraceId} · {row.source.path}:{row.source.line}</span>
         </div>
       ),
     },

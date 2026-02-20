@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "./App.css";
 import type { FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { apiClient } from "./api";
-import type { ConnectionsResponse, FrameSummary } from "./api/types.generated";
+import type { ConnectionsResponseWithTrace } from "./api/trace";
+import type { FrameSummary } from "./api/types.generated";
 import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
   collapseEdgesThroughHiddenNodes,
@@ -119,7 +120,7 @@ export function App() {
   const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [inspectedSelection, setInspectedSelection] = useState<GraphSelection>(null);
-  const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
+  const [connections, setConnections] = useState<ConnectionsResponseWithTrace | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
@@ -372,6 +373,42 @@ export function App() {
   const snapshotProcessCount = useMemo(() => {
     return new Set(allEntities.map((entity) => entity.processId)).size;
   }, [allEntities]);
+
+  const traceSummary = useMemo<{ label: string; tone: "ok" | "warn" } | null>(() => {
+    const procs = connections?.processes ?? [];
+    if (procs.length === 0) return null;
+    let enabled = 0;
+    let disabled = 0;
+    let missing = 0;
+    let missingManifest = 0;
+
+    for (const proc of procs) {
+      if (!proc.trace_capabilities) {
+        missing += 1;
+        continue;
+      }
+      if (!proc.trace_capabilities.trace_v1) {
+        disabled += 1;
+        continue;
+      }
+      enabled += 1;
+      if (!proc.module_manifest) missingManifest += 1;
+    }
+
+    if (missing > 0) {
+      return { label: `Trace handshake missing ${missing}/${procs.length}`, tone: "warn" };
+    }
+    if (enabled === 0) {
+      return { label: "Trace v1 disabled", tone: "warn" };
+    }
+    if (missingManifest > 0) {
+      return { label: `Trace v1 on ${enabled}/${procs.length}; module manifest missing`, tone: "warn" };
+    }
+    if (disabled > 0) {
+      return { label: `Trace v1 on ${enabled}/${procs.length}`, tone: "warn" };
+    }
+    return { label: `Trace v1 on ${enabled}/${procs.length}`, tone: "ok" };
+  }, [connections]);
 
   const applyScopeEntityFilter = useCallback((scope: ScopeDef) => {
     setScopeEntityFilter({
@@ -921,6 +958,7 @@ export function App() {
         snapshotProcessCount={snapshotProcessCount}
         recording={recording}
         connCount={connCount}
+        traceSummary={traceSummary}
         isBusy={isBusy}
         isLive={isLive}
         onSetIsLive={setIsLive}

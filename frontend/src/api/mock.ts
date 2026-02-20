@@ -1,6 +1,5 @@
 import type { ApiClient } from "./client";
 import type {
-  ConnectionsResponse,
   CutStatusResponse,
   FrameSummary,
   RecordCurrentResponse,
@@ -9,12 +8,43 @@ import type {
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types.generated";
+import type { ConnectionsResponseWithTrace } from "./trace";
 
-const sampleConnections: ConnectionsResponse = {
+const sampleConnections: ConnectionsResponseWithTrace = {
   connected_processes: 2,
   processes: [
-    { conn_id: 101, process_name: "lab-server", pid: 4242 },
-    { conn_id: 202, process_name: "lab-loader", pid: 1313 },
+    {
+      conn_id: 101,
+      process_name: "lab-server",
+      pid: 4242,
+      trace_capabilities: {
+        trace_v1: true,
+        requires_frame_pointers: true,
+        sampling_supported: false,
+        alloc_tracking_supported: false,
+      },
+      module_manifest: [
+        {
+          module_path: "/usr/lib/lab-server",
+          runtime_base: 4_294_967_296,
+          build_id: "buildid:lab-server",
+          debug_id: "debugid:lab-server",
+          arch: "x86_64",
+        },
+      ],
+    },
+    {
+      conn_id: 202,
+      process_name: "lab-loader",
+      pid: 1313,
+      trace_capabilities: {
+        trace_v1: false,
+        requires_frame_pointers: false,
+        sampling_supported: false,
+        alloc_tracking_supported: false,
+      },
+      module_manifest: [],
+    },
   ],
 };
 
@@ -31,7 +61,7 @@ function birth(ptimeNow: number, ageMs: number): number {
   return Math.max(0, ptimeNow - ageMs);
 }
 
-const MOCK_SNAPSHOT: SnapshotCutResponse = {
+const MOCK_SNAPSHOT = {
   captured_at_unix_ms: LAB_SERVER_CAPTURED_AT,
   timed_out_processes: [],
   processes: [
@@ -58,6 +88,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "req_sleepy",
             birth: birth(LAB_SERVER_PTIME_NOW, 1_245_000),
+            backtrace_id: 101001,
             source: 0,
             name: "DemoRpc.sleepy_forever",
             body: { request: { service_name: "DemoRpc", method_name: "sleepy_forever", args_json: "(no args)" } },
@@ -65,6 +96,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "resp_sleepy",
             birth: birth(LAB_SERVER_PTIME_NOW, 1_244_800),
+            backtrace_id: 101002,
             source: 1,
             name: "DemoRpc.sleepy_forever",
             body: { response: { service_name: "DemoRpc", method_name: "sleepy_forever", status: { error: { internal: "deadline exceeded" } } } },
@@ -72,6 +104,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "req_ping",
             birth: birth(LAB_SERVER_PTIME_NOW, 820_000),
+            backtrace_id: 101003,
             source: 2,
             name: "DemoRpc.ping",
             body: { request: { service_name: "DemoRpc", method_name: "ping", args_json: "{ ttl: 30 }" } },
@@ -79,6 +112,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "resp_ping",
             birth: birth(LAB_SERVER_PTIME_NOW, 819_500),
+            backtrace_id: 101004,
             source: 3,
             name: "DemoRpc.ping",
             body: { response: { service_name: "DemoRpc", method_name: "ping", status: { ok: "{}" } } },
@@ -86,6 +120,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "lock_state",
             birth: birth(LAB_SERVER_PTIME_NOW, 3_600_000),
+            backtrace_id: 101005,
             source: 4,
             name: "Mutex<GlobalState>",
             body: { lock: { kind: "mutex" } },
@@ -93,6 +128,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "ch_tx",
             birth: birth(LAB_SERVER_PTIME_NOW, 3_590_000),
+            backtrace_id: 101006,
             source: 5,
             name: "mpsc.send",
             body: { mpsc_tx: { queue_len: 0, capacity: 128 } },
@@ -100,6 +136,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "ch_rx",
             birth: birth(LAB_SERVER_PTIME_NOW, 3_590_000),
+            backtrace_id: 101007,
             source: 6,
             name: "mpsc.recv",
             body: { mpsc_rx: {} },
@@ -107,6 +144,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "future_store",
             birth: birth(LAB_SERVER_PTIME_NOW, 2_100_000),
+            backtrace_id: 101008,
             source: 7,
             name: "store.incoming.recv",
             body: { future: {} },
@@ -145,6 +183,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "sem_conns",
             birth: birth(LAB_LOADER_PTIME_NOW, 1_780_000),
+            backtrace_id: 202001,
             source: 0,
             name: "conn.rate_limit",
             body: { semaphore: { max_permits: 5, handed_out_permits: 2 } },
@@ -152,6 +191,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "notify_shutdown",
             birth: birth(LAB_LOADER_PTIME_NOW, 1_800_000),
+            backtrace_id: 202002,
             source: 1,
             name: "shutdown.signal",
             body: { notify: { waiter_count: 2 } },
@@ -159,6 +199,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "oncecell_config",
             birth: birth(LAB_LOADER_PTIME_NOW, 1_200_000),
+            backtrace_id: 202003,
             source: 2,
             name: "AppConfig",
             body: { once_cell: { waiter_count: 1, state: "initializing" } },
@@ -166,6 +207,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "cmd_migrate",
             birth: birth(LAB_LOADER_PTIME_NOW, 45_000),
+            backtrace_id: 202004,
             source: 3,
             name: "db-migrate",
             body: { command: { program: "db-migrate", args: ["--up", "--env=staging"], env: [] } },
@@ -173,6 +215,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "file_config",
             birth: birth(LAB_LOADER_PTIME_NOW, 1_199_500),
+            backtrace_id: 202005,
             source: 4,
             name: "config.toml",
             body: { file_op: { op: "read", path: "/etc/app/config.toml" } },
@@ -180,6 +223,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
           {
             id: "net_peer",
             birth: birth(LAB_LOADER_PTIME_NOW, 920_000),
+            backtrace_id: 202006,
             source: 5,
             name: "peer:10.0.0.5:8080",
             body: { net_connect: { addr: "10.0.0.5:8080" } },
@@ -194,7 +238,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
       },
     },
   ],
-};
+} as SnapshotCutResponse;
 
 const retryDelay = 120;
 

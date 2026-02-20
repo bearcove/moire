@@ -18,6 +18,9 @@ export function ScopeInspectorContent({ scope }: { scope: ScopeDef }) {
       <KeyValueRow label="Scope id">
         <span className="inspector-mono">{scope.scopeId}</span>
       </KeyValueRow>
+      <KeyValueRow label="Backtrace ID">
+        <span className="inspector-mono">{scope.backtraceId}</span>
+      </KeyValueRow>
       {scope.source && (
         <KeyValueRow label="Source">
           <span className="inspector-mono">{scope.source.path}:{scope.source.line}</span>

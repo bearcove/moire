@@ -1,20 +1,37 @@
 import React, { useEffect } from "react";
 import { ActionButton } from "../ui/primitives/ActionButton";
+import { Badge } from "../ui/primitives/Badge";
 import { Table, type Column } from "../ui/primitives/Table";
-import type { ConnectedProcessInfo, ConnectionsResponse } from "../api/types.generated";
 import { formatProcessLabel } from "../processLabel";
+import type { ConnectedProcessWithTrace, ConnectionsResponseWithTrace } from "../api/trace";
 import "./ProcessModal.css";
 
-const PROCESS_COLUMNS: readonly Column<ConnectedProcessInfo>[] = [
+function traceBadge(row: ConnectedProcessWithTrace) {
+  if (!row.trace_capabilities) return <Badge tone="warn">missing</Badge>;
+  if (!row.trace_capabilities.trace_v1) return <Badge tone="neutral">off</Badge>;
+  if (row.trace_capabilities.requires_frame_pointers) return <Badge tone="warn">on (fp required)</Badge>;
+  return <Badge tone="ok">on</Badge>;
+}
+
+function moduleManifestCell(row: ConnectedProcessWithTrace) {
+  if (!row.trace_capabilities?.trace_v1) return <span className="modal-subtle">n/a</span>;
+  if (!row.module_manifest) return <Badge tone="warn">missing</Badge>;
+  const count = row.module_manifest.length;
+  return <Badge tone={count > 0 ? "ok" : "warn"}>{count}</Badge>;
+}
+
+const PROCESS_COLUMNS: readonly Column<ConnectedProcessWithTrace>[] = [
   { key: "conn_id", label: "Conn", width: "60px", render: (r) => r.conn_id },
   { key: "process", label: "Process", render: (r) => formatProcessLabel(r.process_name, r.pid) },
+  { key: "trace", label: "Trace", width: "150px", render: (r) => traceBadge(r) },
+  { key: "manifest", label: "Modules", width: "90px", render: (r) => moduleManifestCell(r) },
 ];
 
 export function ProcessModal({
   connections,
   onClose,
 }: {
-  connections: ConnectionsResponse;
+  connections: ConnectionsResponseWithTrace;
   onClose: () => void;
 }) {
   useEffect(() => {
