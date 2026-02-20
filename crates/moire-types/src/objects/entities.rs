@@ -2,6 +2,7 @@ use facet::Facet;
 
 use crate::{next_entity_id, EntityId, Json, PTime, SourceId};
 
+// r[impl model.entity.fields]
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
 #[derive(Facet)]
 pub struct Entity {
@@ -34,6 +35,7 @@ impl Entity {
     }
 }
 
+// r[impl model.entity.kinds]
 crate::define_entity_body! {
     pub enum EntityBody {
         // Tokio core and sync primitives

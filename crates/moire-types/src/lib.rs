@@ -7,6 +7,7 @@
 //! - `Scope`: an execution container that groups entities (for example a
 //!   process, thread, or task).
 //!
+//! r[impl model.summary]
 //! In short: events happen to entities, entities are connected by edges,
 //! and entities live inside scopes.
 

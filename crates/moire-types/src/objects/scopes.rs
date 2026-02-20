@@ -2,6 +2,7 @@ use facet::Facet;
 
 use crate::{next_scope_id, PTime, ScopeId, SourceId};
 
+// r[impl model.scope.fields]
 /// A scope groups execution context over time (for example process/thread/task/connection).
 #[derive(Facet)]
 pub struct Scope {
@@ -34,6 +35,7 @@ impl Scope {
     }
 }
 
+// r[impl model.scope.kinds]
 #[derive(Facet)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]

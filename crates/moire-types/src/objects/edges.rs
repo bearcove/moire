@@ -3,6 +3,7 @@ use moire_source::SourceId;
 
 use crate::EntityId;
 
+// r[impl model.edge.fields]
 /// Relationship between two entities.
 #[derive(Facet)]
 pub struct Edge {
@@ -31,6 +32,7 @@ impl Edge {
     }
 }
 
+// r[impl model.edge.kinds]
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]

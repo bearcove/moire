@@ -65,6 +65,7 @@ fn ptime_anchor() -> &'static Instant {
     PTIME_ANCHOR.get_or_init(Instant::now)
 }
 
+// r[impl model.ptime]
 /// process start time + N milliseconds
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
@@ -202,6 +203,7 @@ pub(crate) fn next_event_id() -> EventId {
     EventId(next_opaque_id())
 }
 
+// r[impl model.id.uniqueness]
 fn next_opaque_id() -> String {
     static PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
     static COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -220,6 +222,7 @@ fn next_opaque_id() -> String {
     MoireHex(raw).to_string()
 }
 
+// r[impl model.id.format]
 /// `moire-hex` formatter:
 /// lowercase hex with `a..f` remapped to `p,e,s,P,E,S`.
 struct MoireHex(u64);

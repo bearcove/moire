@@ -3,6 +3,7 @@ use moire_source::SourceId;
 
 use crate::{next_event_id, EntityId, EventId, PTime, ScopeId};
 
+// r[impl model.event.fields]
 #[derive(Facet)]
 pub struct Event {
     /// Opaque event identifier.
@@ -42,6 +43,7 @@ pub enum EventTarget {
     Scope(ScopeId),
 }
 
+// r[impl model.event.kinds]
 #[derive(Facet)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]

@@ -122,6 +122,7 @@ impl fmt::Display for Source {
     }
 }
 
+// r[impl model.source]
 /// A JSON-safe (U53) interned source identifier.
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
