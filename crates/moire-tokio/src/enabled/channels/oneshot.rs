@@ -1,4 +1,4 @@
-use super::SourceId;
+use super::capture_backtrace_id;
 
 use moire_runtime::{
     instrument_operation_on_with_source, record_event_with_source, EntityHandle, WeakEntityHandle,
@@ -23,10 +23,8 @@ impl<T> OneshotSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotTx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub fn send_with_source(mut self, value: T, source: SourceId) -> Result<(), T> {
+    }    pub fn send(mut self, value: T) -> Result<(), T> {
+        let source = capture_backtrace_id();
         let Some(inner) = self.inner.take() else {
             return Err(value);
         };
@@ -58,13 +56,8 @@ impl<T> OneshotReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotRx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub async fn recv_with_source(
-        mut self,
-        source: SourceId,
-    ) -> Result<T, oneshot::error::RecvError> {
+    }    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
+        let source = capture_backtrace_id();
         let inner = self.inner.take().expect("oneshot receiver consumed");
         let result = instrument_operation_on_with_source(&self.handle, inner, source).await;
         let event = Event::new_with_source(
@@ -77,11 +70,8 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
-#[doc(hidden)]
-pub fn oneshot_with_source<T>(
-    name: impl Into<String>,
-    source: SourceId,
-) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    let source = capture_backtrace_id();
     let name: String = name.into();
     let (tx, rx) = oneshot::channel();
 
@@ -114,18 +104,6 @@ pub fn oneshot_with_source<T>(
     )
 }
 
-#[doc(hidden)]
-pub fn oneshot_channel<T>(
-    name: impl Into<String>,
-    source: SourceId,
-) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    oneshot_with_source(name, source)
-}
-
-#[doc(hidden)]
-pub fn oneshot<T>(
-    name: impl Into<String>,
-    source: SourceId,
-) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    oneshot_with_source(name, source)
+pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    oneshot(name)
 }

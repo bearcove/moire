@@ -1,4 +1,4 @@
-use super::SourceId;
+use super::capture_backtrace_id;
 
 use moire_runtime::{
     record_event_with_source, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
@@ -42,10 +42,8 @@ impl<T: Clone> BroadcastSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastTx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub fn subscribe_with_source(&self, source: SourceId) -> BroadcastReceiver<T> {
+    }    pub fn subscribe(&self) -> BroadcastReceiver<T> {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             "broadcast:rx.subscribe",
             EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
@@ -59,14 +57,8 @@ impl<T: Clone> BroadcastSender<T> {
             handle,
             tx_handle: self.handle.downgrade(),
         }
-    }
-
-    #[doc(hidden)]
-    pub fn send_with_source(
-        &self,
-        value: T,
-        source: SourceId,
-    ) -> Result<usize, broadcast::error::SendError<T>> {
+    }    pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
+        let source = capture_backtrace_id();
         let result = self.inner.send(value);
         let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
@@ -82,13 +74,8 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastRx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub async fn recv_with_source(
-        &mut self,
-        source: SourceId,
-    ) -> Result<T, broadcast::error::RecvError> {
+    }    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
+        let source = capture_backtrace_id();
         match self.inner.recv().await {
             Ok(value) => {
                 let lag = self.inner.len().min(u32::MAX as usize) as u32;
@@ -118,12 +105,11 @@ impl<T: Clone> BroadcastReceiver<T> {
     }
 }
 
-#[doc(hidden)]
-pub fn broadcast_with_source<T: Clone>(
+pub fn broadcast<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
-    source: SourceId,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    let source = capture_backtrace_id();
     let name = name.into();
     let (tx, rx) = broadcast::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
@@ -159,22 +145,11 @@ pub fn broadcast_with_source<T: Clone>(
     )
 }
 
-#[doc(hidden)]
 pub fn broadcast_channel<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
-    source: SourceId,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    broadcast_with_source(name, capacity, source)
-}
-
-#[doc(hidden)]
-pub fn broadcast<T: Clone>(
-    name: impl Into<String>,
-    capacity: usize,
-    source: SourceId,
-) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    broadcast_with_source(name, capacity, source)
+    broadcast(name, capacity)
 }
 
 impl<T: Clone> AsEntityRef for BroadcastSender<T> {

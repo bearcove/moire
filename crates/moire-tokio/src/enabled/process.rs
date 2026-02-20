@@ -4,7 +4,7 @@ use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 
-use super::SourceId;
+use super::capture_backtrace_id;
 use moire_runtime::{instrument_future, EntityHandle};
 
 pub struct Command {
@@ -123,23 +123,16 @@ impl Command {
     pub fn kill_on_drop(&mut self, kill_on_drop: bool) -> &mut Self {
         self.inner.kill_on_drop(kill_on_drop);
         self
-    }
-
-    #[doc(hidden)]
-    pub fn spawn_with_source(&mut self, source: SourceId) -> io::Result<Child> {
+    }    pub fn spawn(&mut self) -> io::Result<Child> {
+        let source = capture_backtrace_id();
         let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         Ok(Child {
             inner: Some(child),
             handle,
         })
-    }
-
-    #[doc(hidden)]
-    pub fn status_with_source(
-        &mut self,
-        source: SourceId,
-    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+    }    pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future(
             "command.status",
@@ -148,13 +141,8 @@ impl Command {
             Some(handle.entity_ref()),
             None,
         )
-    }
-
-    #[doc(hidden)]
-    pub fn output_with_source(
-        &mut self,
-        source: SourceId,
-    ) -> impl Future<Output = io::Result<Output>> + '_ {
+    }    pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future(
             "command.output",
@@ -206,8 +194,8 @@ impl Child {
     pub fn from_tokio_with_diagnostics(
         child: tokio::process::Child,
         diag: CommandDiagnostics,
-        source: SourceId,
     ) -> Self {
+        let source = capture_backtrace_id();
         let body = EntityBody::Command(CommandEntity {
             program: diag.program.clone(),
             args: diag.args.clone(),
@@ -230,13 +218,8 @@ impl Child {
     }
     pub fn id(&self) -> Option<u32> {
         self.inner().id()
-    }
-
-    #[doc(hidden)]
-    pub fn wait_with_source(
-        &mut self,
-        source: SourceId,
-    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+    }    pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
+        let source = capture_backtrace_id();
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
         instrument_future(
@@ -246,13 +229,8 @@ impl Child {
             Some(handle.entity_ref()),
             None,
         )
-    }
-
-    #[doc(hidden)]
-    pub fn wait_with_output_with_source(
-        mut self,
-        source: SourceId,
-    ) -> impl Future<Output = io::Result<Output>> {
+    }    pub fn wait_with_output(mut self) -> impl Future<Output = io::Result<Output>> {
+        let source = capture_backtrace_id();
         let child = self.inner.take().expect("child already consumed");
         instrument_future(
             "command.wait_with_output",

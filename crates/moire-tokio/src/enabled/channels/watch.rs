@@ -1,4 +1,4 @@
-use super::SourceId;
+use super::capture_backtrace_id;
 
 use moire_runtime::{
     instrument_operation_on_with_source, record_event_with_source, AsEntityRef, EntityHandle,
@@ -43,14 +43,8 @@ impl<T: Clone> WatchSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::WatchTx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub fn send_with_source(
-        &self,
-        value: T,
-        source: SourceId,
-    ) -> Result<(), watch::error::SendError<T>> {
+    }    pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
+        let source = capture_backtrace_id();
         let result = self.inner.send(value);
         if result.is_ok() {
             let _ = self
@@ -64,10 +58,8 @@ impl<T: Clone> WatchSender<T> {
         );
         record_event_with_source(event, source);
         result
-    }
-
-    #[doc(hidden)]
-    pub fn send_replace_with_source(&self, value: T, source: SourceId) -> T {
+    }    pub fn send_replace(&self, value: T) -> T {
+        let source = capture_backtrace_id();
         let old = self.inner.send_replace(value);
         let _ = self
             .handle
@@ -79,10 +71,8 @@ impl<T: Clone> WatchSender<T> {
         );
         record_event_with_source(event, source);
         old
-    }
-
-    #[doc(hidden)]
-    pub fn subscribe_with_source(&self, source: SourceId) -> WatchReceiver<T> {
+    }    pub fn subscribe(&self) -> WatchReceiver<T> {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             "watch:rx.subscribe",
             EntityBody::WatchRx(WatchRxEntity {}),
@@ -103,13 +93,8 @@ impl<T: Clone> WatchReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::WatchRx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub async fn changed_with_source(
-        &mut self,
-        source: SourceId,
-    ) -> Result<(), watch::error::RecvError> {
+    }    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
+        let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.changed(), source).await;
         let event = Event::new_with_source(
@@ -134,12 +119,8 @@ impl<T: Clone> WatchReceiver<T> {
     }
 }
 
-#[doc(hidden)]
-pub fn watch_with_source<T: Clone>(
-    name: impl Into<String>,
-    initial: T,
-    source: SourceId,
-) -> (WatchSender<T>, WatchReceiver<T>) {
+pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, WatchReceiver<T>) {
+    let source = capture_backtrace_id();
     let name = name.into();
     let (tx, rx) = watch::channel(initial);
 
@@ -174,22 +155,11 @@ pub fn watch_with_source<T: Clone>(
     )
 }
 
-#[doc(hidden)]
 pub fn watch_channel<T: Clone>(
     name: impl Into<String>,
     initial: T,
-    source: SourceId,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
-    watch_with_source(name, initial, source)
-}
-
-#[doc(hidden)]
-pub fn watch<T: Clone>(
-    name: impl Into<String>,
-    initial: T,
-    source: SourceId,
-) -> (WatchSender<T>, WatchReceiver<T>) {
-    watch_with_source(name, initial, source)
+    watch(name, initial)
 }
 
 impl<T: Clone> AsEntityRef for WatchSender<T> {

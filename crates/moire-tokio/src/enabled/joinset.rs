@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use super::process::JoinSet;
-use super::SourceId;
+use super::capture_backtrace_id;
 use moire_runtime::{
     instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
 };
@@ -10,9 +10,8 @@ use moire_runtime::{
 impl<T> JoinSet<T>
 where
     T: Send + 'static,
-{
-    #[doc(hidden)]
-    pub fn named_with_source(name: impl Into<String>, source: SourceId) -> Self {
+{    pub fn named(name: impl Into<String>) -> Self {
+        let source = capture_backtrace_id();
         let name = name.into();
         let handle = EntityHandle::new(
             format!("joinset.{name}"),
@@ -25,26 +24,13 @@ where
         }
     }
 
-    #[doc(hidden)]
-    pub fn with_name_with_source(name: impl Into<String>, source: SourceId) -> Self {
-        Self::named_with_source(name, source)
-    }
-
-    #[doc(hidden)]
-    pub fn named(name: impl Into<String>, source: SourceId) -> Self {
-        Self::named_with_source(name, source)
-    }
-
-    #[doc(hidden)]
-    pub fn with_name(name: impl Into<String>, source: SourceId) -> Self {
-        Self::with_name_with_source(name, source)
-    }
-
-    #[doc(hidden)]
-    pub fn spawn_with_source<F>(&mut self, label: &'static str, future: F, source: SourceId)
+    pub fn with_name(name: impl Into<String>) -> Self {
+        Self::named(name)
+    }    pub fn spawn<F>(&mut self, label: &'static str, future: F)
     where
         F: Future<Output = T> + Send + 'static,
     {
+        let source = capture_backtrace_id();
         let joinset_handle = self.handle.clone();
         self.inner.spawn(
             FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
@@ -71,13 +57,8 @@ where
 
     pub fn abort_all(&mut self) {
         self.inner.abort_all();
-    }
-
-    #[doc(hidden)]
-    pub fn join_next_with_source(
-        &mut self,
-        source: SourceId,
-    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
+    }    pub fn join_next(&mut self) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
+        let source = capture_backtrace_id();
         let handle = self.handle.clone();
         let fut = self.inner.join_next();
         instrument_future(

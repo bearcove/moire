@@ -1,6 +1,6 @@
 use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 
-use super::super::SourceId;
+use super::super::capture_backtrace_id;
 use moire_runtime::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 
 pub struct RwLock<T> {
@@ -8,9 +8,8 @@ pub struct RwLock<T> {
     handle: EntityHandle<moire_types::Lock>,
 }
 
-impl<T> RwLock<T> {
-    #[doc(hidden)]
-    pub fn new_with_source(name: &'static str, value: T, source: SourceId) -> Self {
+impl<T> RwLock<T> {    pub fn new(name: &'static str, value: T) -> Self {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
@@ -23,43 +22,29 @@ impl<T> RwLock<T> {
             inner: parking_lot::RwLock::new(value),
             handle,
         }
-    }
-
-    #[doc(hidden)]
-    pub fn read_with_source(&self, source: SourceId) -> parking_lot::RwLockReadGuard<'_, T> {
+    }    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
+        let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.read()
-    }
-
-    #[doc(hidden)]
-    pub fn write_with_source(&self, source: SourceId) -> parking_lot::RwLockWriteGuard<'_, T> {
+    }    pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
+        let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.write()
-    }
-
-    #[doc(hidden)]
-    pub fn try_read_with_source(
-        &self,
-        source: SourceId,
-    ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+    }    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+        let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);
         }
         self.inner.try_read()
-    }
-
-    #[doc(hidden)]
-    pub fn try_write_with_source(
-        &self,
-        source: SourceId,
-    ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+    }    pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+        let source = capture_backtrace_id();
         if let Some(caller) = current_causal_target() {
             self.handle
                 .link_to_with_source(&caller, EdgeKind::Polls, source);

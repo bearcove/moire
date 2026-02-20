@@ -1,4 +1,4 @@
-use super::SourceId;
+use super::capture_backtrace_id;
 
 use moire_runtime::{
     instrument_operation_on_with_source, record_event_with_source, AsEntityRef, EntityHandle,
@@ -69,14 +69,8 @@ impl<T> Sender<T> {
 
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
-    }
-
-    #[doc(hidden)]
-    pub async fn send_with_source(
-        &self,
-        value: T,
-        source: SourceId,
-    ) -> Result<(), mpsc::error::SendError<T>> {
+    }    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.send(value), source).await;
         if result.is_ok() {
@@ -98,10 +92,8 @@ impl<T> Receiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscRx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub async fn recv_with_source(&mut self, source: SourceId) -> Option<T> {
+    }    pub async fn recv(&mut self) -> Option<T> {
+        let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
         if result.is_some() {
@@ -127,14 +119,8 @@ impl<T> UnboundedSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscTx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub fn send_with_source(
-        &self,
-        value: T,
-        source: SourceId,
-    ) -> Result<(), mpsc::error::SendError<T>> {
+    }    pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        let source = capture_backtrace_id();
         match self.inner.send(value) {
             Ok(()) => {
                 let _ = self
@@ -169,10 +155,8 @@ impl<T> UnboundedReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscRx> {
         &self.handle
-    }
-
-    #[doc(hidden)]
-    pub async fn recv_with_source(&mut self, source: SourceId) -> Option<T> {
+    }    pub async fn recv(&mut self) -> Option<T> {
+        let source = capture_backtrace_id();
         let result =
             instrument_operation_on_with_source(&self.handle, self.inner.recv(), source).await;
         if result.is_some() {
@@ -194,12 +178,8 @@ impl<T> UnboundedReceiver<T> {
     }
 }
 
-#[doc(hidden)]
-pub fn channel_with_source<T>(
-    name: impl Into<String>,
-    capacity: usize,
-    source: SourceId,
-) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+    let source = capture_backtrace_id();
     let name = name.into();
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
@@ -236,29 +216,12 @@ pub fn channel_with_source<T>(
     )
 }
 
-#[doc(hidden)]
-pub fn mpsc_channel<T>(
-    name: impl Into<String>,
-    capacity: usize,
-    source: SourceId,
-) -> (Sender<T>, Receiver<T>) {
-    channel_with_source(name, capacity, source)
+pub fn mpsc_channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+    channel(name, capacity)
 }
 
-#[doc(hidden)]
-pub fn channel<T>(
-    name: impl Into<String>,
-    capacity: usize,
-    source: SourceId,
-) -> (Sender<T>, Receiver<T>) {
-    channel_with_source(name, capacity, source)
-}
-
-#[doc(hidden)]
-pub fn unbounded_channel_with_source<T>(
-    name: impl Into<String>,
-    source: SourceId,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+    let source = capture_backtrace_id();
     let name = name.into();
     let (tx, rx) = mpsc::unbounded_channel();
 
@@ -294,20 +257,8 @@ pub fn unbounded_channel_with_source<T>(
     )
 }
 
-#[doc(hidden)]
-pub fn mpsc_unbounded_channel<T>(
-    name: impl Into<String>,
-    source: SourceId,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    unbounded_channel_with_source(name, source)
-}
-
-#[doc(hidden)]
-pub fn unbounded_channel<T>(
-    name: impl Into<String>,
-    source: SourceId,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    unbounded_channel_with_source(name, source)
+pub fn mpsc_unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+    unbounded_channel(name)
 }
 
 impl<T> AsEntityRef for Sender<T> {

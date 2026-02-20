@@ -1,7 +1,7 @@
 use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 
-use super::super::SourceId;
+use super::super::capture_backtrace_id;
 use moire_runtime::{
     current_causal_target, AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK,
 };
@@ -31,9 +31,8 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
     }
 }
 
-impl<T> Mutex<T> {
-    #[doc(hidden)]
-    pub fn new_with_source(name: &'static str, value: T, source: SourceId) -> Self {
+impl<T> Mutex<T> {    pub fn new(name: &'static str, value: T) -> Self {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
@@ -46,19 +45,17 @@ impl<T> Mutex<T> {
             inner: parking_lot::Mutex::new(value),
             handle,
         }
+    }    pub fn lock(&self) -> MutexGuard<'_, T> {
+        self._lock()
     }
 
     #[doc(hidden)]
-    pub fn lock_with_source(&self, source: SourceId) -> MutexGuard<'_, T> {
-        self._lock(source)
-    }
-
-    #[doc(hidden)]
-    pub fn _lock(&self, source: SourceId) -> MutexGuard<'_, T> {
+    pub fn _lock(&self) -> MutexGuard<'_, T> {
+        let source = capture_backtrace_id();
         let owner_ref = current_causal_target();
 
         if let Some(inner) = self.inner.try_lock() {
-            return self.wrap_guard(inner, owner_ref.as_ref(), None, source);
+            return self.wrap_guard(inner, owner_ref.as_ref(), None);
         }
 
         let waiting_edge = owner_ref.as_ref().map(|owner| {
@@ -68,20 +65,17 @@ impl<T> Mutex<T> {
         let inner = self.inner.lock();
         drop(waiting_edge);
 
-        self.wrap_guard(inner, owner_ref.as_ref(), None, source)
+        self.wrap_guard(inner, owner_ref.as_ref(), None)
+    }    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        self._try_lock()
     }
 
     #[doc(hidden)]
-    pub fn try_lock_with_source(&self, source: SourceId) -> Option<MutexGuard<'_, T>> {
-        self._try_lock(source)
-    }
-
-    #[doc(hidden)]
-    pub fn _try_lock(&self, source: SourceId) -> Option<MutexGuard<'_, T>> {
+    pub fn _try_lock(&self) -> Option<MutexGuard<'_, T>> {
         let owner_ref = current_causal_target();
         self.inner
             .try_lock()
-            .map(|inner| self.wrap_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls), source))
+            .map(|inner| self.wrap_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls)))
     }
 
     fn wrap_guard<'a>(
@@ -89,8 +83,8 @@ impl<T> Mutex<T> {
         inner: parking_lot::MutexGuard<'a, T>,
         owner_ref: Option<&EntityRef>,
         pre_edge_kind: Option<EdgeKind>,
-        source: SourceId,
     ) -> MutexGuard<'a, T> {
+        let source = capture_backtrace_id();
         if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
             self.handle.link_to_with_source(owner, kind, source);
         }

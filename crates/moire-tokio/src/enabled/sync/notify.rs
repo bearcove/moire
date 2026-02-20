@@ -1,7 +1,7 @@
 use moire_types::{EntityBody, NotifyEntity};
 use std::sync::Arc;
 
-use super::super::SourceId;
+use super::super::capture_backtrace_id;
 use moire_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 #[derive(Clone)]
@@ -10,9 +10,8 @@ pub struct Notify {
     handle: EntityHandle<moire_types::Notify>,
 }
 
-impl Notify {
-    #[doc(hidden)]
-    pub fn new_with_source(name: impl Into<String>, source: SourceId) -> Self {
+impl Notify {    pub fn new(name: impl Into<String>) -> Self {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
@@ -23,10 +22,8 @@ impl Notify {
             inner: Arc::new(tokio::sync::Notify::new()),
             handle,
         }
-    }
-
-    #[doc(hidden)]
-    pub async fn notified_with_source(&self, source: SourceId) {
+    }    pub async fn notified(&self) {
+        let source = capture_backtrace_id();
         let _ = self
             .handle
             .mutate(|body| body.waiter_count = body.waiter_count.saturating_add(1));

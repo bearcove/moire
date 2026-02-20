@@ -8,28 +8,6 @@ use std::time::Duration;
 #[doc(hidden)]
 pub use tokio;
 
-#[doc(hidden)]
-pub fn __init_from_macro() {}
-
-#[macro_export]
-macro_rules! facade {
-    () => {
-        pub mod moire {
-            pub trait FutureExt: core::future::Future + Sized {
-                fn tracked(self, _name: impl Into<String>) -> Self {
-                    self
-                }
-            }
-
-            impl<F> FutureExt for F where F: core::future::Future + Sized {}
-
-            pub mod prelude {
-                pub use super::FutureExt;
-            }
-        }
-    };
-}
-
 /// Wrapper around `std::sync::Mutex` with the same constructor shape as native moire.
 pub struct Mutex<T>(std::sync::Mutex<T>);
 

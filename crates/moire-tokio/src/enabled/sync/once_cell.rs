@@ -1,7 +1,7 @@
 use moire_types::{EntityBody, OnceCellEntity, OnceCellState};
 use std::future::Future;
 
-use super::super::SourceId;
+use super::super::capture_backtrace_id;
 use moire_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 pub struct OnceCell<T> {
@@ -9,9 +9,8 @@ pub struct OnceCell<T> {
     handle: EntityHandle<moire_types::OnceCell>,
 }
 
-impl<T> OnceCell<T> {
-    #[doc(hidden)]
-    pub fn new_with_source(name: impl Into<String>, source: SourceId) -> Self {
+impl<T> OnceCell<T> {    pub fn new(name: impl Into<String>) -> Self {
+        let source = capture_backtrace_id();
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {
@@ -33,14 +32,12 @@ impl<T> OnceCell<T> {
 
     pub fn initialized(&self) -> bool {
         self.inner.initialized()
-    }
-
-    #[doc(hidden)]
-    pub async fn get_or_init_with_source<'a, F, Fut>(&'a self, f: F, source: SourceId) -> &'a T
+    }    pub async fn get_or_init<'a, F, Fut>(&'a self, f: F) -> &'a T
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
+        let source = capture_backtrace_id();
         let _ = self.handle.mutate(|body| {
             body.waiter_count = body.waiter_count.saturating_add(1);
             body.state = OnceCellState::Initializing;
@@ -63,18 +60,15 @@ impl<T> OnceCell<T> {
         });
 
         result
-    }
-
-    #[doc(hidden)]
-    pub async fn get_or_try_init_with_source<'a, F, Fut, E>(
+    }    pub async fn get_or_try_init<'a, F, Fut, E>(
         &'a self,
         f: F,
-        source: SourceId,
     ) -> Result<&'a T, E>
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
+        let source = capture_backtrace_id();
         let _ = self.handle.mutate(|body| {
             body.waiter_count = body.waiter_count.saturating_add(1);
             body.state = OnceCellState::Initializing;
