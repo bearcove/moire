@@ -1,6 +1,4 @@
-use peeps_types::{
-    EdgeKind, EntityBody, EntityId, RequestEntity, ResponseEntity, ResponseStatus,
-};
+use peeps_types::{EdgeKind, EntityBody, EntityId, RequestEntity, ResponseEntity, ResponseStatus};
 
 use super::SourceId;
 use peeps_runtime::{EntityHandle, EntityRef};
@@ -23,12 +21,14 @@ impl RpcRequestHandle {
         self.handle.entity_ref()
     }
 
+    #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<peeps_types::Request> {
         &self.handle
     }
 }
 
-pub fn rpc_request(
+#[doc(hidden)]
+pub fn rpc_request_with_source(
     method: impl Into<String>,
     args_json: impl Into<String>,
     source: SourceId,
@@ -48,6 +48,16 @@ pub fn rpc_request(
     )
 }
 
+#[doc(hidden)]
+pub fn rpc_request(
+    method: impl Into<String>,
+    args_json: impl Into<String>,
+    source: SourceId,
+) -> RpcRequestHandle {
+    rpc_request_with_source(method, args_json, source)
+}
+
+#[doc(hidden)]
 pub fn rpc_request_with_body(
     name: impl Into<String>,
     body: RequestEntity,
@@ -60,7 +70,8 @@ pub fn rpc_request_with_body(
     }
 }
 
-pub fn rpc_response(
+#[doc(hidden)]
+pub fn rpc_response_with_source(
     method: impl Into<String>,
     source: SourceId,
 ) -> EntityHandle<peeps_types::Response> {
@@ -79,6 +90,15 @@ pub fn rpc_response(
     )
 }
 
+#[doc(hidden)]
+pub fn rpc_response(
+    method: impl Into<String>,
+    source: SourceId,
+) -> EntityHandle<peeps_types::Response> {
+    rpc_response_with_source(method, source)
+}
+
+#[doc(hidden)]
 pub fn rpc_response_with_body(
     name: impl Into<String>,
     body: ResponseEntity,
@@ -89,7 +109,8 @@ pub fn rpc_response_with_body(
     EntityHandle::new(name, body, source).into_typed::<peeps_types::Response>()
 }
 
-pub fn rpc_response_for(
+#[doc(hidden)]
+pub fn rpc_response_for_with_source(
     method: impl Into<String>,
     request: &EntityRef,
     source: SourceId,
@@ -110,6 +131,16 @@ pub fn rpc_response_for(
     )
 }
 
+#[doc(hidden)]
+pub fn rpc_response_for(
+    method: impl Into<String>,
+    request: &EntityRef,
+    source: SourceId,
+) -> EntityHandle<peeps_types::Response> {
+    rpc_response_for_with_source(method, request, source)
+}
+
+#[doc(hidden)]
 pub fn rpc_response_for_with_body(
     name: impl Into<String>,
     request: &EntityRef,

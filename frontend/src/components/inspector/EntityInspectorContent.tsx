@@ -34,7 +34,7 @@ function EntityDetailsSection({ entity }: { entity: EntityDef }) {
   return (
     <>
       <KeyValueRow label="Source">
-        <Source source={entity.source} />
+        <Source source={`${entity.source.path}:${entity.source.line}`} />
       </KeyValueRow>
       {entity.krate && (
         <KeyValueRow label="Crate">
@@ -227,7 +227,7 @@ function EntityInspectorBody({
       {showActions && entity.inCycle && (
         <div className="inspector-alert-slot">
           <div className="inspector-alert inspector-alert--crit">
-            Part of <code>needs</code> cycle — possible deadlock
+            Part of <code>waiting_on</code> cycle — possible deadlock
           </div>
         </div>
       )}

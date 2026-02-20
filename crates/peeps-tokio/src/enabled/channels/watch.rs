@@ -134,7 +134,8 @@ impl<T: Clone> WatchReceiver<T> {
     }
 }
 
-pub fn watch<T: Clone>(
+#[doc(hidden)]
+pub fn watch_with_source<T: Clone>(
     name: impl Into<String>,
     initial: T,
     source: SourceId,
@@ -173,13 +174,22 @@ pub fn watch<T: Clone>(
     )
 }
 
+#[doc(hidden)]
 pub fn watch_channel<T: Clone>(
     name: impl Into<String>,
     initial: T,
     source: SourceId,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
-    #[allow(deprecated)]
-    watch(name, initial, source)
+    watch_with_source(name, initial, source)
+}
+
+#[doc(hidden)]
+pub fn watch<T: Clone>(
+    name: impl Into<String>,
+    initial: T,
+    source: SourceId,
+) -> (WatchSender<T>, WatchReceiver<T>) {
+    watch_with_source(name, initial, source)
 }
 
 impl<T: Clone> AsEntityRef for WatchSender<T> {

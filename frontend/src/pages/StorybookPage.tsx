@@ -38,7 +38,12 @@ import { SCOPE_DARK_RGB, SCOPE_LIGHT_RGB } from "../components/graph/scopeColors
 import { AppHeader } from "../components/AppHeader";
 import type { RecordingState, SnapshotState } from "../App";
 import { Switch } from "../ui/primitives/Switch";
+import type { SnapshotSource } from "../api/types.generated";
 import type { EntityDef } from "../snapshot";
+
+function fakeSource(krate: string, path: string, line: number): SnapshotSource {
+  return { id: 0, path, line, krate };
+}
 import { GraphNode } from "../components/graph/GraphNode";
 import { GraphFilterInput } from "../components/graph/GraphFilterInput";
 import { SampleGraph } from "../components/graph/SampleGraph";
@@ -591,7 +596,7 @@ export function useStorybookState() {
       processId: "101",
       processName: "peeps-examples",
       processPid: 84025,
-      source: "tokio_runtime.rs:20",
+      source: fakeSource("roam-session", "/tokio_runtime.rs", 20),
       krate: "roam-session",
       birthPtime: 16,
       ageMs: 739,
@@ -604,14 +609,9 @@ export function useStorybookState() {
       id: "101/chan_tx",
       rawEntityId: "chan_tx",
       name: "roam_driver:tx",
-      kind: "channel_tx",
-      body: {
-        channel_tx: {
-          lifecycle: "open",
-          details: { mpsc: { buffer: { occupancy: 0, capacity: 256 } } },
-        },
-      },
-      status: { label: "open", tone: "ok" as const },
+      kind: "mpsc_tx",
+      body: { mpsc_tx: { queue_len: 0, capacity: 256 } },
+      status: { label: "active", tone: "ok" as const },
       stat: "0/256",
       statTone: "ok" as const,
     } as unknown as EntityDef;
@@ -620,16 +620,9 @@ export function useStorybookState() {
       id: "101/chan_rx",
       rawEntityId: "chan_rx",
       name: "roam_driver:rx",
-      kind: "channel_rx",
-      body: {
-        channel_rx: {
-          lifecycle: "open",
-          details: { mpsc: { buffer: { occupancy: 0, capacity: 256 } } },
-        },
-      },
-      status: { label: "open", tone: "ok" as const },
-      stat: "0/256",
-      statTone: "ok" as const,
+      kind: "mpsc_rx",
+      body: { mpsc_rx: {} },
+      status: { label: "active", tone: "ok" as const },
     } as unknown as EntityDef;
 
     return {
@@ -651,7 +644,7 @@ export function useStorybookState() {
     const base = {
       processName: "peeps-example",
       processPid: 12345,
-      source: "main.rs:1",
+      source: fakeSource("peeps-example", "main.rs", 1),
       krate: "peeps-example",
       birthPtime: 100,
       ageMs: 0,
@@ -666,6 +659,7 @@ export function useStorybookState() {
         rawEntityId: "mutex_a",
         processId: "p1",
         processName: "vx-store",
+        source: fakeSource("tokio", "sync/mutex.rs", 42),
         krate: "tokio",
         name: "store.state_lock",
         kind: "lock",
@@ -678,10 +672,11 @@ export function useStorybookState() {
         rawEntityId: "future_a",
         processId: "p1",
         processName: "vx-store",
+        source: fakeSource("roam-session", "session.rs", 88),
         krate: "roam-session",
         name: "store.incoming.recv",
         kind: "future",
-        body: "future" as const,
+        body: { future: {} },
         status: { label: "polling", tone: "neutral" as const },
         ageMs: 250,
       },
@@ -691,6 +686,7 @@ export function useStorybookState() {
         rawEntityId: "sem_a",
         processId: "p1",
         processName: "vx-store",
+        source: fakeSource("tokio", "sync/semaphore.rs", 12),
         krate: "tokio",
         name: "request_limiter",
         kind: "semaphore",
@@ -705,10 +701,11 @@ export function useStorybookState() {
         rawEntityId: "future_b",
         processId: "p2",
         processName: "vx-runner",
+        source: fakeSource("roam-session", "rpc.rs", 17),
         krate: "roam-session",
         name: "DemoRpc.sleepy_forever",
         kind: "request",
-        body: { request: { method: "DemoRpc.sleepy_forever", args_preview: "()" } },
+        body: { request: { service_name: "DemoRpc", method_name: "sleepy_forever", args_json: "()" } },
         status: { label: "in_flight", tone: "warn" as const },
         ageMs: 4800,
       },
@@ -718,10 +715,11 @@ export function useStorybookState() {
         rawEntityId: "future_c",
         processId: "p2",
         processName: "vx-runner",
+        source: fakeSource("peeps-examples", "main.rs", 20),
         krate: "peeps-examples",
         name: "runner.tick",
         kind: "future",
-        body: "future" as const,
+        body: { future: {} },
         status: { label: "polling", tone: "neutral" as const },
       },
     ] as EntityDef[];
@@ -733,33 +731,25 @@ export function useStorybookState() {
         id: "e1",
         source: "p1/future_a",
         target: "p1/mutex_a",
-        kind: "needs" as const,
-        meta: {},
-        opKind: "lock",
-        state: "pending",
+        kind: "waiting_on" as const,
       },
       {
         id: "e2",
         source: "p1/mutex_a",
         target: "p1/sem_a",
         kind: "holds" as const,
-        meta: {},
       },
       {
         id: "e3",
         source: "p2/future_b",
         target: "p1/sem_a",
-        kind: "needs" as const,
-        meta: {},
-        opKind: "acquire",
-        state: "pending",
+        kind: "waiting_on" as const,
       },
       {
         id: "e4",
         source: "p2/future_c",
         target: "p2/future_b",
-        kind: "touches" as const,
-        meta: {},
+        kind: "polls" as const,
       },
     ],
     [],

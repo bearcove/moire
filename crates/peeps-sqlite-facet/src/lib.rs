@@ -7,26 +7,8 @@
 //! membership/link tables) should stay normalized at the SQLite layer instead
 //! of being modeled as arrays in JSON fields.
 
-use peeps_types::{
-    Edge, Entity, EntityId, Event, EventId, Json, PTime, Scope, ScopeId, Snapshot, SourceId,
-};
+use peeps_types::Snapshot;
 use rusqlite::types::{Value as SqlValue, ValueRef};
-use std::fmt;
-
-#[derive(Debug)]
-pub enum EncodeError {
-    Json(String),
-}
-
-impl fmt::Display for EncodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Json(err) => write!(f, "{err}"),
-        }
-    }
-}
-
-impl std::error::Error for EncodeError {}
 
 pub fn sqlite_value_ref_to_facet(value: ValueRef<'_>) -> facet_value::Value {
     match value {
@@ -63,117 +45,6 @@ pub fn facet_to_json_text(value: &facet_value::Value) -> Result<String, String> 
 
 pub fn json_text_to_facet(text: &str) -> Result<facet_value::Value, String> {
     facet_json::from_str(text).map_err(|e| e.to_string())
-}
-
-#[derive(Debug, Clone)]
-pub struct EncodedEntityRow {
-    pub id: EntityId,
-    pub birth: PTime,
-    pub source_id: SourceId,
-    pub name: String,
-    pub body_json: Json,
-}
-
-#[derive(Debug, Clone)]
-pub struct EncodedScopeRow {
-    pub id: ScopeId,
-    pub birth: PTime,
-    pub source_id: SourceId,
-    pub name: String,
-    pub body_json: Json,
-}
-
-#[derive(Debug, Clone)]
-pub struct EncodedEdgeRow {
-    pub src_id: EntityId,
-    pub dst_id: EntityId,
-    pub source_id: SourceId,
-    pub kind_json: Json,
-}
-
-#[derive(Debug, Clone)]
-pub struct EncodedEventRow {
-    pub id: EventId,
-    pub at: PTime,
-    pub source_id: SourceId,
-    pub target_json: Json,
-    pub kind_json: Json,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct EncodedSnapshotBatch {
-    pub entities: Vec<EncodedEntityRow>,
-    pub scopes: Vec<EncodedScopeRow>,
-    pub edges: Vec<EncodedEdgeRow>,
-    pub events: Vec<EncodedEventRow>,
-}
-
-pub fn encode_entity_row(entity: &Entity) -> Result<EncodedEntityRow, EncodeError> {
-    Ok(EncodedEntityRow {
-        id: EntityId::new(entity.id.as_str()),
-        birth: entity.birth,
-        source_id: entity.source,
-        name: entity.name.clone(),
-        body_json: Json::new(
-            facet_json::to_string(&entity.body).map_err(|e| EncodeError::Json(e.to_string()))?,
-        ),
-    })
-}
-
-pub fn encode_scope_row(scope: &Scope) -> Result<EncodedScopeRow, EncodeError> {
-    Ok(EncodedScopeRow {
-        id: ScopeId::new(scope.id.as_str()),
-        birth: scope.birth,
-        source_id: scope.source,
-        name: scope.name.clone(),
-        body_json: Json::new(
-            facet_json::to_string(&scope.body).map_err(|e| EncodeError::Json(e.to_string()))?,
-        ),
-    })
-}
-
-pub fn encode_edge_row(edge: &Edge) -> Result<EncodedEdgeRow, EncodeError> {
-    Ok(EncodedEdgeRow {
-        src_id: EntityId::new(edge.src.as_str()),
-        dst_id: EntityId::new(edge.dst.as_str()),
-        source_id: edge.source,
-        kind_json: Json::new(
-            facet_json::to_string(&edge.kind).map_err(|e| EncodeError::Json(e.to_string()))?,
-        ),
-    })
-}
-
-pub fn encode_event_row(event: &Event) -> Result<EncodedEventRow, EncodeError> {
-    Ok(EncodedEventRow {
-        id: EventId::new(event.id.as_str()),
-        at: event.at,
-        source_id: event.source,
-        target_json: Json::new(
-            facet_json::to_string(&event.target).map_err(|e| EncodeError::Json(e.to_string()))?,
-        ),
-        kind_json: Json::new(
-            facet_json::to_string(&event.kind).map_err(|e| EncodeError::Json(e.to_string()))?,
-        ),
-    })
-}
-
-pub fn encode_snapshot_batch(snapshot: &Snapshot) -> Result<EncodedSnapshotBatch, EncodeError> {
-    let mut out = EncodedSnapshotBatch::default();
-
-    for entity in &snapshot.entities {
-        out.entities.push(encode_entity_row(entity)?);
-    }
-    for scope in &snapshot.scopes {
-        out.scopes.push(encode_scope_row(scope)?);
-    }
-    for edge in &snapshot.edges {
-        out.edges.push(encode_edge_row(edge)?);
-    }
-    for event in &snapshot.events {
-        out.events.push(encode_event_row(event)?);
-    }
-
-    Ok(out)
 }
 
 #[derive(Debug, Clone)]
@@ -221,10 +92,10 @@ pub struct InsertCounts {
     pub events: usize,
 }
 
-pub fn insert_encoded_snapshot_batch(
+pub fn insert_snapshot_batch(
     conn: &mut rusqlite::Connection,
     snapshot_id: i64,
-    batch: &EncodedSnapshotBatch,
+    snapshot: &Snapshot,
     tables: &SnapshotTableNames,
     mode: InsertMode,
 ) -> rusqlite::Result<InsertCounts> {
@@ -254,14 +125,14 @@ pub fn insert_encoded_snapshot_batch(
 
     {
         let mut stmt = tx.prepare_cached(&entities_sql)?;
-        for row in &batch.entities {
+        for entity in &snapshot.entities {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.id,
-                row.birth,
-                row.source_id,
-                row.name.as_str(),
-                row.body_json,
+                entity.id,
+                entity.birth,
+                entity.source,
+                entity.name.as_str(),
+                entity.body,
             ])?;
             counts.entities += 1;
         }
@@ -269,14 +140,14 @@ pub fn insert_encoded_snapshot_batch(
 
     {
         let mut stmt = tx.prepare_cached(&scopes_sql)?;
-        for row in &batch.scopes {
+        for scope in &snapshot.scopes {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.id,
-                row.birth,
-                row.source_id,
-                row.name.as_str(),
-                row.body_json,
+                scope.id,
+                scope.birth,
+                scope.source,
+                scope.name.as_str(),
+                scope.body,
             ])?;
             counts.scopes += 1;
         }
@@ -284,13 +155,13 @@ pub fn insert_encoded_snapshot_batch(
 
     {
         let mut stmt = tx.prepare_cached(&edges_sql)?;
-        for row in &batch.edges {
+        for edge in &snapshot.edges {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.src_id,
-                row.dst_id,
-                row.source_id,
-                row.kind_json,
+                edge.src,
+                edge.dst,
+                edge.source,
+                edge.kind,
             ])?;
             counts.edges += 1;
         }
@@ -298,14 +169,14 @@ pub fn insert_encoded_snapshot_batch(
 
     {
         let mut stmt = tx.prepare_cached(&events_sql)?;
-        for row in &batch.events {
+        for event in &snapshot.events {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.id,
-                row.at,
-                row.source_id,
-                row.target_json,
-                row.kind_json,
+                event.id,
+                event.at,
+                event.source,
+                event.target,
+                event.kind,
             ])?;
             counts.events += 1;
         }
@@ -315,15 +186,15 @@ pub fn insert_encoded_snapshot_batch(
     Ok(counts)
 }
 
-pub fn insert_encoded_snapshot_batch_default(
+pub fn insert_snapshot_batch_default(
     conn: &mut rusqlite::Connection,
     snapshot_id: i64,
-    batch: &EncodedSnapshotBatch,
+    snapshot: &Snapshot,
 ) -> rusqlite::Result<InsertCounts> {
-    insert_encoded_snapshot_batch(
+    insert_snapshot_batch(
         conn,
         snapshot_id,
-        batch,
+        snapshot,
         &SnapshotTableNames::default(),
         InsertMode::InsertOrReplace,
     )

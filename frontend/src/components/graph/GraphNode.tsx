@@ -37,11 +37,12 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
   }
   if (def.rpcPair) {
     const respBody =
-      typeof def.rpcPair.resp.body !== "string" && "response" in def.rpcPair.resp.body
+      "response" in def.rpcPair.resp.body
         ? def.rpcPair.resp.body.response
         : null;
-    const respStatus = respBody?.status ?? "pending";
-    const respTone: Tone = respStatus === "ok" ? "ok" : respStatus === "error" ? "crit" : "warn";
+    const respStatus = respBody?.status;
+    const respStatusKey = respStatus == null ? "pending" : Object.keys(respStatus)[0];
+    const respTone: Tone = respStatus == null ? "warn" : "ok" in respStatus ? "ok" : "error" in respStatus ? "crit" : "warn";
     return {
       kind: "rpc_pair",
       label: def.name,
@@ -49,7 +50,7 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       selected: false,
       status: def.status,
       ageMs: def.rpcPair.resp.ageMs,
-      stat: `RESP ${respStatus}`,
+      stat: `RESP ${respStatusKey}`,
       statTone: respTone,
       portTopId: `${def.id}:resp`,
       portBottomId: `${def.id}:req`,

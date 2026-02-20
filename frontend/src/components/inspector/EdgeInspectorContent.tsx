@@ -7,20 +7,17 @@ import { edgeTooltip } from "../../graph/elkAdapter";
 import "./InspectorPanel.css";
 
 export const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
-  touches: "Resource context",
-  needs: "Causal dependency",
-  holds: "Permit ownership",
   polls: "Non-blocking observation",
-  closed_by: "Closure cause",
-  channel_link: "Channel pairing",
-  rpc_link: "RPC pairing",
+  waiting_on: "Causal dependency",
+  holds: "Permit ownership",
+  paired_with: "Structural pairing",
 };
 
 export function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs: EntityDef[] }) {
   const srcEntity = entityDefs.find((e) => e.id === edge.source);
   const dstEntity = entityDefs.find((e) => e.id === edge.target);
   const tooltip = edgeTooltip(edge, srcEntity?.name ?? edge.source, dstEntity?.name ?? edge.target);
-  const isStructural = edge.kind === "rpc_link" || edge.kind === "channel_link";
+  const isStructural = edge.kind === "paired_with";
 
   return (
     <div className="inspector-kv-table">
@@ -44,20 +41,10 @@ export function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; enti
         <span className="inspector-mono">{tooltip}</span>
       </KeyValueRow>
       <KeyValueRow label="Type">
-        <Badge tone={isStructural ? "neutral" : edge.kind === "needs" ? "crit" : edge.kind === "holds" ? "ok" : "warn"}>
+        <Badge tone={isStructural ? "neutral" : edge.kind === "waiting_on" ? "crit" : edge.kind === "holds" ? "ok" : "warn"}>
           {isStructural ? "structural" : "causal"}
         </Badge>
       </KeyValueRow>
-      {edge.opKind && (
-        <KeyValueRow label="Operation">
-          <span className="inspector-mono">{edge.opKind}</span>
-        </KeyValueRow>
-      )}
-      {edge.state && (
-        <KeyValueRow label="State">
-          <span className="inspector-mono">{edge.state}</span>
-        </KeyValueRow>
-      )}
     </div>
   );
 }

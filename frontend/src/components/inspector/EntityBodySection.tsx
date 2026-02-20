@@ -2,8 +2,8 @@ import React from "react";
 import { PaperPlaneTilt } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
-import type { EntityBody } from "../../api/types";
-import type { EntityDef, Tone } from "../../snapshot";
+import type { EntityBody } from "../../api/types.generated";
+import type { EntityDef } from "../../snapshot";
 
 type RequestBody = Extract<EntityBody, { request: unknown }>;
 type ResponseBody = Extract<EntityBody, { response: unknown }>;
@@ -11,20 +11,12 @@ type ResponseBody = Extract<EntityBody, { response: unknown }>;
 export function EntityBodySection({ entity }: { entity: EntityDef }) {
   const { body } = entity;
 
-  if (typeof body === "string") {
-    return null;
-  }
-
   if ("request" in body) {
     const req = (body as RequestBody).request;
     return (
       <>
         <KeyValueRow label="Args">
-          <span
-            className={`inspector-mono${req.args_preview === "(no args)" ? " inspector-muted" : ""}`}
-          >
-            {req.args_preview}
-          </span>
+          <span className="inspector-mono">{req.args_json}</span>
         </KeyValueRow>
       </>
     );
@@ -32,14 +24,16 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
 
   if ("response" in body) {
     const resp = (body as ResponseBody).response;
+    const s = resp.status;
+    const statusKey = "ok" in s ? "ok" : "error" in s ? "error" : "cancelled" in s ? "cancelled" : "pending";
     return (
       <>
         <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
-          <span className="inspector-mono">{resp.method}</span>
+          <span className="inspector-mono">{resp.service_name}.{resp.method_name}</span>
         </KeyValueRow>
         <KeyValueRow label="Status">
-          <Badge tone={resp.status === "ok" ? "ok" : resp.status === "error" ? "crit" : "warn"}>
-            {resp.status}
+          <Badge tone={"ok" in s ? "ok" : "error" in s ? "crit" : "warn"}>
+            {statusKey}
           </Badge>
         </KeyValueRow>
       </>
@@ -56,56 +50,82 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
     );
   }
 
-  if ("channel_tx" in body || "channel_rx" in body) {
-    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
-    const lc = ep.lifecycle;
-    const lifecycleLabel = typeof lc === "string" ? lc : `closed (${Object.values(lc)[0]})`;
-    const lifecycleTone: Tone = lc === "open" ? "ok" : "neutral";
-    const mpscBuffer = "mpsc" in ep.details ? ep.details.mpsc.buffer : null;
+  if ("mpsc_tx" in body) {
+    const { queue_len, capacity } = body.mpsc_tx;
     const segmentCount = 8;
     const ratio =
-      mpscBuffer && mpscBuffer.capacity != null && mpscBuffer.capacity > 0
-        ? Math.max(0, Math.min(1, mpscBuffer.occupancy / mpscBuffer.capacity))
+      capacity != null && capacity > 0
+        ? Math.max(0, Math.min(1, queue_len / capacity))
         : 0;
     const filledSegments = Math.round(ratio * segmentCount);
     const queueToneClass =
-      mpscBuffer && mpscBuffer.capacity != null
-        ? mpscBuffer.occupancy >= mpscBuffer.capacity
+      capacity != null
+        ? queue_len >= capacity
           ? "inspector-buffer-segment--crit"
-          : mpscBuffer.occupancy / mpscBuffer.capacity >= 0.75
+          : queue_len / capacity >= 0.75
             ? "inspector-buffer-segment--warn"
             : "inspector-buffer-segment--ok"
         : "inspector-buffer-segment--ok";
     return (
-      <>
-        <KeyValueRow label="Lifecycle">
-          <Badge tone={lifecycleTone}>{lifecycleLabel}</Badge>
-        </KeyValueRow>
-        {mpscBuffer && (
-          <KeyValueRow label="Queue">
-            <span className="inspector-queue-value">
-              <span className="inspector-mono">
-                {mpscBuffer.occupancy}/{mpscBuffer.capacity ?? "∞"}
-              </span>
-              {mpscBuffer.capacity != null && (
-                <span className="inspector-buffer-bar" aria-hidden="true">
-                  {Array.from({ length: segmentCount }, (_, i) => (
-                    <span
-                      key={i}
-                      className={[
-                        "inspector-buffer-segment",
-                        i < filledSegments && queueToneClass,
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    />
-                  ))}
-                </span>
-              )}
+      <KeyValueRow label="Queue">
+        <span className="inspector-queue-value">
+          <span className="inspector-mono">
+            {queue_len}/{capacity ?? "∞"}
+          </span>
+          {capacity != null && (
+            <span className="inspector-buffer-bar" aria-hidden="true">
+              {Array.from({ length: segmentCount }, (_, i) => (
+                <span
+                  key={i}
+                  className={[
+                    "inspector-buffer-segment",
+                    i < filledSegments && queueToneClass,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                />
+              ))}
             </span>
-          </KeyValueRow>
-        )}
-      </>
+          )}
+        </span>
+      </KeyValueRow>
+    );
+  }
+
+  if ("broadcast_tx" in body) {
+    return (
+      <KeyValueRow label="Capacity">
+        <span className="inspector-mono">{body.broadcast_tx.capacity}</span>
+      </KeyValueRow>
+    );
+  }
+
+  if ("broadcast_rx" in body) {
+    return (
+      <KeyValueRow label="Lag">
+        <span className="inspector-mono">{body.broadcast_rx.lag}</span>
+      </KeyValueRow>
+    );
+  }
+
+  if ("watch_tx" in body) {
+    const lastUpdate = body.watch_tx.last_update_at;
+    return (
+      <KeyValueRow label="Last update">
+        <span className="inspector-mono">
+          {lastUpdate != null ? `P+${lastUpdate}ms` : "never"}
+        </span>
+      </KeyValueRow>
+    );
+  }
+
+  if ("oneshot_tx" in body) {
+    return (
+      <KeyValueRow label="Sent">
+        <Badge tone={body.oneshot_tx.sent ? "ok" : "neutral"}>
+          {body.oneshot_tx.sent ? "yes" : "no"}
+        </Badge>
+      </KeyValueRow>
     );
   }
 

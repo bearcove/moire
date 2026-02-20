@@ -77,7 +77,8 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
-pub fn oneshot<T>(
+#[doc(hidden)]
+pub fn oneshot_with_source<T>(
     name: impl Into<String>,
     source: SourceId,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
@@ -113,10 +114,18 @@ pub fn oneshot<T>(
     )
 }
 
+#[doc(hidden)]
 pub fn oneshot_channel<T>(
     name: impl Into<String>,
     source: SourceId,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    #[allow(deprecated)]
-    oneshot(name, source)
+    oneshot_with_source(name, source)
+}
+
+#[doc(hidden)]
+pub fn oneshot<T>(
+    name: impl Into<String>,
+    source: SourceId,
+) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    oneshot_with_source(name, source)
 }

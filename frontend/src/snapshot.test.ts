@@ -7,8 +7,7 @@ function edge(id: string, source: string, target: string): EdgeDef {
     id,
     source,
     target,
-    kind: "needs",
-    meta: {},
+    kind: "waiting_on",
   };
 }
 
@@ -33,7 +32,7 @@ describe("collapseEdgesThroughHiddenNodes", () => {
         id: "collapsed-a-b",
         source: "a",
         target: "b",
-        kind: "touches",
+        kind: "polls",
       }),
     );
   });
@@ -49,7 +48,7 @@ describe("collapseEdgesThroughHiddenNodes", () => {
         id: "collapsed-a-b",
         source: "a",
         target: "b",
-        kind: "touches",
+        kind: "polls",
       }),
     );
   });

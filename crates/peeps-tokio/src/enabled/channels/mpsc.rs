@@ -194,7 +194,8 @@ impl<T> UnboundedReceiver<T> {
     }
 }
 
-pub fn channel<T>(
+#[doc(hidden)]
+pub fn channel_with_source<T>(
     name: impl Into<String>,
     capacity: usize,
     source: SourceId,
@@ -235,16 +236,26 @@ pub fn channel<T>(
     )
 }
 
+#[doc(hidden)]
 pub fn mpsc_channel<T>(
     name: impl Into<String>,
     capacity: usize,
     source: SourceId,
 ) -> (Sender<T>, Receiver<T>) {
-    #[allow(deprecated)]
-    channel(name, capacity, source)
+    channel_with_source(name, capacity, source)
 }
 
-pub fn unbounded_channel<T>(
+#[doc(hidden)]
+pub fn channel<T>(
+    name: impl Into<String>,
+    capacity: usize,
+    source: SourceId,
+) -> (Sender<T>, Receiver<T>) {
+    channel_with_source(name, capacity, source)
+}
+
+#[doc(hidden)]
+pub fn unbounded_channel_with_source<T>(
     name: impl Into<String>,
     source: SourceId,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
@@ -283,12 +294,20 @@ pub fn unbounded_channel<T>(
     )
 }
 
+#[doc(hidden)]
 pub fn mpsc_unbounded_channel<T>(
     name: impl Into<String>,
     source: SourceId,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    #[allow(deprecated)]
-    unbounded_channel(name, source)
+    unbounded_channel_with_source(name, source)
+}
+
+#[doc(hidden)]
+pub fn unbounded_channel<T>(
+    name: impl Into<String>,
+    source: SourceId,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+    unbounded_channel_with_source(name, source)
 }
 
 impl<T> AsEntityRef for Sender<T> {

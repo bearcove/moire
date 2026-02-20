@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { Table, type Column } from "../ui/primitives/Table";
-import type { ConnectedProcessInfo, ConnectionsResponse } from "../api/types";
+import type { ConnectedProcessInfo, ConnectionsResponse } from "../api/types.generated";
 import { formatProcessLabel } from "../processLabel";
 import "./ProcessModal.css";
 

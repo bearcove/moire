@@ -20,12 +20,7 @@ export function ScopeInspectorContent({ scope }: { scope: ScopeDef }) {
       </KeyValueRow>
       {scope.source && (
         <KeyValueRow label="Source">
-          <span className="inspector-mono">{scope.source}</span>
-        </KeyValueRow>
-      )}
-      {scope.krate && (
-        <KeyValueRow label="Crate">
-          <span className="inspector-mono">{scope.krate}</span>
+          <span className="inspector-mono">{scope.source.path}:{scope.source.line}</span>
         </KeyValueRow>
       )}
       <KeyValueRow label="Members">

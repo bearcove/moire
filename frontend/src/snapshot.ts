@@ -1,4 +1,4 @@
-import type { EntityBody, SnapshotCutResponse, SnapshotEdgeKind } from "./api/types";
+import type { EdgeKind, EntityBody, SnapshotCutResponse, SnapshotSource } from "./api/types.generated";
 import { canonicalScopeKind } from "./scopeKindSpec";
 
 // ── Body type helpers ──────────────────────────────────────────
@@ -25,7 +25,7 @@ export type EntityDef = {
   name: string;
   kind: string;
   body: EntityBody;
-  source: string;
+  source: SnapshotSource;
   krate?: string;
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
   birthPtime: number;
@@ -48,11 +48,7 @@ export type EdgeDef = {
   id: string;
   source: string;
   target: string;
-  kind: SnapshotEdgeKind;
-  meta: Record<string, MetaValue>;
-  opKind?: string;
-  state?: string;
-  pendingSincePtimeMs?: number;
+  kind: EdgeKind;
   /** ELK port ID on the source node, when the source is a merged channel pair. */
   sourcePort?: string;
   /** ELK port ID on the target node, when the target is a merged channel pair. */
@@ -71,7 +67,7 @@ export type ScopeDef = {
   scopeName: string;
   /** Canonical scope kind: "process" | "thread" | "task" | "connection" | … */
   scopeKind: string;
-  source: string;
+  source: SnapshotSource;
   krate?: string;
   /** Process-relative birth time in ms. */
   birthPtime: number;
@@ -87,6 +83,13 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
     const { process_id, process_name, pid, ptime_now_ms, scope_entity_links } = proc;
     const processIdStr = String(process_id);
 
+    const sourcesMap = new Map(proc.snapshot.sources.map((s) => [s.id, s]));
+    const resolveSource = (id: number): SnapshotSource => {
+      const s = sourcesMap.get(id);
+      if (!s) throw new Error(`[snapshot] unknown source id ${id} in process ${process_id}`);
+      return s;
+    };
+
     const membersByScope = new Map<string, string[]>();
     for (const link of scope_entity_links ?? []) {
       const compositeEntityId = `${processIdStr}/${link.entity_id}`;
@@ -100,6 +103,7 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
 
     for (const scope of proc.snapshot.scopes) {
       const memberEntityIds = membersByScope.get(scope.id) ?? [];
+      const resolvedSource = resolveSource(scope.source);
       result.push({
         key: `${processIdStr}:${scope.id}`,
         processId: processIdStr,
@@ -107,9 +111,9 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
         processPid: pid,
         scopeId: scope.id,
         scopeName: scope.name,
-        scopeKind: canonicalScopeKind(scope.body ?? "unknown"),
-        source: scope.source,
-        krate: scope.krate,
+        scopeKind: canonicalScopeKind(scope.body),
+        source: resolvedSource,
+        krate: resolvedSource.krate,
         birthPtime: scope.birth,
         ageMs: Math.max(0, ptime_now_ms - scope.birth),
         memberEntityIds,
@@ -122,26 +126,33 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
 // ── Snapshot conversion ────────────────────────────────────────
 
 export function bodyToKind(body: EntityBody): string {
-  return typeof body === "string" ? body : Object.keys(body)[0];
+  return Object.keys(body)[0];
 }
 
 export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
-  if (typeof body === "string") return { label: "polling", tone: "neutral" };
+  if ("future" in body) return { label: "polling", tone: "neutral" };
   if ("request" in body) return { label: "in_flight", tone: "warn" };
   if ("response" in body) {
     const s = (body as ResponseBody).response.status;
-    if (s === "ok") return { label: "ok", tone: "ok" };
-    if (s === "error") return { label: "error", tone: "crit" };
-    if (s === "cancelled") return { label: "cancelled", tone: "neutral" };
+    if ("ok" in s) return { label: "ok", tone: "ok" };
+    if ("error" in s) return { label: "error", tone: "crit" };
+    if ("cancelled" in s) return { label: "cancelled", tone: "neutral" };
     return { label: "pending", tone: "warn" };
   }
   if ("lock" in body) return { label: "held", tone: "crit" };
-  if ("channel_tx" in body || "channel_rx" in body) {
-    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
-    return ep.lifecycle === "open"
-      ? { label: "open", tone: "ok" }
-      : { label: "closed", tone: "neutral" };
+  if ("mpsc_tx" in body || "mpsc_rx" in body) return { label: "active", tone: "ok" };
+  if ("broadcast_tx" in body) return { label: "active", tone: "ok" };
+  if ("broadcast_rx" in body) {
+    const { lag } = body.broadcast_rx;
+    return lag > 0 ? { label: `lag: ${lag}`, tone: "warn" } : { label: "active", tone: "ok" };
   }
+  if ("watch_tx" in body || "watch_rx" in body) return { label: "active", tone: "ok" };
+  if ("oneshot_tx" in body) {
+    return body.oneshot_tx.sent
+      ? { label: "sent", tone: "ok" }
+      : { label: "pending", tone: "neutral" };
+  }
+  if ("oneshot_rx" in body) return { label: "waiting", tone: "neutral" };
   if ("semaphore" in body) {
     const { max_permits, handed_out_permits } = body.semaphore;
     const available = max_permits - handed_out_permits;
@@ -166,17 +177,13 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
 }
 
 export function deriveStat(body: EntityBody): string | undefined {
-  if (typeof body === "string") return undefined;
   if ("semaphore" in body) {
     const { max_permits, handed_out_permits } = body.semaphore;
     return `${max_permits - handed_out_permits}/${max_permits}`;
   }
-  if ("channel_tx" in body || "channel_rx" in body) {
-    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
-    if ("mpsc" in ep.details && ep.details.mpsc.buffer) {
-      const { occupancy, capacity } = ep.details.mpsc.buffer;
-      return `${occupancy}/${capacity ?? "∞"}`;
-    }
+  if ("mpsc_tx" in body) {
+    const { queue_len, capacity } = body.mpsc_tx;
+    return `${queue_len}/${capacity ?? "∞"}`;
   }
   if ("notify" in body) {
     return body.notify.waiter_count > 0 ? `${body.notify.waiter_count} waiters` : undefined;
@@ -188,15 +195,11 @@ export function deriveStat(body: EntityBody): string | undefined {
 }
 
 export function deriveStatTone(body: EntityBody): Tone | undefined {
-  if (typeof body === "string") return undefined;
-  if ("channel_tx" in body || "channel_rx" in body) {
-    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
-    if ("mpsc" in ep.details && ep.details.mpsc.buffer) {
-      const { occupancy, capacity } = ep.details.mpsc.buffer;
-      if (capacity == null) return undefined;
-      if (occupancy >= capacity) return "crit";
-      if (occupancy / capacity >= 0.75) return "warn";
-    }
+  if ("mpsc_tx" in body) {
+    const { queue_len, capacity } = body.mpsc_tx;
+    if (capacity == null) return undefined;
+    if (queue_len >= capacity) return "crit";
+    if (queue_len / capacity >= 0.75) return "warn";
   }
   return undefined;
 }
@@ -204,7 +207,7 @@ export function deriveStatTone(body: EntityBody): Tone | undefined {
 export function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<string> {
   const adj = new Map<string, string[]>();
   for (const e of edges) {
-    if (e.kind !== "needs") continue;
+    if (e.kind !== "waiting_on") continue;
     if (!adj.has(e.source)) adj.set(e.source, []);
     adj.get(e.source)!.push(e.target);
   }
@@ -233,12 +236,21 @@ export function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<s
   return inCycle;
 }
 
+const TX_KINDS = new Set(["mpsc_tx", "broadcast_tx", "watch_tx", "oneshot_tx"]);
+const RX_KINDS = new Set(["mpsc_rx", "broadcast_rx", "watch_rx", "oneshot_rx"]);
+
 export function mergeChannelPairs(
   entities: EntityDef[],
   edges: EdgeDef[],
 ): { entities: EntityDef[]; edges: EdgeDef[] } {
-  const channelLinks = edges.filter((e) => e.kind === "channel_link");
   const entityById = new Map(entities.map((e) => [e.id, e]));
+  const channelLinks = edges.filter((e) => {
+    if (e.kind !== "paired_with") return false;
+    const src = entityById.get(e.source);
+    const dst = entityById.get(e.target);
+    return !!(src && dst && TX_KINDS.has(src.kind) && RX_KINDS.has(dst.kind));
+  });
+  const channelLinkIds = new Set(channelLinks.map((e) => e.id));
 
   // Maps from original TX/RX entity id → merged id and port id
   const mergedIdFor = new Map<string, string>();
@@ -287,9 +299,9 @@ export function mergeChannelPairs(
   const filteredEntities = entities.filter((e) => !removedIds.has(e.id));
   const newEntities = [...filteredEntities, ...mergedEntities];
 
-  // Remove channel_link edges; remap sources/targets that pointed at TX/RX entities
+  // Remove channel paired_with edges; remap sources/targets that pointed at TX/RX entities
   const newEdges = edges
-    .filter((e) => e.kind !== "channel_link")
+    .filter((e) => !(e.kind === "paired_with" && channelLinkIds.has(e.id)))
     .map((e) => {
       const origSource = e.source;
       const origTarget = e.target;
@@ -326,10 +338,21 @@ export function mergeRpcPairs(
   edges: EdgeDef[],
   groupMode: SnapshotGroupMode = "none",
 ): { entities: EntityDef[]; edges: EdgeDef[] } {
-  const rpcLinks = edges.filter((e) => e.kind === "rpc_link");
   const entityById = new Map(entities.map((e) => [e.id, e]));
   const groupKeyByEntity = buildGroupKeyByEntity(entities, groupMode);
   const mergedRpcLinkIds = new Set<string>();
+
+  const rpcLinks = edges.filter((e) => {
+    if (e.kind !== "paired_with") return false;
+    const src = entityById.get(e.source);
+    const dst = entityById.get(e.target);
+    return !!(
+      src &&
+      dst &&
+      ((src.kind === "request" && dst.kind === "response") ||
+        (src.kind === "response" && dst.kind === "request"))
+    );
+  });
 
   const mergedIdFor = new Map<string, string>();
   const portIdFor = new Map<string, string>();
@@ -337,30 +360,39 @@ export function mergeRpcPairs(
   const mergedEntities: EntityDef[] = [];
 
   for (const link of rpcLinks) {
-    const reqEntity = entityById.get(link.source);
-    const respEntity = entityById.get(link.target);
-    if (!reqEntity || !respEntity) continue;
-    if (groupKeyByEntity.get(reqEntity.id) !== groupKeyByEntity.get(respEntity.id)) continue;
-    if (mergedIdFor.has(link.source) || mergedIdFor.has(link.target)) continue;
+    const srcEntity = entityById.get(link.source);
+    const dstEntity = entityById.get(link.target);
+    if (!srcEntity || !dstEntity) continue;
 
-    const mergedId = `rpc_pair:${link.source}:${link.target}`;
+    // Rust emits paired_with as response → request; handle both directions
+    let reqEntity: EntityDef, respEntity: EntityDef;
+    if (srcEntity.kind === "request") {
+      reqEntity = srcEntity;
+      respEntity = dstEntity;
+    } else {
+      respEntity = srcEntity;
+      reqEntity = dstEntity;
+    }
+
+    if (groupKeyByEntity.get(reqEntity.id) !== groupKeyByEntity.get(respEntity.id)) continue;
+    if (mergedIdFor.has(reqEntity.id) || mergedIdFor.has(respEntity.id)) continue;
+
+    const mergedId = `rpc_pair:${reqEntity.id}:${respEntity.id}`;
     const reqPortId = `${mergedId}:req`;
     const respPortId = `${mergedId}:resp`;
 
-    mergedIdFor.set(link.source, mergedId);
-    mergedIdFor.set(link.target, mergedId);
+    mergedIdFor.set(reqEntity.id, mergedId);
+    mergedIdFor.set(respEntity.id, mergedId);
     mergedRpcLinkIds.add(link.id);
-    portIdFor.set(link.source, reqPortId);
-    portIdFor.set(link.target, respPortId);
-    removedIds.add(link.source);
-    removedIds.add(link.target);
+    portIdFor.set(reqEntity.id, reqPortId);
+    portIdFor.set(respEntity.id, respPortId);
+    removedIds.add(reqEntity.id);
+    removedIds.add(respEntity.id);
 
     const rpcName = reqEntity.name.endsWith(":req") ? reqEntity.name.slice(0, -4) : reqEntity.name;
 
     const respBody =
-      typeof respEntity.body !== "string" && "response" in respEntity.body
-        ? respEntity.body.response
-        : null;
+      "response" in respEntity.body ? (respEntity.body as ResponseBody).response : null;
     const mergedStatus = respBody
       ? deriveStatus(respEntity.body)
       : { label: "in_flight", tone: "warn" as Tone };
@@ -380,7 +412,7 @@ export function mergeRpcPairs(
   const newEntities = [...filteredEntities, ...mergedEntities];
 
   const newEdges = edges
-    .filter((e) => e.kind !== "rpc_link" || !mergedRpcLinkIds.has(e.id))
+    .filter((e) => e.kind !== "paired_with" || !mergedRpcLinkIds.has(e.id))
     .map((e) => {
       const origSource = e.source;
       const origTarget = e.target;
@@ -397,16 +429,16 @@ export function mergeRpcPairs(
 
 function coalesceContextEdges(edges: EdgeDef[]): EdgeDef[] {
   // If we already have a richer causal/structural edge for a pair,
-  // suppress parallel `touches` to avoid double-rendering the same relation.
-  const hasNonTouchesForPair = new Set<string>();
+  // suppress parallel `polls` to avoid double-rendering the same relation.
+  const hasNonPollsForPair = new Set<string>();
   for (const edge of edges) {
-    if (edge.kind === "touches") continue;
-    hasNonTouchesForPair.add(`${edge.source}->${edge.target}`);
+    if (edge.kind === "polls") continue;
+    hasNonPollsForPair.add(`${edge.source}->${edge.target}`);
   }
 
   return edges.filter((edge) => {
-    if (edge.kind !== "touches") return true;
-    return !hasNonTouchesForPair.has(`${edge.source}->${edge.target}`);
+    if (edge.kind !== "polls") return true;
+    return !hasNonPollsForPair.has(`${edge.source}->${edge.target}`);
   });
 }
 
@@ -425,9 +457,17 @@ export function convertSnapshot(
     const { process_id, process_name, pid, ptime_now_ms } = proc;
     const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
 
+    const sourcesMap = new Map(proc.snapshot.sources.map((s) => [s.id, s]));
+    const resolveSource = (id: number): SnapshotSource => {
+      const s = sourcesMap.get(id);
+      if (!s) throw new Error(`[snapshot] unknown source id ${id} in process ${process_id}`);
+      return s;
+    };
+
     for (const e of proc.snapshot.entities) {
       const compositeId = `${process_id}/${e.id}`;
       const ageMs = Math.max(0, ptime_now_ms - e.birth);
+      const resolvedSource = resolveSource(e.source);
       allEntities.push({
         id: compositeId,
         rawEntityId: e.id,
@@ -437,12 +477,12 @@ export function convertSnapshot(
         name: e.name,
         kind: bodyToKind(e.body),
         body: e.body,
-        source: e.source,
-        krate: e.krate,
+        source: resolvedSource,
+        krate: resolvedSource.krate,
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,
-        meta: (e.meta ?? {}) as Record<string, MetaValue>,
+        meta: {},
         inCycle: false,
         status: deriveStatus(e.body),
         stat: deriveStat(e.body),
@@ -452,37 +492,26 @@ export function convertSnapshot(
   }
 
   // Build raw entity ID → composite ID lookup for cross-process edge resolution.
-  // rpc_link edges have their src set to the request's raw ID from the other process.
+  // paired_with edges (RPC) have their src set to the request's raw ID from the other process.
   const rawToCompositeId = new Map<string, string>();
   for (const entity of allEntities) {
     rawToCompositeId.set(entity.rawEntityId, entity.id);
   }
 
-  // Second pass: build edges, resolving cross-process src IDs for rpc_link.
+  // Second pass: build edges, resolving cross-process src IDs for paired_with.
   for (const proc of snapshot.processes) {
     const { process_id } = proc;
     for (let i = 0; i < proc.snapshot.edges.length; i++) {
       const e = proc.snapshot.edges[i];
       const localSrc = `${process_id}/${e.src}`;
       const srcComposite =
-        e.kind === "rpc_link" ? (rawToCompositeId.get(e.src) ?? localSrc) : localSrc;
+        e.kind === "paired_with" ? (rawToCompositeId.get(e.src) ?? localSrc) : localSrc;
       const dstComposite = `${process_id}/${e.dst}`;
       allEdges.push({
         id: `e${i}-${srcComposite}-${dstComposite}-${e.kind}`,
         source: srcComposite,
         target: dstComposite,
         kind: e.kind,
-        meta: (e.meta ?? {}) as Record<string, MetaValue>,
-        opKind:
-          e.meta && typeof e.meta.op_kind === "string"
-            ? (e.meta.op_kind as string)
-            : undefined,
-        state:
-          e.meta && typeof e.meta.state === "string" ? (e.meta.state as string) : undefined,
-        pendingSincePtimeMs:
-          e.meta && typeof e.meta.pending_since_ptime_ms === "number"
-            ? (e.meta.pending_since_ptime_ms as number)
-            : undefined,
       });
     }
   }
@@ -602,8 +631,7 @@ export function collapseEdgesThroughHiddenNodes(
               id: collapsedId,
               source: left,
               target: right,
-              kind: "touches",
-              meta: { collapsed: true },
+              kind: "polls",
             });
           }
           return;

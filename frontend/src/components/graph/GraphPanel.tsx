@@ -146,7 +146,7 @@ export function GraphPanel({
       Array.from(
         new Set(
           entityDefs
-            .map((entity) => entity.source?.trim() ?? "")
+            .map((entity) => `${entity.source.path}:${entity.source.line}`)
             .filter((source) => source.length > 0),
         ),
       ),

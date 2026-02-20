@@ -14,7 +14,7 @@ export interface RecordingImportFrame {
 
 export interface RecordingSessionInfo {
   session_id: string;
-  status: string;
+  status: RecordingSessionStatus;
   interval_ms: number;
   started_at_unix_ms: number;
   stopped_at_unix_ms?: number;
@@ -35,6 +35,8 @@ export interface FrameSummary {
   process_count: number;
   capture_duration_ms: number;
 }
+
+export type RecordingSessionStatus = "recording" | "stopped";
 
 export interface RecordCurrentResponse {
   session?: RecordingSessionInfo;
@@ -138,9 +140,7 @@ export interface Event {
 
 export type EventKind = "state_changed" | "channel_sent" | "channel_received";
 
-export type EventTarget =
-  | { entity: EntityId }
-  | { scope: ScopeId };
+export type EventTarget = { entity: EntityId } | { scope: ScopeId };
 
 export type ScopeId = string;
 
@@ -299,9 +299,7 @@ export type ResponseStatus =
   | { error: ResponseError }
   | { cancelled: "cancelled" };
 
-export type ResponseError =
-  | { internal: string }
-  | { user_json: Json };
+export type ResponseError = { internal: string } | { user_json: Json };
 
 export type Json = string;
 
@@ -348,7 +346,15 @@ export interface FileOpEntity {
   path: string;
 }
 
-export type FileOpKind = "open" | "read" | "write" | "sync" | "metadata" | "remove" | "rename" | "other";
+export type FileOpKind =
+  | "open"
+  | "read"
+  | "write"
+  | "sync"
+  | "metadata"
+  | "remove"
+  | "rename"
+  | "other";
 
 export interface CommandEntity {
   /**
@@ -508,4 +514,3 @@ export interface ConnectionsResponse {
   connected_processes: number;
   processes: ConnectedProcessInfo[];
 }
-

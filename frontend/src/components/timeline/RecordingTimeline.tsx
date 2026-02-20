@@ -1,5 +1,5 @@
 import "./RecordingTimeline.css";
-import type { FrameSummary } from "../../api/types";
+import type { FrameSummary } from "../../api/types.generated";
 import type { FrameChangeSummary } from "../../recording/unionGraph";
 import { CircleNotch, Ghost, SkipBack, SkipForward } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";

@@ -11,7 +11,8 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    pub fn named(name: impl Into<String>, source: SourceId) -> Self {
+    #[doc(hidden)]
+    pub fn named_with_source(name: impl Into<String>, source: SourceId) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(
             format!("joinset.{name}"),
@@ -24,9 +25,19 @@ where
         }
     }
 
+    #[doc(hidden)]
+    pub fn with_name_with_source(name: impl Into<String>, source: SourceId) -> Self {
+        Self::named_with_source(name, source)
+    }
+
+    #[doc(hidden)]
+    pub fn named(name: impl Into<String>, source: SourceId) -> Self {
+        Self::named_with_source(name, source)
+    }
+
+    #[doc(hidden)]
     pub fn with_name(name: impl Into<String>, source: SourceId) -> Self {
-        #[allow(deprecated)]
-        Self::named(name, source)
+        Self::with_name_with_source(name, source)
     }
 
     #[doc(hidden)]

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "./App.css";
 import type { FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { apiClient } from "./api";
-import type { ConnectionsResponse, FrameSummary } from "./api/types";
+import type { ConnectionsResponse, FrameSummary } from "./api/types.generated";
 import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
   collapseEdgesThroughHiddenNodes,
@@ -239,12 +239,12 @@ export function App() {
           (graphTextFilters.includeProcesses.size === 0 || graphTextFilters.includeProcesses.has(e.processId)) &&
           (graphTextFilters.includeKinds.size === 0 || graphTextFilters.includeKinds.has(canonicalNodeKind(e.kind))) &&
           (graphTextFilters.includeNodeIds.size === 0 || graphTextFilters.includeNodeIds.has(e.id)) &&
-          (graphTextFilters.includeLocations.size === 0 || graphTextFilters.includeLocations.has(e.source)) &&
+          (graphTextFilters.includeLocations.size === 0 || graphTextFilters.includeLocations.has(`${e.source.path}:${e.source.line}`)) &&
           (ignore === "crate" || effectiveHiddenKrates.size === 0 || !effectiveHiddenKrates.has(e.krate ?? "~no-crate")) &&
           (ignore === "process" || effectiveHiddenProcesses.size === 0 || !effectiveHiddenProcesses.has(e.processId)) &&
           (ignore === "kind" || effectiveHiddenKinds.size === 0 || !effectiveHiddenKinds.has(canonicalNodeKind(e.kind))) &&
           !graphTextFilters.excludeNodeIds.has(e.id) &&
-          !graphTextFilters.excludeLocations.has(e.source),
+          !graphTextFilters.excludeLocations.has(`${e.source.path}:${e.source.line}`),
       );
       const entityIds = new Set(entities.map((entity) => entity.id));
       let edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);

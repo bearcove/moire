@@ -202,6 +202,7 @@ impl Command {
 }
 
 impl Child {
+    #[doc(hidden)]
     pub fn from_tokio_with_diagnostics(
         child: tokio::process::Child,
         diag: CommandDiagnostics,

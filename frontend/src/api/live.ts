@@ -8,7 +8,7 @@ import type {
   SqlResponse,
   SnapshotCutResponse,
   TriggerCutResponse,
-} from "./types";
+} from "./types.generated";
 
 interface ApiErrorResponse {
   error?: string;

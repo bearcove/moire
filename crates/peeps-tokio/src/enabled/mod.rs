@@ -60,21 +60,68 @@ macro_rules! facade {
                 name: impl Into<String>,
                 capacity: usize,
             ) -> ($crate::Sender<T>, $crate::Receiver<T>) {
-                $crate::channel(name, capacity, __source())
+                $crate::channel_with_source(name, capacity, __source())
             }
 
             #[track_caller]
             pub fn unbounded_channel<T>(
                 name: impl Into<String>,
             ) -> ($crate::UnboundedSender<T>, $crate::UnboundedReceiver<T>) {
-                $crate::unbounded_channel(name, __source())
+                $crate::unbounded_channel_with_source(name, __source())
             }
 
             #[track_caller]
             pub fn oneshot<T>(
                 name: impl Into<String>,
             ) -> ($crate::OneshotSender<T>, $crate::OneshotReceiver<T>) {
-                $crate::oneshot(name, __source())
+                $crate::oneshot_with_source(name, __source())
+            }
+
+            #[track_caller]
+            pub fn broadcast<T: Clone>(
+                name: impl Into<String>,
+                capacity: usize,
+            ) -> ($crate::BroadcastSender<T>, $crate::BroadcastReceiver<T>) {
+                $crate::broadcast_with_source(name, capacity, __source())
+            }
+
+            #[track_caller]
+            pub fn watch<T: Clone>(
+                name: impl Into<String>,
+                initial: T,
+            ) -> ($crate::WatchSender<T>, $crate::WatchReceiver<T>) {
+                $crate::watch_with_source(name, initial, __source())
+            }
+
+            #[track_caller]
+            pub fn joinset<T>(name: impl Into<String>) -> $crate::JoinSet<T>
+            where
+                T: Send + 'static,
+            {
+                $crate::JoinSet::named_with_source(name, __source())
+            }
+
+            #[track_caller]
+            pub fn rpc_request(
+                method: impl Into<String>,
+                args_json: impl Into<String>,
+            ) -> $crate::RpcRequestHandle {
+                $crate::rpc_request_with_source(method, args_json, __source())
+            }
+
+            #[track_caller]
+            pub fn rpc_response(
+                method: impl Into<String>,
+            ) -> $crate::EntityHandle<$crate::peeps_types::Response> {
+                $crate::rpc_response_with_source(method, __source())
+            }
+
+            #[track_caller]
+            pub fn rpc_response_for(
+                method: impl Into<String>,
+                request: &$crate::EntityRef,
+            ) -> $crate::EntityHandle<$crate::peeps_types::Response> {
+                $crate::rpc_response_for_with_source(method, request, __source())
             }
 
             #[track_caller]

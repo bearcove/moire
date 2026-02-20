@@ -17,8 +17,8 @@ use figue as args;
 use peeps_types::{
     ApiError, Change, ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse, FrameSummary,
     ProcessSnapshotView, QueryRequest, RecordCurrentResponse, RecordStartRequest,
-    RecordingImportBody, RecordingSessionInfo, ScopeEntityLink, SnapshotCutResponse, SqlRequest,
-    SqlResponse, TimedOutProcess, TriggerCutResponse,
+    RecordingImportBody, RecordingSessionInfo, RecordingSessionStatus, ScopeEntityLink,
+    SnapshotCutResponse, SqlRequest, SqlResponse, TimedOutProcess, TriggerCutResponse,
 };
 use peeps_wire::{
     decode_client_message_default, encode_server_message_default, ClientMessage, ServerMessage,
@@ -946,9 +946,9 @@ async fn api_record_import(State(state): State<AppState>, body: Bytes) -> impl I
 
 fn recording_session_info(rec: &RecordingState) -> RecordingSessionInfo {
     let status = if rec.stopped_at_unix_ms.is_none() {
-        "recording"
+        RecordingSessionStatus::Recording
     } else {
-        "stopped"
+        RecordingSessionStatus::Stopped
     };
     let avg_capture_ms = if rec.total_frames_captured > 0 {
         rec.total_capture_ms / rec.total_frames_captured as f64
@@ -967,7 +967,7 @@ fn recording_session_info(rec: &RecordingState) -> RecordingSessionInfo {
         .collect();
     RecordingSessionInfo {
         session_id: rec.session_id.clone(),
-        status: status.to_string(),
+        status,
         interval_ms: rec.interval_ms,
         started_at_unix_ms: rec.started_at_unix_ms,
         stopped_at_unix_ms: rec.stopped_at_unix_ms,

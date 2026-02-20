@@ -1,4 +1,4 @@
-import type { FrameSummary } from "../api/types";
+import type { FrameSummary } from "../api/types.generated";
 import type { ApiClient } from "../api/client";
 import { canonicalNodeKind } from "../nodeKindSpec";
 import {
@@ -290,12 +290,12 @@ export function renderFrameFromUnion(
       (includeProcesses.size === 0 || includeProcesses.has(e.processId)) &&
       (includeKinds.size === 0 || includeKinds.has(canonicalNodeKind(e.kind))) &&
       (includeNodeIds.size === 0 || includeNodeIds.has(e.id)) &&
-      (includeLocations.size === 0 || includeLocations.has(e.source)) &&
+      (includeLocations.size === 0 || includeLocations.has(`${e.source.path}:${e.source.line}`)) &&
       (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
       (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
       (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))) &&
       !excludeNodeIds.has(e.id) &&
-      !excludeLocations.has(e.source),
+      !excludeLocations.has(`${e.source.path}:${e.source.line}`),
   );
   let filteredEdges = frameData.edges;
   const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));

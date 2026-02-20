@@ -89,7 +89,7 @@ export function GraphViewport({
     <div className="graph-flow" ref={graphFlowRef}>
       {nodeContextMenu && (() => {
         const entity = entityById.get(nodeContextMenu.nodeId);
-        const location = entity?.source?.trim() ?? "";
+        const location = entity ? `${entity.source.path}:${entity.source.line}` : "";
         const krate = entity?.krate;
         const processId = entity?.processId ?? "";
         const processLabel = entity

@@ -61,7 +61,7 @@ export function ScopeTablePanel({
         s.processName.toLowerCase().includes(q) ||
         s.scopeId.toLowerCase().includes(q) ||
         (s.krate?.toLowerCase().includes(q) ?? false) ||
-        s.source.toLowerCase().includes(q)
+        `${s.source.path}:${s.source.line}`.toLowerCase().includes(q)
       );
     });
   }, [scopes, effectiveKind, search]);

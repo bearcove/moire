@@ -7,7 +7,7 @@ import type {
   SqlResponse,
   SnapshotCutResponse,
   TriggerCutResponse,
-} from "./types";
+} from "./types.generated";
 
 export type ApiMode = "live" | "lab";
 

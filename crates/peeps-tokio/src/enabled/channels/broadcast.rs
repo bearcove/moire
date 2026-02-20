@@ -118,7 +118,8 @@ impl<T: Clone> BroadcastReceiver<T> {
     }
 }
 
-pub fn broadcast<T: Clone>(
+#[doc(hidden)]
+pub fn broadcast_with_source<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
     source: SourceId,
@@ -158,13 +159,22 @@ pub fn broadcast<T: Clone>(
     )
 }
 
+#[doc(hidden)]
 pub fn broadcast_channel<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
     source: SourceId,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    #[allow(deprecated)]
-    broadcast(name, capacity, source)
+    broadcast_with_source(name, capacity, source)
+}
+
+#[doc(hidden)]
+pub fn broadcast<T: Clone>(
+    name: impl Into<String>,
+    capacity: usize,
+    source: SourceId,
+) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    broadcast_with_source(name, capacity, source)
 }
 
 impl<T: Clone> AsEntityRef for BroadcastSender<T> {

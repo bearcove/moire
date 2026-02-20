@@ -39,47 +39,28 @@ export function edgeStyle(edge: EdgeDef): EdgeStyle {
 
   let strokeWidth = 2;
   switch (kind) {
-    case "touches":
-      return { stroke, strokeWidth, strokeDasharray: "4 4" };
-    case "needs":
+    case "polls":
+      return { stroke, strokeWidth, strokeDasharray: "2 3" };
+    case "waiting_on":
       return { stroke, strokeWidth };
     case "holds":
       return { stroke, strokeWidth, strokeDasharray: "4 4" };
-    case "polls":
-      return { stroke, strokeWidth, strokeDasharray: "2 3" };
-    case "closed_by":
-      return { stroke, strokeWidth, strokeDasharray: "4 4" };
-    case "channel_link":
-      return { stroke, strokeWidth, strokeDasharray: "6 3" };
-    case "rpc_link":
+    case "paired_with":
       return { stroke, strokeWidth, strokeDasharray: "6 3" };
   }
 }
 
 export function edgeTooltip(edge: EdgeDef, sourceName: string, targetName: string): string {
   const kind = edge.kind;
-  if (kind === "needs" && edge.opKind) {
-    const op = edge.opKind.replaceAll("_", " ");
-    if (edge.state === "pending") {
-      return `${sourceName} is blocked on ${op} for ${targetName}`;
-    }
-    return `${sourceName} is performing ${op} on ${targetName}`;
-  }
   switch (kind) {
-    case "touches":
-      return `${sourceName} has touched ${targetName}`;
-    case "needs":
+    case "polls":
+      return `${sourceName} polls ${targetName} (non-blocking)`;
+    case "waiting_on":
       return `${sourceName} is blocked waiting for ${targetName}`;
     case "holds":
       return `${sourceName} currently grants permits to ${targetName}`;
-    case "polls":
-      return `${sourceName} polls ${targetName} (non-blocking)`;
-    case "closed_by":
-      return `${sourceName} was closed by ${targetName}`;
-    case "channel_link":
-      return `Channel endpoint: ${sourceName} → ${targetName}`;
-    case "rpc_link":
-      return `RPC pair: ${sourceName} → ${targetName}`;
+    case "paired_with":
+      return `Paired: ${sourceName} ↔ ${targetName}`;
   }
 }
 

@@ -118,30 +118,6 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     category: "sync",
     icon: iconFactory(LockOpen),
   },
-  tx: {
-    canonical: "tx",
-    displayName: "Channel Tx",
-    category: "channel",
-    icon: iconFactory(ArrowLineUp),
-  },
-  rx: {
-    canonical: "rx",
-    displayName: "Channel Rx",
-    category: "channel",
-    icon: iconFactory(ArrowLineDown),
-  },
-  channel_tx: {
-    canonical: "channel_tx",
-    displayName: "Channel Tx",
-    category: "channel",
-    icon: iconFactory(ArrowLineUp),
-  },
-  channel_rx: {
-    canonical: "channel_rx",
-    displayName: "Channel Rx",
-    category: "channel",
-    icon: iconFactory(ArrowLineDown),
-  },
   mpsc_tx: {
     canonical: "mpsc_tx",
     displayName: "MPSC Tx",
@@ -153,24 +129,6 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     displayName: "MPSC Rx",
     category: "channel",
     icon: iconFactory(ArrowLineDown),
-  },
-  remote_tx: {
-    canonical: "remote_tx",
-    displayName: "Remote Tx",
-    category: "channel",
-    icon: iconFactory(ArrowLineUp),
-  },
-  remote_rx: {
-    canonical: "remote_rx",
-    displayName: "Remote Rx",
-    category: "channel",
-    icon: iconFactory(ArrowLineDown),
-  },
-  oneshot: {
-    canonical: "oneshot",
-    displayName: "Oneshot",
-    category: "channel",
-    icon: iconFactory(Lightning),
   },
   oneshot_tx: {
     canonical: "oneshot_tx",
@@ -184,12 +142,6 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     category: "channel",
     icon: iconFactory(Lightning),
   },
-  watch: {
-    canonical: "watch",
-    displayName: "Watch",
-    category: "channel",
-    icon: iconFactory(Eye),
-  },
   watch_tx: {
     canonical: "watch_tx",
     displayName: "Watch Tx",
@@ -201,6 +153,18 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     displayName: "Watch Rx",
     category: "channel",
     icon: iconFactory(Eye),
+  },
+  broadcast_tx: {
+    canonical: "broadcast_tx",
+    displayName: "Broadcast Tx",
+    category: "channel",
+    icon: iconFactory(ArrowLineUp),
+  },
+  broadcast_rx: {
+    canonical: "broadcast_rx",
+    displayName: "Broadcast Rx",
+    category: "channel",
+    icon: iconFactory(ArrowLineDown),
   },
   semaphore: {
     canonical: "semaphore",
@@ -250,14 +214,14 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     category: "net",
     icon: iconFactory(WifiHigh),
   },
-  net_readable: {
-    canonical: "net_readable",
+  net_read: {
+    canonical: "net_read",
     displayName: "Readable",
     category: "net",
     icon: iconFactory(DownloadSimple),
   },
-  net_writable: {
-    canonical: "net_writable",
+  net_write: {
+    canonical: "net_write",
     displayName: "Writable",
     category: "net",
     icon: iconFactory(UploadSimple),

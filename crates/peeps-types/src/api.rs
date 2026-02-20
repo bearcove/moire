@@ -105,7 +105,7 @@ pub struct RecordCurrentResponse {
 #[derive(Facet)]
 pub struct RecordingSessionInfo {
     pub session_id: String,
-    pub status: String,
+    pub status: RecordingSessionStatus,
     pub interval_ms: u32,
     pub started_at_unix_ms: i64,
     pub stopped_at_unix_ms: Option<i64>,
@@ -118,6 +118,14 @@ pub struct RecordingSessionInfo {
     pub max_capture_ms: f64,
     pub total_capture_ms: f64,
     pub frames: Vec<FrameSummary>,
+}
+
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum RecordingSessionStatus {
+    Recording,
+    Stopped,
 }
 
 #[derive(Facet)]

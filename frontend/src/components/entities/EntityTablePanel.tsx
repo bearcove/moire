@@ -137,7 +137,7 @@ export function EntityTablePanel({
       render: (row) => (
         <div className="entity-table-entity-cell">
           <span className="entity-table-name">{row.name}</span>
-          <span className="entity-table-subtle">{row.source}</span>
+          <span className="entity-table-subtle">{row.source.path}:{row.source.line}</span>
         </div>
       ),
     },
