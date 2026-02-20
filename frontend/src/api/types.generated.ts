@@ -148,9 +148,9 @@ export type EntityId = string;
 
 export type BacktraceId = number;
 
-export type PTime = number;
-
 export type u64 = number;
+
+export type PTime = number;
 
 export type EventId = string;
 
