@@ -42,6 +42,22 @@ function birth(ptimeNow: number, ageMs: number): number {
 const MOCK_SNAPSHOT = {
   captured_at_unix_ms: LAB_SERVER_CAPTURED_AT,
   timed_out_processes: [],
+  backtraces: [
+    { backtrace_id: 101001, frames: [{ resolved: { module_path: "lab_server::rpc::demo", function_name: "handle_sleepy_forever", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 42 } }] },
+    { backtrace_id: 101002, frames: [{ resolved: { module_path: "lab_server::rpc::demo", function_name: "finish_sleepy_forever", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 45 } }] },
+    { backtrace_id: 101003, frames: [{ resolved: { module_path: "lab_server::rpc::demo", function_name: "handle_ping", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 18 } }] },
+    { backtrace_id: 101004, frames: [{ resolved: { module_path: "lab_server::rpc::demo", function_name: "finish_ping", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 20 } }] },
+    { backtrace_id: 101005, frames: [{ resolved: { module_path: "lab_server::state", function_name: "lock_state", source_file: "/workspace/lab-server/src/state.rs", line: 12 } }] },
+    { backtrace_id: 101006, frames: [{ resolved: { module_path: "lab_server::dispatch", function_name: "send_dispatch", source_file: "/workspace/lab-server/src/dispatch.rs", line: 67 } }] },
+    { backtrace_id: 101007, frames: [{ resolved: { module_path: "lab_server::dispatch", function_name: "recv_dispatch", source_file: "/workspace/lab-server/src/dispatch.rs", line: 68 } }] },
+    { backtrace_id: 101008, frames: [{ resolved: { module_path: "lab_server::store", function_name: "poll_store_incoming", source_file: "/workspace/lab-server/src/store.rs", line: 104 } }] },
+    { backtrace_id: 202001, frames: [{ resolved: { module_path: "lab_loader::server::limits", function_name: "acquire_connection_permit", source_file: "/workspace/lab-loader/src/server/limits.rs", line: 28 } }] },
+    { backtrace_id: 202002, frames: [{ resolved: { module_path: "lab_loader::lifecycle", function_name: "wait_for_shutdown", source_file: "/workspace/lab-loader/src/lifecycle.rs", line: 15 } }] },
+    { backtrace_id: 202003, frames: [{ resolved: { module_path: "lab_loader::config", function_name: "init_config_cell", source_file: "/workspace/lab-loader/src/config.rs", line: 8 } }] },
+    { backtrace_id: 202004, frames: [{ resolved: { module_path: "lab_loader::bootstrap", function_name: "spawn_migration", source_file: "/workspace/lab-loader/src/bootstrap.rs", line: 55 } }] },
+    { backtrace_id: 202005, frames: [{ resolved: { module_path: "lab_loader::config", function_name: "read_config_file", source_file: "/workspace/lab-loader/src/config.rs", line: 22 } }] },
+    { backtrace_id: 202006, frames: [{ resolved: { module_path: "lab_loader::net::peer", function_name: "connect_peer", source_file: "/workspace/lab-loader/src/net/peer.rs", line: 31 } }] },
+  ],
   processes: [
     {
       process_id: 101,

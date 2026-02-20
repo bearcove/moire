@@ -34,6 +34,9 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 > r[api.snapshot.current]
 > `GET /api/snapshot/current` returns the most recent `SnapshotCutResponse` if one exists, or HTTP 404 if no snapshot has been taken yet.
 
+> r[api.snapshot.backtraces]
+> Every `SnapshotCutResponse` MUST include a `backtraces` collection containing one expanded entry for every `BacktraceId` referenced anywhere in that snapshot (entities, scopes, edges, or events). The frontend MUST be able to render call stacks directly from this payload without issuing additional backtrace-fetch requests.
+
 ### Cuts
 
 > r[api.cuts.trigger]
@@ -41,9 +44,6 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 
 > r[api.cuts.status]
 > `GET /api/cuts/{cut_id}` returns a `CutStatusResponse` showing how many connections have acknowledged (`acked_connections`) vs. are still pending (`pending_connections`). The client MUST poll this endpoint until all connections are acked or a timeout elapses.
-
-> r[api.cuts.top-frames]
-> Every `SnapshotCutResponse` MUST include a `top_frames` map from `BacktraceId` to resolved top application frame for every `BacktraceId` referenced in that cut. Backtraces with no top application frame are absent from the map. This map is populated after the server waits for symbolication to complete (see `r[symbolicate.cut-drain]`).
 
 ### Recording
 
@@ -73,7 +73,7 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 ### Backtrace Resolution
 
 > r[api.backtrace]
-> `GET /api/connections/{conn_id}/backtraces/{backtrace_id}` returns a `BacktraceResponse` for the given `BacktraceId` within the identified connection. The server resolves each frame in the stored `BacktraceRecord` against the module's debug information and returns an ordered list of `ResolvedFrame` values. Each `ResolvedFrame` is either a resolved variant carrying `function_name` (demangled), `crate_name`, `module_path`, `source_file`, and optional `line` and `column`; or an unresolved variant carrying the raw `module_path` and `rel_pc` (as a hex string). The endpoint MUST NOT drop frames: every frame in the `BacktraceRecord` MUST appear in the response as either resolved or unresolved.
+> Backtrace resolution data is shipped inside each `SnapshotCutResponse.backtraces` entry. Each backtrace entry MUST preserve frame order and MUST include every frame as either `resolved` (`module_path`, `function_name`, `source_file`, optional `line`) or `unresolved` (`module_path`, `rel_pc`, `reason`). Frames MUST NOT be dropped.
 
 ---
 
@@ -316,20 +316,20 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > The filter input MUST provide autocomplete suggestions based on the current draft token. Suggestions are ranked by prefix match, substring match, and fuzzy subsequence match (in that order). Suggestions that are already present as committed tokens MUST be omitted.
 
 > r[filter.suggest.fragment+2]
-> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate`, `module`, and `location` axes — the crate names, module paths, and source locations from the top application frames in the current cut's `top_frames` map.
+> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate`, `module`, and `location` axes — crate names, module paths, and source locations derived from resolved frames in the current cut's `backtraces` payload.
 
 ---
 
 ## Backtrace Display
 
 > r[display.backtrace.cache]
-> The frontend MUST cache resolved `BacktraceResponse` values keyed by `(conn_id, backtrace_id)`. A cached result MUST be reused without re-fetching for the lifetime of the dashboard session.
+> The frontend MUST index `SnapshotCutResponse.backtraces` by `backtrace_id` and treat that map as the sole source of backtrace display data for that snapshot.
 
 > r[display.backtrace.fetch]
-> Backtrace resolution MUST be triggered by explicit user interaction — expanding an entity or scope card, or activating a dedicated call-stack indicator — rather than eagerly for all visible entities. The UI MUST reflect the loading state while a fetch is in progress.
+> The frontend MUST NOT require separate HTTP fetches to render backtraces for entities/scopes already present in the snapshot.
 
 > r[display.backtrace.render.resolved]
-> Each resolved frame MUST be displayed showing the demangled `function_name`, the `crate_name`, and the `source_file:line` (omitting the line suffix if `line` is absent).
+> Each resolved frame MUST be displayed showing `function_name` and `source_file:line` (omitting the line suffix if `line` is absent).
 
 > r[display.backtrace.render.unresolved]
 > Each unresolved frame MUST be displayed with a distinct visual indicator (e.g. a warning badge) and MUST show the raw `module_path` and `rel_pc` so the user can diagnose why symbolication failed.

@@ -14,10 +14,12 @@ use axum::routing::{any, get, post};
 use axum::Router;
 use facet::Facet;
 use figue as args;
+use moire_trace_types::BacktraceId;
 use moire_types::{
-    ApiError, Change, ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse, FrameSummary,
-    ProcessSnapshotView, QueryRequest, RecordCurrentResponse, RecordStartRequest,
-    RecordingImportBody, RecordingSessionInfo, RecordingSessionStatus, ScopeEntityLink,
+    ApiError, BacktraceFrameResolved, BacktraceFrameUnresolved, Change, ConnectedProcessInfo,
+    ConnectionsResponse, CutStatusResponse, FrameSummary, ProcessSnapshotView, QueryRequest,
+    RecordCurrentResponse, RecordStartRequest, RecordingImportBody, RecordingSessionInfo,
+    RecordingSessionStatus, ScopeEntityLink, SnapshotBacktrace, SnapshotBacktraceFrame,
     SnapshotCutResponse, SqlRequest, SqlResponse, TimedOutProcess, TriggerCutResponse,
 };
 use moire_wire::{
@@ -547,6 +549,7 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             captured_at_unix_ms: now_ms(),
             processes: vec![],
             timed_out_processes: vec![],
+            backtraces: vec![],
         };
         remember_snapshot(state, &response).await;
         return response;
@@ -570,6 +573,7 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     captured_at_unix_ms: now_ms(),
                     processes: vec![],
                     timed_out_processes: vec![],
+                    backtraces: vec![],
                 };
                 remember_snapshot(state, &response).await;
                 return response;
@@ -667,10 +671,11 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         }
     };
 
-    let response = SnapshotCutResponse {
+    let mut response = SnapshotCutResponse {
         captured_at_unix_ms,
         processes,
         timed_out_processes,
+        backtraces: vec![],
     };
     info!(
         snapshot_id,
@@ -680,6 +685,7 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     );
     // r[impl symbolicate.cut-drain]
     wait_for_symbolication_cut_drain(state.db_path.clone(), &response).await;
+    response.backtraces = load_snapshot_backtraces(state.db_path.clone(), &response).await;
     remember_snapshot(state, &response).await;
     response
 }
@@ -791,6 +797,165 @@ fn pending_symbolication_count_blocking(
     }
 
     Ok(pending)
+}
+
+#[derive(Clone)]
+struct StoredBacktraceFrameRow {
+    frame_index: u32,
+    module_path: String,
+    rel_pc: u64,
+}
+
+#[derive(Clone)]
+struct SymbolicatedFrameRow {
+    module_path: String,
+    rel_pc: u64,
+    status: String,
+    function_name: Option<String>,
+    source_file_path: Option<String>,
+    source_line: Option<i64>,
+    unresolved_reason: Option<String>,
+}
+
+async fn load_snapshot_backtraces(
+    db_path: Arc<PathBuf>,
+    snapshot: &SnapshotCutResponse,
+) -> Vec<SnapshotBacktrace> {
+    let pairs = collect_snapshot_backtrace_pairs(snapshot);
+    if pairs.is_empty() {
+        return vec![];
+    }
+
+    tokio::task::spawn_blocking(move || load_snapshot_backtraces_blocking(&db_path, &pairs))
+        .await
+        .unwrap_or_else(|e| panic!("join snapshot backtrace loader: {e}"))
+        .unwrap_or_else(|e| panic!("load snapshot backtraces: {e}"))
+}
+
+fn load_snapshot_backtraces_blocking(
+    db_path: &PathBuf,
+    pairs: &[(u64, u64)],
+) -> Result<Vec<SnapshotBacktrace>, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+
+    let mut backtrace_owner: BTreeMap<u64, u64> = BTreeMap::new();
+    for (conn_id, backtrace_id) in pairs {
+        match backtrace_owner.insert(*backtrace_id, *conn_id) {
+            None => {}
+            Some(existing_conn_id) if existing_conn_id == *conn_id => {}
+            Some(existing_conn_id) => {
+                return Err(format!(
+                    "invariant violated: backtrace_id {backtrace_id} appears on multiple connections ({existing_conn_id}, {conn_id})"
+                ));
+            }
+        }
+    }
+
+    let mut raw_stmt = conn
+        .prepare(
+            "SELECT frame_index, module_path, rel_pc
+             FROM backtrace_frames
+             WHERE conn_id = ?1 AND backtrace_id = ?2
+             ORDER BY frame_index ASC",
+        )
+        .map_err(|e| format!("prepare backtrace_frames read: {e}"))?;
+    let mut symbol_stmt = conn
+        .prepare(
+            "SELECT frame_index, module_path, rel_pc, status, function_name, source_file_path, source_line, unresolved_reason
+             FROM symbolicated_frames
+             WHERE conn_id = ?1 AND backtrace_id = ?2",
+        )
+        .map_err(|e| format!("prepare symbolicated_frames read: {e}"))?;
+
+    let mut out = Vec::with_capacity(backtrace_owner.len());
+    for (backtrace_id, conn_id) in backtrace_owner {
+        let raw_rows = raw_stmt
+            .query_map(
+                params![to_i64_u64(conn_id), to_i64_u64(backtrace_id)],
+                |row| {
+                    Ok(StoredBacktraceFrameRow {
+                        frame_index: row.get::<_, i64>(0)? as u32,
+                        module_path: row.get(1)?,
+                        rel_pc: row.get::<_, i64>(2)? as u64,
+                    })
+                },
+            )
+            .map_err(|e| format!("query backtrace_frames: {e}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("read backtrace_frames row: {e}"))?;
+        if raw_rows.is_empty() {
+            return Err(format!(
+                "invariant violated: referenced backtrace {backtrace_id} missing in storage"
+            ));
+        }
+
+        let symbolicated = symbol_stmt
+            .query_map(
+                params![to_i64_u64(conn_id), to_i64_u64(backtrace_id)],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)? as u32,
+                        SymbolicatedFrameRow {
+                            module_path: row.get(1)?,
+                            rel_pc: row.get::<_, i64>(2)? as u64,
+                            status: row.get(3)?,
+                            function_name: row.get(4)?,
+                            source_file_path: row.get(5)?,
+                            source_line: row.get(6)?,
+                            unresolved_reason: row.get(7)?,
+                        },
+                    ))
+                },
+            )
+            .map_err(|e| format!("query symbolicated_frames: {e}"))?
+            .collect::<Result<BTreeMap<_, _>, _>>()
+            .map_err(|e| format!("read symbolicated_frames row: {e}"))?;
+
+        let mut frames = Vec::with_capacity(raw_rows.len());
+        for raw in raw_rows {
+            let frame = match symbolicated.get(&raw.frame_index) {
+                Some(sym) if sym.status == "resolved" => {
+                    match (sym.function_name.as_ref(), sym.source_file_path.as_ref()) {
+                        (Some(function_name), Some(source_file)) => {
+                            SnapshotBacktraceFrame::Resolved(BacktraceFrameResolved {
+                                module_path: sym.module_path.clone(),
+                                function_name: function_name.clone(),
+                                source_file: source_file.clone(),
+                                line: sym.source_line.and_then(|line| u32::try_from(line).ok()),
+                            })
+                        }
+                        _ => SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved {
+                            module_path: sym.module_path.clone(),
+                            rel_pc: sym.rel_pc,
+                            reason: String::from(
+                                "resolved symbolication row missing function/source fields",
+                            ),
+                        }),
+                    }
+                }
+                Some(sym) => SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved {
+                    module_path: sym.module_path.clone(),
+                    rel_pc: sym.rel_pc,
+                    reason: sym
+                        .unresolved_reason
+                        .clone()
+                        .unwrap_or_else(|| String::from("symbolication unresolved")),
+                }),
+                None => SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved {
+                    module_path: raw.module_path,
+                    rel_pc: raw.rel_pc,
+                    reason: String::from("symbolication pending"),
+                }),
+            };
+            frames.push(frame);
+        }
+
+        out.push(SnapshotBacktrace {
+            backtrace_id: BacktraceId::new(backtrace_id).map_err(|e| e.to_string())?,
+            frames,
+        });
+    }
+    Ok(out)
 }
 
 async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {

@@ -64,7 +64,37 @@ export interface SnapshotCutResponse {
    * Processes connected at request time but timed out before response.
    */
   timed_out_processes: TimedOutProcess[];
+  /**
+   * Expanded backtraces referenced by entities/scopes/edges/events in this snapshot.
+   */
+  backtraces: SnapshotBacktrace[];
 }
+
+export interface SnapshotBacktrace {
+  backtrace_id: BacktraceId;
+  frames: SnapshotBacktraceFrame[];
+}
+
+export type SnapshotBacktraceFrame =
+  | { resolved: BacktraceFrameResolved }
+  | { unresolved: BacktraceFrameUnresolved };
+
+export interface BacktraceFrameUnresolved {
+  module_path: string;
+  rel_pc: number;
+  reason: string;
+}
+
+export interface BacktraceFrameResolved {
+  module_path: string;
+  function_name: string;
+  source_file: string;
+  line?: number;
+}
+
+export type BacktraceId = number;
+
+export type u64 = number;
 
 export interface TimedOutProcess {
   process_id: number;
@@ -145,10 +175,6 @@ export type ScopeId = string;
 export type String = string;
 
 export type EntityId = string;
-
-export type BacktraceId = number;
-
-export type u64 = number;
 
 export type PTime = number;
 

@@ -1,4 +1,5 @@
 use facet::Facet;
+use moire_trace_types::BacktraceId;
 
 /// API response for connected processes.
 #[derive(Facet)]
@@ -63,6 +64,37 @@ pub struct SnapshotCutResponse {
     pub processes: Vec<ProcessSnapshotView>,
     /// Processes connected at request time but timed out before response.
     pub timed_out_processes: Vec<TimedOutProcess>,
+    /// Expanded backtraces referenced by entities/scopes/edges/events in this snapshot.
+    pub backtraces: Vec<SnapshotBacktrace>,
+}
+
+#[derive(Facet)]
+pub struct SnapshotBacktrace {
+    pub backtrace_id: BacktraceId,
+    pub frames: Vec<SnapshotBacktraceFrame>,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum SnapshotBacktraceFrame {
+    Resolved(BacktraceFrameResolved),
+    Unresolved(BacktraceFrameUnresolved),
+}
+
+#[derive(Facet)]
+pub struct BacktraceFrameResolved {
+    pub module_path: String,
+    pub function_name: String,
+    pub source_file: String,
+    pub line: Option<u32>,
+}
+
+#[derive(Facet)]
+pub struct BacktraceFrameUnresolved {
+    pub module_path: String,
+    pub rel_pc: u64,
+    pub reason: String,
 }
 
 /// Per-process envelope inside a snapshot cut.

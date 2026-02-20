@@ -1,4 +1,11 @@
-import type { EdgeKind, EntityBody, SnapshotCutResponse } from "./api/types.generated";
+import type {
+  BacktraceFrameResolved,
+  EdgeKind,
+  EntityBody,
+  SnapshotBacktrace,
+  SnapshotBacktraceFrame,
+  SnapshotCutResponse,
+} from "./api/types.generated";
 import { canonicalScopeKind } from "./scopeKindSpec";
 
 // ── Body type helpers ──────────────────────────────────────────
@@ -96,11 +103,7 @@ export type ScopeDef = {
 };
 
 function backtraceSource(backtraceId: number): RenderSource {
-  return {
-    path: `backtrace:${backtraceId}`,
-    line: 0,
-    krate: "~no-crate",
-  };
+  return { path: `backtrace:${backtraceId}`, line: 0, krate: "~no-crate" };
 }
 
 // f[impl display.backtrace.required]
@@ -112,8 +115,79 @@ function requireBacktraceId(owner: unknown, context: string, processId: number):
   return value;
 }
 
+function requireBacktraceIndex(snapshot: SnapshotCutResponse): Map<number, SnapshotBacktrace> {
+  const index = new Map<number, SnapshotBacktrace>();
+  for (const record of snapshot.backtraces) {
+    const id = record.backtrace_id;
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error(`[snapshot] invalid backtrace id ${String(id)} in snapshot backtraces`);
+    }
+    if (index.has(id)) {
+      throw new Error(`[snapshot] duplicate backtrace ${id} in snapshot backtraces`);
+    }
+    index.set(id, record);
+  }
+  return index;
+}
+
+function isResolvedFrame(frame: SnapshotBacktraceFrame): frame is { resolved: BacktraceFrameResolved } {
+  return "resolved" in frame;
+}
+
+function crateFromModulePath(modulePath: string): string {
+  const crate = modulePath.split("::")[0]?.trim();
+  return crate && crate.length > 0 ? crate : "~no-crate";
+}
+
+function resolveBacktraceDisplay(
+  backtraces: Map<number, SnapshotBacktrace>,
+  backtraceId: number,
+  context: string,
+): { source: RenderSource; topFrame?: RenderTopFrame } {
+  const record = backtraces.get(backtraceId);
+  if (!record) {
+    throw new Error(`[snapshot] ${context} references missing backtrace ${backtraceId}`);
+  }
+  const firstResolved = record.frames.find(isResolvedFrame)?.resolved;
+  if (firstResolved) {
+    const krate = crateFromModulePath(firstResolved.module_path);
+    return {
+      source: {
+        path: firstResolved.source_file,
+        line: firstResolved.line ?? 0,
+        krate,
+      },
+      topFrame: {
+        function_name: firstResolved.function_name,
+        crate_name: krate,
+        module_path: firstResolved.module_path,
+        source_file: firstResolved.source_file,
+        line: firstResolved.line,
+      },
+    };
+  }
+
+  const firstUnresolved = record.frames.find((frame) => "unresolved" in frame);
+  if (firstUnresolved && "unresolved" in firstUnresolved) {
+    return {
+      source: {
+        path: firstUnresolved.unresolved.module_path,
+        line: 0,
+        krate: "~unresolved",
+      },
+      topFrame: undefined,
+    };
+  }
+
+  return {
+    source: backtraceSource(backtraceId),
+    topFrame: undefined,
+  };
+}
+
 // f[impl display.id.scope-key]
 export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
+  const backtraces = requireBacktraceIndex(snapshot);
   const result: ScopeDef[] = [];
   for (const proc of snapshot.processes) {
     const { process_id, process_name, pid, ptime_now_ms, scope_entity_links } = proc;
@@ -132,7 +206,11 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
     for (const scope of proc.snapshot.scopes) {
       const memberEntityIds = membersByScope.get(scope.id) ?? [];
       const backtraceId = requireBacktraceId(scope, `scope ${processIdStr}/${scope.id}`, process_id);
-      const resolvedSource = backtraceSource(backtraceId);
+      const resolvedBacktrace = resolveBacktraceDisplay(
+        backtraces,
+        backtraceId,
+        `scope ${processIdStr}/${scope.id}`,
+      );
       result.push({
         key: `${processIdStr}:${scope.id}`,
         processId: processIdStr,
@@ -142,9 +220,9 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
         scopeName: scope.name,
         scopeKind: canonicalScopeKind(scope.body),
         backtraceId,
-        source: resolvedSource,
-        krate: undefined,
-        topFrame: undefined,
+        source: resolvedBacktrace.source,
+        krate: resolvedBacktrace.source.krate,
+        topFrame: resolvedBacktrace.topFrame,
         birthPtime: scope.birth,
         ageMs: Math.max(0, ptime_now_ms - scope.birth),
         memberEntityIds,
@@ -488,6 +566,7 @@ export function convertSnapshot(
   entities: EntityDef[];
   edges: EdgeDef[];
 } {
+  const backtraces = requireBacktraceIndex(snapshot);
   const allEntities: EntityDef[] = [];
   const allEdges: EdgeDef[] = [];
 
@@ -499,7 +578,11 @@ export function convertSnapshot(
     for (const e of proc.snapshot.entities) {
       const ageMs = Math.max(0, ptime_now_ms - e.birth);
       const backtraceId = requireBacktraceId(e, `entity ${e.id}`, process_id);
-      const resolvedSource = backtraceSource(backtraceId);
+      const resolvedBacktrace = resolveBacktraceDisplay(
+        backtraces,
+        backtraceId,
+        `entity ${e.id}`,
+      );
       allEntities.push({
         id: e.id,
         processId: String(process_id),
@@ -509,9 +592,9 @@ export function convertSnapshot(
         kind: bodyToKind(e.body),
         body: e.body,
         backtraceId,
-        source: resolvedSource,
-        krate: undefined,
-        topFrame: undefined,
+        source: resolvedBacktrace.source,
+        krate: resolvedBacktrace.source.krate,
+        topFrame: resolvedBacktrace.topFrame,
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,

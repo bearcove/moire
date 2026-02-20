@@ -329,11 +329,8 @@ The instrumented process pushes a stream of messages over a persistent TCP conne
 > r[symbolicate.result]
 > A resolved frame includes: demangled function name, crate name, module path within the crate, source file path, and line/column where available. The server caches resolved frames keyed by `(module_identity, rel_pc)` so that repeated requests for the same frame do not re-read debug info.
 
-> r[symbolicate.top-frame]
-> The **top application frame** of a resolved backtrace is the outermost (lowest index) resolved frame whose `crate_name` is not in the infrastructure exclusion set `{std, core, alloc, tokio, tokio_util, futures, futures_core, futures_util, moire, moire_trace_capture}`. If no such frame exists, the backtrace has no top application frame.
-
 > r[symbolicate.cut-drain]
-> When assembling a cut or snapshot response, the server MUST wait for symbolication to complete for every `BacktraceId` referenced in that cut before returning the response. This ensures top application frame data is always available when the frontend receives a cut.
+> When assembling a cut or snapshot response, the server MUST wait for symbolication to complete for every `BacktraceId` referenced in that cut before returning the response. This ensures the snapshot can include complete per-backtrace frame data for frontend rendering.
 
 > r[symbolicate.parallel]
 > The server MAY resolve multiple `BacktraceId` requests concurrently. Symbolication of one backtrace MUST NOT block symbolication of another.
