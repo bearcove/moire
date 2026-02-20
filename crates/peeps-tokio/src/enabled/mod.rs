@@ -10,13 +10,6 @@ pub use self::rpc::*;
 pub use self::sync::*;
 pub use peeps_runtime::*;
 
-const PEEPS_LOCAL_SOURCE_LEFT: SourceLeft =
-    SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
-
-pub(crate) fn local_source(right: SourceRight) -> SourceId {
-    PEEPS_LOCAL_SOURCE_LEFT.join(right).into()
-}
-
 // facade! expands to a call to this
 #[doc(hidden)]
 pub fn __init_from_macro() {

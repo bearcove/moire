@@ -1,6 +1,5 @@
 use peeps_types::{
-    CutAck, CutId, Edge, Entity, Event, PullChangesResponse, Scope, SeqNo,
-    StreamCursor,
+    CutAck, CutId, Edge, Entity, Event, PullChangesResponse, Scope, SeqNo, StreamCursor,
 };
 
 use super::db::{runtime_db, runtime_stream_id};

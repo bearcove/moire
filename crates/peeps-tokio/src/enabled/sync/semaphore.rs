@@ -185,9 +185,6 @@ impl Semaphore {
     pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire()?;
         let holder_ref = current_causal_target();
-        if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
-        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
             inner: Some(permit),
@@ -205,9 +202,6 @@ impl Semaphore {
     ) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire_many(n)?;
         let holder_ref = current_causal_target();
-        if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
-        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
             inner: Some(permit),
@@ -222,9 +216,6 @@ impl Semaphore {
     pub fn try_acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_owned()?;
         let holder_ref = current_causal_target();
-        if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
-        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
             inner: Some(permit),
@@ -242,9 +233,6 @@ impl Semaphore {
     ) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_many_owned(n)?;
         let holder_ref = current_causal_target();
-        if let Some(holder_ref) = holder_ref.as_ref() {
-            self.note_holder_acquired(holder_ref);
-        }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
             inner: Some(permit),
@@ -263,23 +251,6 @@ impl Semaphore {
             body.max_permits = max_permits;
             body.handed_out_permits = handed_out;
         });
-    }
-
-    fn note_holder_acquired(&self, holder_ref: &EntityRef) {
-        if let Ok(mut holder_counts) = self.holder_counts.lock() {
-            if let Some(entry) = holder_counts.get_mut(holder_ref) {
-                entry.count = entry.count.saturating_add(1);
-                return;
-            }
-            let edge = self.handle.link_to_owned(holder_ref, EdgeKind::Holds);
-            holder_counts.insert(
-                holder_ref.clone(),
-                HolderEdge {
-                    count: 1,
-                    _edge: edge,
-                },
-            );
-        }
     }
 
     fn note_holder_acquired_with_source(&self, holder_ref: &EntityRef, source: SourceId) {

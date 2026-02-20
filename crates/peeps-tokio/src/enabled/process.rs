@@ -4,7 +4,7 @@ use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 
-use super::{local_source, SourceId, SourceRight};
+use super::SourceId;
 use peeps_runtime::{instrument_future, EntityHandle};
 
 pub struct Command {
@@ -205,6 +205,7 @@ impl Child {
     pub fn from_tokio_with_diagnostics(
         child: tokio::process::Child,
         diag: CommandDiagnostics,
+        source: SourceId,
     ) -> Self {
         let body = EntityBody::Command(CommandEntity {
             program: diag.program.clone(),
@@ -212,7 +213,7 @@ impl Child {
             env: diag.env.clone(),
         });
         let name = String::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new(name, body, local_source(SourceRight::caller()));
+        let handle = EntityHandle::new(name, body, source);
         Self {
             inner: Some(child),
             handle,

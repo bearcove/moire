@@ -34,10 +34,6 @@ pub use peeps_source::*;
 const RUNTIME_SOURCE_LEFT: SourceLeft =
     SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
-pub(crate) fn local_source(right: SourceRight) -> Source {
-    RUNTIME_SOURCE_LEFT.join(right)
-}
-
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 
 pub fn init_runtime_from_macro() {
@@ -48,7 +44,7 @@ pub fn init_runtime_from_macro() {
             ScopeBody::Process(ProcessScopeBody {
                 pid: std::process::id(),
             }),
-            local_source(SourceRight::caller()),
+            RUNTIME_SOURCE_LEFT.join(SourceRight::caller()).into(),
         )
     });
     dashboard::init_dashboard_push_loop(&process_name);

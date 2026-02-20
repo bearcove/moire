@@ -249,6 +249,7 @@ mod tests {
             snapshot_id: 7,
             ptime_now_ms: 1234,
             snapshot: Some(Snapshot {
+                sources: vec![],
                 entities: vec![],
                 scopes: vec![],
                 edges: vec![],
@@ -257,7 +258,7 @@ mod tests {
         }));
         assert_eq!(
             json,
-            r#"{"snapshot_reply":{"snapshot_id":7,"ptime_now_ms":1234,"snapshot":{"entities":[],"scopes":[],"edges":[],"events":[]}}}"#
+            r#"{"snapshot_reply":{"snapshot_id":7,"ptime_now_ms":1234,"snapshot":{"sources":[],"entities":[],"scopes":[],"edges":[],"events":[]}}}"#
         );
     }
 

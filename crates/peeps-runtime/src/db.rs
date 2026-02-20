@@ -1,16 +1,17 @@
 use facet::Facet;
-use peeps_source::SourceId;
+use peeps_source::{source_for_id, SourceId};
 use peeps_types::{
     Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PTime, PullChangesResponse, Scope,
-    ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId, TaskScopeBody,
+    ScopeBody, ScopeId, SeqNo, SnapshotSource, StampedChange, StreamCursor, StreamId,
+    TaskScopeBody,
 };
-use std::collections::{hash_map::DefaultHasher, BTreeMap, VecDeque};
+use std::collections::{hash_map::DefaultHasher, BTreeMap, BTreeSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 use super::{
-    current_process_scope_id, current_tokio_task_key, local_source, SourceRight,
-    COMPACT_TARGET_CHANGES, MAX_CHANGES_BEFORE_COMPACT,
+    current_process_scope_id, current_tokio_task_key, COMPACT_TARGET_CHANGES,
+    MAX_CHANGES_BEFORE_COMPACT,
 };
 
 pub fn runtime_db() -> &'static StdMutex<RuntimeDb> {
@@ -223,8 +224,13 @@ impl RuntimeDb {
             self.task_scope_ids.remove(&task_key);
         }
 
+        let source = current_process_scope_id()
+            .and_then(|process_scope_id| {
+                self.scopes.get(&process_scope_id).map(|scope| scope.source)
+            })
+            .expect("task scope creation requires a process scope source");
         let scope = Scope::new(
-            local_source(SourceRight::caller()),
+            source,
             format!("task.{task_key}"),
             ScopeBody::Task(TaskScopeBody {
                 task_key: task_key.clone(),
@@ -361,16 +367,12 @@ impl RuntimeDb {
         });
     }
 
-    pub fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
-        self.upsert_edge_with_source(src, dst, kind, local_source(SourceRight::caller()));
-    }
-
     pub fn upsert_edge_with_source(
         &mut self,
         src: &EntityId,
         dst: &EntityId,
         kind: EdgeKind,
-        source: impl Into<SourceId>,
+        source: SourceId,
     ) {
         if let Some(process_scope_id) = current_process_scope_id() {
             if self.entities.contains_key(src) {
@@ -542,6 +544,7 @@ struct InternalStampedChange {
 
 #[derive(Facet)]
 struct SnapshotRef<'a> {
+    sources: Vec<SnapshotSource>,
     entities: Vec<&'a Entity>,
     scopes: Vec<&'a Scope>,
     edges: Vec<&'a Edge>,
@@ -613,6 +616,39 @@ impl InternalStampedChange {
     }
 }
 
+fn collect_snapshot_sources(db: &RuntimeDb) -> Result<Vec<SnapshotSource>, String> {
+    let mut source_ids = BTreeSet::new();
+    for entity in db.entities.values() {
+        source_ids.insert(entity.source);
+    }
+    for scope in db.scopes.values() {
+        source_ids.insert(scope.source);
+    }
+    for edge in db.edges.values() {
+        source_ids.insert(edge.source);
+    }
+    for event in &db.events {
+        source_ids.insert(event.source);
+    }
+
+    let mut sources = Vec::with_capacity(source_ids.len());
+    for source_id in source_ids {
+        let Some(source) = source_for_id(source_id) else {
+            return Err(format!(
+                "snapshot references missing SourceId {}",
+                source_id.as_u64()
+            ));
+        };
+        sources.push(SnapshotSource {
+            id: source_id,
+            path: source.path().as_str().to_string(),
+            line: source.line(),
+            krate: source.krate().to_string(),
+        });
+    }
+    Ok(sources)
+}
+
 pub fn encode_snapshot_reply_frame(snapshot_id: i64) -> Result<Vec<u8>, String> {
     // Capture process-relative now before locking the db, so the timestamp
     // represents the moment this snapshot was requested.
@@ -629,10 +665,13 @@ pub fn encode_snapshot_reply_frame(snapshot_id: i64) -> Result<Vec<u8>, String> 
             .map_err(|e| format!("encode snapshot reply frame: {e}"));
     };
 
+    let sources = collect_snapshot_sources(&db)?;
+
     let message = SnapshotClientMessageRef::SnapshotReply(SnapshotReplyRef {
         snapshot_id,
         ptime_now_ms,
         snapshot: Some(SnapshotRef {
+            sources,
             entities: db.entities.values().collect(),
             scopes: db.scopes.values().collect(),
             edges: db.edges.values().collect(),

@@ -13,13 +13,11 @@ pub struct EntityRef {
 }
 
 impl EntityRef {
-    #[track_caller]
     pub fn id(&self) -> &EntityId {
         &self.id
     }
 }
 
-#[track_caller]
 pub fn entity_ref_from_wire(id: impl Into<String>) -> EntityRef {
     EntityRef {
         id: EntityId::new(id.into()),
@@ -43,7 +41,6 @@ pub struct ScopeRef {
 }
 
 impl ScopeRef {
-    #[track_caller]
     pub fn id(&self) -> &ScopeId {
         &self.id
     }
@@ -67,8 +64,7 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<String>, body: ScopeBody, source: impl Into<SourceId>) -> Self {
-        let source: SourceId = source.into();
+    pub fn new(name: impl Into<String>, body: ScopeBody, source: SourceId) -> Self {
         let scope = Scope::new(source, name, body);
         let id = ScopeId::new(scope.id.as_str());
 
@@ -81,12 +77,10 @@ impl ScopeHandle {
         }
     }
 
-    #[track_caller]
     pub fn id(&self) -> &ScopeId {
         &self.inner.id
     }
 
-    #[track_caller]
     pub fn scope_ref(&self) -> ScopeRef {
         ScopeRef {
             id: ScopeId::new(self.inner.id.as_str()),
@@ -122,16 +116,11 @@ impl<S> Clone for EntityHandle<S> {
 }
 
 impl EntityHandle<()> {
-    pub fn new(name: impl Into<String>, body: EntityBody, source: impl Into<SourceId>) -> Self {
+    pub fn new(name: impl Into<String>, body: EntityBody, source: SourceId) -> Self {
         Self::new_with_source(name, body, source)
     }
 
-    pub fn new_with_source(
-        name: impl Into<String>,
-        body: EntityBody,
-        source: impl Into<SourceId>,
-    ) -> Self {
-        let source: SourceId = source.into();
+    pub fn new_with_source(name: impl Into<String>, body: EntityBody, source: SourceId) -> Self {
         let entity = Entity::new(source, name, body);
         Self::from_entity(entity)
     }
@@ -159,77 +148,33 @@ impl EntityHandle<()> {
 }
 
 impl<S> EntityHandle<S> {
-    #[track_caller]
     pub fn id(&self) -> &EntityId {
         &self.inner.id
     }
 
-    #[track_caller]
     pub fn kind_name(&self) -> &'static str {
         self.inner.kind_name
     }
 
-    #[track_caller]
     pub fn entity_ref(&self) -> EntityRef {
         EntityRef {
             id: EntityId::new(self.inner.id.as_str()),
         }
     }
 
-    #[track_caller]
-    pub fn link_to(&self, target: &EntityRef, kind: EdgeKind) {
+    pub fn link_to_with_source(&self, target: &EntityRef, kind: EdgeKind, source: SourceId) {
         if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge(self.id(), target.id(), kind);
+            db.upsert_edge_with_source(self.id(), target.id(), kind, source);
         }
-    }
-
-    pub fn link_to_with_source(
-        &self,
-        target: &EntityRef,
-        kind: EdgeKind,
-        source: impl Into<SourceId>,
-    ) {
-        if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge_with_source(self.id(), target.id(), kind, source.into());
-        }
-    }
-
-    #[track_caller]
-    pub fn link_to_handle<T>(&self, target: &EntityHandle<T>, kind: EdgeKind) {
-        self.link_to(&target.entity_ref(), kind);
     }
 
     pub fn link_to_handle_with_source<T>(
         &self,
         target: &EntityHandle<T>,
         kind: EdgeKind,
-        source: impl Into<SourceId>,
+        source: SourceId,
     ) {
         self.link_to_with_source(&target.entity_ref(), kind, source);
-    }
-
-    #[track_caller]
-    pub fn link_to_scope(&self, scope: &ScopeRef) {
-        if let Ok(mut db) = runtime_db().lock() {
-            db.link_entity_to_scope(self.id(), scope.id());
-        }
-    }
-
-    #[track_caller]
-    pub fn link_to_scope_handle(&self, scope: &ScopeHandle) {
-        self.link_to_scope(&scope.scope_ref());
-    }
-
-    #[track_caller]
-    pub fn unlink_from_scope(&self, scope: &ScopeRef) {
-        if let Ok(mut db) = runtime_db().lock() {
-            db.unlink_entity_from_scope(self.id(), scope.id());
-        }
-    }
-
-    #[track_caller]
-    pub fn unlink_from_scope_handle(&self, scope: &ScopeHandle) {
-        self.unlink_from_scope(&scope.scope_ref());
     }
 }
 
@@ -237,7 +182,6 @@ impl<S> EntityHandle<S>
 where
     S: EntityBodySlot,
 {
-    #[track_caller]
     pub fn mutate(&self, f: impl FnOnce(&mut S::Value)) -> bool {
         if self.kind_name() != S::KIND_NAME {
             panic!(
@@ -335,26 +279,16 @@ impl Drop for EdgeHandle {
 }
 
 impl<S> EntityHandle<S> {
-    /// Create an edge and return a handle that removes it when dropped.
-    pub fn link_to_owned(&self, target: &EntityRef, kind: EdgeKind) -> EdgeHandle {
-        let src = self.id().clone();
-        let dst = target.id().clone();
-        if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge(&src, &dst, kind);
-        }
-        EdgeHandle { src, dst, kind }
-    }
-
     pub fn link_to_owned_with_source(
         &self,
         target: &EntityRef,
         kind: EdgeKind,
-        source: impl Into<SourceId>,
+        source: SourceId,
     ) -> EdgeHandle {
         let src = self.id().clone();
         let dst = target.id().clone();
         if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge_with_source(&src, &dst, kind, source.into());
+            db.upsert_edge_with_source(&src, &dst, kind, source);
         }
         EdgeHandle { src, dst, kind }
     }

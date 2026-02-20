@@ -3,7 +3,7 @@ use peeps_types::{
     ResponseError, ResponseStatus,
 };
 
-use super::{local_source, SourceId, SourceRight};
+use super::SourceId;
 use peeps_runtime::{record_event_with_source, EntityHandle, EntityRef};
 
 #[derive(Clone)]
@@ -57,46 +57,44 @@ impl RpcResponseHandle {
         record_event_with_source(event, source);
     }
 
-    #[track_caller]
-    pub fn mark_ok(&self) {
-        self.mark_ok_json(peeps_types::Json::new("null"));
+    #[doc(hidden)]
+    pub fn mark_ok_with_source(&self, source: SourceId) {
+        self.mark_ok_json_with_source(peeps_types::Json::new("null"), source);
     }
 
-    #[track_caller]
-    pub fn mark_ok_json(&self, body_json: peeps_types::Json) {
-        self.set_status_with_source(
-            ResponseStatus::Ok(body_json),
-            local_source(SourceRight::caller()),
-        );
+    #[doc(hidden)]
+    pub fn mark_ok_json_with_source(&self, body_json: peeps_types::Json, source: SourceId) {
+        self.set_status_with_source(ResponseStatus::Ok(body_json), source);
     }
 
-    #[track_caller]
-    pub fn mark_error(&self) {
-        self.mark_internal_error("error");
+    #[doc(hidden)]
+    pub fn mark_error_with_source(&self, source: SourceId) {
+        self.mark_internal_error_with_source("error", source);
     }
 
-    #[track_caller]
-    pub fn mark_internal_error(&self, message: impl Into<String>) {
+    #[doc(hidden)]
+    pub fn mark_internal_error_with_source(&self, message: impl Into<String>, source: SourceId) {
         self.set_status_with_source(
             ResponseStatus::Error(ResponseError::Internal(message.into())),
-            local_source(SourceRight::caller()),
+            source,
         );
     }
 
-    #[track_caller]
-    pub fn mark_user_error_json(&self, error_json: peeps_types::Json) {
+    #[doc(hidden)]
+    pub fn mark_user_error_json_with_source(
+        &self,
+        error_json: peeps_types::Json,
+        source: SourceId,
+    ) {
         self.set_status_with_source(
             ResponseStatus::Error(ResponseError::UserJson(error_json)),
-            local_source(SourceRight::caller()),
+            source,
         );
     }
 
-    #[track_caller]
-    pub fn mark_cancelled(&self) {
-        self.set_status_with_source(
-            ResponseStatus::Cancelled,
-            local_source(SourceRight::caller()),
-        );
+    #[doc(hidden)]
+    pub fn mark_cancelled_with_source(&self, source: SourceId) {
+        self.set_status_with_source(ResponseStatus::Cancelled, source);
     }
 }
 

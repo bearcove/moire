@@ -1,8 +1,8 @@
 use super::SourceId;
 
 use peeps_runtime::{
-    current_causal_target, instrument_operation_on_with_source, record_event_with_source,
-    AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
+    instrument_operation_on_with_source, record_event_with_source, AsEntityRef, EntityHandle,
+    EntityRef, WeakEntityHandle,
 };
 use peeps_types::{
     EdgeKind, EntityBody, Event, EventKind, EventTarget, MpscRxEntity, MpscTxEntity,
@@ -56,9 +56,6 @@ impl<T> Sender<T> {
     }
 
     pub fn try_send(&self, value: T) -> Result<(), mpsc::error::TrySendError<T>> {
-        if let Some(caller) = current_causal_target() {
-            self.handle.link_to(&caller, EdgeKind::Polls);
-        }
         match self.inner.try_send(value) {
             Ok(()) => {
                 let _ = self
@@ -138,9 +135,6 @@ impl<T> UnboundedSender<T> {
         value: T,
         source: SourceId,
     ) -> Result<(), mpsc::error::SendError<T>> {
-        if let Some(caller) = current_causal_target() {
-            self.handle.link_to(&caller, EdgeKind::Polls);
-        }
         match self.inner.send(value) {
             Ok(()) => {
                 let _ = self

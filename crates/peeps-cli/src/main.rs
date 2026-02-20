@@ -170,11 +170,7 @@ fn run_sql(url: Option<String>, query: String) -> Result<(), String> {
     Ok(())
 }
 
-fn run_query_pack(
-    url: Option<String>,
-    name: String,
-    limit: Option<u32>,
-) -> Result<(), String> {
+fn run_query_pack(url: Option<String>, name: String, limit: Option<u32>) -> Result<(), String> {
     let base_url = url
         .map(|value| value.to_string())
         .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());

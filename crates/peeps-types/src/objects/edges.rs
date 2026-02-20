@@ -21,11 +21,11 @@ pub struct Edge {
 
 impl Edge {
     /// Builds a causal edge.
-    pub fn new(src: EntityId, dst: EntityId, kind: EdgeKind, source: impl Into<SourceId>) -> Self {
+    pub fn new(src: EntityId, dst: EntityId, kind: EdgeKind, source: SourceId) -> Self {
         Self {
             src,
             dst,
-            source: source.into(),
+            source: source,
             kind,
         }
     }

@@ -23,11 +23,11 @@ pub struct Entity {
 
 impl Entity {
     /// Create a new entity: ID and birth time are generated automatically.
-    pub fn new(source: impl Into<SourceId>, name: impl Into<String>, body: EntityBody) -> Entity {
+    pub fn new(source: SourceId, name: impl Into<String>, body: EntityBody) -> Entity {
         Entity {
             id: next_entity_id(),
             birth: PTime::now(),
-            source: source.into(),
+            source: source,
             name: name.into(),
             body,
         }

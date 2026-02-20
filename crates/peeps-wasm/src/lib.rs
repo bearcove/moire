@@ -31,9 +31,7 @@ impl<T> Mutex<T> {
 
     #[inline]
     pub fn lock(&self) -> std::sync::MutexGuard<'_, T> {
-        self.0
-            .lock()
-            .expect("wasm mutex poisoned; cannot continue")
+        self.0.lock().expect("wasm mutex poisoned; cannot continue")
     }
 }
 
@@ -66,7 +64,9 @@ impl<T> std::fmt::Debug for TrySendError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Full(_) => f.debug_struct("TrySendError::Full").finish_non_exhaustive(),
-            Self::Closed(_) => f.debug_struct("TrySendError::Closed").finish_non_exhaustive(),
+            Self::Closed(_) => f
+                .debug_struct("TrySendError::Closed")
+                .finish_non_exhaustive(),
         }
     }
 }
@@ -139,7 +139,9 @@ pub fn bounded<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receive
 }
 
 /// Create an unbounded mpsc channel.
-pub fn unbounded_channel<T>(_name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+pub fn unbounded_channel<T>(
+    _name: impl Into<String>,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let (tx, rx) = async_channel::unbounded();
     (Sender(tx), Receiver(rx))
 }
@@ -199,7 +201,7 @@ pub async fn timeout<F, T>(duration: Duration, future: F, _label: impl Into<Stri
 where
     F: Future<Output = T>,
 {
-    use futures_util::future::{Either, select};
+    use futures_util::future::{select, Either};
     use std::pin::pin;
 
     let sleep_fut = pin!(gloo_timers::future::sleep(duration));
