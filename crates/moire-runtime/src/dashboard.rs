@@ -69,17 +69,13 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
         .await
         .map_err(|e| format!("write protocol magic: {e}"))?;
 
-    // r[impl wire.handshake]
-    let handshake = ClientMessage::Handshake(moire_wire::Handshake {
-        process_name: process_name.clone(),
-        pid: std::process::id(),
-        args: std::env::args().collect(),
-        env: std::env::vars()
-            .map(|(key, value)| format!("{key}={value}"))
-            .collect(),
-        module_manifest: vec![],
-    });
-    write_client_message(&mut writer, &handshake).await?;
+    let mut last_sent_manifest_revision = u64::MAX;
+    send_handshake_if_manifest_changed(
+        &mut writer,
+        process_name.as_str(),
+        &mut last_sent_manifest_revision,
+    )
+    .await?;
 
     let mut cursor = SeqNo::ZERO;
     let mut last_sent_backtrace_id = 0u64;
@@ -94,7 +90,13 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
                 let cursor_shifted = batch.from_seq_no > requested_from || batch.next_seq_no > requested_from;
                 if !batch.changes.is_empty() || batch.truncated || cursor_shifted {
                     let next = batch.next_seq_no;
-                    flush_backtrace_records(&mut writer, &mut last_sent_backtrace_id).await?;
+                    flush_backtrace_records(
+                        &mut writer,
+                        process_name.as_str(),
+                        &mut last_sent_manifest_revision,
+                        &mut last_sent_backtrace_id,
+                    )
+                    .await?;
                     write_client_message(&mut writer, &ClientMessage::DeltaBatch(batch)).await?;
                     cursor = next.max(cursor);
                 } else {
@@ -107,12 +109,24 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
                 };
                 match message {
                     ServerMessage::CutRequest(request) => {
-                        flush_backtrace_records(&mut writer, &mut last_sent_backtrace_id).await?;
+                        flush_backtrace_records(
+                            &mut writer,
+                            process_name.as_str(),
+                            &mut last_sent_manifest_revision,
+                            &mut last_sent_backtrace_id,
+                        )
+                        .await?;
                         let ack = ack_cut(request.cut_id.0.clone());
                         write_client_message(&mut writer, &ClientMessage::CutAck(ack)).await?;
                     }
                     ServerMessage::SnapshotRequest(request) => {
-                        flush_backtrace_records(&mut writer, &mut last_sent_backtrace_id).await?;
+                        flush_backtrace_records(
+                            &mut writer,
+                            process_name.as_str(),
+                            &mut last_sent_manifest_revision,
+                            &mut last_sent_backtrace_id,
+                        )
+                        .await?;
                         let frame = super::db::encode_snapshot_reply_frame(request.snapshot_id)?;
                         writer
                             .write_all(&frame)
@@ -128,14 +142,40 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
 // r[impl wire.backtrace-record]
 async fn flush_backtrace_records(
     writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    process_name: &str,
+    last_sent_manifest_revision: &mut u64,
     last_sent_backtrace_id: &mut u64,
 ) -> Result<(), String> {
+    send_handshake_if_manifest_changed(writer, process_name, last_sent_manifest_revision).await?;
     let records = super::backtrace_records_after(*last_sent_backtrace_id);
     for record in records {
         let record_id = record.id.get();
         write_client_message(writer, &ClientMessage::BacktraceRecord(record)).await?;
         *last_sent_backtrace_id = record_id;
     }
+    Ok(())
+}
+
+async fn send_handshake_if_manifest_changed(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    process_name: &str,
+    last_sent_manifest_revision: &mut u64,
+) -> Result<(), String> {
+    let (revision, module_manifest) = super::module_manifest_snapshot();
+    if revision == *last_sent_manifest_revision {
+        return Ok(());
+    }
+    let handshake = ClientMessage::Handshake(moire_wire::Handshake {
+        process_name: process_name.to_string(),
+        pid: std::process::id(),
+        args: std::env::args().collect(),
+        env: std::env::vars()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect(),
+        module_manifest,
+    });
+    write_client_message(writer, &handshake).await?;
+    *last_sent_manifest_revision = revision;
     Ok(())
 }
 

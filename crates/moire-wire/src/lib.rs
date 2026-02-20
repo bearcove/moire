@@ -122,7 +122,7 @@ pub fn decode_frame_default(frame: &[u8]) -> Result<&[u8], FrameCodecError> {
     decode_frame(frame, DEFAULT_MAX_FRAME_BYTES)
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ModuleIdentity {
@@ -130,7 +130,7 @@ pub enum ModuleIdentity {
     DebugId(String),
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone)]
 // r[impl wire.handshake.module-manifest]
 pub struct ModuleManifestEntry {
     pub module_path: String,

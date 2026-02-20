@@ -1,7 +1,7 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 use ctor::ctor;
-use moire_trace_capture::{capture_current, validate_frame_pointers_or_panic, CaptureOptions};
-use moire_trace_types::BacktraceId;
+use moire_trace_capture::{capture_current, validate_frame_pointers_or_panic, CaptureOptions, CapturedBacktrace};
+use moire_trace_types::{BacktraceId, FrameKey, ModuleId};
 use moire_types::{
     EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
 };
@@ -38,6 +38,15 @@ static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
+static MODULE_STATE: OnceLock<StdMutex<ModuleState>> = OnceLock::new();
+
+#[derive(Default)]
+struct ModuleState {
+    next_module_id: u64,
+    revision: u64,
+    by_key: BTreeMap<(u64, String), ModuleId>,
+    by_id: BTreeMap<u64, moire_wire::ModuleManifestEntry>,
+}
 
 // r[impl process.auto-init]
 #[ctor]
@@ -68,9 +77,90 @@ pub(crate) fn capture_backtrace_id() -> BacktraceId {
         panic!("failed to capture backtrace for enabled API boundary: {err}")
     });
     // r[impl wire.backtrace-record]
-    remember_backtrace_record(captured.backtrace);
+    let remapped = remap_and_register_backtrace(captured);
+    remember_backtrace_record(remapped);
 
     backtrace_id
+}
+
+fn module_state() -> &'static StdMutex<ModuleState> {
+    MODULE_STATE.get_or_init(|| {
+        StdMutex::new(ModuleState {
+            next_module_id: 1,
+            ..ModuleState::default()
+        })
+    })
+}
+
+fn module_identity_for(path: &str, runtime_base: u64) -> moire_wire::ModuleIdentity {
+    // Deterministic runtime identity until build-id/debug-id extraction is wired.
+    moire_wire::ModuleIdentity::DebugId(format!("runtime:{runtime_base:x}:{path}"))
+}
+
+fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::BacktraceRecord {
+    let Ok(mut modules) = module_state().lock() else {
+        panic!("module state mutex poisoned; cannot continue");
+    };
+
+    let mut local_to_global: BTreeMap<u64, ModuleId> = BTreeMap::new();
+    for module in &captured.modules {
+        let key = (module.runtime_base, module.path.as_str().to_string());
+        let global = if let Some(existing) = modules.by_key.get(&key).copied() {
+            existing
+        } else {
+            let raw_id = modules.next_module_id;
+            modules.next_module_id = modules
+                .next_module_id
+                .checked_add(1)
+                .expect("module id overflow");
+            let global = ModuleId::new(raw_id)
+                .expect("invariant violated: generated module id must be non-zero");
+            modules.by_key.insert(key.clone(), global);
+            modules.by_id.insert(
+                global.get(),
+                moire_wire::ModuleManifestEntry {
+                    module_path: key.1.clone(),
+                    runtime_base: key.0,
+                    identity: module_identity_for(&key.1, key.0),
+                    arch: std::env::consts::ARCH.to_string(),
+                },
+            );
+            modules.revision = modules.revision.saturating_add(1);
+            global
+        };
+        local_to_global.insert(module.id.get(), global);
+    }
+
+    let remapped_frames = captured
+        .backtrace
+        .frames
+        .iter()
+        .map(|frame| {
+            let module_id = local_to_global.get(&frame.module_id.get()).copied().unwrap_or_else(|| {
+                panic!(
+                    "invariant violated: missing local module mapping for module_id {}",
+                    frame.module_id.get()
+                )
+            });
+            FrameKey {
+                module_id,
+                rel_pc: frame.rel_pc,
+            }
+        })
+        .collect();
+
+    moire_wire::BacktraceRecord::new(captured.backtrace.id, remapped_frames)
+        .expect("invariant violated: remapped backtrace must be valid")
+}
+
+pub(crate) fn module_manifest_snapshot() -> (u64, Vec<moire_wire::ModuleManifestEntry>) {
+    let Ok(modules) = module_state().lock() else {
+        panic!("module state mutex poisoned; cannot continue");
+    };
+    (
+        modules.revision,
+        modules.by_id.values().cloned().collect::<Vec<_>>(),
+    )
 }
 
 fn backtrace_records() -> &'static StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>> {
