@@ -199,7 +199,7 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
-    let tx_handle = EntityHandle::new(
+    let tx_handle = EntityHandle::new_untyped(
         format!("{name}:tx"),
         EntityBody::MpscTx(MpscTxEntity {
             queue_len: 0,
@@ -208,7 +208,7 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
     )
     .into_typed::<moire_types::MpscTx>();
 
-    let rx_handle = EntityHandle::new(
+    let rx_handle = EntityHandle::new_untyped(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}), 
     )
@@ -234,7 +234,7 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
         let name = name.into();
     let (tx, rx) = mpsc::unbounded_channel();
 
-    let tx_handle = EntityHandle::new(
+    let tx_handle = EntityHandle::new_untyped(
         format!("{name}:tx"),
         EntityBody::MpscTx(MpscTxEntity {
             queue_len: 0,
@@ -243,7 +243,7 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
     )
     .into_typed::<moire_types::MpscTx>();
 
-    let rx_handle = EntityHandle::new(
+    let rx_handle = EntityHandle::new_untyped(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}), 
     )

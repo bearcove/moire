@@ -8,7 +8,7 @@ use moire_runtime::{instrument_future, EntityHandle};
 
 /// Instrumented equivalent of [`tokio::time::sleep`].
 pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
-        let handle = EntityHandle::new(
+        let handle = EntityHandle::new_untyped(
         "time.sleep",
         EntityBody::Future(moire_types::FutureEntity {}), 
     );
@@ -32,7 +32,7 @@ impl Interval {
     pub fn new(period: Duration) -> Self {
                 Self {
             inner: tokio::time::interval(period),
-            handle: EntityHandle::new(
+            handle: EntityHandle::new_untyped(
                 "time.interval",
                 EntityBody::Future(moire_types::FutureEntity {}), 
             ),

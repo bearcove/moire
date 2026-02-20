@@ -52,7 +52,7 @@ pub fn rpc_request_with_body(name: impl Into<String>, body: RequestEntity) -> Rp
         let name = name.into();
     let body = EntityBody::Request(body);
     RpcRequestHandle {
-        handle: EntityHandle::new(name, body).into_typed::<moire_types::Request>(),
+        handle: EntityHandle::new_untyped(name, body).into_typed::<moire_types::Request>(),
     }
 }
 
@@ -79,7 +79,7 @@ pub fn rpc_response_with_body(
 ) -> EntityHandle<moire_types::Response> {
         let name = name.into();
     let body = EntityBody::Response(body);
-    EntityHandle::new(name, body).into_typed::<moire_types::Response>()
+    EntityHandle::new_untyped(name, body).into_typed::<moire_types::Response>()
 }
 
 // r[impl api.rpc-response]
@@ -111,7 +111,7 @@ pub fn rpc_response_for_with_body(
 ) -> EntityHandle<moire_types::Response> {
         let name = name.into();
     let body = EntityBody::Response(body);
-    let response = EntityHandle::new(name, body).into_typed::<moire_types::Response>();
+    let response = EntityHandle::new_untyped(name, body).into_typed::<moire_types::Response>();
     response.link_to(request, EdgeKind::PairedWith);
     response
 }

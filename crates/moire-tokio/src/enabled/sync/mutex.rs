@@ -36,7 +36,7 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 impl<T> Mutex<T> {
     /// Creates a new instrumented mutex, equivalent to [`parking_lot::Mutex::new`].
     pub fn new(name: &'static str, value: T) -> Self {
-                let handle = EntityHandle::new(
+                let handle = EntityHandle::new_untyped(
             name,
             EntityBody::Lock(LockEntity {
                 kind: LockKind::Mutex,

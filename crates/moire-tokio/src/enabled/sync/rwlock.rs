@@ -12,7 +12,7 @@ pub struct RwLock<T> {
 impl<T> RwLock<T> {
     /// Creates a new instrumented read-write lock, matching [`parking_lot::RwLock::new`].
     pub fn new(name: &'static str, value: T) -> Self {
-                let handle = EntityHandle::new(
+                let handle = EntityHandle::new_untyped(
             name,
             EntityBody::Lock(LockEntity {
                 kind: LockKind::RwLock,

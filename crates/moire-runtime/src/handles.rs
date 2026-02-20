@@ -105,31 +105,6 @@ pub struct EntityHandle<S = ()> {
     _slot: PhantomData<S>,
 }
 
-pub trait EntityHandleBody {
-    type Slot;
-
-    fn into_entity_body(self) -> EntityBody;
-}
-
-impl EntityHandleBody for EntityBody {
-    type Slot = ();
-
-    fn into_entity_body(self) -> EntityBody {
-        self
-    }
-}
-
-impl<T> EntityHandleBody for T
-where
-    T: EntityBodySlot<Value = T> + Into<EntityBody>,
-{
-    type Slot = T;
-
-    fn into_entity_body(self) -> EntityBody {
-        self.into()
-    }
-}
-
 impl<S> Clone for EntityHandle<S> {
     fn clone(&self) -> Self {
         Self {
@@ -140,13 +115,10 @@ impl<S> Clone for EntityHandle<S> {
 }
 
 impl EntityHandle<()> {
-    pub fn new<B>(name: impl Into<String>, body: B) -> EntityHandle<B::Slot>
-    where
-        B: EntityHandleBody,
-    {
-        let entity = Entity::new(super::capture_backtrace_id(), name, body.into_entity_body());
+    pub fn new_untyped(name: impl Into<String>, body: impl Into<EntityBody>) -> Self {
+        let entity = Entity::new(super::capture_backtrace_id(), name, body.into());
         let untyped = Self::from_entity(entity);
-        EntityHandle {
+        Self {
             inner: untyped.inner,
             _slot: PhantomData,
         }
@@ -169,6 +141,20 @@ impl EntityHandle<()> {
     pub fn into_typed<S>(self) -> EntityHandle<S> {
         EntityHandle {
             inner: self.inner,
+            _slot: PhantomData,
+        }
+    }
+}
+
+impl<S> EntityHandle<S>
+where
+    S: EntityBodySlot<Value = S> + Into<EntityBody>,
+{
+    pub fn new(name: impl Into<String>, body: S) -> Self {
+        let entity = Entity::new(super::capture_backtrace_id(), name, body.into());
+        let untyped = EntityHandle::from_entity(entity);
+        Self {
+            inner: untyped.inner,
             _slot: PhantomData,
         }
     }

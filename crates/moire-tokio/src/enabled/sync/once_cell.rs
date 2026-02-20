@@ -13,7 +13,7 @@ pub struct OnceCell<T> {
 impl<T> OnceCell<T> {
     /// Creates a new instrumented once-cell, matching [`tokio::sync::OnceCell::new`].
     pub fn new(name: impl Into<String>) -> Self {
-                let handle = EntityHandle::new(
+                let handle = EntityHandle::new_untyped(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {
                 waiter_count: 0,

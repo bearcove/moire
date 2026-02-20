@@ -82,13 +82,13 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
         let name: String = name.into();
     let (tx, rx) = oneshot::channel();
 
-    let tx_handle = EntityHandle::new(
+    let tx_handle = EntityHandle::new_untyped(
         format!("{name}:tx"),
         EntityBody::OneshotTx(OneshotTxEntity { sent: false }), 
     )
     .into_typed::<moire_types::OneshotTx>();
 
-    let rx_handle = EntityHandle::new(
+    let rx_handle = EntityHandle::new_untyped(
         format!("{name}:rx"),
         EntityBody::OneshotRx(OneshotRxEntity {}), 
     )

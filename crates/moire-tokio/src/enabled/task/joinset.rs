@@ -22,7 +22,7 @@ where
     pub fn new() -> Self {
                 Self {
             inner: tokio::task::JoinSet::new(),
-            handle: EntityHandle::new(
+            handle: EntityHandle::new_untyped(
                 "joinset",
                 EntityBody::Future(moire_types::FutureEntity {}), 
             ),
@@ -32,7 +32,7 @@ where
     /// Creates an instrumented join set equivalent to [`tokio::task::JoinSet::new`].
     pub fn named(name: impl Into<String>) -> Self {
                 let name = name.into();
-        let handle = EntityHandle::new(
+        let handle = EntityHandle::new_untyped(
             format!("joinset.{name}"),
             EntityBody::Future(moire_types::FutureEntity {}), 
         );

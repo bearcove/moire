@@ -130,7 +130,7 @@ impl Command {
     /// Spawns the configured process, equivalent to [`tokio::process::Command::spawn`].
     pub fn spawn(&mut self) -> io::Result<Child> {
                 let child = self.inner.spawn()?;
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+        let handle = EntityHandle::new_untyped(self.entity_name(), self.entity_body());
         Ok(Child {
             inner: Some(child),
             handle,
@@ -138,7 +138,7 @@ impl Command {
     }
     /// Gets process status asynchronously, matching [`tokio::process::Command::status`].
     pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-                let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+                let handle = EntityHandle::new_untyped(self.entity_name(), self.entity_body());
         instrument_future(
             "command.status",
             self.inner.status(), 
@@ -148,7 +148,7 @@ impl Command {
     }
     /// Captures process output asynchronously, matching [`tokio::process::Command::output`].
     pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
-                let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+                let handle = EntityHandle::new_untyped(self.entity_name(), self.entity_body());
         instrument_future(
             "command.output",
             self.inner.output(), 
@@ -209,7 +209,7 @@ impl Child {
             env: diag.env.clone(),
         });
         let name = String::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new(name, body);
+        let handle = EntityHandle::new_untyped(name, body);
         Self {
             inner: Some(child),
             handle,

@@ -3,8 +3,7 @@ use ctor::ctor;
 use moire_trace_capture::{capture_current, validate_frame_pointers_or_panic, CaptureOptions};
 use moire_trace_types::BacktraceId;
 use moire_types::{
-    EntityBody, EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId,
-    TaskScopeBody,
+    EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;

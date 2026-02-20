@@ -253,6 +253,6 @@ pub fn instrument_future<F>(
 where
     F: IntoFuture,
 {
-    let handle = EntityHandle::new(name, EntityBody::Future(FutureEntity {}));
+    let handle = EntityHandle::new_untyped(name, EntityBody::Future(FutureEntity {}));
     InstrumentedFuture::new(fut.into_future(), handle, on)
 }

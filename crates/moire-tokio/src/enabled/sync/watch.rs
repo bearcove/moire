@@ -86,7 +86,7 @@ impl<T: Clone> WatchSender<T> {
     ///
     /// Returns a linked sender/receiver pair with diagnostic metadata.
     pub fn subscribe(&self) -> WatchReceiver<T> {
-                let handle = EntityHandle::new(
+                let handle = EntityHandle::new_untyped(
             "watch:rx.subscribe",
             EntityBody::WatchRx(WatchRxEntity {}), 
         )
@@ -147,7 +147,7 @@ pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, 
         let name = name.into();
     let (tx, rx) = watch::channel(initial);
 
-    let tx_handle = EntityHandle::new(
+    let tx_handle = EntityHandle::new_untyped(
         format!("{name}:tx"),
         EntityBody::WatchTx(WatchTxEntity {
             last_update_at: None,
@@ -155,7 +155,7 @@ pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, 
     )
     .into_typed::<moire_types::WatchTx>();
 
-    let rx_handle = EntityHandle::new(
+    let rx_handle = EntityHandle::new_untyped(
         format!("{name}:rx"),
         EntityBody::WatchRx(WatchRxEntity {}), 
     )

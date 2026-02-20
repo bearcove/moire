@@ -48,7 +48,7 @@ impl Semaphore {
     /// Creates a new semaphore, matching [`tokio::sync::Semaphore::new`].
     pub fn new(name: impl Into<String>, permits: usize) -> Self {
                 let max_permits = permits.min(u32::MAX as usize) as u32;
-        let handle = EntityHandle::new(
+        let handle = EntityHandle::new_untyped(
             name.into(),
             EntityBody::Semaphore(SemaphoreEntity {
                 max_permits,

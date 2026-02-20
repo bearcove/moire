@@ -13,12 +13,12 @@ use super::{
     MAX_CHANGES_BEFORE_COMPACT,
 };
 
-pub fn runtime_db() -> &'static StdMutex<RuntimeDb> {
+pub(crate) fn runtime_db() -> &'static StdMutex<RuntimeDb> {
     static DB: OnceLock<StdMutex<RuntimeDb>> = OnceLock::new();
     DB.get_or_init(|| StdMutex::new(RuntimeDb::new(runtime_stream_id(), super::MAX_EVENTS)))
 }
 
-pub fn runtime_stream_id() -> StreamId {
+pub(crate) fn runtime_stream_id() -> StreamId {
     static STREAM_ID: OnceLock<StreamId> = OnceLock::new();
     STREAM_ID
         .get_or_init(|| {
@@ -39,7 +39,7 @@ pub(super) struct EdgeKey {
     pub(super) kind: EdgeKind,
 }
 
-pub struct RuntimeDb {
+pub(crate) struct RuntimeDb {
     stream_id: StreamId,
     next_seq_no: SeqNo,
     compacted_before_seq_no: Option<SeqNo>,
@@ -54,7 +54,7 @@ pub struct RuntimeDb {
 }
 
 impl RuntimeDb {
-    pub fn new(stream_id: StreamId, max_events: usize) -> Self {
+    pub(crate) fn new(stream_id: StreamId, max_events: usize) -> Self {
         Self {
             stream_id,
             next_seq_no: SeqNo::ZERO,
@@ -163,7 +163,7 @@ impl RuntimeDb {
         // checkpoint materialization and replay handoff.
     }
 
-    pub fn upsert_entity(&mut self, entity: Entity) {
+    pub(crate) fn upsert_entity(&mut self, entity: Entity) {
         let entity_id = EntityId::new(entity.id.as_str());
         let should_link_task_scope = matches!(&entity.body, EntityBody::Future(_));
         let entity_json = facet_json::to_vec(&entity).ok();
@@ -185,7 +185,7 @@ impl RuntimeDb {
         }
     }
 
-    pub fn upsert_scope(&mut self, scope: Scope) {
+    pub(crate) fn upsert_scope(&mut self, scope: Scope) {
         let scope_id = ScopeId::new(scope.id.as_str());
         let scope_json = facet_json::to_vec(&scope).ok();
         self.scopes.insert(ScopeId::new(scope.id.as_str()), scope);
@@ -197,14 +197,14 @@ impl RuntimeDb {
         }
     }
 
-    pub fn register_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
+    pub(crate) fn register_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
         self.task_scope_ids.insert(
             String::from(task_key.as_str()),
             ScopeId::new(scope_id.as_str()),
         );
     }
 
-    pub fn unregister_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
+    pub(crate) fn unregister_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
         if self
             .task_scope_ids
             .get(task_key)
@@ -249,7 +249,7 @@ impl RuntimeDb {
         hasher.finish()
     }
 
-    pub fn mutate_entity_body_and_maybe_upsert(
+    pub(crate) fn mutate_entity_body_and_maybe_upsert(
         &mut self,
         id: &EntityId,
         mutate: impl FnOnce(&mut EntityBody),
@@ -273,7 +273,7 @@ impl RuntimeDb {
         true
     }
 
-    pub fn remove_entity(&mut self, id: &EntityId) {
+    pub(crate) fn remove_entity(&mut self, id: &EntityId) {
         if self.entities.remove(id).is_none() {
             return;
         }
@@ -309,7 +309,7 @@ impl RuntimeDb {
         });
     }
 
-    pub fn remove_scope(&mut self, id: &ScopeId) {
+    pub(crate) fn remove_scope(&mut self, id: &ScopeId) {
         if self.scopes.remove(id).is_none() {
             return;
         }
@@ -331,7 +331,7 @@ impl RuntimeDb {
         });
     }
 
-    pub fn link_entity_to_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
+    pub(crate) fn link_entity_to_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
         let key = (
             EntityId::new(entity_id.as_str()),
             ScopeId::new(scope_id.as_str()),
@@ -352,7 +352,7 @@ impl RuntimeDb {
         });
     }
 
-    pub fn unlink_entity_from_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
+    pub(crate) fn unlink_entity_from_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
         let key = (
             EntityId::new(entity_id.as_str()),
             ScopeId::new(scope_id.as_str()),
@@ -366,7 +366,7 @@ impl RuntimeDb {
         });
     }
 
-    pub fn upsert_edge_with_source(
+    pub(crate) fn upsert_edge_with_source(
         &mut self,
         src: &EntityId,
         dst: &EntityId,
@@ -407,7 +407,7 @@ impl RuntimeDb {
         }
     }
 
-    pub fn remove_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
+    pub(crate) fn remove_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
         let removed = self.edges.remove(&EdgeKey {
             src: EntityId::new(src.as_str()),
             dst: EntityId::new(dst.as_str()),
@@ -422,7 +422,7 @@ impl RuntimeDb {
         }
     }
 
-    pub fn record_event(&mut self, event: Event) {
+    pub(crate) fn record_event(&mut self, event: Event) {
         let event_json = facet_json::to_vec(&event).ok();
         self.events.push_back(event);
         while self.events.len() > self.max_events {
@@ -433,7 +433,7 @@ impl RuntimeDb {
         }
     }
 
-    pub fn pull_changes_since(&self, from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
+    pub(crate) fn pull_changes_since(&self, from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
         let compacted_before = self.compacted_before_seq_no;
         let effective_from = compacted_before
             .map(|compacted| {
@@ -489,7 +489,7 @@ impl RuntimeDb {
         }
     }
 
-    pub fn current_cursor(&self) -> StreamCursor {
+    pub(crate) fn current_cursor(&self) -> StreamCursor {
         StreamCursor {
             stream_id: self.stream_id.clone(),
             next_seq_no: self.next_seq_no,
@@ -614,7 +614,7 @@ impl InternalStampedChange {
     }
 }
 
-pub fn encode_snapshot_reply_frame(snapshot_id: i64) -> Result<Vec<u8>, String> {
+pub(crate) fn encode_snapshot_reply_frame(snapshot_id: i64) -> Result<Vec<u8>, String> {
     // Capture process-relative now before locking the db, so the timestamp
     // represents the moment this snapshot was requested.
     let ptime_now_ms = PTime::now().as_millis();

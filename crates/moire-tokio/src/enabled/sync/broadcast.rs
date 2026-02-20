@@ -51,7 +51,7 @@ impl<T: Clone> BroadcastSender<T> {
     }
     /// Subscribes a receiver, equivalent to [`tokio::sync::broadcast::Sender::subscribe`].
     pub fn subscribe(&self) -> BroadcastReceiver<T> {
-                let handle = EntityHandle::new(
+                let handle = EntityHandle::new_untyped(
             "broadcast:rx.subscribe",
             EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }), 
         )
@@ -119,7 +119,7 @@ pub fn broadcast<T: Clone>(
     let (tx, rx) = broadcast::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
-    let tx_handle = EntityHandle::new(
+    let tx_handle = EntityHandle::new_untyped(
         format!("{name}:tx"),
         EntityBody::BroadcastTx(BroadcastTxEntity {
             capacity: capacity_u32,
@@ -127,7 +127,7 @@ pub fn broadcast<T: Clone>(
     )
     .into_typed::<moire_types::BroadcastTx>();
 
-    let rx_handle = EntityHandle::new(
+    let rx_handle = EntityHandle::new_untyped(
         format!("{name}:rx"),
         EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }), 
     )
