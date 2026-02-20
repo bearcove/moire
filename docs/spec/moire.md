@@ -344,8 +344,73 @@ The instrumented process pushes a stream of messages over a persistent TCP conne
 > r[api.snapshot.frame-id-stable]
 > `frame_id` values in snapshot/stream payloads MUST be deterministic and stable for a given frame identity (`module_identity`, `module_path`, `rel_pc`) so incremental updates can target frames by ID across repeated snapshots and stream updates.
 
+> r[api.source.preview.frame-id]
+> `GET /api/source/preview` MUST resolve source previews by `frame_id` only. The server MUST NOT accept client-provided filesystem path/line coordinates for this endpoint.
+
+> r[api.source.preview.catalog-only]
+> For `GET /api/source/preview`, the server MUST derive file path and focus location from the stored frame catalog entry addressed by `frame_id`. Unknown frame IDs MUST return 404. Unresolved frames or frames without source locations MUST return an explicit failure.
+
 > r[symbolicate.parallel]
 > The server MAY resolve multiple `BacktraceId` requests concurrently. Symbolication of one backtrace MUST NOT block symbolication of another.
 
 > r[symbolicate.hard-failure]
 > If a frame cannot be resolved — because debug info is missing, corrupt, or does not cover the given `rel_pc` — the server MUST store an explicit unresolved marker for that frame. It MUST NOT silently drop the frame or substitute a placeholder. The unresolved marker MUST include the raw `(module_path, rel_pc)` so the caller can diagnose the gap.
+
+---
+
+## Profiling Extensions
+
+### CPU sampling
+
+> r[profile.cpu.capture]
+> The diagnostics runtime MAY capture periodic CPU samples from instrumented processes. Each sample MUST reference a `BacktraceId` and carry a non-zero weight (default weight `1` per sample).
+
+> r[profile.cpu.dataset]
+> The server MUST aggregate CPU samples into a dataset keyed by `BacktraceId` and expose totals for at least: sample count, process ID, and thread identity when available.
+
+> r[profile.snapshot.cpu]
+> When CPU sampling is enabled, `moire-web` MUST attach the CPU dataset for that cut to `SnapshotCutResponse.cpu_profile`. This payload MUST reference the same backtrace/frame catalogs already included in the snapshot.
+
+### Memory allocator profiling
+
+> r[profile.memory.allocator.install]
+> When memory profiling is enabled, the instrumented process MUST install a global allocator wrapper that records allocation activity (`alloc`, `realloc`, `dealloc`) with size and capture-site `BacktraceId`.
+
+> r[profile.memory.capture.all-ops]
+> Memory profiling MUST observe every allocator operation (`alloc`, `realloc`, `dealloc`) that passes through the global allocator wrapper while profiling is enabled. It MUST NOT sample or probabilistically drop operations on the accounting path.
+
+> r[profile.memory.event.fields]
+> Each observed allocator operation MUST include, at minimum: operation kind, pointer address (`ptr`), size, capture-site `BacktraceId`, and thread identity when available. `realloc` MUST include both old and new pointer/size values.
+
+> r[profile.memory.pointer-index]
+> The profiler MUST maintain a live allocation index keyed by pointer address. For each live pointer, the index MUST retain size and owning `BacktraceId` so deallocation/reallocation can be attributed correctly.
+
+> r[profile.memory.realloc]
+> `realloc` handling MUST be equivalent to `dealloc(old_ptr, old_size)` followed by `alloc(new_ptr, new_size)` for accounting purposes. If the pointer changes, ownership MUST move from old pointer entry to new pointer entry atomically.
+
+> r[profile.memory.live]
+> Memory profiling MUST compute live ownership by stack (`allocated_bytes - freed_bytes`) and MUST track at least allocation count, total allocated bytes, total freed bytes, and current live bytes per `BacktraceId`.
+
+> r[profile.memory.retention]
+> To bound memory usage, the profiler MAY keep only aggregate counters plus the live pointer index by default. Full event history is optional and, when enabled, MUST be explicitly bounded.
+
+> r[profile.memory.integrity]
+> Free/realloc for unknown pointers, duplicate live-pointer insertions, and pointer-index corruption are invariant violations. They MUST produce explicit diagnostics with pointer and operation context. Silent ignore is forbidden.
+
+> r[profile.memory.hook.noalloc]
+> The allocator hook path (including accounting and metadata updates) MUST NOT allocate through the instrumented global allocator.
+
+> r[profile.memory.hook.reentrancy]
+> The profiler MUST guard against recursive self-instrumentation (for example with a thread-local reentrancy guard). Profiler-internal bookkeeping MUST NOT recursively generate profiler events.
+
+> r[profile.memory.hook.storage]
+> Profiler metadata storage MUST use preallocated or externally provisioned memory (for example mmap-backed arenas or fixed-capacity tables) so hook execution remains allocation-free with respect to the instrumented allocator.
+
+> r[profile.memory.hook.capacity]
+> If profiler metadata capacity is exhausted, profiling for that cut MUST fail explicitly and surface a hard error. The runtime MUST NOT silently continue with partial or corrupted accounting.
+
+> r[profile.snapshot.memory]
+> When memory profiling is enabled, `moire-web` MUST attach memory ownership stats for that cut to `SnapshotCutResponse.memory_profile`. This payload MUST reference the same backtrace/frame catalogs already included in the snapshot.
+
+> r[profile.snapshot.recording]
+> Recording frames MUST preserve profiling payloads from their corresponding `SnapshotCutResponse` objects. A frame's graph, CPU profile, and memory profile are one coherent capture and MUST share the same capture timestamp.

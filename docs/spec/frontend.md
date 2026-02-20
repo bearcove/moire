@@ -75,6 +75,25 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 > r[api.backtrace]
 > Backtrace resolution data is shipped inside each `SnapshotCutResponse.backtraces` entry. Each backtrace entry MUST preserve frame order and MUST include every frame as either `resolved` (`module_path`, `function_name`, `source_file`, optional `line`) or `unresolved` (`module_path`, `rel_pc`, `reason`). Frames MUST NOT be dropped.
 
+### Source Preview
+
+> r[api.source.preview]
+> `GET /api/source/preview` returns a `SourcePreviewResponse` for one symbolicated frame.
+
+> r[api.source.preview.frame-id]
+> `GET /api/source/preview` MUST require `frame_id` as the lookup key, plus optional `context` (line radius). The endpoint MUST NOT accept raw filesystem path/line inputs from the client.
+
+> r[api.source.preview.security]
+> The server MUST resolve preview location exclusively from the stored frame catalog entry for `frame_id`. Unknown `frame_id` values MUST fail (404). If the frame is unresolved or lacks source location, the request MUST fail with an explicit error. The server MUST NOT read arbitrary files outside frame-catalog-derived locations.
+
+### Snapshot profiling payloads
+
+> r[api.snapshot.profiles]
+> `SnapshotCutResponse` MAY include optional profiling payloads (`cpu_profile`, `memory_profile`) captured for the same cut. When present, profiling payloads MUST reference the same `backtraces`/`frames` catalogs included in that snapshot response.
+
+> r[api.record.frame.profiles]
+> `GET /api/record/current/frame/{frameIndex}` returns the same per-frame profiling payloads (`cpu_profile`, `memory_profile`) that were captured with that frame's snapshot, if available.
+
 ---
 
 ## Display Data Model
@@ -287,6 +306,9 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > r[filter.axis.module.bt]
 > `+module:<path>` / `-module:<path>` — include or exclude entities whose top application frame's `module_path` (the Rust module path within the crate, e.g. `server::handler`) matches the given string. Entities with no top application frame are treated as non-matching for this axis.
 
+> r[filter.axis.frame]
+> `+frame:<query>` / `-frame:<query>` — include or exclude entities whose backtrace contains at least one resolved frame matching `query`. Matching is case-insensitive across `module_path`, `function_name`, basename of `source_file`, and `source_file:line` when line exists.
+
 > r[filter.axis.process]
 > `+process:<id>` / `-process:<id>` — include or exclude entities belonging to the process with the given `processId` string.
 
@@ -336,7 +358,7 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > The filter input MUST provide autocomplete suggestions based on the current draft token. Suggestions are ranked by prefix match, substring match, and fuzzy subsequence match (in that order). Suggestions that are already present as committed tokens MUST be omitted.
 
 > r[filter.suggest.fragment+2]
-> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate`, `module`, and `location` axes — crate names, module paths, and source locations derived from resolved frames in the current cut's `backtraces` payload.
+> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate`, `module`, `location`, and `frame` axes — crate names, module paths, source locations, and frame function/file tokens derived from resolved frames in the current cut's `backtraces` payload.
 
 ---
 
@@ -349,10 +371,93 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > The frontend MUST NOT require separate HTTP fetches to render backtraces for entities/scopes already present in the snapshot.
 
 > r[display.backtrace.render.resolved]
-> Each resolved frame MUST be displayed showing `function_name` and `source_file:line` (omitting the line suffix if `line` is absent).
+> Each resolved frame MUST display `function_name`, `module_path`, and `source_file:line[:column]` (omitting absent `line`/`column` segments).
 
 > r[display.backtrace.render.unresolved]
 > Each unresolved frame MUST be displayed with a distinct visual indicator (e.g. a warning badge) and MUST show the raw `module_path` and `rel_pc` so the user can diagnose why symbolication failed.
+
+### Inspector stack interactions
+
+> r[display.backtrace.chips]
+> The inspector header MUST render a row of backtrace chips for the currently selected entity/edge/scope. Chip label format is `file_name.rs:line` when line is known, otherwise `file_name.rs`. Chips are ordered by visible stack order.
+
+> r[display.backtrace.default-filter]
+> Stack view is filtered by default to hide runtime/infrastructure frames (for example `std`, `core`, `alloc`, `tokio`, `parking_lot`, and unresolved loader shims). A one-click toggle MUST reveal the full unfiltered stack without losing selection state.
+
+> r[display.backtrace.expand]
+> The stack panel MUST open in compact mode (first N visible frames, N implementation-defined) with an explicit "expand stack" action that reveals all frames.
+
+> r[display.backtrace.frame-open]
+> Selecting a chip or stack frame MUST expand a frame details panel showing full path, module path, function name, and symbolication metadata.
+
+> r[display.backtrace.frame-code]
+> Expanding a frame MUST request and render a source preview by `frame_id`, centered on the selected frame location. If column is known, the preview MUST mark the column. If preview cannot be loaded, the UI MUST show a hard failure message with the frame ID and reason; no silent fallback.
+
+> r[display.backtrace.frame-actions]
+> Every resolved frame details panel MUST expose actions to:
+> - append `+frame:<query>` to graph filters ("show frame")
+> - append `-frame:<query>` to graph filters ("exclude frame")
+> - open frame-centric analysis in a pinned window.
+
+### Workbench windows
+
+> r[workbench.windows.modular]
+> Backtrace stack, call graph, CPU sampling views, and memory profiling views MUST be embeddable in the inspector and detachable into independent workbench windows using the same underlying UI modules.
+
+> r[workbench.windows.pinned]
+> Pinned windows MUST remain visible while graph selection changes, snapshot playback scrubs, or filter tokens change. Each window MUST display its data source (`snapshot`, `cpu`, `memory`) and whether it is stale relative to the active frame.
+
+> r[workbench.windows.sync]
+> Selecting a frame in any workbench window MUST synchronize selection across all other open stack-aware windows.
+
+### Call graph from backtraces
+
+> r[callgraph.backtrace.build]
+> The dashboard MUST build a call graph from the current backtrace collection by aggregating adjacent frame pairs within each backtrace into directed caller/callee edges.
+
+> r[callgraph.backtrace.weight]
+> Call graph nodes and edges MUST expose aggregate weights equal to the number of contributing stacks (or sample weight when used with profiling datasets).
+
+> r[callgraph.backtrace.actions]
+> Selecting a call graph node or edge MUST support frame filter actions (`+frame`, `-frame`) and opening a pinned frame details window.
+
+### CPU sampling interactions
+
+> r[profile.cpu.reuse]
+> CPU sampling UI MUST reuse the same stack list, frame chips, frame details, and source preview components used by snapshot backtraces.
+
+> r[profile.cpu.views]
+> CPU sampling mode MUST provide at least:
+> - a weighted stack table (hot stacks first)
+> - a call graph view built from sampled stacks.
+
+> r[profile.cpu.sync]
+> Selecting CPU frames/stacks MUST integrate with graph filtering and inspector navigation using the same `frame` token actions.
+
+### Memory profiling interactions
+
+> r[profile.memory.reuse]
+> Memory profiling UI MUST reuse the same stack and frame interaction components as backtrace and CPU views.
+
+> r[profile.memory.allocator]
+> Memory mode MUST surface allocation ownership by stack, including at minimum `allocated_bytes`, `freed_bytes`, `live_bytes`, and allocation count per stack.
+
+> r[profile.memory.addresses]
+> Because the dashboard is a debugger, memory mode MUST expose pointer addresses for allocation records in memory-focused views. Address display MAY be hidden outside memory views but MUST be available in memory debugging workflows.
+
+> r[profile.memory.pointer-inspect]
+> The UI MUST support selecting a pointer address to inspect its current ownership (`live`/`freed`), last known size, and owning backtrace.
+
+> r[profile.memory.pointer-filter]
+> The memory UI MUST support filtering memory records by pointer address and by owning frame/backtrace.
+
+> r[profile.memory.integrity-ui]
+> If the snapshot includes memory profiling integrity violations (for example unknown free or index corruption), the UI MUST display them as critical debugger findings with actionable context.
+
+> r[profile.memory.views]
+> Memory mode MUST provide:
+> - a "live bytes by stack" view
+> - a growth/delta view between two captures.
 
 ---
 
@@ -369,7 +474,7 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 ### Frame capture
 
 > r[recording.frame]
-> Each frame in a recording session is a complete `SnapshotCutResponse` captured at `interval_ms` milliseconds since the previous frame. A `FrameSummary` carries `frame_index`, `captured_at_unix_ms`, `process_count`, and `capture_duration_ms`.
+> Each frame in a recording session is a complete `SnapshotCutResponse` captured at `interval_ms` milliseconds since the previous frame. The snapshot payload for that frame MAY include `cpu_profile` and `memory_profile` when profiling is enabled at capture time. A `FrameSummary` carries `frame_index`, `captured_at_unix_ms`, `process_count`, and `capture_duration_ms`.
 
 ### Union layout
 
