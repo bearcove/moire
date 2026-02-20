@@ -13,7 +13,7 @@ pub struct Scope {
     pub birth: PTime,
 
     /// Location in source code and crate information.
-    pub source: BacktraceId,
+    pub backtrace: BacktraceId,
 
     /// Human-facing name for this scope.
     pub name: String,
@@ -24,11 +24,11 @@ pub struct Scope {
 
 impl Scope {
     /// Create a new scope: ID and birth time are generated automatically.
-    pub fn new(source: BacktraceId, name: impl Into<String>, body: ScopeBody) -> Scope {
+    pub fn new(backtrace: BacktraceId, name: impl Into<String>, body: ScopeBody) -> Scope {
         Scope {
             id: next_scope_id(),
             birth: PTime::now(),
-            source: source,
+            backtrace,
             name: name.into(),
             body,
         }

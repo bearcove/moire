@@ -1,4 +1,18 @@
 // r[impl api.time]
+//! Instrumented time utilities, mirroring [`tokio::time`].
+//!
+//! This module mirrors the structure of `tokio::time` and can be used as a
+//! drop-in replacement. Sleeps and intervals are registered as named entities
+//! in the Moiré runtime graph so the dashboard can show which tasks are
+//! suspended waiting for a timer to fire.
+//!
+//! # Available items
+//!
+//! | Item | Tokio equivalent |
+//! |---|---|
+//! | [`sleep`] | `tokio::time::sleep` |
+//! | [`interval`] | `tokio::time::interval` |
+//! | [`Interval`] | `tokio::time::Interval` |
 use std::future::Future;
 use std::time::Duration;
 

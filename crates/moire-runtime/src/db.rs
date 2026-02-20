@@ -225,7 +225,9 @@ impl RuntimeDb {
 
         let source = current_process_scope_id()
             .and_then(|process_scope_id| {
-                self.scopes.get(&process_scope_id).map(|scope| scope.source)
+                self.scopes
+                    .get(&process_scope_id)
+                    .map(|scope| scope.backtrace)
             })
             .expect("task scope creation requires a process scope source");
         let scope = Scope::new(
@@ -366,12 +368,12 @@ impl RuntimeDb {
         });
     }
 
-    pub(crate) fn upsert_edge_with_source(
+    pub(crate) fn upsert_edge(
         &mut self,
         src: &EntityId,
         dst: &EntityId,
         kind: EdgeKind,
-        source: BacktraceId,
+        backtrace: BacktraceId,
     ) {
         if let Some(process_scope_id) = current_process_scope_id() {
             if self.entities.contains_key(src) {
@@ -393,7 +395,7 @@ impl RuntimeDb {
             EntityId::new(src.as_str()),
             EntityId::new(dst.as_str()),
             kind,
-            source,
+            backtrace,
         );
         let edge_json = facet_json::to_vec(&edge).ok();
         self.edges.insert(key, edge);
@@ -433,7 +435,11 @@ impl RuntimeDb {
         }
     }
 
-    pub(crate) fn pull_changes_since(&self, from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
+    pub(crate) fn pull_changes_since(
+        &self,
+        from_seq_no: SeqNo,
+        max_changes: u32,
+    ) -> PullChangesResponse {
         let compacted_before = self.compacted_before_seq_no;
         let effective_from = compacted_before
             .map(|compacted| {

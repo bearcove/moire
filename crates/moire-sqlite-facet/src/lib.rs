@@ -130,7 +130,7 @@ pub fn insert_snapshot_batch(
                 snapshot_id,
                 entity.id,
                 entity.birth,
-                entity.source,
+                entity.backtrace,
                 entity.name.as_str(),
                 entity.body,
             ])?;
@@ -145,7 +145,7 @@ pub fn insert_snapshot_batch(
                 snapshot_id,
                 scope.id,
                 scope.birth,
-                scope.source,
+                scope.backtrace,
                 scope.name.as_str(),
                 scope.body,
             ])?;
@@ -160,7 +160,7 @@ pub fn insert_snapshot_batch(
                 snapshot_id,
                 edge.src,
                 edge.dst,
-                edge.source,
+                edge.backtrace,
                 edge.kind,
             ])?;
             counts.edges += 1;
@@ -174,7 +174,7 @@ pub fn insert_snapshot_batch(
                 snapshot_id,
                 event.id,
                 event.at,
-                event.source,
+                event.backtrace,
                 event.target,
                 event.kind,
             ])?;

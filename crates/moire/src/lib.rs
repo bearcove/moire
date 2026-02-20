@@ -13,8 +13,8 @@
 //!
 //! # Using this crate
 //!
-//! Add `moire` as a dependency and replace Tokio/parking\_lot primitives with
-//! their `moire::` equivalents:
+//! Add `moire` as a dependency and replace Tokio primitives with their `moire::`
+//! equivalents. The module layout mirrors `tokio`'s, so it is largely a drop-in:
 //!
 //! ```toml
 //! # Cargo.toml
@@ -26,9 +26,9 @@
 //! async fn main() {
 //!     // No init call needed — moire initializes itself via `ctor`.
 //!
-//!     moire::spawn("connection_handler", async {
-//!         let mu = moire::Mutex::new("state", MyState::default());
-//!         let (tx, rx) = moire::channel("work_queue", 64);
+//!     moire::task::spawn("connection_handler", async {
+//!         let mu = moire::sync::Mutex::new("state", MyState::default());
+//!         let (tx, rx) = moire::sync::mpsc::channel("work_queue", 64);
 //!         // ...
 //!     });
 //! }
@@ -51,11 +51,12 @@
 //!
 //! # What is instrumented
 //!
-//! - **Tasks**: [`spawn`], [`spawn_blocking`], [`JoinSet`]
-//! - **Channels**: [`channel`] (mpsc), [`unbounded_channel`], [`broadcast`], [`oneshot`], [`watch`]
-//! - **Synchronization**: [`Mutex`], [`RwLock`], [`Semaphore`], [`Notify`], [`OnceCell`]
-//! - **Processes**: [`Command`]
-//! - **RPC**: [`rpc_request`], [`rpc_response_for`] (used by Roam)
+//! - **Tasks**: [`task::JoinSet`]
+//! - **Channels**: [`sync::mpsc`], [`sync::broadcast`], [`sync::oneshot`], [`sync::watch`]
+//! - **Synchronization**: [`sync::Mutex`], [`sync::RwLock`], [`sync::Semaphore`], [`sync::Notify`], [`sync::OnceCell`]
+//! - **Processes**: [`process::Command`]
+//! - **Time**: [`time::sleep`], [`time::interval`]
+//! - **RPC**: [`rpc::rpc_request`], [`rpc::rpc_response_for`] (used by Roam)
 //!
 //! # Platform backends
 //!

@@ -668,16 +668,16 @@ fn collect_snapshot_backtrace_pairs(snapshot: &SnapshotCutResponse) -> Vec<(u64,
     let mut pairs = Vec::new();
     for process in &snapshot.processes {
         for entity in &process.snapshot.entities {
-            pairs.push((process.process_id, entity.source.get()));
+            pairs.push((process.process_id, entity.backtrace.get()));
         }
         for scope in &process.snapshot.scopes {
-            pairs.push((process.process_id, scope.source.get()));
+            pairs.push((process.process_id, scope.backtrace.get()));
         }
         for edge in &process.snapshot.edges {
-            pairs.push((process.process_id, edge.source.get()));
+            pairs.push((process.process_id, edge.backtrace.get()));
         }
         for event in &process.snapshot.events {
-            pairs.push((process.process_id, event.source.get()));
+            pairs.push((process.process_id, event.backtrace.get()));
         }
     }
     pairs.sort_unstable();

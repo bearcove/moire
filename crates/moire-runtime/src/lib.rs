@@ -49,7 +49,12 @@ fn init_diagnostics_runtime() {
 pub fn init_runtime_from_macro() {
     let process_name = std::env::current_exe().unwrap().display().to_string();
     PROCESS_SCOPE.get_or_init(|| {
-        ScopeHandle::new(process_name.clone(), ScopeBody::Process(ProcessScopeBody { pid: std::process::id() }))
+        ScopeHandle::new(
+            process_name.clone(),
+            ScopeBody::Process(ProcessScopeBody {
+                pid: std::process::id(),
+            }),
+        )
     });
     dashboard::init_dashboard_push_loop(&process_name);
 }
@@ -100,7 +105,9 @@ pub(crate) fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
     }
 }
 
-pub(crate) fn backtrace_records_after(last_sent_backtrace_id: u64) -> Vec<moire_wire::BacktraceRecord> {
+pub(crate) fn backtrace_records_after(
+    last_sent_backtrace_id: u64,
+) -> Vec<moire_wire::BacktraceRecord> {
     let Ok(records) = backtrace_records().lock() else {
         panic!("backtrace record mutex poisoned; cannot continue");
     };
@@ -133,13 +140,13 @@ impl Drop for TaskScopeRegistration {
     }
 }
 
-pub fn register_current_task_scope(
-    task_name: &str,
-) -> Option<TaskScopeRegistration> {
+pub fn register_current_task_scope(task_name: &str) -> Option<TaskScopeRegistration> {
     let task_key = current_tokio_task_key()?;
     let scope = ScopeHandle::new(
         format!("task.{task_name}#{task_key}"),
-        ScopeBody::Task(TaskScopeBody { task_key: task_key.clone() }),
+        ScopeBody::Task(TaskScopeBody {
+            task_key: task_key.clone(),
+        }),
     );
     if let Ok(mut db) = db::runtime_db().lock() {
         db.register_task_scope_id(&task_key, scope.id());
@@ -148,7 +155,7 @@ pub fn register_current_task_scope(
 }
 
 pub fn new_event(target: EventTarget, kind: EventKind) -> Event {
-    Event::new_with_source(target, kind, capture_backtrace_id())
+    Event::new(target, kind, capture_backtrace_id())
 }
 
 pub fn record_event(event: Event) {
@@ -160,7 +167,7 @@ pub fn record_event(event: Event) {
 pub fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
     if let Ok(mut db) = db::runtime_db().lock() {
         if let Some(entity) = db.entities.get(entity_id) {
-            event.source = entity.source;
+            event.backtrace = entity.backtrace;
         }
         db.record_event(event);
     }

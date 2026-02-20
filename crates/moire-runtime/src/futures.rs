@@ -40,7 +40,7 @@ impl<F> OperationFuture<F> {
                 db.remove_edge(actor_id, &self.resource_id, current);
             }
             if let Some(edge) = next {
-                db.upsert_edge_with_source(actor_id, &self.resource_id, edge, self.source);
+                db.upsert_edge(actor_id, &self.resource_id, edge, self.source);
             }
         }
         self.current_edge = next;
@@ -164,7 +164,7 @@ fn transition_relation_edge(
             db.remove_edge(&src, &dst, current_edge);
         }
         if let Some(edge) = next_edge {
-            db.upsert_edge_with_source(&src, &dst, edge, source);
+            db.upsert_edge(&src, &dst, edge, source);
         }
     }
     relation.current_edge = next_edge;

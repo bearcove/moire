@@ -157,7 +157,7 @@ impl<S> EntityHandle<S> {
 
     pub fn link_to(&self, target: &EntityRef, kind: EdgeKind) {
         if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge_with_source(self.id(), target.id(), kind, super::capture_backtrace_id());
+            db.upsert_edge(self.id(), target.id(), kind, super::capture_backtrace_id());
         }
     }
 
@@ -271,7 +271,7 @@ impl<S> EntityHandle<S> {
         let src = self.id().clone();
         let dst = target.id().clone();
         if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge_with_source(&src, &dst, kind, super::capture_backtrace_id());
+            db.upsert_edge(&src, &dst, kind, super::capture_backtrace_id());
         }
         EdgeHandle { src, dst, kind }
     }

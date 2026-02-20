@@ -13,8 +13,8 @@ pub struct Edge {
     /// Destination entity in the causal relationship.
     pub dst: EntityId,
 
-    /// Location in source code and crate information.
-    pub source: BacktraceId,
+    /// Backtrace when this edge was created
+    pub backtrace: BacktraceId,
 
     /// Causal edge kind.
     pub kind: EdgeKind,
@@ -22,11 +22,11 @@ pub struct Edge {
 
 impl Edge {
     /// Builds a causal edge.
-    pub fn new(src: EntityId, dst: EntityId, kind: EdgeKind, source: BacktraceId) -> Self {
+    pub fn new(src: EntityId, dst: EntityId, kind: EdgeKind, backtrace: BacktraceId) -> Self {
         Self {
             src,
             dst,
-            source: source,
+            backtrace,
             kind,
         }
     }

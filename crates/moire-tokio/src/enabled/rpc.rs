@@ -1,3 +1,12 @@
+//! RPC request/response instrumentation for use by Roam.
+//!
+//! This module provides [`rpc_request`] and [`rpc_response_for`] which Roam uses
+//! to register outgoing and incoming RPC calls as named entities in the Moiré
+//! runtime graph. This lets the dashboard show the full causal chain from a task
+//! through the RPC boundary to its upstream handler.
+//!
+//! Unlike the other modules in this crate, `rpc` has no direct `tokio` equivalent —
+//! it is purpose-built for Roam's wire protocol.
 use moire_types::{EdgeKind, EntityId, RequestEntity, ResponseEntity, ResponseStatus};
 
 use moire_runtime::{EntityHandle, EntityRef};

@@ -13,7 +13,7 @@ pub struct Event {
     pub at: PTime,
 
     /// Event source.
-    pub source: BacktraceId,
+    pub backtrace: BacktraceId,
 
     /// Event target (entity or scope).
     pub target: EventTarget,
@@ -24,11 +24,11 @@ pub struct Event {
 
 impl Event {
     /// Builds an event with explicit source context.
-    pub fn new_with_source(target: EventTarget, kind: EventKind, source: BacktraceId) -> Self {
+    pub fn new(target: EventTarget, kind: EventKind, backtrace: BacktraceId) -> Self {
         Self {
             id: next_event_id(),
             at: PTime::now(),
-            source,
+            backtrace,
             target,
             kind,
         }

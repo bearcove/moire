@@ -1,4 +1,21 @@
 // r[impl api.command]
+//! Instrumented process spawning, mirroring [`tokio::process`].
+//!
+//! This module mirrors the structure of `tokio::process` and can be used as a
+//! drop-in replacement. Every spawned child process is registered as a named
+//! entity in the Moiré runtime graph so the dashboard can show which tasks are
+//! waiting on which subprocesses.
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! use moire::process::Command;
+//!
+//! let status = Command::new("git")
+//!     .args(["fetch", "--all"])
+//!     .status()
+//!     .await?;
+//! ```
 use moire_types::CommandEntity;
 use std::ffi::{OsStr, OsString};
 use std::future::Future;

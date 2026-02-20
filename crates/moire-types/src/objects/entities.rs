@@ -12,8 +12,8 @@ pub struct Entity {
     /// When we first started tracking this entity
     pub birth: PTime,
 
-    /// Location in source code and crate information.
-    pub source: BacktraceId,
+    /// Backtrace when this edge was created
+    pub backtrace: BacktraceId,
 
     /// Human-facing name for this entity.
     pub name: String,
@@ -24,11 +24,11 @@ pub struct Entity {
 
 impl Entity {
     /// Create a new entity: ID and birth time are generated automatically.
-    pub fn new(source: BacktraceId, name: impl Into<String>, body: EntityBody) -> Entity {
+    pub fn new(backtrace: BacktraceId, name: impl Into<String>, body: EntityBody) -> Entity {
         Entity {
             id: next_entity_id(),
             birth: PTime::now(),
-            source: source,
+            backtrace,
             name: name.into(),
             body,
         }
