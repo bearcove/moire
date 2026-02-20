@@ -1331,6 +1331,7 @@ dependencies = [
  "moire-trace-types",
  "moire-types",
  "moire-wire",
+ "object 0.36.7",
  "rusqlite",
  "tokio",
  "tracing",

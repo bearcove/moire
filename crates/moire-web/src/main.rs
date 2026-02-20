@@ -30,6 +30,7 @@ use moire_wire::{
     BacktraceRecord, ClientMessage, ModuleIdentity, ModuleManifestEntry, ServerMessage,
     SnapshotRequest,
 };
+use object::{Object, ObjectSegment};
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -236,6 +237,8 @@ async fn run() -> Result<(), String> {
     let db_path =
         PathBuf::from(std::env::var("MOIRE_DB").unwrap_or_else(|_| "moire-web.sqlite".into()));
     init_sqlite(&db_path).map_err(|e| format!("failed to init sqlite at {:?}: {e}", db_path))?;
+    let next_conn_id = load_next_connection_id(&db_path)
+        .map_err(|e| format!("failed to load next connection id at {:?}: {e}", db_path))?;
 
     let mut dev_vite_child: Option<Child> = None;
     let dev_proxy = if cli.dev {
@@ -251,7 +254,7 @@ async fn run() -> Result<(), String> {
 
     let state = AppState {
         inner: Arc::new(Mutex::new(ServerState {
-            next_conn_id: 1,
+            next_conn_id,
             next_cut_id: 1,
             next_snapshot_id: 1,
             next_session_id: 1,
@@ -269,7 +272,7 @@ async fn run() -> Result<(), String> {
     let tcp_listener = TcpListener::bind(&tcp_addr)
         .await
         .map_err(|e| format!("failed to bind TCP on {tcp_addr}: {e}"))?;
-    info!(%tcp_addr, "moire-web TCP ingest listener ready");
+    info!(%tcp_addr, next_conn_id, "moire-web TCP ingest listener ready");
 
     let http_listener = TcpListener::bind(&http_addr)
         .await
@@ -2726,6 +2729,25 @@ fn init_sqlite(db_path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+fn load_next_connection_id(db_path: &PathBuf) -> Result<u64, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let max_conn_id = conn
+        .query_row("SELECT COALESCE(MAX(conn_id), 0) FROM connections", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|e| format!("read max conn_id: {e}"))?;
+    if max_conn_id < 0 {
+        return Err(format!(
+            "invariant violated: negative conn_id in storage ({max_conn_id})"
+        ));
+    }
+    let max_conn_id = u64::try_from(max_conn_id)
+        .map_err(|e| format!("convert max conn_id to u64: {e}"))?;
+    max_conn_id
+        .checked_add(1)
+        .ok_or_else(|| String::from("invariant violated: conn_id overflow"))
+}
+
 fn reset_managed_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "
@@ -3085,7 +3107,10 @@ struct PendingFrameJob {
 }
 
 enum ModuleSymbolizerState {
-    Ready(addr2line::Loader),
+    Ready {
+        loader: addr2line::Loader,
+        linked_image_base: u64,
+    },
     Failed(String),
 }
 
@@ -3289,6 +3314,9 @@ fn symbolicate_pending_frames_for_pairs_blocking(
 
 fn should_retry_unresolved_reason(reason: &str) -> bool {
     reason.starts_with(SYMBOLICATION_UNRESOLVED_EAGER_PREFIX)
+        || reason.starts_with("no source location in debug info for '")
+        || reason.starts_with("lookup frames for '")
+        || reason.starts_with("iterate frames for '")
 }
 
 fn resolve_frame_symbolication(
@@ -3337,13 +3365,31 @@ fn resolve_frame_symbolication(
             );
             let loaded = match addr2line::Loader::new(job.module_path.as_str()) {
                 Ok(loader) => {
+                    let linked_image_base =
+                        match linked_image_base_for_file(FsPath::new(job.module_path.as_str())) {
+                            Ok(base) => base,
+                            Err(e) => {
+                                debug!(
+                                    loader_attempt_id,
+                                    module_path = %job.module_path,
+                                    elapsed_ms = open_started.elapsed().as_millis(),
+                                    error = %e,
+                                    "symbolication linked image base load failed"
+                                );
+                                return unresolved(e);
+                            }
+                        };
                     debug!(
                         loader_attempt_id,
                         module_path = %job.module_path,
+                        linked_image_base = format_args!("{:#x}", linked_image_base),
                         elapsed_ms = open_started.elapsed().as_millis(),
                         "symbolication debug object opened"
                     );
-                    ModuleSymbolizerState::Ready(loader)
+                    ModuleSymbolizerState::Ready {
+                        loader,
+                        linked_image_base,
+                    }
                 }
                 Err(e) => {
                     debug!(
@@ -3363,14 +3409,26 @@ fn resolve_frame_symbolication(
         }
     };
 
-    let ModuleSymbolizerState::Ready(loader) = state else {
+    let ModuleSymbolizerState::Ready {
+        loader,
+        linked_image_base,
+    } = state
+    else {
         let ModuleSymbolizerState::Failed(reason) = state else {
             unreachable!()
         };
         return unresolved(reason.clone());
     };
 
-    let lookup_pc = job.rel_pc.saturating_sub(1);
+    let lookup_pc = match linked_image_base.checked_add(job.rel_pc) {
+        Some(pc) => pc,
+        None => {
+            return unresolved(format!(
+                "address overflow combining linked image base 0x{:x} with rel_pc 0x{:x} for '{}'",
+                linked_image_base, job.rel_pc, job.module_path
+            ));
+        }
+    };
     let mut function_name = None::<String>;
     let mut source_file = None::<String>;
     let mut source_line = None::<i64>;
@@ -3379,6 +3437,7 @@ fn resolve_frame_symbolication(
     let lookup_started = Instant::now();
     debug!(
         module_path = %job.module_path,
+        linked_image_base = format_args!("{:#x}", linked_image_base),
         rel_pc = format_args!("{:#x}", job.rel_pc),
         lookup_pc = format_args!("{:#x}", lookup_pc),
         "symbolication frame lookup start"
@@ -3496,6 +3555,29 @@ fn resolve_frame_symbolication(
         source_col,
         unresolved_reason: None,
     }
+}
+
+fn linked_image_base_for_file(path: &FsPath) -> Result<u64, String> {
+    let data = std::fs::read(path)
+        .map_err(|e| format!("read debug object '{}': {e}", path.display()))?;
+    let object = object::File::parse(&*data)
+        .map_err(|e| format!("parse debug object '{}': {e}", path.display()))?;
+    object
+        .segments()
+        .filter_map(|seg| {
+            let (_, file_size) = seg.file_range();
+            if file_size == 0 {
+                return None;
+            }
+            Some(seg.address())
+        })
+        .min()
+        .ok_or_else(|| {
+            format!(
+                "no file-backed segments in debug object '{}'",
+                path.display()
+            )
+        })
 }
 
 fn lookup_symbolication_cache(
