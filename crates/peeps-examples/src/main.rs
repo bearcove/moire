@@ -218,7 +218,7 @@ fn http_get_ok(url: &str) -> bool {
 fn spawn_backend(cfg: &Config) -> AnyResult<Child> {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&cfg.root_dir)
-        .args(["run", "-p", "peeps-web", "--", "--dev"])
+        .args(["run", "--bin", "peeps-web", "--", "--dev"])
         .env("PEEPS_LISTEN", &cfg.peeps_listen)
         .env("PEEPS_HTTP", &cfg.peeps_http)
         .stdin(Stdio::null())
