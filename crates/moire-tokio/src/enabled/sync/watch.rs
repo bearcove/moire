@@ -1,12 +1,10 @@
 // r[impl api.watch]
 
 use moire_runtime::{
-    instrument_operation_on, new_event, record_event, AsEntityRef, EntityHandle,
-    EntityRef, WeakEntityHandle,
+    instrument_operation_on, new_event, record_event, AsEntityRef, EntityHandle, EntityRef,
+    WeakEntityHandle,
 };
-use moire_types::{
-    EdgeKind, EventKind, EventTarget, WatchRxEntity, WatchTxEntity,
-};
+use moire_types::{EdgeKind, EventKind, EventTarget, WatchRxEntity, WatchTxEntity};
 use tokio::sync::watch;
 
 /// Instrumented version of [`tokio::sync::watch::Sender`].
@@ -54,7 +52,7 @@ impl<T: Clone> Sender<T> {
     ///
     /// Updates receiver metadata and records a channel-sent event.
     pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
-                let result = self.inner.send(value);
+        let result = self.inner.send(value);
         if result.is_ok() {
             let _ = self
                 .handle
@@ -62,7 +60,7 @@ impl<T: Clone> Sender<T> {
         }
         let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelSent, 
+            EventKind::ChannelSent,
         );
         record_event(event);
         result
@@ -71,13 +69,13 @@ impl<T: Clone> Sender<T> {
     ///
     /// Mirrors [`tokio::sync::watch::Sender::send_replace`].
     pub fn send_replace(&self, value: T) -> T {
-                let old = self.inner.send_replace(value);
+        let old = self.inner.send_replace(value);
         let _ = self
             .handle
             .mutate(|body| body.last_update_at = Some(moire_types::PTime::now()));
         let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelSent, 
+            EventKind::ChannelSent,
         );
         record_event(event);
         old
@@ -87,8 +85,7 @@ impl<T: Clone> Sender<T> {
     /// Returns a linked sender/receiver pair with diagnostic metadata.
     pub fn subscribe(&self) -> Receiver<T> {
         let handle = EntityHandle::new("watch:rx.subscribe", WatchRxEntity {});
-        self.handle
-            .link_to_handle(&handle, EdgeKind::PairedWith);
+        self.handle.link_to_handle(&handle, EdgeKind::PairedWith);
         Receiver {
             inner: self.inner.subscribe(),
             handle,
@@ -106,11 +103,10 @@ impl<T: Clone> Receiver<T> {
     ///
     /// Records notification wait timing for diagnostics.
     pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
-                let result =
-            instrument_operation_on(&self.handle, self.inner.changed()).await;
+        let result = instrument_operation_on(&self.handle, self.inner.changed()).await;
         let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelReceived, 
+            EventKind::ChannelReceived,
         );
         record_event(event);
         result
@@ -140,7 +136,7 @@ impl<T: Clone> Receiver<T> {
 
 /// Creates an instrumented watch channel, equivalent to [`tokio::sync::watch::channel`].
 pub fn channel<T: Clone>(name: impl Into<String>, initial: T) -> (Sender<T>, Receiver<T>) {
-        let name = name.into();
+    let name = name.into();
     let (tx, rx) = tokio::sync::watch::channel(initial);
 
     let tx_handle = EntityHandle::new(
@@ -150,10 +146,7 @@ pub fn channel<T: Clone>(name: impl Into<String>, initial: T) -> (Sender<T>, Rec
         },
     );
 
-    let rx_handle = EntityHandle::new(
-        format!("{name}:rx"),
-        WatchRxEntity {},
-    );
+    let rx_handle = EntityHandle::new(format!("{name}:rx"), WatchRxEntity {});
 
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 

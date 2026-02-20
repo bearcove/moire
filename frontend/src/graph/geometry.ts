@@ -31,4 +31,5 @@ export interface GraphGeometry {
   groups: GeometryGroup[];
   edges: GeometryEdge[];
   bounds: Rect; // bounding box of all geometry
+  portAnchors: Map<string, Point>; // port id → face-snapped world position
 }

@@ -1,6 +1,7 @@
 import React from "react";
 import { LinkSimple, X } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
+import type { SnapshotBacktrace } from "../../api/types.generated";
 import type { EntityDef, EdgeDef, ScopeDef } from "../../snapshot";
 import type { UnionLayout } from "../../recording/unionGraph";
 import { diffEntityBetweenFrames } from "../../recording/unionGraph";
@@ -19,6 +20,7 @@ export function InspectorPanel({
   selection,
   entityDefs,
   edgeDefs,
+  backtracesById,
   focusedEntityId,
   onToggleFocusEntity,
   onOpenScopeKind,
@@ -32,6 +34,7 @@ export function InspectorPanel({
   selection: GraphSelection;
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
+  backtracesById?: Map<number, SnapshotBacktrace>;
   focusedEntityId: string | null;
   onToggleFocusEntity: (id: string) => void;
   onOpenScopeKind: (kind: string) => void;
@@ -56,6 +59,7 @@ export function InspectorPanel({
     content = entity ? (
       <EntityInspectorContent
         entity={entity}
+        backtrace={backtracesById?.get(entity.backtraceId)}
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocusEntity}
         onOpenScopeKind={onOpenScopeKind}
@@ -72,7 +76,12 @@ export function InspectorPanel({
   } else if (selectedScope) {
     titleIcon = scopeKindIcon(selectedScope.scopeKind, 12);
     titleText = selectedScope.scopeName || selectedScope.scopeId;
-    content = <ScopeInspectorContent scope={selectedScope} />;
+    content = (
+      <ScopeInspectorContent
+        scope={selectedScope}
+        backtrace={backtracesById?.get(selectedScope.backtraceId)}
+      />
+    );
   } else if (selectedScopeKind) {
     titleIcon = scopeKindIcon(selectedScopeKind, 12);
     titleText = `${selectedScopeKind} scope`;

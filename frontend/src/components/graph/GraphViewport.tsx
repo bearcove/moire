@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Camera, CircleNotch, FileRs, Package, Terminal } from "@phosphor-icons/react";
 import type { EntityDef } from "../../snapshot";
 import { quoteFilterValue } from "../../graphFilter";
@@ -9,7 +9,7 @@ import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
-import type { GraphGeometry, GeometryGroup, GeometryNode, Point } from "../../graph/geometry";
+import type { GraphGeometry, GeometryGroup, GeometryNode } from "../../graph/geometry";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../ui/primitives/ContextMenu";
 
 export function GraphViewport({
@@ -67,7 +67,7 @@ export function GraphViewport({
     return s;
   }, [geometry, selection, ghostEdgeIds]);
 
-  const [portAnchors, setPortAnchors] = useState<Map<string, Point>>(new Map());
+  const portAnchors = geometry?.portAnchors ?? new Map();
   const [hasFitted, setHasFitted] = useState(false);
   const graphFlowRef = useRef<HTMLDivElement | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = useState<{
@@ -163,10 +163,6 @@ export function GraphViewport({
         {geometry && (
           <>
             <GroupLayer groups={groups} />
-            <GraphPortAnchors
-              geometryKey={geometryKey}
-              onAnchorsChange={setPortAnchors}
-            />
             <EdgeLayer
               edges={geometry.edges}
               selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
@@ -269,37 +265,4 @@ function GraphAutoFit({
   return null;
 }
 
-function GraphPortAnchors({
-  geometryKey,
-  onAnchorsChange,
-}: {
-  geometryKey: string;
-  onAnchorsChange: (anchors: Map<string, Point>) => void;
-}) {
-  const { clientToGraph } = useCameraContext();
 
-  useEffect(() => {
-    if (!geometryKey) {
-      onAnchorsChange(new Map());
-      return;
-    }
-    const raf = window.requestAnimationFrame(() => {
-      const anchors = new Map<string, Point>();
-      const nodes = document.querySelectorAll<HTMLElement>(".graph-port-anchor[data-port-id]");
-      nodes.forEach((node) => {
-        const portId = node.dataset.portId;
-        if (!portId) return;
-        const rect = node.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const world = clientToGraph(centerX, centerY);
-        if (!world) return;
-        anchors.set(portId, world);
-      });
-      onAnchorsChange(anchors);
-    });
-    return () => window.cancelAnimationFrame(raf);
-  }, [clientToGraph, geometryKey, onAnchorsChange]);
-
-  return null;
-}

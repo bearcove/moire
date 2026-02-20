@@ -4,6 +4,8 @@ pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Rece
     tokio::sync::mpsc::channel(capacity)
 }
 
-pub fn unbounded_channel<T>(_name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+pub fn unbounded_channel<T>(
+    _name: impl Into<String>,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     tokio::sync::mpsc::unbounded_channel()
 }

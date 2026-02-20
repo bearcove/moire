@@ -2,8 +2,7 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use moire_runtime::{
-    instrument_future_with_handle, register_current_task_scope, EntityHandle,
-    FUTURE_CAUSAL_STACK,
+    instrument_future_with_handle, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
 };
 use moire_types::FutureEntity;
 

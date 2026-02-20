@@ -1,0 +1,130 @@
+.bt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  padding: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 40%, transparent);
+}
+
+.bt-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bt-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.bt-id {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.bt-count {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.bt-top-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.bt-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.bt-input {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 6px 8px;
+}
+
+.bt-controls {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bt-toggle {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.bt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bt-list--system {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 8px;
+}
+
+.bt-frame {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.2fr) minmax(140px, 1fr) minmax(180px, 1fr);
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  align-items: baseline;
+}
+
+.bt-frame-fn {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bt-frame-fn--unresolved {
+  color: var(--status-warning);
+}
+
+.bt-frame-meta {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bt-frame-src {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .bt-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .bt-frame {
+    grid-template-columns: 1fr;
+  }
+}

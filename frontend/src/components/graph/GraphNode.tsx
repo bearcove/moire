@@ -17,8 +17,6 @@ export type GraphNodeData = {
   scopeRgbLight?: string;
   scopeRgbDark?: string;
   ghost?: boolean;
-  portTopId?: string;
-  portBottomId?: string;
   sublabel?: string;
 };
 
@@ -33,8 +31,6 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       ageMs: def.ageMs,
       stat: def.stat,
       statTone: def.statTone,
-      portTopId: `${def.id}:rx`,
-      portBottomId: `${def.id}:tx`,
     };
   }
   if (def.rpcPair) {
@@ -54,8 +50,6 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       ageMs: def.rpcPair.resp.ageMs,
       stat: `RESP ${respStatusKey}`,
       statTone: respTone,
-      portTopId: `${def.id}:resp`,
-      portBottomId: `${def.id}:req`,
     };
   }
   return {
@@ -67,8 +61,6 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     ageMs: def.ageMs,
     stat: def.stat,
     statTone: def.statTone,
-    portTopId: `${def.id}:in`,
-    portBottomId: `${def.id}:out`,
   };
 }
 
@@ -108,23 +100,6 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
           : undefined
       }
     >
-      {data.portTopId && (
-        <span
-          className="graph-port-anchor"
-          data-node-id={data.portTopId.slice(0, data.portTopId.lastIndexOf(":"))}
-          data-port-id={data.portTopId}
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: 0,
-            width: "9px",
-            height: "9px",
-            transform: "translate(-50%, -50%)",
-            opacity: 0,
-          }}
-        />
-      )}
       <span className="graph-node-icon">{kindIcon(data.kind, 14)}</span>
       <div className="graph-node-content">
         <div className="graph-node-main">
@@ -156,23 +131,6 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
           <div className="graph-node-sublabel">{data.sublabel}</div>
         )}
       </div>
-      {data.portBottomId && (
-        <span
-          className="graph-port-anchor"
-          data-node-id={data.portBottomId.slice(0, data.portBottomId.lastIndexOf(":"))}
-          data-port-id={data.portBottomId}
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 0,
-            width: "9px",
-            height: "9px",
-            transform: "translate(-50%, 50%)",
-            opacity: 0,
-          }}
-        />
-      )}
     </div>
   );
 }

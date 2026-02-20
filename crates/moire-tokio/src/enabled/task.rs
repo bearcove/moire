@@ -15,11 +15,11 @@
 //! | [`spawn_blocking`] | [`tokio::task::spawn_blocking`] |
 //! | [`FutureExt`] | *(moire extension)* |
 
-pub mod joinset;
 pub mod join_handle;
+pub mod joinset;
 
-pub use self::joinset::*;
 pub use self::join_handle::*;
+pub use self::joinset::*;
 
 use std::cell::RefCell;
 use std::future::Future;

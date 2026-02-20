@@ -55,16 +55,15 @@ impl<T> Mutex<T> {
     #[doc(hidden)]
     /// Internal helper for lock acquisition with ownership edge tracking.
     pub fn _lock(&self) -> MutexGuard<'_, T> {
-                let owner_ref = current_causal_target();
+        let owner_ref = current_causal_target();
 
         if let Some(inner) = self.inner.try_lock() {
             return self.wrap_guard(inner, owner_ref.as_ref(), None);
         }
 
-        let waiting_edge = owner_ref.as_ref().map(|owner| {
-            self.handle
-                .link_to_owned(owner, EdgeKind::WaitingOn)
-        });
+        let waiting_edge = owner_ref
+            .as_ref()
+            .map(|owner| self.handle.link_to_owned(owner, EdgeKind::WaitingOn));
         let inner = self.inner.lock();
         drop(waiting_edge);
 
@@ -90,14 +89,11 @@ impl<T> Mutex<T> {
         owner_ref: Option<&EntityRef>,
         pre_edge_kind: Option<EdgeKind>,
     ) -> MutexGuard<'a, T> {
-                if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
+        if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
             self.handle.link_to(owner, kind);
         }
 
-        let holds_edge = owner_ref.map(|owner| {
-            self.handle
-                .link_to_owned(owner, EdgeKind::Holds)
-        });
+        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::Holds));
         let lock_id = self.handle.id().clone();
 
         HELD_MUTEX_STACK.with(|stack| {

@@ -146,7 +146,7 @@ impl Command {
     }
     /// Spawns the configured process, equivalent to [`tokio::process::Command::spawn`].
     pub fn spawn(&mut self) -> io::Result<Child> {
-                let child = self.inner.spawn()?;
+        let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         Ok(Child {
             inner: Some(child),
@@ -155,20 +155,20 @@ impl Command {
     }
     /// Gets process status asynchronously, matching [`tokio::process::Command::status`].
     pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-                let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future(
             "command.status",
-            self.inner.status(), 
+            self.inner.status(),
             Some(handle.entity_ref()),
             None,
         )
     }
     /// Captures process output asynchronously, matching [`tokio::process::Command::output`].
     pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
-                let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future(
             "command.output",
-            self.inner.output(), 
+            self.inner.output(),
             Some(handle.entity_ref()),
             None,
         )
@@ -248,21 +248,16 @@ impl Child {
     }
     /// Waits for the process to exit, matching [`tokio::process::Child::wait`].
     pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-                let handle = self.handle.clone();
+        let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
-        instrument_future(
-            "command.wait",
-            wait_fut, 
-            Some(handle.entity_ref()),
-            None,
-        )
+        instrument_future("command.wait", wait_fut, Some(handle.entity_ref()), None)
     }
     /// Waits for output from the process, matching [`tokio::process::Child::wait_with_output`].
     pub fn wait_with_output(mut self) -> impl Future<Output = io::Result<Output>> {
-                let child = self.inner.take().expect("child already consumed");
+        let child = self.inner.take().expect("child already consumed");
         instrument_future(
             "command.wait_with_output",
-            child.wait_with_output(), 
+            child.wait_with_output(),
             Some(self.handle.entity_ref()),
             None,
         )

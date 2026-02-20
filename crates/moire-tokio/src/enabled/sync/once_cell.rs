@@ -42,14 +42,12 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-                let _ = self.handle.mutate(|body| {
+        let _ = self.handle.mutate(|body| {
             body.waiter_count = body.waiter_count.saturating_add(1);
             body.state = OnceCellState::Initializing;
         });
 
-        let result =
-            instrument_operation_on(&self.handle, self.inner.get_or_init(f))
-                .await;
+        let result = instrument_operation_on(&self.handle, self.inner.get_or_init(f)).await;
 
         let initialized = self.inner.initialized();
         let _ = self.handle.mutate(|body| {
@@ -71,16 +69,12 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-                let _ = self.handle.mutate(|body| {
+        let _ = self.handle.mutate(|body| {
             body.waiter_count = body.waiter_count.saturating_add(1);
             body.state = OnceCellState::Initializing;
         });
 
-        let result = instrument_operation_on(
-            &self.handle,
-            self.inner.get_or_try_init(f), 
-        )
-        .await;
+        let result = instrument_operation_on(&self.handle, self.inner.get_or_try_init(f)).await;
 
         let initialized = self.inner.initialized();
         let _ = self.handle.mutate(|body| {

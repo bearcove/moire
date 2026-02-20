@@ -102,6 +102,8 @@ export type ScopeDef = {
   memberEntityIds: string[];
 };
 
+export type BacktraceIndex = Map<number, SnapshotBacktrace>;
+
 function backtraceSource(backtraceId: number): RenderSource {
   return { path: `backtrace:${backtraceId}`, line: 0, krate: "~no-crate" };
 }
@@ -115,8 +117,8 @@ function requireBacktraceId(owner: unknown, context: string, processId: number):
   return value;
 }
 
-function requireBacktraceIndex(snapshot: SnapshotCutResponse): Map<number, SnapshotBacktrace> {
-  const index = new Map<number, SnapshotBacktrace>();
+export function buildBacktraceIndex(snapshot: SnapshotCutResponse): BacktraceIndex {
+  const index: BacktraceIndex = new Map<number, SnapshotBacktrace>();
   for (const record of snapshot.backtraces) {
     const id = record.backtrace_id;
     if (!Number.isInteger(id) || id <= 0) {
@@ -187,7 +189,7 @@ function resolveBacktraceDisplay(
 
 // f[impl display.id.scope-key]
 export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
-  const backtraces = requireBacktraceIndex(snapshot);
+  const backtraces = buildBacktraceIndex(snapshot);
   const result: ScopeDef[] = [];
   for (const proc of snapshot.processes) {
     const { process_id, process_name, pid, ptime_now_ms, scope_entity_links } = proc;
@@ -566,7 +568,7 @@ export function convertSnapshot(
   entities: EntityDef[];
   edges: EdgeDef[];
 } {
-  const backtraces = requireBacktraceIndex(snapshot);
+  const backtraces = buildBacktraceIndex(snapshot);
   const allEntities: EntityDef[] = [];
   const allEdges: EdgeDef[] = [];
 

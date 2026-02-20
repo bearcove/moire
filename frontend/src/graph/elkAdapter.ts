@@ -99,14 +99,15 @@ export async function layoutGraph(
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
   const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.top},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
 
-  const defaultInPortId = (entityId: string) => `${entityId}:in`;
-  const defaultOutPortId = (entityId: string) => `${entityId}:out`;
-  const edgeSourceRef = (edge: EdgeDef) => edge.sourcePort ?? defaultOutPortId(edge.source);
-  const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target);
+  const defaultInPortId = (entityId: string, edgeId: string) => `${entityId}:in:${edgeId}`;
+  const defaultOutPortId = (entityId: string, edgeId: string) => `${entityId}:out:${edgeId}`;
+  const edgeSourceRef = (edge: EdgeDef) => edge.sourcePort ?? defaultOutPortId(edge.source, edge.id);
+  const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target, edge.id);
 
   // How far outside the node boundary ELK places port positions.
   // This creates a short perpendicular stub before any bend, keeping arrowheads
-  // visually clear of nearby edge segments.
+  // visually clear of nearby edge segments. The rendered arrowhead is then snapped
+  // back to the node face via portAnchors derived from the ELK layout result.
   const PORT_BORDER_OFFSET = "8";
 
   const portsForEntity = (
@@ -126,9 +127,19 @@ export async function layoutGraph(
         { id: `${mergedId}:resp`, layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
       ];
     }
+    // Default: one port per connecting edge so ELK spreads them along the side
+    // instead of collapsing all arrowheads onto a single point.
+    const inEdges = validEdges.filter((e) => e.target === entity.id && !e.targetPort);
+    const outEdges = validEdges.filter((e) => e.source === entity.id && !e.sourcePort);
     return [
-      { id: defaultInPortId(entity.id), layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
-      { id: defaultOutPortId(entity.id), layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
+      ...inEdges.map((e) => ({
+        id: defaultInPortId(entity.id, e.id),
+        layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+      })),
+      ...outEdges.map((e) => ({
+        id: defaultOutPortId(entity.id, e.id),
+        layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+      })),
     ];
   };
 
@@ -231,6 +242,7 @@ export async function layoutGraph(
 
   const geoNodes: GeometryNode[] = [];
   const geoGroups: GeometryGroup[] = [];
+  const portAnchorMap = new Map<string, Point>();
 
   // Track absolute positions for each entity node (needed for group member listing)
   const absoluteNodePos = new Map<string, { x: number; y: number }>();
@@ -307,6 +319,21 @@ export async function layoutGraph(
         worldRect: { x: absX, y: absY, width: size.width, height: size.height },
         data,
       });
+
+      // Collect port face positions from ELK layout output.
+      // ELK places ports `PORT_BORDER_OFFSET` px outside the node face.
+      // We snap back to the face so arrowheads land on the node boundary
+      // while the routing still benefits from the stub before any bend.
+      const nodeHeight = size.height;
+      for (const port of child.ports ?? []) {
+        const portId = String(port.id);
+        const portRelY = port.y ?? 0;
+        const isNorthPort = portRelY < nodeHeight / 2;
+        portAnchorMap.set(portId, {
+          x: absX + (port.x ?? 0),
+          y: isNorthPort ? absY : absY + nodeHeight,
+        });
+      }
     }
   };
 
@@ -535,5 +562,6 @@ export async function layoutGraph(
     groups: geoGroups,
     edges: geoEdges,
     bounds,
+    portAnchors: portAnchorMap,
   };
 }

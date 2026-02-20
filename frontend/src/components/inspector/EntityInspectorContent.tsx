@@ -7,9 +7,11 @@ import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import type { EntityDef } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
+import type { SnapshotBacktrace } from "../../api/types.generated";
 import { EntityBodySection } from "./EntityBodySection";
 import { EntityScopeLinksSection } from "./EntityScopeLinksSection";
 import { MetaSection } from "./MetaTree";
+import { BacktraceRenderer } from "./BacktraceRenderer";
 import { Source } from "./Source";
 import "./InspectorPanel.css";
 
@@ -18,7 +20,7 @@ type MergedSection = {
   entity: EntityDef;
 };
 
-function EntityDetailsSection({ entity }: { entity: EntityDef }) {
+function EntityDetailsSection({ entity, backtrace }: { entity: EntityDef; backtrace?: SnapshotBacktrace }) {
   const birthAbsolute =
     isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
       ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, {
@@ -52,6 +54,11 @@ function EntityDetailsSection({ entity }: { entity: EntityDef }) {
           <DurationDisplay ms={entity.ageMs} />
         </span>
       </KeyValueRow>
+      {backtrace && (
+        <div className="inspector-backtrace-slot">
+          <BacktraceRenderer backtrace={backtrace} />
+        </div>
+      )}
     </>
   );
 }
@@ -144,12 +151,14 @@ function MergedEntityInspectorContent({
 
 export function EntityInspectorContent({
   entity,
+  backtrace,
   focusedEntityId,
   onToggleFocus,
   onOpenScopeKind,
   entityDiff,
 }: {
   entity: EntityDef;
+  backtrace?: SnapshotBacktrace;
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;
@@ -190,6 +199,7 @@ export function EntityInspectorContent({
   return (
     <EntityInspectorBody
       entity={entity}
+      backtrace={backtrace}
       focusedEntityId={focusedEntityId}
       onToggleFocus={onToggleFocus}
       onOpenScopeKind={onOpenScopeKind}
@@ -200,6 +210,7 @@ export function EntityInspectorContent({
 
 function EntityInspectorBody({
   entity,
+  backtrace,
   focusedEntityId,
   onToggleFocus,
   onOpenScopeKind,
@@ -209,6 +220,7 @@ function EntityInspectorBody({
   showMeta = true,
 }: {
   entity: EntityDef;
+  backtrace?: SnapshotBacktrace;
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;
@@ -263,7 +275,7 @@ function EntityInspectorBody({
       )}
 
       <div className="inspector-kv-table">
-        <EntityDetailsSection entity={entity} />
+        <EntityDetailsSection entity={entity} backtrace={backtrace} />
         <EntityBodySection entity={entity} />
       </div>
       {showScopeLinks && <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />}

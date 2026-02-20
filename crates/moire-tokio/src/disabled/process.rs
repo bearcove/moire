@@ -120,7 +120,10 @@ impl Command {
 }
 
 impl Child {
-    pub fn from_tokio_with_diagnostics(child: tokio::process::Child, _diag: CommandDiagnostics) -> Self {
+    pub fn from_tokio_with_diagnostics(
+        child: tokio::process::Child,
+        _diag: CommandDiagnostics,
+    ) -> Self {
         Self(child)
     }
 

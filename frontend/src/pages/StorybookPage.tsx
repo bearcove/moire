@@ -48,6 +48,8 @@ import { GraphFilterInput } from "../components/graph/GraphFilterInput";
 import { SampleGraph } from "../components/graph/SampleGraph";
 import "../components/graph/GraphPanel.css";
 import { InspectorPanel } from "../components/inspector/InspectorPanel";
+import { BacktraceRenderer } from "../components/inspector/BacktraceRenderer";
+import { STORYBOOK_BACKTRACE_FIXTURES } from "../fixtures/backtraceFixtures";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
 
@@ -578,6 +580,7 @@ export function useStorybookState() {
       entities: [],
       edges: [],
       scopes: [],
+      backtracesById: new Map(),
     }),
     [],
   );
@@ -595,6 +598,7 @@ export function useStorybookState() {
       processId: "101",
       processName: "moire-examples",
       processPid: 84025,
+      backtraceId: 9001,
       source: fakeSource("roam-session", "/tokio_runtime.rs", 20),
       krate: "roam-session",
       birthPtime: 16,
@@ -1098,6 +1102,7 @@ export function StorybookPage({
                 selection={{ kind: "entity", id: inspectorEntity.id }}
                 entityDefs={[inspectorEntity]}
                 edgeDefs={[]}
+                backtracesById={new Map([[9001, STORYBOOK_BACKTRACE_FIXTURES[0]]])}
                 focusedEntityId={focusedEntityId}
                 onToggleFocusEntity={(id) => setFocusedEntityId(id)}
                 onOpenScopeKind={() => undefined}
@@ -1145,6 +1150,17 @@ export function StorybookPage({
                 }}
               />
             </div>
+          </div>
+        </Section>
+
+        <Section
+          title="Backtrace Renderer"
+          subtitle="Top frame preview, expandable user frames, expandable system frames, include/exclude filtering"
+          wide
+        >
+          <div className="ui-section-stack">
+            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[0]} title="Runtime Capture" />
+            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[1]} title="Mixed Resolved/Unresolved" />
           </div>
         </Section>
 

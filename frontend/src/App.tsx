@@ -6,11 +6,13 @@ import type { ConnectionsResponse, FrameSummary } from "./api/types.generated";
 import { appLog, snapshotLog } from "./debug";
 import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
+  buildBacktraceIndex,
   collapseEdgesThroughHiddenNodes,
   convertSnapshot,
   extractScopes,
   filterLoners,
   getConnectedSubgraph,
+  type BacktraceIndex,
   type EntityDef,
   type EdgeDef,
   type ScopeDef,
@@ -48,7 +50,13 @@ export type SnapshotState =
   | { phase: "idle" }
   | { phase: "cutting" }
   | { phase: "loading" }
-  | { phase: "ready"; entities: EntityDef[]; edges: EdgeDef[]; scopes: ScopeDef[] }
+  | {
+      phase: "ready";
+      entities: EntityDef[];
+      edges: EdgeDef[];
+      scopes: ScopeDef[];
+      backtracesById: BacktraceIndex;
+    }
   | { phase: "error"; message: string };
 
 // ── Recording state ────────────────────────────────────────────
@@ -214,6 +222,7 @@ export function App() {
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
+  const backtracesById = snap.phase === "ready" ? snap.backtracesById : new Map();
   const graphTextFilters = useMemo(() => parseGraphFilterQuery(graphFilterText), [graphFilterText]);
   const effectiveHiddenKrates = graphTextFilters.excludeCrates;
   const effectiveHiddenProcesses = graphTextFilters.excludeProcesses;
@@ -431,7 +440,12 @@ export function App() {
       );
       const converted = convertSnapshot(snapshot, effectiveSubgraphScopeMode);
       snapshotLog("snapshot converted entities=%d edges=%d", converted.entities.length, converted.edges.length);
-      setSnap({ phase: "ready", ...converted, scopes: extractScopes(snapshot) });
+      setSnap({
+        phase: "ready",
+        ...converted,
+        scopes: extractScopes(snapshot),
+        backtracesById: buildBacktraceIndex(snapshot),
+      });
       snapshotLog("takeSnapshot complete");
     } catch (err) {
       console.error("[snapshot] takeSnapshot failed", err);
@@ -472,7 +486,12 @@ export function App() {
               const frameIndex = current.session.frame_count - 1;
               const frame = await apiClient.fetchRecordingFrame(frameIndex);
               const converted = convertSnapshot(frame, effectiveSubgraphScopeMode);
-              setSnap({ phase: "ready", ...converted, scopes: extractScopes(frame) });
+              setSnap({
+                phase: "ready",
+                ...converted,
+                scopes: extractScopes(frame),
+                backtracesById: buildBacktraceIndex(frame),
+              });
             }
           } catch (e) {
             console.error(e);
@@ -511,7 +530,12 @@ export function App() {
         const lastFrameIndex = session.frame_count - 1;
         const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
         const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
-        setSnap({ phase: "ready", ...converted, scopes: extractScopes(lastFrame) });
+        setSnap({
+          phase: "ready",
+          ...converted,
+          scopes: extractScopes(lastFrame),
+          backtracesById: buildBacktraceIndex(lastFrame),
+        });
 
         const union = await buildUnionLayout(
           session.frames,
@@ -600,7 +624,12 @@ export function App() {
           const lastFrameIndex = session.frames[session.frames.length - 1].frame_index;
           const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
           const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
-          setSnap({ phase: "ready", ...converted, scopes: extractScopes(lastFrame) });
+          setSnap({
+            phase: "ready",
+            ...converted,
+            scopes: extractScopes(lastFrame),
+            backtracesById: buildBacktraceIndex(lastFrame),
+          });
 
           const union = await buildUnionLayout(
             session.frames,
@@ -677,7 +706,13 @@ export function App() {
         const snapped = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
         const frameData = unionLayout.frameCache.get(snapped);
         if (frameData) {
-          setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges, scopes: [] });
+          setSnap({
+            phase: "ready",
+            entities: frameData.entities,
+            edges: frameData.edges,
+            scopes: [],
+            backtracesById: new Map(),
+          });
         }
 
         return {
@@ -752,7 +787,13 @@ export function App() {
       setUnionFrameLayout(unionFrame);
       const frameData = union.frameCache.get(snapped);
       if (frameData) {
-        setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges, scopes: [] });
+        setSnap({
+          phase: "ready",
+          entities: frameData.entities,
+          edges: frameData.edges,
+          scopes: [],
+          backtracesById: new Map(),
+        });
       }
     } catch (err) {
       console.error(err);
@@ -825,7 +866,12 @@ export function App() {
           if (cancelled) break;
           if (existingSnapshot) {
             const converted = convertSnapshot(existingSnapshot, effectiveSubgraphScopeMode);
-            setSnap({ phase: "ready", ...converted, scopes: extractScopes(existingSnapshot) });
+            setSnap({
+              phase: "ready",
+              ...converted,
+              scopes: extractScopes(existingSnapshot),
+              backtracesById: buildBacktraceIndex(existingSnapshot),
+            });
             appLog("startup poll done using existing snapshot");
             break;
           }
@@ -1118,6 +1164,7 @@ export function App() {
               selection={inspectedSelection}
               entityDefs={allEntities}
               edgeDefs={allEdges}
+              backtracesById={backtracesById}
               focusedEntityId={focusedEntityId}
               onToggleFocusEntity={(id) => {
                 setFocusedEntityFilter(focusedEntityId === id ? null : id);

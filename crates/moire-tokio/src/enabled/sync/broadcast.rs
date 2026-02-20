@@ -3,9 +3,7 @@
 use moire_runtime::{
     new_event, record_event, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
 };
-use moire_types::{
-    BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EventKind, EventTarget,
-};
+use moire_types::{BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EventKind, EventTarget};
 use tokio::sync::broadcast;
 
 /// Instrumented version of [`tokio::sync::broadcast::Sender`].
@@ -52,8 +50,7 @@ impl<T: Clone> Sender<T> {
     /// Subscribes a receiver, equivalent to [`tokio::sync::broadcast::Sender::subscribe`].
     pub fn subscribe(&self) -> Receiver<T> {
         let handle = EntityHandle::new("broadcast:rx.subscribe", BroadcastRxEntity { lag: 0 });
-        self.handle
-            .link_to_handle(&handle, EdgeKind::PairedWith);
+        self.handle.link_to_handle(&handle, EdgeKind::PairedWith);
         Receiver {
             inner: self.inner.subscribe(),
             handle,
@@ -62,10 +59,10 @@ impl<T: Clone> Sender<T> {
     }
     /// Sends a value through the channel, mirroring [`tokio::sync::broadcast::Sender::send`].
     pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
-                let result = self.inner.send(value);
+        let result = self.inner.send(value);
         let event = new_event(
             EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelSent, 
+            EventKind::ChannelSent,
         );
         record_event(event);
         result
@@ -79,13 +76,13 @@ impl<T: Clone> Receiver<T> {
     }
     /// Receives the next broadcast value, equivalent to [`tokio::sync::broadcast::Receiver::recv`].
     pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
-                match self.inner.recv().await {
+        match self.inner.recv().await {
             Ok(value) => {
                 let lag = self.inner.len().min(u32::MAX as usize) as u32;
                 let _ = self.handle.mutate(|body| body.lag = lag);
                 let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelReceived, 
+                    EventKind::ChannelReceived,
                 );
                 record_event(event);
                 Ok(value)
@@ -97,7 +94,7 @@ impl<T: Clone> Receiver<T> {
                 }
                 let event = new_event(
                     EventTarget::Entity(self.handle.id().clone()),
-                    EventKind::ChannelReceived, 
+                    EventKind::ChannelReceived,
                 );
                 record_event(event);
                 Err(err)
@@ -107,11 +104,8 @@ impl<T: Clone> Receiver<T> {
 }
 
 /// Creates an instrumented broadcast channel, matching [`tokio::sync::broadcast::channel`].
-pub fn channel<T: Clone>(
-    name: impl Into<String>,
-    capacity: usize,
-) -> (Sender<T>, Receiver<T>) {
-        let name = name.into();
+pub fn channel<T: Clone>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+    let name = name.into();
     let (tx, rx) = tokio::sync::broadcast::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
@@ -122,10 +116,7 @@ pub fn channel<T: Clone>(
         },
     );
 
-    let rx_handle = EntityHandle::new(
-        format!("{name}:rx"),
-        BroadcastRxEntity { lag: 0 },
-    );
+    let rx_handle = EntityHandle::new(format!("{name}:rx"), BroadcastRxEntity { lag: 0 });
 
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 

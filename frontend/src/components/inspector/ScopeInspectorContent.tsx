@@ -1,10 +1,18 @@
 import React from "react";
+import type { SnapshotBacktrace } from "../../api/types.generated";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { formatProcessLabel } from "../../processLabel";
 import type { ScopeDef } from "../../snapshot";
+import { BacktraceRenderer } from "./BacktraceRenderer";
 import "./InspectorPanel.css";
 
-export function ScopeInspectorContent({ scope }: { scope: ScopeDef }) {
+export function ScopeInspectorContent({
+  scope,
+  backtrace,
+}: {
+  scope: ScopeDef;
+  backtrace?: SnapshotBacktrace;
+}) {
   return (
     <div className="inspector-kv-table">
       <KeyValueRow label="Kind">
@@ -29,6 +37,11 @@ export function ScopeInspectorContent({ scope }: { scope: ScopeDef }) {
       <KeyValueRow label="Members">
         <span className="inspector-mono">{scope.memberEntityIds.length}</span>
       </KeyValueRow>
+      {backtrace && (
+        <div className="inspector-backtrace-slot">
+          <BacktraceRenderer backtrace={backtrace} />
+        </div>
+      )}
     </div>
   );
 }

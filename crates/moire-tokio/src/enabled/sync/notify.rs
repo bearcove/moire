@@ -22,7 +22,7 @@ impl Notify {
     }
     /// Waits for a notification, matching [`tokio::sync::Notify::notified`].
     pub async fn notified(&self) {
-                let _ = self
+        let _ = self
             .handle
             .mutate(|body| body.waiter_count = body.waiter_count.saturating_add(1));
 
