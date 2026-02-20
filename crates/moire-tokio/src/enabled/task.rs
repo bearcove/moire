@@ -26,7 +26,7 @@ use std::future::Future;
 
 use moire_runtime::{
     instrument_future, instrument_future_with_handle, register_current_task_scope, EntityHandle,
-    FUTURE_CAUSAL_STACK,
+    InstrumentedFuture, FUTURE_CAUSAL_STACK,
 };
 use moire_types::FutureEntity;
 
@@ -42,7 +42,7 @@ use moire_types::FutureEntity;
 /// ```
 pub trait FutureExt: Future + Sized {
     /// Wraps this future with a diagnostic name visible in the Moiré dashboard.
-    fn named(self, name: impl Into<String>) -> impl Future<Output = Self::Output> {
+    fn named(self, name: impl Into<String>) -> InstrumentedFuture<Self> {
         instrument_future(name, self, None, None)
     }
 }

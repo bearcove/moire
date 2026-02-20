@@ -16,20 +16,17 @@
 use std::future::Future;
 use std::time::Duration;
 
-use moire_runtime::{instrument_future, EntityHandle};
+use moire_runtime::EntityHandle;
 use moire_types::FutureEntity;
 
+use super::task::FutureExt as _;
 
 /// Instrumented equivalent of [`tokio::time::sleep`].
 pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
     let handle = EntityHandle::new("time.sleep", FutureEntity {});
-
-    instrument_future(
-        "time.sleep",
-        tokio::time::sleep(duration), 
-        Some(handle.entity_ref()),
-        None,
-    )
+    tokio::time::sleep(duration)
+        .named("time.sleep")
+        .on(handle.entity_ref())
 }
 
 /// Instrumented equivalent of [`tokio::time::Interval`].
@@ -41,12 +38,10 @@ pub struct Interval {
 impl Interval {
     /// Waits for the next tick, equivalent to [`tokio::time::Interval::tick`].
     pub fn tick(&mut self) -> impl Future<Output = tokio::time::Instant> + '_ {
-        instrument_future(
-            "time.interval.tick",
-            self.inner.tick(),
-            Some(self.handle.entity_ref()),
-            None,
-        )
+        self.inner
+            .tick()
+            .named("time.interval.tick")
+            .on(self.handle.entity_ref())
     }
 }
 

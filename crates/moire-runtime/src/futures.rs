@@ -137,6 +137,15 @@ impl<F> InstrumentedFuture<F> {
             waits_on,
         }
     }
+
+    /// Sets the entity this future is waiting on, for dashboard edge display.
+    pub fn on(mut self, target: EntityRef) -> Self {
+        self.waits_on = Some(FutureEdgeRelation::new(
+            target,
+            FutureEdgeDirection::ChildToTarget,
+        ));
+        self
+    }
 }
 
 fn transition_relation_edge(
