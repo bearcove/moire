@@ -73,6 +73,7 @@ export function GraphFilterInput({
   crateItems,
   processItems,
   kindItems,
+  moduleItems,
   nodeIds,
   locations,
   focusItems,
@@ -86,6 +87,7 @@ export function GraphFilterInput({
   crateItems: FilterMenuItem[];
   processItems: FilterMenuItem[];
   kindItems: FilterMenuItem[];
+  moduleItems: FilterMenuItem[];
   nodeIds: string[];
   locations: string[];
   focusItems: Array<{ id: string; label: string; searchText?: string }>;
@@ -165,8 +167,9 @@ export function GraphFilterInput({
           label: String(item.label ?? item.id),
         })),
         kinds: kindItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
+        modules: moduleItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
       }),
-    [currentFragment, nodeIds, entitySuggestions, locations, crateItems, processItems, kindItems],
+    [currentFragment, nodeIds, entitySuggestions, locations, crateItems, processItems, kindItems, moduleItems],
   );
   const activeSuggestionIndex =
     graphFilterSuggestionsList.length === 0

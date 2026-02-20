@@ -4,6 +4,15 @@
 // f[impl types.gen.tool]
 // f[impl types.gen.header]
 
+export interface ResolvedTopFrame {
+  function_name: string;
+  crate_name: string;
+  module_path: string;
+  source_file: string;
+  line?: number;
+  column?: number;
+}
+
 export interface RecordingImportBody {
   version: number;
   session: RecordingSessionInfo;
@@ -85,6 +94,7 @@ export interface ProcessSnapshotView {
   ptime_now_ms: number;
   snapshot: Snapshot;
   scope_entity_links?: ScopeEntityLink[];
+  top_frames?: Record<number, ResolvedTopFrame>;
 }
 
 export interface ScopeEntityLink {
@@ -207,6 +217,7 @@ export interface Scope {
    * More specific info about the scope.
    */
   body: ScopeBody;
+  backtrace_id?: number;
 }
 
 export type ScopeBody =
@@ -256,6 +267,7 @@ export interface Entity {
    * More specific info about the entity (depending on its kind)
    */
   body: EntityBody;
+  backtrace_id?: number;
 }
 
 export type EntityBody =

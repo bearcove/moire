@@ -39,11 +39,11 @@ function EntityDetailsSection({ entity }: { entity: EntityDef }) {
       <KeyValueRow label="Source">
         <Source source={`${entity.source.path}:${entity.source.line}`} />
       </KeyValueRow>
-      {entity.krate && (
+      {entity.topFrame?.crate_name && (
         <KeyValueRow label="Crate">
           <NodeChip
             icon={<Package size={12} weight="bold" />}
-            label={entity.krate}
+            label={entity.topFrame.crate_name}
           />
         </KeyValueRow>
       )}

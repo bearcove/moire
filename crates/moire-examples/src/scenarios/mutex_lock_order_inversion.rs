@@ -1,4 +1,4 @@
-use crate::moire::prelude::*;
+use crate::scenarios::spawn_tracked;
 use std::sync::Arc;
 use std::sync::Barrier;
 use std::time::Duration;
@@ -13,7 +13,7 @@ fn spawn_lock_order_worker(
     ready_barrier: Arc<Barrier>,
     completed_tx: oneshot::Sender<()>,
 ) {
-    crate::moire::spawn_tracked(task_name, async move {
+    spawn_tracked(task_name, async move {
         let _first_guard = first.lock();
         println!("{task_name} locked {first_name}; waiting for peer");
 
@@ -30,8 +30,8 @@ fn spawn_lock_order_worker(
 }
 
 pub async fn run() -> Result<(), String> {
-    let left = Arc::new(crate::moire::mutex("demo.shared.left", ()));
-    let right = Arc::new(crate::moire::mutex("demo.shared.right", ()));
+    let left = Arc::new(moire::Mutex::new("demo.shared.left", ()));
+    let right = Arc::new(moire::Mutex::new("demo.shared.right", ()));
     let ready_barrier = Arc::new(Barrier::new(2));
 
     let (alpha_done_tx, alpha_done_rx) = oneshot::channel::<()>();
@@ -57,19 +57,17 @@ pub async fn run() -> Result<(), String> {
         beta_done_tx,
     );
 
-    crate::moire::spawn_tracked("observer.alpha_completion", async move {
-        let _ = alpha_done_rx
-            .tracked("deadlock.alpha.completion.await")
-            .await;
+    spawn_tracked("observer.alpha_completion", async move {
+        let _ = alpha_done_rx.await;
         println!("observer.alpha_completion unexpectedly unblocked");
     });
 
-    crate::moire::spawn_tracked("observer.beta_completion", async move {
-        let _ = beta_done_rx.tracked("deadlock.beta.completion.await").await;
+    spawn_tracked("observer.beta_completion", async move {
+        let _ = beta_done_rx.await;
         println!("observer.beta_completion unexpectedly unblocked");
     });
 
-    crate::moire::spawn_tracked("observer.async_heartbeat", async move {
+    spawn_tracked("observer.async_heartbeat", async move {
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
             println!("async heartbeat: runtime is alive while worker threads are deadlocked");

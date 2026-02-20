@@ -91,7 +91,7 @@ export async function layoutGraph(
   const entityById = new Map(entityDefs.map((entity) => [entity.id, entity]));
   const groupKeyFor = (entity: EntityDef): string | null => {
     if (subgraphScopeMode === "process") return entity.processId;
-    if (subgraphScopeMode === "crate") return entity.krate ?? "~no-crate";
+    if (subgraphScopeMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
     return null;
   };
 

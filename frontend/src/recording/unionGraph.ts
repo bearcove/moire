@@ -288,17 +288,24 @@ export function renderFrameFromUnion(
 
   // Apply krate/process filters.
   let filteredEntities = frameData.entities.filter(
-    (e) =>
-      (includeKrates.size === 0 || includeKrates.has(e.krate ?? "~no-crate")) &&
-      (includeProcesses.size === 0 || includeProcesses.has(e.processId)) &&
-      (includeKinds.size === 0 || includeKinds.has(canonicalNodeKind(e.kind))) &&
-      (includeNodeIds.size === 0 || includeNodeIds.has(e.id)) &&
-      (includeLocations.size === 0 || includeLocations.has(`${e.source.path}:${e.source.line}`)) &&
-      (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
-      (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
-      (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))) &&
-      !excludeNodeIds.has(e.id) &&
-      !excludeLocations.has(`${e.source.path}:${e.source.line}`),
+    (e) => {
+      const eCrate = e.topFrame?.crate_name ?? "~no-crate";
+      const eLocation = e.topFrame
+        ? (e.topFrame.line != null ? `${e.topFrame.source_file}:${e.topFrame.line}` : e.topFrame.source_file)
+        : "";
+      return (
+        (includeKrates.size === 0 || includeKrates.has(eCrate)) &&
+        (includeProcesses.size === 0 || includeProcesses.has(e.processId)) &&
+        (includeKinds.size === 0 || includeKinds.has(canonicalNodeKind(e.kind))) &&
+        (includeNodeIds.size === 0 || includeNodeIds.has(e.id)) &&
+        (includeLocations.size === 0 || includeLocations.has(eLocation)) &&
+        (hiddenKrates.size === 0 || !hiddenKrates.has(eCrate)) &&
+        (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
+        (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))) &&
+        !excludeNodeIds.has(e.id) &&
+        !excludeLocations.has(eLocation)
+      );
+    },
   );
   let filteredEdges = frameData.edges;
   const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));

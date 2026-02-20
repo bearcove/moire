@@ -73,13 +73,13 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
 }
 
 export function computeNodeSublabel(def: EntityDef, labelBy: GraphFilterLabelMode): string {
-  if (labelBy === "crate") return def.krate ?? "";
+  if (labelBy === "crate") return def.topFrame?.crate_name ?? "";
   if (labelBy === "process") return def.processName;
   // location
-  const { path, line } = def.source;
-  if (!path) return "";
-  const base = path.split(/[\\/]/).pop() ?? path;
-  return line ? `${base}:${line}` : base;
+  if (!def.topFrame) return "";
+  return def.topFrame.line != null
+    ? `${def.topFrame.source_file}:${def.topFrame.line}`
+    : def.topFrame.source_file;
 }
 
 export function GraphNode({ data }: { data: GraphNodeData }) {

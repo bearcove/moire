@@ -1,23 +1,23 @@
 use std::time::Duration;
 
-use crate::moire::prelude::*;
+use crate::scenarios::spawn_tracked;
 
 pub async fn run() -> Result<(), String> {
-    let (tx, mut rx) = crate::moire::channel("demo.work_queue", 16);
-    let (_idle_tx, mut idle_rx) = crate::moire::channel("demo.idle_queue", 1);
+    let (tx, mut rx) = moire::channel("demo.work_queue", 16);
+    let (_idle_tx, mut idle_rx) = moire::channel("demo.idle_queue", 1);
 
-    crate::moire::spawn_tracked("stalled_receiver", async move {
+    spawn_tracked("stalled_receiver", async move {
         println!("receiver started but is intentionally not draining the queue");
         tokio::time::sleep(Duration::from_secs(3600)).await;
         let _ = rx.recv().await;
     });
 
-    crate::moire::spawn_tracked("blocked_receiver", async move {
+    spawn_tracked("blocked_receiver", async move {
         println!("blocked_receiver waits on demo.idle_queue.recv() forever (no sender activity)");
         let _: Option<u32> = idle_rx.recv().await;
     });
 
-    crate::moire::spawn_tracked("bounded_sender", async move {
+    spawn_tracked("bounded_sender", async move {
         for i in 0_u32..16 {
             tx.send(i)
                 .await

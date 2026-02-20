@@ -1,4 +1,4 @@
-use crate::moire::prelude::*;
+use crate::scenarios::spawn_tracked;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,16 +16,16 @@ fn lookup_key_for_response(response_id: RequestId) -> RequestId {
 }
 
 pub async fn run() -> Result<(), String> {
-    let pending_by_request_id: PendingMap = Arc::new(crate::moire::mutex(
+    let pending_by_request_id: PendingMap = Arc::new(moire::Mutex::new(
         "demo.pending_oneshot_senders",
         HashMap::new(),
     ));
-    let (response_bus_tx, mut response_bus_rx) = crate::moire::channel("demo.response_bus", 4);
+    let (response_bus_tx, mut response_bus_rx) = moire::channel("demo.response_bus", 4);
 
     let pending_for_request = Arc::clone(&pending_by_request_id);
-    crate::moire::spawn_tracked("client.request_42.await_response", async move {
+    spawn_tracked("client.request_42.await_response", async move {
         let request_id = 42_u64;
-        let (tx, rx) = crate::moire::oneshot("demo.request_42.response");
+        let (tx, rx) = moire::oneshot("demo.request_42.response");
 
         let storage_key = storage_key_for_request(request_id);
         pending_for_request.lock().insert(storage_key, tx);
@@ -34,13 +34,12 @@ pub async fn run() -> Result<(), String> {
         );
 
         rx.recv()
-            .tracked("request_42.await_response.blocked")
             .await
             .expect("request unexpectedly completed");
     });
 
     let bus_tx_for_network = response_bus_tx.clone();
-    crate::moire::spawn_tracked("network.inject_single_response", async move {
+    spawn_tracked("network.inject_single_response", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
         println!("network delivered one response for request 42");
         bus_tx_for_network
@@ -50,11 +49,9 @@ pub async fn run() -> Result<(), String> {
     });
 
     let pending_for_router = Arc::clone(&pending_by_request_id);
-    crate::moire::spawn_tracked("router.match_response_to_pending_request", async move {
+    spawn_tracked("router.match_response_to_pending_request", async move {
         loop {
-            let Some((request_id, payload)) =
-                response_bus_rx.recv().tracked("response_bus.recv").await
-            else {
+            let Some((request_id, payload)) = response_bus_rx.recv().await else {
                 return;
             };
 

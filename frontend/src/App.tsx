@@ -235,19 +235,21 @@ export function App() {
     });
   }, []);
   const applyBaseFilters = useCallback(
-    (ignore: "crate" | "process" | "kind" | null) => {
+    (ignore: "crate" | "process" | "kind" | "module" | null) => {
       let entities = allEntities.filter(
         (e) =>
-          (graphTextFilters.includeCrates.size === 0 || graphTextFilters.includeCrates.has(e.krate ?? "~no-crate")) &&
+          (graphTextFilters.includeCrates.size === 0 || graphTextFilters.includeCrates.has(e.topFrame?.crate_name ?? "~no-crate")) &&
           (graphTextFilters.includeProcesses.size === 0 || graphTextFilters.includeProcesses.has(e.processId)) &&
           (graphTextFilters.includeKinds.size === 0 || graphTextFilters.includeKinds.has(canonicalNodeKind(e.kind))) &&
           (graphTextFilters.includeNodeIds.size === 0 || graphTextFilters.includeNodeIds.has(e.id)) &&
-          (graphTextFilters.includeLocations.size === 0 || graphTextFilters.includeLocations.has(`${e.source.path}:${e.source.line}`)) &&
-          (ignore === "crate" || effectiveHiddenKrates.size === 0 || !effectiveHiddenKrates.has(e.krate ?? "~no-crate")) &&
+          (graphTextFilters.includeLocations.size === 0 || graphTextFilters.includeLocations.has(e.topFrame ? (e.topFrame.line != null ? `${e.topFrame.source_file}:${e.topFrame.line}` : e.topFrame.source_file) : "")) &&
+          (ignore === "module" || graphTextFilters.includeModules.size === 0 || graphTextFilters.includeModules.has(e.topFrame?.module_path ?? "")) &&
+          (ignore === "crate" || effectiveHiddenKrates.size === 0 || !effectiveHiddenKrates.has(e.topFrame?.crate_name ?? "~no-crate")) &&
           (ignore === "process" || effectiveHiddenProcesses.size === 0 || !effectiveHiddenProcesses.has(e.processId)) &&
           (ignore === "kind" || effectiveHiddenKinds.size === 0 || !effectiveHiddenKinds.has(canonicalNodeKind(e.kind))) &&
           !graphTextFilters.excludeNodeIds.has(e.id) &&
-          !graphTextFilters.excludeLocations.has(`${e.source.path}:${e.source.line}`),
+          !graphTextFilters.excludeLocations.has(e.topFrame ? (e.topFrame.line != null ? `${e.topFrame.source_file}:${e.topFrame.line}` : e.topFrame.source_file) : "") &&
+          (ignore === "module" || !graphTextFilters.excludeModules.has(e.topFrame?.module_path ?? "")),
       );
       const entityIds = new Set(entities.map((entity) => entity.id));
       let edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);
@@ -290,7 +292,7 @@ export function App() {
   const crateItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
     for (const entity of applyBaseFilters("crate").entities) {
-      const crate = entity.krate ?? "~no-crate";
+      const crate = entity.topFrame?.crate_name ?? "~no-crate";
       counts.set(crate, (counts.get(crate) ?? 0) + 1);
     }
     return Array.from(counts.keys())
@@ -299,6 +301,21 @@ export function App() {
         id: crate,
         label: crate === "~no-crate" ? "(no crate)" : crate,
         meta: counts.get(crate) ?? 0,
+      }));
+  }, [applyBaseFilters]);
+
+  const moduleItems = useMemo<FilterMenuItem[]>(() => {
+    const counts = new Map<string, number>();
+    for (const entity of applyBaseFilters("module").entities) {
+      const mod = entity.topFrame?.module_path ?? "~no-module";
+      counts.set(mod, (counts.get(mod) ?? 0) + 1);
+    }
+    return Array.from(counts.keys())
+      .sort()
+      .map((mod) => ({
+        id: mod,
+        label: mod === "~no-module" ? "(no module)" : mod,
+        meta: counts.get(mod) ?? 0,
       }));
   }, [applyBaseFilters]);
 
@@ -1027,6 +1044,7 @@ export function App() {
                 crateItems={crateItems}
                 processItems={processItems}
                 kindItems={kindItems}
+                moduleItems={moduleItems}
                 scopeColorMode={effectiveScopeColorMode}
                 subgraphScopeMode={effectiveSubgraphScopeMode}
                 labelByMode={effectiveLabelBy}

@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::moire::prelude::*;
+use crate::scenarios::spawn_tracked;
 
 pub async fn run() -> Result<(), String> {
-    let gate = Arc::new(crate::moire::semaphore("demo.api_gate", 1));
+    let gate = Arc::new(moire::Semaphore::new("demo.api_gate", 1));
 
     let holder_gate = Arc::clone(&gate);
-    crate::moire::spawn_tracked("permit_holder", async move {
+    spawn_tracked("permit_holder", async move {
         let _permit = holder_gate
             .acquire_owned()
             .await
@@ -18,13 +18,12 @@ pub async fn run() -> Result<(), String> {
     });
 
     let waiter_gate = Arc::clone(&gate);
-    crate::moire::spawn_tracked("permit_waiter", async move {
+    spawn_tracked("permit_waiter", async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
         println!("permit_waiter requesting permit; this should block forever");
 
         let _permit = waiter_gate
             .acquire_owned()
-            .tracked("gate.acquire.blocked")
             .await
             .expect("permit waiter unexpectedly acquired permit");
     });

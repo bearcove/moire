@@ -29,6 +29,10 @@ const baseInput = {
     { id: "request", label: "Request" },
     { id: "response", label: "Response" },
   ],
+  modules: [
+    { id: "moire_core::server", label: "moire_core::server" },
+    { id: "moire_web::handler", label: "moire_web::handler" },
+  ],
 };
 
 function reduce(state: GraphFilterEditorState, ...actions: GraphFilterEditorAction[]): GraphFilterEditorState {
@@ -113,6 +117,8 @@ describe("graphFilterSuggestions", () => {
     ["+crate", "+crate:<name>"],
     ["-proc", "-process:<id>"],
     ["+kin", "+kind:<kind>"],
+    ["+mod", "+module:<path>"],
+    ["-module", "-module:<path>"],
   ])("suggests key family for fragment %s", (fragment, expectedToken) => {
     const out = graphFilterSuggestions({ ...baseInput, fragment });
     expect(out.map((s) => s.token)).toContain(expectedToken);
@@ -145,6 +151,8 @@ describe("graphFilterSuggestions", () => {
     ["groupBy:cr", "groupBy:crate"],
     ["colorBy:pro", "colorBy:process"],
     ["colorBy:cr", "colorBy:crate"],
+    ["+module:server", "+module:moire_core::server"],
+    ["-module:handler", "-module:moire_web::handler"],
   ])("suggests value for %s", (fragment, expectedToken) => {
     const out = graphFilterSuggestions({ ...baseInput, fragment });
     expect(out.map((s) => s.token)).toContain(expectedToken);
@@ -272,5 +280,23 @@ describe("parseGraphFilterQuery include/exclude syntax", () => {
     const out = parseGraphFilterQuery("groupBy:none");
     expect(out.groupBy).toBeUndefined();
     expect(out.tokens[0]?.valid).toBe(true);
+  });
+
+  it("parses +module", () => {
+    const out = parseGraphFilterQuery("+module:moire_core::server");
+    expect(out.includeModules.has("moire_core::server")).toBe(true);
+    expect(out.tokens[0]?.valid).toBe(true);
+  });
+
+  it("parses -module", () => {
+    const out = parseGraphFilterQuery("-module:moire_web::handler");
+    expect(out.excludeModules.has("moire_web::handler")).toBe(true);
+    expect(out.tokens[0]?.valid).toBe(true);
+  });
+
+  it("treats placeholder module value as invalid", () => {
+    const out = parseGraphFilterQuery("+module:<path>");
+    expect(out.includeModules.size).toBe(0);
+    expect(out.tokens[0]?.valid).toBe(false);
   });
 });

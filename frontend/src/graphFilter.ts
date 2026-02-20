@@ -21,6 +21,8 @@ export type GraphFilterParseResult = {
   excludeProcesses: Set<string>;
   includeKinds: Set<string>;
   excludeKinds: Set<string>;
+  includeModules: Set<string>;
+  excludeModules: Set<string>;
   focusedNodeId?: string;
   showLoners?: boolean;
   colorBy?: GraphFilterMode;
@@ -54,6 +56,7 @@ export type GraphFilterSuggestionInput = {
   crates: readonly GraphFilterSuggestionItem[];
   processes: readonly GraphFilterSuggestionItem[];
   kinds: readonly GraphFilterSuggestionItem[];
+  modules: readonly GraphFilterSuggestionItem[];
 };
 
 export type GraphFilterAst = string[];
@@ -134,7 +137,7 @@ export function quoteFilterValue(value: string): string {
 }
 
 // f[impl filter.token.syntax]
-// f[impl filter.axis.node] f[impl filter.axis.location] f[impl filter.axis.crate] f[impl filter.axis.process] f[impl filter.axis.kind]
+// f[impl filter.axis.node] f[impl filter.axis.location] f[impl filter.axis.crate] f[impl filter.axis.process] f[impl filter.axis.kind] f[impl filter.axis.module]
 // f[impl filter.control.focus] f[impl filter.control.loners] f[impl filter.control.colorby] f[impl filter.control.groupby] f[impl filter.control.labelby]
 export function parseGraphFilterQuery(filterText: string): GraphFilterParseResult {
   const includeNodeIds = new Set<string>();
@@ -147,6 +150,8 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
   const excludeProcesses = new Set<string>();
   const includeKinds = new Set<string>();
   const excludeKinds = new Set<string>();
+  const includeModules = new Set<string>();
+  const excludeModules = new Set<string>();
   const tokens = tokenizeFilterQuery(filterText);
   const parsed: ParsedGraphFilterToken[] = [];
   let colorBy: GraphFilterMode | undefined;
@@ -192,6 +197,9 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
       valid = true;
     } else if (signed !== 0 && !isPlaceholderValue && keyLower === "kind") {
       (signed > 0 ? includeKinds : excludeKinds).add(value);
+      valid = true;
+    } else if (signed !== 0 && !isPlaceholderValue && keyLower === "module") {
+      (signed > 0 ? includeModules : excludeModules).add(value);
       valid = true;
     } else if (keyLower === "loners") {
       if (value === "on" || value === "true" || value === "yes") {
@@ -240,6 +248,8 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     excludeProcesses,
     includeKinds,
     excludeKinds,
+    includeModules,
+    excludeModules,
     focusedNodeId,
     showLoners,
     colorBy,
@@ -560,6 +570,8 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "-process:<id>", label: "Exclude matching processes", applyToken: "-process:" },
       { key: "+kind:<kind>", label: "Include only matching kinds", applyToken: "+kind:" },
       { key: "-kind:<kind>", label: "Exclude matching kinds", applyToken: "-kind:" },
+      { key: "+module:<path>", label: "Include only matching module paths", applyToken: "+module:" },
+      { key: "-module:<path>", label: "Exclude matching module paths", applyToken: "-module:" },
       { key: "loners:on", label: "Show unconnected nodes" },
       { key: "loners:off", label: "Hide unconnected nodes" },
       { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
@@ -608,6 +620,12 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
   if (keyLower === "kind" && signed) {
     for (const item of sortedMatches(input.kinds, valueLower, (v) => `${v.id} ${v.label}`)) {
       uniquePush(out, `${signed}kind:${quoteFilterValue(item.id)}`, `${signedDesc} kind ${item.label}`, undefined, existingTokens);
+    }
+    return out;
+  }
+  if (keyLower === "module" && signed) {
+    for (const item of sortedMatches(input.modules, valueLower, (v) => `${v.id} ${v.label}`)) {
+      uniquePush(out, `${signed}module:${quoteFilterValue(item.id)}`, `${signedDesc} module ${item.label}`, undefined, existingTokens);
     }
     return out;
   }
@@ -666,6 +684,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
         { key: `${signed}crate:<name>`, label: "Filter by crate", applyToken: `${signed}crate:` },
         { key: `${signed}process:<id>`, label: "Filter by process", applyToken: `${signed}process:` },
         { key: `${signed}kind:<kind>`, label: "Filter by kind", applyToken: `${signed}kind:` },
+        { key: `${signed}module:<path>`, label: "Filter by module path", applyToken: `${signed}module:` },
       ]
     : [
         { key: "loners:on", label: "Show unconnected nodes" },

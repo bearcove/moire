@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use crate::moire::prelude::*;
+use crate::scenarios::spawn_tracked;
 use roam_stream::{accept, HandshakeConfig, NoDispatcher};
 use tokio::process::{Child, Command};
 
@@ -50,15 +50,14 @@ pub async fn run(workspace_root: &Path) -> Result<(), String> {
         .await
         .map_err(|e| format!("roam handshake with swift peer should succeed: {e}"))?;
 
-    crate::moire::spawn_tracked("roam.rust_host_driver", async move {
+    spawn_tracked("roam.rust_host_driver", async move {
         let _ = driver.run().await;
     });
 
     let request_handle = handle.clone();
-    crate::moire::spawn_tracked("rust.calls.swift_noop", async move {
+    spawn_tracked("rust.calls.swift_noop", async move {
         let _ = request_handle
             .call_raw(0xfeed_f00d, "swift.noop.stall", Vec::new())
-            .tracked("rpc.call.swift.noop.stall")
             .await;
     });
 

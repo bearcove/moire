@@ -25,7 +25,7 @@ export type ScopeColorMode = "none" | "process" | "crate";
 
 function scopeKeyForEntity(entity: EntityDef, scopeColorMode: ScopeColorMode): string | undefined {
   if (scopeColorMode === "process") return entity.processId;
-  if (scopeColorMode === "crate") return entity.krate ?? "~no-crate";
+  if (scopeColorMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
   return undefined;
 }
 
@@ -41,6 +41,7 @@ export function GraphPanel({
   crateItems,
   processItems,
   kindItems,
+  moduleItems,
   scopeColorMode,
   subgraphScopeMode,
   labelByMode,
@@ -66,6 +67,7 @@ export function GraphPanel({
   crateItems: FilterMenuItem[];
   processItems: FilterMenuItem[];
   kindItems: FilterMenuItem[];
+  moduleItems: FilterMenuItem[];
   scopeColorMode: ScopeColorMode;
   subgraphScopeMode: SubgraphScopeMode;
   labelByMode?: GraphFilterLabelMode;
@@ -152,8 +154,12 @@ export function GraphPanel({
       Array.from(
         new Set(
           entityDefs
-            .map((entity) => `${entity.source.path}:${entity.source.line}`)
-            .filter((source) => source.length > 0),
+            .map((entity) => {
+              const tf = entity.topFrame;
+              if (!tf) return null;
+              return tf.line != null ? `${tf.source_file}:${tf.line}` : tf.source_file;
+            })
+            .filter((s): s is string => s != null),
         ),
       ),
     [entityDefs],
@@ -171,6 +177,7 @@ export function GraphPanel({
         crateItems={crateItems}
         processItems={processItems}
         kindItems={kindItems}
+        moduleItems={moduleItems}
         nodeIds={nodeSuggestions}
         locations={locationSuggestions}
         focusItems={focusItems}

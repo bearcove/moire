@@ -1,4 +1,4 @@
-import type { EdgeKind, EntityBody, SnapshotCutResponse, SnapshotSource } from "./api/types.generated";
+import type { EdgeKind, EntityBody, ResolvedTopFrame, SnapshotCutResponse, SnapshotSource } from "./api/types.generated";
 import { canonicalScopeKind } from "./scopeKindSpec";
 
 // ── Body type helpers ──────────────────────────────────────────
@@ -30,6 +30,7 @@ export type EntityDef = {
   backtraceId: number;
   source: SnapshotSource;
   krate?: string;
+  topFrame?: ResolvedTopFrame;
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
   birthPtime: number;
   /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
@@ -75,6 +76,7 @@ export type ScopeDef = {
   backtraceId: number;
   source: SnapshotSource;
   krate?: string;
+  topFrame?: ResolvedTopFrame;
   /** Process-relative birth time in ms. */
   birthPtime: number;
   /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
@@ -142,6 +144,7 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
         process_id,
       );
       const backtraceId = requireBacktraceId(scope, `scope ${processIdStr}/${scope.id}`, process_id);
+      const topFrame = proc.top_frames?.[backtraceId];
       result.push({
         key: `${processIdStr}:${scope.id}`,
         processId: processIdStr,
@@ -153,6 +156,7 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
         backtraceId,
         source: resolvedSource,
         krate: resolvedSource.krate,
+        topFrame,
         birthPtime: scope.birth,
         ageMs: Math.max(0, ptime_now_ms - scope.birth),
         memberEntityIds,
@@ -362,7 +366,7 @@ export function mergeChannelPairs(
 
 function groupKeyForEntity(entity: EntityDef, mode: SnapshotGroupMode): string {
   if (mode === "process") return `process:${entity.processId}`;
-  if (mode === "crate") return `crate:${entity.krate ?? "~no-crate"}`;
+  if (mode === "crate") return `crate:${entity.topFrame?.crate_name ?? "~no-crate"}`;
   return "all";
 }
 
@@ -516,6 +520,7 @@ export function convertSnapshot(
         process_id,
       );
       const backtraceId = requireBacktraceId(e, `entity ${compositeId}`, process_id);
+      const topFrame = proc.top_frames?.[backtraceId];
       allEntities.push({
         id: compositeId,
         rawEntityId: e.id,
@@ -528,6 +533,7 @@ export function convertSnapshot(
         backtraceId,
         source: resolvedSource,
         krate: resolvedSource.krate,
+        topFrame,
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,

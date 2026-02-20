@@ -2,7 +2,7 @@ use std::io;
 use std::process::Stdio;
 use std::time::Duration;
 
-use crate::moire::prelude::*;
+use crate::scenarios::spawn_tracked;
 use roam::service;
 use roam_stream::{accept, connect, Connector, HandshakeConfig, NoDispatcher};
 use tokio::net::TcpStream;
@@ -64,7 +64,7 @@ pub async fn run() -> Result<(), String> {
         .await
         .map_err(|e| format!("server handshake should succeed: {e}"))?;
 
-    crate::moire::spawn_tracked("roam.server_driver", async move {
+    spawn_tracked("roam.server_driver", async move {
         let _ = driver.run().await;
     });
 
@@ -117,7 +117,6 @@ async fn run_client(addr: String) -> Result<(), String> {
     println!("client: sent one sleepy_forever RPC request (intentionally stuck)");
     let _ = client
         .sleepy_forever()
-        .tracked("roam.client.request_task")
         .await
         .map_err(|e| format!("client sleepy_forever request failed: {e}"))?;
     Err("client request unexpectedly completed".to_string())
