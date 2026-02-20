@@ -1319,6 +1319,7 @@ dependencies = [
 name = "moire-web"
 version = "0.1.0"
 dependencies = [
+ "addr2line 0.24.2",
  "axum",
  "facet",
  "facet-json",

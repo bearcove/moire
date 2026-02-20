@@ -106,26 +106,36 @@ export function createLiveApiClient(): ApiClient {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const url = `${protocol}//${window.location.host}/api/snapshot/${encodeURIComponent(String(snapshotId))}/symbolication/ws`;
       apiLog("WS %s open", url);
+      console.info(`[moire:symbolication] opening stream snapshot_id=${snapshotId} url=${url}`);
       const socket = new WebSocket(url);
+      socket.onopen = () => {
+        console.info(`[moire:symbolication] stream open snapshot_id=${snapshotId}`);
+      };
       socket.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data) as SnapshotSymbolicationUpdate;
+          console.info(
+            `[moire:symbolication] update snapshot_id=${parsed.snapshot_id} completed=${parsed.completed_frames}/${parsed.total_frames} updated=${parsed.updated_frames.length} done=${parsed.done}`,
+          );
           onUpdate(parsed);
         } catch (e) {
           const error = new Error(
             `[symbolication] failed to parse websocket payload: ${e instanceof Error ? e.message : String(e)}`,
           );
           apiLog("WS %s parse error %s", url, error.message);
+          console.warn(`[moire:symbolication] parse error snapshot_id=${snapshotId}: ${error.message}`);
           if (onError) onError(error);
         }
       };
       socket.onerror = () => {
         const error = new Error("[symbolication] websocket error");
         apiLog("WS %s error", url);
+        console.warn(`[moire:symbolication] websocket error snapshot_id=${snapshotId}`);
         if (onError) onError(error);
       };
       socket.onclose = () => {
         apiLog("WS %s closed", url);
+        console.info(`[moire:symbolication] stream closed snapshot_id=${snapshotId}`);
       };
       return () => socket.close();
     },

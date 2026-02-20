@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { SnapshotBacktraceFrame } from "../../api/types.generated";
 import type { ResolvedSnapshotBacktrace } from "../../snapshot";
 import "./BacktraceRenderer.css";
@@ -86,6 +86,7 @@ export function BacktraceRenderer({
   const [showSystemFrames, setShowSystemFrames] = useState(false);
   const [includeFilter, setIncludeFilter] = useState("");
   const [excludeFilter, setExcludeFilter] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
 
   const topFrame = useMemo(() => {
     return backtrace.frames.find((frame) => !isSystemFrame(frame)) ?? backtrace.frames[0];
@@ -115,70 +116,106 @@ export function BacktraceRenderer({
     };
   }, [userFrames, systemFrames, includeNeedle, excludeNeedle]);
 
-  return (
-    <section className="bt-panel" aria-label={`${title} ${backtrace.backtrace_id}`}>
-      <div className="bt-header">
-        <div className="bt-title">
-          <span>{title}</span>
-          <span className="bt-id">#{backtrace.backtrace_id}</span>
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullscreen]);
+
+  function renderPanel(isFullscreen: boolean): React.ReactNode {
+    return (
+      <section
+        className={isFullscreen ? "bt-panel bt-panel--fullscreen" : "bt-panel"}
+        aria-label={`${title} ${backtrace.backtrace_id}`}
+      >
+        <div className="bt-header">
+          <div className="bt-title">
+            <span>{title}</span>
+            <span className="bt-id">#{backtrace.backtrace_id}</span>
+          </div>
+          <div className="bt-header-actions">
+            <span className="bt-count">{backtrace.frames.length} frames</span>
+            <button
+              type="button"
+              className="bt-toggle bt-toggle--expand"
+              onClick={() => setFullscreen((v) => !v)}
+            >
+              {isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+            </button>
+          </div>
         </div>
-        <span className="bt-count">{backtrace.frames.length} frames</span>
-      </div>
 
-      {topFrame && (
-        <div className="bt-top">
-          <div className="bt-top-label">Top frame</div>
-          <div className="bt-frame">{renderFrameLabel(topFrame)}</div>
-        </div>
-      )}
-
-      <div className="bt-filters">
-        <input
-          className="bt-input"
-          value={includeFilter}
-          onChange={(event) => setIncludeFilter(event.target.value)}
-          placeholder="include filter (function/module/path)"
-          aria-label="Include frame filter"
-        />
-        <input
-          className="bt-input"
-          value={excludeFilter}
-          onChange={(event) => setExcludeFilter(event.target.value)}
-          placeholder="exclude filter"
-          aria-label="Exclude frame filter"
-        />
-      </div>
-
-      <div className="bt-controls">
-        <button type="button" className="bt-toggle" onClick={() => setShowUserFrames((v) => !v)}>
-          {showUserFrames ? "Hide user frames" : "Show user frames"} ({filtered.user.length})
-        </button>
-        {showUserFrames && (
-          <button type="button" className="bt-toggle" onClick={() => setShowSystemFrames((v) => !v)}>
-            {showSystemFrames ? "Hide system frames" : "Show system frames"} ({filtered.system.length})
-          </button>
+        {topFrame && (
+          <div className="bt-top">
+            <div className="bt-top-label">Top frame</div>
+            <div className="bt-frame">{renderFrameLabel(topFrame)}</div>
+          </div>
         )}
-      </div>
 
-      {showUserFrames && (
-        <div className="bt-list">
-          {filtered.user.map((frame, index) => (
-            <div className="bt-frame" key={frameKey(frame, index)}>
-              {renderFrameLabel(frame)}
-            </div>
-          ))}
+        <div className="bt-filters">
+          <input
+            className="bt-input"
+            value={includeFilter}
+            onChange={(event) => setIncludeFilter(event.target.value)}
+            placeholder="include filter (function/module/path)"
+            aria-label="Include frame filter"
+          />
+          <input
+            className="bt-input"
+            value={excludeFilter}
+            onChange={(event) => setExcludeFilter(event.target.value)}
+            placeholder="exclude filter"
+            aria-label="Exclude frame filter"
+          />
+        </div>
+
+        <div className="bt-controls">
+          <button type="button" className="bt-toggle" onClick={() => setShowUserFrames((v) => !v)}>
+            {showUserFrames ? "Hide user frames" : "Show user frames"} ({filtered.user.length})
+          </button>
+          {showUserFrames && (
+            <button type="button" className="bt-toggle" onClick={() => setShowSystemFrames((v) => !v)}>
+              {showSystemFrames ? "Hide system frames" : "Show system frames"} ({filtered.system.length})
+            </button>
+          )}
+        </div>
+
+        {showUserFrames && (
+          <div className="bt-list">
+            {filtered.user.map((frame, index) => (
+              <div className="bt-frame" key={frameKey(frame, index)}>
+                {renderFrameLabel(frame)}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showUserFrames && showSystemFrames && (
+          <div className="bt-list bt-list--system">
+            {filtered.system.map((frame, index) => (
+              <div className="bt-frame" key={frameKey(frame, index)}>
+                {renderFrameLabel(frame)}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <>
+      {renderPanel(false)}
+      {fullscreen && (
+        <div className="bt-overlay" role="dialog" aria-modal="true" onClick={() => setFullscreen(false)}>
+          <div className="bt-overlay-inner" onClick={(event) => event.stopPropagation()}>
+            {renderPanel(true)}
+          </div>
         </div>
       )}
-
-      {showUserFrames && showSystemFrames && (
-        <div className="bt-list bt-list--system">
-          {filtered.system.map((frame, index) => (
-            <div className="bt-frame" key={frameKey(frame, index)}>
-              {renderFrameLabel(frame)}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+    </>
   );
 }

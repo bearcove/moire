@@ -164,7 +164,7 @@ export function buildBacktraceIndex(snapshot: SnapshotCutResponse): BacktraceInd
   return index;
 }
 
-function isResolvedFrame(frame: SnapshotBacktraceFrame): frame is { resolved: BacktraceFrameResolved } {
+export function isResolvedFrame(frame: SnapshotBacktraceFrame): frame is { resolved: BacktraceFrameResolved } {
   return "resolved" in frame;
 }
 

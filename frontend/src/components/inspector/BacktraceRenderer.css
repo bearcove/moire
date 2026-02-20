@@ -15,6 +15,12 @@
   gap: 8px;
 }
 
+.bt-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .bt-title {
   display: inline-flex;
   align-items: baseline;
@@ -74,6 +80,10 @@
   cursor: pointer;
 }
 
+.bt-toggle--expand {
+  white-space: nowrap;
+}
+
 .bt-list {
   display: flex;
   flex-direction: column;
@@ -117,6 +127,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: color-mix(in srgb, var(--bg-base) 72%, transparent);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 12px;
+}
+
+.bt-overlay-inner {
+  width: min(96vw, 1600px);
+  max-height: 94vh;
+  min-height: 60vh;
+}
+
+.bt-panel--fullscreen {
+  height: 100%;
+}
+
+.bt-panel--fullscreen .bt-list {
+  overflow: auto;
 }
 
 @media (max-width: 900px) {

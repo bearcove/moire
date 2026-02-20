@@ -44,7 +44,7 @@ export function AppHeader({
   onLeftPaneTabChange: (tab: "graph" | "scopes" | "entities") => void;
   snap: SnapshotState;
   snapshotProcessCount: number;
-  symbolicationProgress: { completed: number; total: number } | null;
+  symbolicationProgress: { resolved: number; pending: number; total: number } | null;
   recording: RecordingState;
   connCount: number;
   isBusy: boolean;
@@ -102,7 +102,8 @@ export function AppHeader({
       )}
       {snap.phase === "ready" && symbolicationProgress && (
         <span className="app-header-badge app-header-badge--warn">
-          Symbolicating {symbolicationProgress.completed}/{symbolicationProgress.total} frames
+          Symbolication: {symbolicationProgress.resolved}/{symbolicationProgress.total} resolved
+          ({symbolicationProgress.pending} pending)
         </span>
       )}
       {snap.phase === "error" && <span className="app-header-error">{snap.message}</span>}

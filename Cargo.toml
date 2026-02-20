@@ -59,6 +59,7 @@ tokio = { version = "1.49", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 ureq = "2.12"
+addr2line = "0.24"
 rust-embed = "8"
 mime_guess = "2"
 ulid = "1"

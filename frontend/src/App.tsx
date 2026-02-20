@@ -14,6 +14,7 @@ import {
   filterLoners,
   getConnectedSubgraph,
   isPendingFrame,
+  isResolvedFrame,
   type BacktraceIndex,
   type EntityDef,
   type EdgeDef,
@@ -135,7 +136,11 @@ export function App() {
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
-  const [symbolicationProgress, setSymbolicationProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [symbolicationProgress, setSymbolicationProgress] = useState<{
+    resolved: number;
+    pending: number;
+    total: number;
+  } | null>(null);
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
   const [unionFrameLayout, setUnionFrameLayout] = useState<FrameRenderResult | undefined>(undefined);
@@ -459,9 +464,13 @@ export function App() {
         backtracesById: buildBacktraceIndex(snapshot),
       });
       const totalFrames = snapshot.frames.length;
-      const completedFrames = snapshot.frames.filter((record) => !isPendingFrame(record.frame)).length;
-      if (completedFrames < totalFrames) {
-        setSymbolicationProgress({ completed: completedFrames, total: totalFrames });
+      const resolvedFrames = snapshot.frames.filter((record) => isResolvedFrame(record.frame)).length;
+      const pendingFrames = snapshot.frames.filter((record) => isPendingFrame(record.frame)).length;
+      console.info(
+        `[moire:symbolication] snapshot ${snapshot.snapshot_id} initial resolved=${resolvedFrames} pending=${pendingFrames} total=${totalFrames}`,
+      );
+      if (pendingFrames > 0) {
+        setSymbolicationProgress({ resolved: resolvedFrames, pending: pendingFrames, total: totalFrames });
         symbolicationStreamStopRef.current = apiClient.streamSnapshotSymbolication(
           snapshot.snapshot_id,
           (update) => {
@@ -476,23 +485,36 @@ export function App() {
               scopes: extractScopes(next),
               backtracesById: buildBacktraceIndex(next),
             });
-            const doneFrames = next.frames.filter((record) => !isPendingFrame(record.frame)).length;
-            if (doneFrames >= next.frames.length) {
+            const nextResolved = next.frames.filter((record) => isResolvedFrame(record.frame)).length;
+            const nextPending = next.frames.filter((record) => isPendingFrame(record.frame)).length;
+            if (update.done || nextPending === 0) {
               setSymbolicationProgress(null);
+              console.info(
+                `[moire:symbolication] snapshot ${next.snapshot_id} stream done resolved=${nextResolved} pending=${nextPending} total=${next.frames.length}`,
+              );
               if (symbolicationStreamStopRef.current) {
                 symbolicationStreamStopRef.current();
                 symbolicationStreamStopRef.current = null;
               }
             } else {
-              setSymbolicationProgress({ completed: doneFrames, total: next.frames.length });
+              setSymbolicationProgress({
+                resolved: nextResolved,
+                pending: nextPending,
+                total: next.frames.length,
+              });
+              console.info(
+                `[moire:symbolication] snapshot ${next.snapshot_id} progress resolved=${nextResolved} pending=${nextPending} total=${next.frames.length}`,
+              );
             }
           },
           (error) => {
             snapshotLog("symbolication stream failed %O", error);
+            console.warn(`[moire:symbolication] stream failed: ${error.message}`);
           },
         );
       } else {
         setSymbolicationProgress(null);
+        console.info(`[moire:symbolication] snapshot ${snapshot.snapshot_id} no pending frames`);
       }
       snapshotLog("takeSnapshot complete");
     } catch (err) {
@@ -943,8 +965,11 @@ export function App() {
               backtracesById: buildBacktraceIndex(existingSnapshot),
             });
             const totalFrames = existingSnapshot.frames.length;
-            const completedFrames = existingSnapshot.frames.filter((record) => !isPendingFrame(record.frame)).length;
-            setSymbolicationProgress(completedFrames < totalFrames ? { completed: completedFrames, total: totalFrames } : null);
+            const resolvedFrames = existingSnapshot.frames.filter((record) => isResolvedFrame(record.frame)).length;
+            const pendingFrames = existingSnapshot.frames.filter((record) => isPendingFrame(record.frame)).length;
+            setSymbolicationProgress(
+              pendingFrames > 0 ? { resolved: resolvedFrames, pending: pendingFrames, total: totalFrames } : null,
+            );
             appLog("startup poll done using existing snapshot");
             break;
           }

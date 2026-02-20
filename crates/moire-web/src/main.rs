@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{self, Body, Bytes};
@@ -33,7 +33,7 @@ use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Child;
-use tokio::sync::{mpsc, Mutex, Notify, Semaphore};
+use tokio::sync::{mpsc, Mutex, Notify};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
@@ -143,9 +143,9 @@ const DB_SCHEMA_VERSION: i64 = 4;
 const DEFAULT_VITE_ADDR: &str = "[::]:9131";
 const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
-const EAGER_SYMBOLICATION_CONCURRENCY: usize = 1;
-const SYMBOLICATION_UNRESOLVED_SCAFFOLD: &str =
-    "symbolication engine not wired: eager scaffold stored unresolved marker";
+const SYMBOLICATION_STREAM_STALL_TICKS_LIMIT: u32 = 100;
+const SYMBOLICATION_UNRESOLVED_STALLED: &str =
+    "symbolication stalled: no progress before stream timeout";
 const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
     "std",
     "core",
@@ -525,6 +525,10 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
             .map(|entry| entry.pairs.clone())
     };
     let Some(pairs) = pairs else {
+        warn!(
+            snapshot_id,
+            "symbolication stream requested for unknown snapshot id"
+        );
         let update = SnapshotSymbolicationUpdate {
             snapshot_id,
             total_frames: 0,
@@ -538,10 +542,19 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
         return;
     };
 
+    info!(
+        snapshot_id,
+        backtrace_pairs = pairs.len(),
+        "symbolication stream opened"
+    );
     let mut previous_frames: BTreeMap<u64, SnapshotBacktraceFrame> = BTreeMap::new();
     let mut previous_completed = 0usize;
+    let mut unchanged_ticks = 0u32;
 
     loop {
+        if let Err(e) = symbolicate_pending_frames_for_pairs(state.db_path.clone(), &pairs).await {
+            warn!(snapshot_id, %e, "symbolication pass failed");
+        }
         let table = load_snapshot_backtrace_table(state.db_path.clone(), &pairs).await;
         let completed = table
             .frames
@@ -549,6 +562,13 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
             .filter(|record| !is_pending_frame(&record.frame))
             .count();
         let total = table.frames.len();
+        let resolved = table
+            .frames
+            .iter()
+            .filter(|record| is_resolved_frame(&record.frame))
+            .count();
+        let pending = total.saturating_sub(completed);
+        let unresolved = total.saturating_sub(resolved).saturating_sub(pending);
 
         let mut updated_frames = Vec::new();
         for record in &table.frames {
@@ -559,6 +579,7 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
         }
 
         if !updated_frames.is_empty() || completed != previous_completed {
+            unchanged_ticks = 0;
             let update = SnapshotSymbolicationUpdate {
                 snapshot_id,
                 total_frames: total as u32,
@@ -574,6 +595,84 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
                 }
             };
             if socket.send(Message::Text(payload.into())).await.is_err() {
+                info!(snapshot_id, "symbolication stream client disconnected");
+                break;
+            }
+            info!(
+                snapshot_id,
+                completed_frames = completed,
+                total_frames = total,
+                resolved_frames = resolved,
+                unresolved_frames = unresolved,
+                pending_frames = pending,
+                updated_frame_count = update.updated_frames.len(),
+                done = update.done,
+                "symbolication stream update sent"
+            );
+        } else {
+            unchanged_ticks = unchanged_ticks.saturating_add(1);
+            if unchanged_ticks % 30 == 0 {
+                info!(
+                    snapshot_id,
+                    completed_frames = completed,
+                    total_frames = total,
+                    resolved_frames = resolved,
+                    unresolved_frames = unresolved,
+                    pending_frames = pending,
+                    unchanged_ticks,
+                    "symbolication stream stalled waiting for more frame updates"
+                );
+            }
+            if unchanged_ticks >= SYMBOLICATION_STREAM_STALL_TICKS_LIMIT {
+                let forced_updates: Vec<SnapshotFrameRecord> = table
+                    .frames
+                    .iter()
+                    .filter_map(|record| match &record.frame {
+                        SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved {
+                            module_path,
+                            rel_pc,
+                            reason,
+                        }) if reason == "symbolication pending" => Some(SnapshotFrameRecord {
+                            frame_id: record.frame_id,
+                            frame: SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved {
+                                module_path: module_path.clone(),
+                                rel_pc: *rel_pc,
+                                reason: String::from(SYMBOLICATION_UNRESOLVED_STALLED),
+                            }),
+                        }),
+                        _ => None,
+                    })
+                    .collect();
+                warn!(
+                    snapshot_id,
+                    total_frames = total,
+                    completed_frames = completed,
+                    resolved_frames = resolved,
+                    unresolved_frames = unresolved,
+                    pending_frames = pending,
+                    forced_unresolved_frames = forced_updates.len(),
+                    unchanged_ticks,
+                    "symbolication stream forcing completion after prolonged stall"
+                );
+                let update = SnapshotSymbolicationUpdate {
+                    snapshot_id,
+                    total_frames: total as u32,
+                    completed_frames: total as u32,
+                    done: true,
+                    updated_frames: forced_updates,
+                };
+                match facet_json::to_string(&update) {
+                    Ok(payload) => {
+                        let _ = socket.send(Message::Text(payload.into())).await;
+                    }
+                    Err(e) => {
+                        warn!(
+                            snapshot_id,
+                            %e,
+                            "failed to encode forced symbolication completion update"
+                        );
+                    }
+                }
                 break;
             }
         }
@@ -586,6 +685,11 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
         previous_completed = completed;
 
         if completed == total {
+            info!(
+                snapshot_id,
+                total_frames = total,
+                "symbolication stream complete"
+            );
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -807,6 +911,32 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     let table = load_snapshot_backtrace_table(state.db_path.clone(), &pairs).await;
     response.backtraces = table.backtraces;
     response.frames = table.frames;
+    let completed_frames = response
+        .frames
+        .iter()
+        .filter(|record| !is_pending_frame(&record.frame))
+        .count();
+    let resolved_frames = response
+        .frames
+        .iter()
+        .filter(|record| is_resolved_frame(&record.frame))
+        .count();
+    let pending_frames = response.frames.len().saturating_sub(completed_frames);
+    let unresolved_frames = response
+        .frames
+        .len()
+        .saturating_sub(resolved_frames)
+        .saturating_sub(pending_frames);
+    info!(
+        snapshot_id,
+        backtrace_count = response.backtraces.len(),
+        frame_count = response.frames.len(),
+        completed_frames,
+        resolved_frames,
+        unresolved_frames,
+        pending_frames,
+        "snapshot backtrace/frame table assembled"
+    );
     remember_snapshot(state, &response).await;
     response
 }
@@ -869,6 +999,10 @@ fn is_pending_frame(frame: &SnapshotBacktraceFrame) -> bool {
         SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved { reason, .. })
         if reason == "symbolication pending"
     )
+}
+
+fn is_resolved_frame(frame: &SnapshotBacktraceFrame) -> bool {
+    matches!(frame, SnapshotBacktraceFrame::Resolved(_))
 }
 
 fn frame_resolution_rank(frame: &SnapshotBacktraceFrame) -> u8 {
@@ -2098,10 +2232,8 @@ async fn read_messages(
                 let inserted =
                     persist_backtrace_record(state.db_path.clone(), conn_id, backtrace_id, frames)
                         .await?;
-                if inserted {
-                    // r[impl symbolicate.eager]
-                    // r[impl symbolicate.parallel]
-                    schedule_eager_symbolication(state.db_path.clone(), conn_id, backtrace_id);
+                if !inserted {
+                    debug!(conn_id, backtrace_id, "backtrace already existed in storage");
                 }
             }
         }
@@ -2161,19 +2293,17 @@ fn backtrace_frames_for_store(
     for (frame_index, frame) in record.frames.iter().enumerate() {
         let module_id = frame.module_id.get();
         let module_idx = (module_id - 1) as usize;
-        let (module_path, module_identity) = if let Some(module) = module_manifest.get(module_idx) {
-            (module.module_path.clone(), module.module_identity.clone())
-        } else {
-            (
-                format!("<unknown-module-id:{module_id}>"),
-                String::from("unknown"),
-            )
+        let Some(module) = module_manifest.get(module_idx) else {
+            return Err(format!(
+                "invariant violated: backtrace frame {frame_index} references module_id {module_id}, but manifest has {} entries",
+                module_manifest.len()
+            ));
         };
         frames.push(BacktraceFramePersist {
             frame_index: frame_index as u32,
             rel_pc: frame.rel_pc,
-            module_path,
-            module_identity,
+            module_path: module.module_path.clone(),
+            module_identity: module.module_identity.clone(),
         });
     }
     Ok(frames)
@@ -2894,52 +3024,6 @@ async fn persist_backtrace_record(
     .map_err(|e| format!("join sqlite: {e}"))?
 }
 
-fn schedule_eager_symbolication(db_path: Arc<PathBuf>, conn_id: u64, backtrace_id: u64) {
-    tokio::spawn(async move {
-        let permit = eager_symbolication_semaphore()
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|e| format!("acquire eager symbolication permit: {e}"));
-        let permit = match permit {
-            Ok(permit) => permit,
-            Err(e) => {
-                error!(conn_id, backtrace_id, error = %e, "eager symbolication scheduling failed");
-                return;
-            }
-        };
-
-        let blocking = tokio::task::spawn_blocking(move || {
-            eager_symbolicate_backtrace_blocking(&db_path, conn_id, backtrace_id)
-        });
-        match blocking.await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                error!(
-                    conn_id,
-                    backtrace_id,
-                    error = %e,
-                    "eager symbolication failed"
-                );
-            }
-            Err(e) => {
-                error!(
-                    conn_id,
-                    backtrace_id,
-                    error = %e,
-                    "eager symbolication worker join failure"
-                );
-            }
-        }
-        drop(permit);
-    });
-}
-
-fn eager_symbolication_semaphore() -> &'static Arc<Semaphore> {
-    static SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
-    SEMAPHORE.get_or_init(|| Arc::new(Semaphore::new(EAGER_SYMBOLICATION_CONCURRENCY)))
-}
-
 struct SymbolicationCacheEntry {
     status: String,
     function_name: Option<String>,
@@ -2951,11 +3035,39 @@ struct SymbolicationCacheEntry {
     unresolved_reason: Option<String>,
 }
 
-fn eager_symbolicate_backtrace_blocking(
-    db_path: &PathBuf,
+#[derive(Clone)]
+struct PendingFrameJob {
     conn_id: u64,
     backtrace_id: u64,
-) -> Result<(), String> {
+    frame_index: u32,
+    module_path: String,
+    module_identity: String,
+    rel_pc: u64,
+}
+
+enum ModuleSymbolizerState {
+    Ready(addr2line::Loader),
+    Failed(String),
+}
+
+async fn symbolicate_pending_frames_for_pairs(
+    db_path: Arc<PathBuf>,
+    pairs: &[(u64, u64)],
+) -> Result<usize, String> {
+    if pairs.is_empty() {
+        return Ok(0);
+    }
+    let pairs = pairs.to_vec();
+    tokio::task::spawn_blocking(move || symbolicate_pending_frames_for_pairs_blocking(&db_path, &pairs))
+        .await
+        .map_err(|e| format!("join symbolication worker: {e}"))?
+}
+
+fn symbolicate_pending_frames_for_pairs_blocking(
+    db_path: &PathBuf,
+    pairs: &[(u64, u64)],
+) -> Result<usize, String> {
+    let started = Instant::now();
     let mut conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
     conn.busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .map_err(|e| format!("set sqlite busy_timeout: {e}"))?;
@@ -2963,72 +3075,220 @@ fn eager_symbolicate_backtrace_blocking(
         .transaction()
         .map_err(|e| format!("start transaction: {e}"))?;
 
-    let frames: Vec<BacktraceFramePersist> = {
-        let mut frames_stmt = tx
-            .prepare(
-                "SELECT frame_index, module_path, module_identity, rel_pc
-                 FROM backtrace_frames
-                 WHERE conn_id = ?1 AND backtrace_id = ?2
-                 ORDER BY frame_index ASC",
-            )
-            .map_err(|e| format!("prepare backtrace_frames: {e}"))?;
-        let mapped_rows = frames_stmt
+    let mut pending_stmt = tx
+        .prepare(
+            "SELECT bf.conn_id, bf.backtrace_id, bf.frame_index, bf.module_path, bf.module_identity, bf.rel_pc
+             FROM backtrace_frames bf
+             LEFT JOIN symbolicated_frames sf
+                ON sf.conn_id = bf.conn_id
+               AND sf.backtrace_id = bf.backtrace_id
+               AND sf.frame_index = bf.frame_index
+             WHERE bf.conn_id = ?1
+               AND bf.backtrace_id = ?2
+               AND sf.conn_id IS NULL
+             ORDER BY bf.frame_index ASC",
+        )
+        .map_err(|e| format!("prepare pending frame query: {e}"))?;
+
+    let mut module_cache: HashMap<String, ModuleSymbolizerState> = HashMap::new();
+    let mut processed = 0usize;
+    for (conn_id, backtrace_id) in pairs {
+        let jobs = pending_stmt
             .query_map(
-                params![to_i64_u64(conn_id), to_i64_u64(backtrace_id)],
+                params![to_i64_u64(*conn_id), to_i64_u64(*backtrace_id)],
                 |row| {
-                    Ok(BacktraceFramePersist {
-                        frame_index: row.get::<_, i64>(0)? as u32,
-                        module_path: row.get::<_, String>(1)?,
-                        module_identity: row.get::<_, String>(2)?,
-                        rel_pc: row.get::<_, i64>(3)? as u64,
+                    Ok(PendingFrameJob {
+                        conn_id: row.get::<_, i64>(0)? as u64,
+                        backtrace_id: row.get::<_, i64>(1)? as u64,
+                        frame_index: row.get::<_, i64>(2)? as u32,
+                        module_path: row.get(3)?,
+                        module_identity: row.get(4)?,
+                        rel_pc: row.get::<_, i64>(5)? as u64,
                     })
                 },
             )
-            .map_err(|e| format!("query backtrace_frames: {e}"))?;
-        let frames = mapped_rows
+            .map_err(|e| format!("query pending frame rows: {e}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("read backtrace_frames row: {e}"))?;
-        frames
+            .map_err(|e| format!("read pending frame row: {e}"))?;
+
+        for job in &jobs {
+            let cache = if job.module_identity != "unknown" {
+                if let Some(hit) =
+                    lookup_symbolication_cache(&tx, job.module_identity.as_str(), job.rel_pc)?
+                {
+                    hit
+                } else {
+                    let resolved = resolve_frame_symbolication(job, &mut module_cache);
+                    upsert_symbolication_cache(
+                        &tx,
+                        job.module_identity.as_str(),
+                        job.rel_pc,
+                        &resolved,
+                    )?;
+                    resolved
+                }
+            } else {
+                resolve_frame_symbolication(job, &mut module_cache)
+            };
+            upsert_symbolicated_frame(
+                &tx,
+                job.conn_id,
+                job.backtrace_id,
+                job.frame_index,
+                job.module_path.as_str(),
+                job.rel_pc,
+                &cache,
+            )?;
+            processed += 1;
+        }
+        if !jobs.is_empty() {
+            update_top_application_frame(&tx, *conn_id, *backtrace_id)?;
+        }
+    }
+
+    drop(pending_stmt);
+    tx.commit()
+        .map_err(|e| format!("commit symbolication pass: {e}"))?;
+    if processed > 0 {
+        info!(
+            processed_frames = processed,
+            module_cache_entries = module_cache.len(),
+            elapsed_ms = started.elapsed().as_millis(),
+            "symbolication pass completed"
+        );
+    }
+    Ok(processed)
+}
+
+fn resolve_frame_symbolication(
+    job: &PendingFrameJob,
+    module_cache: &mut HashMap<String, ModuleSymbolizerState>,
+) -> SymbolicationCacheEntry {
+    let unresolved = |reason: String| SymbolicationCacheEntry {
+        status: String::from("unresolved"),
+        function_name: None,
+        crate_name: None,
+        crate_module_path: None,
+        source_file_path: None,
+        source_line: None,
+        source_col: None,
+        unresolved_reason: Some(reason),
     };
-    if frames.is_empty() {
-        return Err(format!(
-            "invariant violated: eager symbolication requested for missing backtrace {backtrace_id} on conn {conn_id}"
+    if job.module_path.starts_with("<unknown-module-id:") {
+        return unresolved(format!(
+            "module id not found in module manifest: {}",
+            job.module_path
         ));
     }
 
-    for frame in &frames {
-        // r[impl symbolicate.result]
-        let cache = lookup_symbolication_cache(&tx, frame.module_identity.as_str(), frame.rel_pc)?
-            .unwrap_or_else(|| {
-                // r[impl symbolicate.hard-failure]
-                SymbolicationCacheEntry {
-                    status: "unresolved".to_string(),
-                    function_name: None,
-                    crate_name: None,
-                    crate_module_path: None,
-                    source_file_path: None,
-                    source_line: None,
-                    source_col: None,
-                    unresolved_reason: Some(SYMBOLICATION_UNRESOLVED_SCAFFOLD.to_string()),
+    let state = module_cache
+        .entry(job.module_path.clone())
+        .or_insert_with(|| match addr2line::Loader::new(job.module_path.as_str()) {
+            Ok(loader) => ModuleSymbolizerState::Ready(loader),
+            Err(e) => ModuleSymbolizerState::Failed(format!(
+                "open debug object '{}': {e}",
+                job.module_path
+            )),
+        });
+
+    let ModuleSymbolizerState::Ready(loader) = state else {
+        let ModuleSymbolizerState::Failed(reason) = state else {
+            unreachable!()
+        };
+        return unresolved(reason.clone());
+    };
+
+    let lookup_pc = job.rel_pc.saturating_sub(1);
+    let mut function_name = None::<String>;
+    let mut source_file = None::<String>;
+    let mut source_line = None::<i64>;
+    let mut source_col = None::<i64>;
+
+    let mut frames = match loader.find_frames(lookup_pc) {
+        Ok(frames) => frames,
+        Err(e) => {
+            return unresolved(format!(
+                "lookup frames for '{}' +0x{:x}: {e}",
+                job.module_path, job.rel_pc
+            ))
+        }
+    };
+
+    loop {
+        match frames.next() {
+            Ok(Some(frame)) => {
+                if function_name.is_none() {
+                    if let Some(function) = frame.function {
+                        match function.raw_name() {
+                            Ok(name) => function_name = Some(name.into_owned()),
+                            Err(e) => {
+                                return unresolved(format!(
+                                    "decode function name for '{}' +0x{:x}: {e}",
+                                    job.module_path, job.rel_pc
+                                ))
+                            }
+                        }
+                    }
                 }
-            });
-        upsert_symbolication_cache(&tx, frame.module_identity.as_str(), frame.rel_pc, &cache)?;
-        upsert_symbolicated_frame(
-            &tx,
-            conn_id,
-            backtrace_id,
-            frame.frame_index,
-            frame.module_path.as_str(),
-            frame.rel_pc,
-            &cache,
-        )?;
+                if source_file.is_none() {
+                    if let Some(location) = frame.location {
+                        if let Some(path) = location.file {
+                            source_file = Some(path.to_string());
+                            source_line = location.line.map(i64::from);
+                            source_col = location.column.map(i64::from);
+                        }
+                    }
+                }
+                if function_name.is_some() && source_file.is_some() {
+                    break;
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                return unresolved(format!(
+                    "iterate frames for '{}' +0x{:x}: {e}",
+                    job.module_path, job.rel_pc
+                ))
+            }
+        }
     }
 
-    // r[impl symbolicate.top-frame]
-    update_top_application_frame(&tx, conn_id, backtrace_id)?;
-    tx.commit()
-        .map_err(|e| format!("commit eager symbolication: {e}"))?;
-    Ok(())
+    let Some(source_file_path) = source_file else {
+        return unresolved(format!(
+            "no source location in debug info for '{}' +0x{:x}",
+            job.module_path, job.rel_pc
+        ));
+    };
+    let function_name = function_name.unwrap_or_else(|| {
+        format!(
+            "{}+0x{:x}",
+            job.module_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(job.module_path.as_str()),
+            job.rel_pc
+        )
+    });
+    let crate_name = function_name
+        .split("::")
+        .next()
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty());
+    let crate_module_path = if function_name.contains("::") {
+        Some(function_name.clone())
+    } else {
+        None
+    };
+    SymbolicationCacheEntry {
+        status: String::from("resolved"),
+        function_name: Some(function_name),
+        crate_name,
+        crate_module_path,
+        source_file_path: Some(source_file_path),
+        source_line,
+        source_col,
+        unresolved_reason: None,
+    }
 }
 
 fn lookup_symbolication_cache(
