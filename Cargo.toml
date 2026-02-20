@@ -9,6 +9,7 @@ members = [
   "crates/moire-cli",
   "crates/moire-web",
   "crates/moire-types",
+  "crates/moire-trace-types",
   "crates/moire-wire",
   "crates/moire-sqlite-facet",
   "crates/moire-examples",
@@ -32,6 +33,7 @@ moire-runtime = { path = "crates/moire-runtime" }
 moire-source = { path = "crates/moire-source" }
 moire-web = { path = "crates/moire-web" }
 moire-types = { path = "crates/moire-types" }
+moire-trace-types = { path = "crates/moire-trace-types" }
 moire-wire = { path = "crates/moire-wire" }
 moire-sqlite-facet = { path = "crates/moire-sqlite-facet" }
 

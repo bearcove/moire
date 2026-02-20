@@ -64,6 +64,13 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
     let handshake = ClientMessage::Handshake(moire_wire::Handshake {
         process_name: process_name.clone(),
         pid: std::process::id(),
+        trace_capabilities: moire_wire::TraceCapabilities {
+            trace_v1: false,
+            requires_frame_pointers: false,
+            sampling_supported: false,
+            alloc_tracking_supported: false,
+        },
+        module_manifest: vec![],
     });
     write_client_message(&mut writer, &handshake).await?;
 

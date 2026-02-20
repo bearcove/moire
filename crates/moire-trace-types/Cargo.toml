@@ -1,0 +1,8 @@
+[package]
+name = "moire-trace-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+facet.workspace = true

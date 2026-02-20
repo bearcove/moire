@@ -113,9 +113,28 @@ pub fn decode_frame_default(frame: &[u8]) -> Result<&[u8], FrameCodecError> {
 }
 
 #[derive(Facet)]
+pub struct TraceCapabilities {
+    pub trace_v1: bool,
+    pub requires_frame_pointers: bool,
+    pub sampling_supported: bool,
+    pub alloc_tracking_supported: bool,
+}
+
+#[derive(Facet)]
+pub struct ModuleManifestEntry {
+    pub module_path: String,
+    pub runtime_base: u64,
+    pub build_id: String,
+    pub debug_id: String,
+    pub arch: String,
+}
+
+#[derive(Facet)]
 pub struct Handshake {
     pub process_name: String,
     pub pid: u32,
+    pub trace_capabilities: TraceCapabilities,
+    pub module_manifest: Vec<ModuleManifestEntry>,
 }
 
 #[derive(Facet)]
@@ -236,10 +255,23 @@ mod tests {
         let json = client_payload_json(&ClientMessage::Handshake(Handshake {
             process_name: "vixenfs-swift".into(),
             pid: 42,
+            trace_capabilities: TraceCapabilities {
+                trace_v1: true,
+                requires_frame_pointers: true,
+                sampling_supported: false,
+                alloc_tracking_supported: false,
+            },
+            module_manifest: vec![ModuleManifestEntry {
+                module_path: "/usr/lib/libvixenfs_swift.dylib".into(),
+                runtime_base: 4_294_967_296,
+                build_id: "buildid:abc123".into(),
+                debug_id: "debugid:def456".into(),
+                arch: "aarch64".into(),
+            }],
         }));
         assert_eq!(
             json,
-            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42}}"#
+            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42,"trace_capabilities":{"trace_v1":true,"requires_frame_pointers":true,"sampling_supported":false,"alloc_tracking_supported":false},"module_manifest":[{"module_path":"/usr/lib/libvixenfs_swift.dylib","runtime_base":4294967296,"build_id":"buildid:abc123","debug_id":"debugid:def456","arch":"aarch64"}]}}"#
         );
     }
 
