@@ -22,8 +22,8 @@ use moire_types::{
     SnapshotCutResponse, SqlRequest, SqlResponse, TimedOutProcess, TriggerCutResponse,
 };
 use moire_wire::{
-    encode_server_message_default, Handshake, ModuleIdentity, ModuleManifestEntry, ServerMessage,
-    SnapshotReply, SnapshotRequest,
+    decode_protocol_magic, encode_server_message_default, Handshake, ModuleIdentity,
+    ModuleManifestEntry, ServerMessage, SnapshotReply, SnapshotRequest,
 };
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -1607,6 +1607,14 @@ async fn read_messages(
     reader: &mut tokio::net::tcp::OwnedReadHalf,
     state: &AppState,
 ) -> Result<(), String> {
+    // r[impl wire.magic]
+    let mut magic = [0u8; 4];
+    reader
+        .read_exact(&mut magic)
+        .await
+        .map_err(|e| format!("read protocol magic: {e}"))?;
+    decode_protocol_magic(magic).map_err(|e| format!("invalid protocol magic: {e}"))?;
+
     loop {
         let mut len_buf = [0u8; 4];
         if let Err(e) = reader.read_exact(&mut len_buf).await {

@@ -94,60 +94,58 @@ impl<T> Receiver<T> {
     }
 }
 
-/// Unbounded sender.
-pub type UnboundedSender<T> = Sender<T>;
-/// Unbounded receiver.
-pub type UnboundedReceiver<T> = Receiver<T>;
+/// Instrumented mpsc channel primitives (wasm no-op backend).
+pub mod mpsc {
+    use super::{Receiver, Sender};
 
-/// Oneshot sender.
-pub use futures_channel::oneshot::Sender as OneshotSender;
+    /// Unbounded sender — alias for [`Sender`].
+    pub type UnboundedSender<T> = Sender<T>;
+    /// Unbounded receiver — alias for [`Receiver`].
+    pub type UnboundedReceiver<T> = Receiver<T>;
 
-/// Wrapper around `futures-channel` oneshot receiver for API parity.
-pub struct OneshotReceiver<T>(futures_channel::oneshot::Receiver<T>);
-
-impl<T> OneshotReceiver<T> {
-    pub async fn recv(self) -> Result<T, futures_channel::oneshot::Canceled> {
-        self.0.await
+    /// Create a bounded mpsc channel.
+    pub fn channel<T>(_name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
+        let (tx, rx) = async_channel::bounded(buffer);
+        (Sender(tx), Receiver(rx))
     }
 
-    pub fn try_recv(&mut self) -> Result<Option<T>, futures_channel::oneshot::Canceled> {
-        self.0.try_recv()
+    /// Create an unbounded mpsc channel.
+    pub fn unbounded_channel<T>(
+        _name: impl Into<String>,
+    ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+        let (tx, rx) = async_channel::unbounded();
+        (Sender(tx), Receiver(rx))
     }
 }
 
-/// Create a bounded mpsc channel.
-pub fn channel<T>(_name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
-    let (tx, rx) = async_channel::bounded(buffer);
-    (Sender(tx), Receiver(rx))
-}
+/// Instrumented oneshot channel primitives (wasm no-op backend).
+pub mod oneshot {
+    /// Oneshot sender.
+    pub use futures_channel::oneshot::Sender;
 
-/// Alias for `channel`.
-pub fn bounded<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
-    channel(name, buffer)
-}
+    /// Wrapper around `futures-channel` oneshot receiver for API parity.
+    pub struct Receiver<T>(futures_channel::oneshot::Receiver<T>);
 
-/// Create an unbounded mpsc channel.
-pub fn unbounded_channel<T>(
-    _name: impl Into<String>,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    let (tx, rx) = async_channel::unbounded();
-    (Sender(tx), Receiver(rx))
-}
+    impl<T> std::future::IntoFuture for Receiver<T> {
+        type Output = Result<T, futures_channel::oneshot::Canceled>;
+        type IntoFuture = futures_channel::oneshot::Receiver<T>;
 
-/// Alias for `unbounded_channel`.
-pub fn unbounded<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    unbounded_channel(name)
-}
+        fn into_future(self) -> Self::IntoFuture {
+            self.0
+        }
+    }
 
-/// Create a oneshot channel.
-pub fn oneshot<T>(_name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let (tx, rx) = futures_channel::oneshot::channel();
-    (tx, OneshotReceiver(rx))
-}
+    impl<T> Receiver<T> {
+        pub fn try_recv(&mut self) -> Result<Option<T>, futures_channel::oneshot::Canceled> {
+            self.0.try_recv()
+        }
+    }
 
-/// Alias for `oneshot`.
-pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    oneshot(name)
+    /// Create a oneshot channel.
+    pub fn channel<T>(_name: impl Into<String>) -> (Sender<T>, Receiver<T>) {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        (tx, Receiver(rx))
+    }
 }
 
 /// Handle that can be used to abort a spawned task.

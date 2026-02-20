@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::scenarios::spawn_tracked;
 use moire::sync::mpsc::channel;
-use moire::sync::oneshot::{oneshot, OneshotSender};
+use moire::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use moire::sync::Mutex;
 
 type RequestId = u64;
@@ -27,7 +27,7 @@ pub async fn run() -> Result<(), String> {
     let pending_for_request = Arc::clone(&pending_by_request_id);
     spawn_tracked("client.request_42.await_response", async move {
         let request_id = 42_u64;
-        let (tx, rx) = oneshot("demo.request_42.response");
+        let (tx, rx) = oneshot_channel("demo.request_42.response");
 
         let storage_key = storage_key_for_request(request_id);
         pending_for_request.lock().insert(storage_key, tx);

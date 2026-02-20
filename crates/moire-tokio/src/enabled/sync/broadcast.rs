@@ -11,7 +11,7 @@ use tokio::sync::broadcast;
 /// Instrumented version of [`tokio::sync::broadcast::Sender`].
 ///
 /// This wraps the Tokio broadcast sender and records send/subscribe lifecycle.
-pub struct BroadcastSender<T> {
+pub struct Sender<T> {
     inner: tokio::sync::broadcast::Sender<T>,
     handle: EntityHandle<moire_types::BroadcastTx>,
 }
@@ -19,13 +19,13 @@ pub struct BroadcastSender<T> {
 /// Instrumented version of [`tokio::sync::broadcast::Receiver`].
 ///
 /// This wraps the Tokio broadcast receiver and records message receive events.
-pub struct BroadcastReceiver<T> {
+pub struct Receiver<T> {
     inner: tokio::sync::broadcast::Receiver<T>,
     handle: EntityHandle<moire_types::BroadcastRx>,
     tx_handle: WeakEntityHandle<moire_types::BroadcastTx>,
 }
 
-impl<T> Clone for BroadcastSender<T> {
+impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -34,7 +34,7 @@ impl<T> Clone for BroadcastSender<T> {
     }
 }
 
-impl<T: Clone> Clone for BroadcastReceiver<T> {
+impl<T: Clone> Clone for Receiver<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.resubscribe(),
@@ -44,17 +44,17 @@ impl<T: Clone> Clone for BroadcastReceiver<T> {
     }
 }
 
-impl<T: Clone> BroadcastSender<T> {
+impl<T: Clone> Sender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastTx> {
         &self.handle
     }
     /// Subscribes a receiver, equivalent to [`tokio::sync::broadcast::Sender::subscribe`].
-    pub fn subscribe(&self) -> BroadcastReceiver<T> {
+    pub fn subscribe(&self) -> Receiver<T> {
         let handle = EntityHandle::new("broadcast:rx.subscribe", BroadcastRxEntity { lag: 0 });
         self.handle
             .link_to_handle(&handle, EdgeKind::PairedWith);
-        BroadcastReceiver {
+        Receiver {
             inner: self.inner.subscribe(),
             handle,
             tx_handle: self.handle.downgrade(),
@@ -72,7 +72,7 @@ impl<T: Clone> BroadcastSender<T> {
     }
 }
 
-impl<T: Clone> BroadcastReceiver<T> {
+impl<T: Clone> Receiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastRx> {
         &self.handle
@@ -107,12 +107,12 @@ impl<T: Clone> BroadcastReceiver<T> {
 }
 
 /// Creates an instrumented broadcast channel, matching [`tokio::sync::broadcast::channel`].
-pub fn broadcast<T: Clone>(
+pub fn channel<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
-) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+) -> (Sender<T>, Receiver<T>) {
         let name = name.into();
-    let (tx, rx) = broadcast::channel(capacity);
+    let (tx, rx) = tokio::sync::broadcast::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
     let tx_handle = EntityHandle::new(
@@ -130,11 +130,11 @@ pub fn broadcast<T: Clone>(
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
-        BroadcastSender {
+        Sender {
             inner: tx,
             handle: tx_handle.clone(),
         },
-        BroadcastReceiver {
+        Receiver {
             inner: rx,
             handle: rx_handle,
             tx_handle: tx_handle.downgrade(),
@@ -142,7 +142,7 @@ pub fn broadcast<T: Clone>(
     )
 }
 
-impl<T: Clone> AsEntityRef for BroadcastSender<T> {
+impl<T: Clone> AsEntityRef for Sender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
     }

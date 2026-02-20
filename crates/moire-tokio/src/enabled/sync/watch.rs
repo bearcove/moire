@@ -12,7 +12,7 @@ use tokio::sync::watch;
 /// Instrumented version of [`tokio::sync::watch::Sender`].
 ///
 /// Records watch state transitions and notifications for diagnostics.
-pub struct WatchSender<T> {
+pub struct Sender<T> {
     inner: tokio::sync::watch::Sender<T>,
     handle: EntityHandle<moire_types::WatchTx>,
 }
@@ -20,13 +20,13 @@ pub struct WatchSender<T> {
 /// Instrumented version of [`tokio::sync::watch::Receiver`].
 ///
 /// Tracks observed values and change notifications for diagnostics.
-pub struct WatchReceiver<T> {
+pub struct Receiver<T> {
     inner: tokio::sync::watch::Receiver<T>,
     handle: EntityHandle<moire_types::WatchRx>,
     tx_handle: WeakEntityHandle<moire_types::WatchTx>,
 }
 
-impl<T> Clone for WatchSender<T> {
+impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -35,7 +35,7 @@ impl<T> Clone for WatchSender<T> {
     }
 }
 
-impl<T> Clone for WatchReceiver<T> {
+impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -45,7 +45,7 @@ impl<T> Clone for WatchReceiver<T> {
     }
 }
 
-impl<T: Clone> WatchSender<T> {
+impl<T: Clone> Sender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::WatchTx> {
         &self.handle
@@ -85,11 +85,11 @@ impl<T: Clone> WatchSender<T> {
     /// Subscribes a receiver, equivalent to [`tokio::sync::watch::Sender::subscribe`].
     ///
     /// Returns a linked sender/receiver pair with diagnostic metadata.
-    pub fn subscribe(&self) -> WatchReceiver<T> {
+    pub fn subscribe(&self) -> Receiver<T> {
         let handle = EntityHandle::new("watch:rx.subscribe", WatchRxEntity {});
         self.handle
             .link_to_handle(&handle, EdgeKind::PairedWith);
-        WatchReceiver {
+        Receiver {
             inner: self.inner.subscribe(),
             handle,
             tx_handle: self.handle.downgrade(),
@@ -97,7 +97,7 @@ impl<T: Clone> WatchSender<T> {
     }
 }
 
-impl<T: Clone> WatchReceiver<T> {
+impl<T: Clone> Receiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::WatchRx> {
         &self.handle
@@ -139,9 +139,9 @@ impl<T: Clone> WatchReceiver<T> {
 }
 
 /// Creates an instrumented watch channel, equivalent to [`tokio::sync::watch::channel`].
-pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, WatchReceiver<T>) {
+pub fn channel<T: Clone>(name: impl Into<String>, initial: T) -> (Sender<T>, Receiver<T>) {
         let name = name.into();
-    let (tx, rx) = watch::channel(initial);
+    let (tx, rx) = tokio::sync::watch::channel(initial);
 
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
@@ -158,11 +158,11 @@ pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, 
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
-        WatchSender {
+        Sender {
             inner: tx,
             handle: tx_handle.clone(),
         },
-        WatchReceiver {
+        Receiver {
             inner: rx,
             handle: rx_handle,
             tx_handle: tx_handle.downgrade(),
@@ -170,7 +170,7 @@ pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, 
     )
 }
 
-impl<T: Clone> AsEntityRef for WatchSender<T> {
+impl<T: Clone> AsEntityRef for Sender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
     }

@@ -12,7 +12,7 @@ use tokio::sync::oneshot;
 /// Instrumented version of [`tokio::sync::oneshot::Sender`].
 ///
 /// Tracks send outcome for diagnostics.
-pub struct OneshotSender<T> {
+pub struct Sender<T> {
     inner: Option<tokio::sync::oneshot::Sender<T>>,
     handle: EntityHandle<moire_types::OneshotTx>,
 }
@@ -20,20 +20,20 @@ pub struct OneshotSender<T> {
 /// Instrumented version of [`tokio::sync::oneshot::Receiver`].
 ///
 /// Tracks receive events for diagnostics.
-pub struct OneshotReceiver<T> {
+pub struct Receiver<T> {
     inner: tokio::sync::oneshot::Receiver<T>,
     handle: EntityHandle<moire_types::OneshotRx>,
     _tx_handle: WeakEntityHandle<moire_types::OneshotTx>,
 }
 
-/// Future returned by awaiting an [`OneshotReceiver`].
-pub struct OneshotReceiverFuture<T> {
+/// Future returned by awaiting a [`Receiver`].
+pub struct ReceiverFuture<T> {
     inner: moire_runtime::OperationFuture<tokio::sync::oneshot::Receiver<T>>,
     handle: EntityHandle<moire_types::OneshotRx>,
     _tx_handle: WeakEntityHandle<moire_types::OneshotTx>,
 }
 
-impl<T> Future for OneshotReceiverFuture<T> {
+impl<T> Future for ReceiverFuture<T> {
     type Output = Result<T, oneshot::error::RecvError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -52,12 +52,12 @@ impl<T> Future for OneshotReceiverFuture<T> {
     }
 }
 
-impl<T> IntoFuture for OneshotReceiver<T> {
+impl<T> IntoFuture for Receiver<T> {
     type Output = Result<T, oneshot::error::RecvError>;
-    type IntoFuture = OneshotReceiverFuture<T>;
+    type IntoFuture = ReceiverFuture<T>;
 
     fn into_future(self) -> Self::IntoFuture {
-        OneshotReceiverFuture {
+        ReceiverFuture {
             inner: instrument_operation_on(&self.handle, self.inner),
             handle: self.handle,
             _tx_handle: self._tx_handle,
@@ -65,7 +65,7 @@ impl<T> IntoFuture for OneshotReceiver<T> {
     }
 }
 
-impl<T> OneshotSender<T> {
+impl<T> Sender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotTx> {
         &self.handle
@@ -98,7 +98,7 @@ impl<T> OneshotSender<T> {
     }
 }
 
-impl<T> OneshotReceiver<T> {
+impl<T> Receiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotRx> {
         &self.handle
@@ -106,7 +106,7 @@ impl<T> OneshotReceiver<T> {
 }
 
 /// Creates an instrumented oneshot channel, equivalent to [`tokio::sync::oneshot::channel`].
-pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+pub fn channel<T>(name: impl Into<String>) -> (Sender<T>, Receiver<T>) {
     let name: String = name.into();
     let (tx, rx) = oneshot::channel();
 
@@ -117,11 +117,11 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 
     (
-        OneshotSender {
+        Sender {
             inner: Some(tx),
             handle: tx_handle.clone(),
         },
-        OneshotReceiver {
+        Receiver {
             inner: rx,
             handle: rx_handle,
             _tx_handle: tx_handle.downgrade(),
