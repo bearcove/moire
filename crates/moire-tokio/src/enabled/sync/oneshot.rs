@@ -4,6 +4,9 @@ use moire_runtime::{
     instrument_operation_on, new_event, record_event, EntityHandle, WeakEntityHandle,
 };
 use moire_types::{EdgeKind, EventKind, EventTarget, OneshotRxEntity, OneshotTxEntity};
+use std::future::{Future, IntoFuture};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use tokio::sync::oneshot;
 
 /// Instrumented version of [`tokio::sync::oneshot::Sender`].
@@ -18,9 +21,48 @@ pub struct OneshotSender<T> {
 ///
 /// Tracks receive events for diagnostics.
 pub struct OneshotReceiver<T> {
-    inner: Option<tokio::sync::oneshot::Receiver<T>>,
+    inner: tokio::sync::oneshot::Receiver<T>,
     handle: EntityHandle<moire_types::OneshotRx>,
     _tx_handle: WeakEntityHandle<moire_types::OneshotTx>,
+}
+
+/// Future returned by awaiting an [`OneshotReceiver`].
+pub struct OneshotReceiverFuture<T> {
+    inner: moire_runtime::OperationFuture<tokio::sync::oneshot::Receiver<T>>,
+    handle: EntityHandle<moire_types::OneshotRx>,
+    _tx_handle: WeakEntityHandle<moire_types::OneshotTx>,
+}
+
+impl<T> Future for OneshotReceiverFuture<T> {
+    type Output = Result<T, oneshot::error::RecvError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        match unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(result) => {
+                let event = new_event(
+                    EventTarget::Entity(this.handle.id().clone()),
+                    EventKind::ChannelReceived,
+                );
+                record_event(event);
+                Poll::Ready(result)
+            }
+        }
+    }
+}
+
+impl<T> IntoFuture for OneshotReceiver<T> {
+    type Output = Result<T, oneshot::error::RecvError>;
+    type IntoFuture = OneshotReceiverFuture<T>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        OneshotReceiverFuture {
+            inner: instrument_operation_on(&self.handle, self.inner),
+            handle: self.handle,
+            _tx_handle: self._tx_handle,
+        }
+    }
 }
 
 impl<T> OneshotSender<T> {
@@ -61,18 +103,6 @@ impl<T> OneshotReceiver<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotRx> {
         &self.handle
     }
-    /// Waits for the oneshot message. Tokio's [`tokio::sync::oneshot::Receiver`] implements
-    /// [`Future`] directly; this method is the explicit equivalent.
-    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
-        let inner = self.inner.take().expect("oneshot receiver consumed");
-        let result = instrument_operation_on(&self.handle, inner).await;
-        let event = new_event(
-            EventTarget::Entity(self.handle.id().clone()),
-            EventKind::ChannelReceived,
-        );
-        record_event(event);
-        result
-    }
 }
 
 /// Creates an instrumented oneshot channel, equivalent to [`tokio::sync::oneshot::channel`].
@@ -92,7 +122,7 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
             handle: tx_handle.clone(),
         },
         OneshotReceiver {
-            inner: Some(rx),
+            inner: rx,
             handle: rx_handle,
             _tx_handle: tx_handle.downgrade(),
         },
