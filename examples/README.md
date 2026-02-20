@@ -1,10 +1,10 @@
-# Peeps examples
+# Moire examples
 
-Scenarios are implemented in `crates/peeps-examples/src/scenarios`.
+Scenarios are implemented in `crates/moire-examples/src/scenarios`.
 
 ## Runner
 
-Use the helper launcher to run peeps-web (`--dev`) and one scenario in one command:
+Use the helper launcher to run moire-web (`--dev`) and one scenario in one command:
 
 ```bash
 just ex channel-full-stall
@@ -14,7 +14,7 @@ When you stop the runner (`Ctrl+C`), all child processes are stopped too.
 
 ## 1) Oneshot sender lost in map (`tokio::sync::oneshot`)
 
-Path: `crates/peeps-examples/src/scenarios/oneshot_sender_lost_in_map.rs`
+Path: `crates/moire-examples/src/scenarios/oneshot_sender_lost_in_map.rs`
 
 What it does:
 - Creates a request/response oneshot pair
@@ -31,7 +31,7 @@ Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect `demo.reque
 
 ## 2) Mutex lock-order inversion (`tokio` tasks + blocking mutex)
 
-Path: `crates/peeps-examples/src/scenarios/mutex_lock_order_inversion.rs`
+Path: `crates/moire-examples/src/scenarios/mutex_lock_order_inversion.rs`
 
 What it does:
 - Creates two shared mutexes (`demo.shared.left`, `demo.shared.right`)
@@ -47,7 +47,7 @@ just ex mutex-lock-order-inversion
 
 ## 3) Channel full stall (`tokio::sync::mpsc` behavior)
 
-Path: `crates/peeps-examples/src/scenarios/channel_full_stall.rs`
+Path: `crates/moire-examples/src/scenarios/channel_full_stall.rs`
 
 What it does:
 - Creates a bounded channel with capacity `16`
@@ -62,7 +62,7 @@ just ex channel-full-stall
 
 ## 4) Roam RPC stuck request
 
-Path: `crates/peeps-examples/src/scenarios/roam_rpc_stuck_request.rs`
+Path: `crates/moire-examples/src/scenarios/roam_rpc_stuck_request.rs`
 
 What it does:
 - Starts an in-memory Roam client/server connection
@@ -80,7 +80,7 @@ just ex roam-rpc-stuck-request
 
 ## 5) Semaphore starvation (`tokio::sync::Semaphore`)
 
-Path: `crates/peeps-examples/src/scenarios/semaphore_starvation.rs`
+Path: `crates/moire-examples/src/scenarios/semaphore_starvation.rs`
 
 What it does:
 - Creates a semaphore with one permit
@@ -95,7 +95,7 @@ just ex semaphore-starvation
 
 ## 6) Roam Rust↔Swift stuck request
 
-Path: `crates/peeps-examples/src/scenarios/roam_rust_swift_stuck_request.rs`
+Path: `crates/moire-examples/src/scenarios/roam_rust_swift_stuck_request.rs`
 
 What it does:
 - Rust host starts a TCP listener and spawns a Swift roam-runtime peer (`swift run`)
@@ -111,4 +111,4 @@ just ex roam-rust-swift-stuck-request
 Requirements:
 - Swift toolchain (`swift`) installed locally
 - Local `../roam/swift/roam-runtime` checkout available
-- Swift package files live in `crates/peeps-examples/swift/roam-rust-swift-stuck-request`
+- Swift package files live in `crates/moire-examples/swift/roam-rust-swift-stuck-request`

@@ -21,7 +21,7 @@ In practice, we kept paying complexity tax for a framework that is not our graph
 
 ## Decision
 
-Build a custom graph canvas for peeps.
+Build a custom graph canvas for moire.
 
 Hard requirements:
 

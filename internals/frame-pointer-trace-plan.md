@@ -15,23 +15,23 @@ The PoC proved we can capture raw frames and recover crate/module/function/file/
 - No backward compatibility layer.
 - Require frame pointers for instrumented builds.
 - Do not use `backtrace` crate for capture in production path.
-- Reuse and extend existing wire handshake (`peeps-wire::Handshake`) instead of creating a second protocol.
+- Reuse and extend existing wire handshake (`moire-wire::Handshake`) instead of creating a second protocol.
 - Fail fast on missing module identity or missing symbolication prerequisites.
 
 ## Target Architecture
 
 ### Crates
 
-- `peeps-trace-types`
+- `moire-trace-types`
   - Shared wire/storage types for module identity, frame keys, and interned backtraces.
-- `peeps-trace-capture`
+- `moire-trace-capture`
   - In-process capture and interning.
   - Frame-pointer unwinder (`x86_64` + `aarch64` first).
-- `peeps-trace-symbolicate`
+- `moire-trace-symbolicate`
   - Out-of-process/offline symbolication and symbol cache.
-- `peeps-trace-alloc` (optional feature crate)
+- `moire-trace-alloc` (optional feature crate)
   - Allocation/deallocation capture + pointer attribution table.
-- `peeps-trace-sampler` (optional feature crate)
+- `moire-trace-sampler` (optional feature crate)
   - Thread sampling (every `Tms`) feeding the same backtrace interner.
 
 ### Core Types
@@ -71,14 +71,14 @@ Server behavior:
 
 ### M0 - Schema + Handshake Contract
 
-- [ ] Add `peeps-trace-types` crate with v1 schema.
-- [ ] Extend `peeps-wire::Handshake` to carry trace capabilities + module manifest.
-- [ ] Add strict validation path in `peeps-web` connection setup.
+- [ ] Add `moire-trace-types` crate with v1 schema.
+- [ ] Extend `moire-wire::Handshake` to carry trace capabilities + module manifest.
+- [ ] Add strict validation path in `moire-web` connection setup.
 - [ ] Add explicit connection rejection errors for trace precondition failures.
 
 ### M1 - Frame Pointer Capture Foundation
 
-- [ ] Add `peeps-trace-capture` with arch-specific FP unwinder.
+- [ ] Add `moire-trace-capture` with arch-specific FP unwinder.
 - [ ] Add module registry (`ip -> module_id, rel_pc`) with strict null/overflow checks.
 - [ ] Add `BacktraceId` interner keyed by canonical frame sequence.
 - [ ] Add startup invariant checks for frame-pointer unwind sanity.
@@ -88,7 +88,7 @@ Server behavior:
 
 ### M2 - Symbolication Pipeline
 
-- [ ] Add `peeps-trace-symbolicate` crate.
+- [ ] Add `moire-trace-symbolicate` crate.
 - [ ] Implement `FrameKey -> symbol` resolver with module/debug cache.
 - [ ] Resolve crate/module path + file/line/col, intern resolved frames.
 - [ ] Fail hard on missing module/debug artifacts for declared modules.
@@ -104,14 +104,14 @@ Server behavior:
 
 ### M4 - Allocation Tracking
 
-- [ ] Add `peeps-trace-alloc` with opt-in modes: `off`, `sampled`, `full`.
+- [ ] Add `moire-trace-alloc` with opt-in modes: `off`, `sampled`, `full`.
 - [ ] Track pointer attribution map (`ptr -> alloc backtrace + size/class`).
 - [ ] Capture dealloc events and link back to allocation attribution.
 - [ ] Add strict memory guardrails for attribution map growth.
 
 ### M5 - Sampling Profiler Mode
 
-- [ ] Add `peeps-trace-sampler` for periodic thread stack capture (`Tms`).
+- [ ] Add `moire-trace-sampler` for periodic thread stack capture (`Tms`).
 - [ ] Feed sampled stacks through same `BacktraceId` interner.
 - [ ] Add per-thread/process rate controls and overload backpressure.
 - [ ] Add explicit drop/overflow accounting in emitted telemetry.

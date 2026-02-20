@@ -21,7 +21,7 @@ What we actually care about:
 
 A graph that reads like execution intent:
 
-- actor nodes are intentional (`peeps!` futures/scopes we choose to keep)
+- actor nodes are intentional (`moire!` futures/scopes we choose to keep)
 - resource nodes are stateful runtime resources (channel, semaphore, lock, connection leg)
 - primitive operations are edges (`send`, `recv`, `acquire`, `lock`, etc.)
 
@@ -112,8 +112,8 @@ No dual-write period. No compatibility mode. Land the new model and delete legac
 
 ### Cutover A - Model and runtime
 
-- [x] Define operation-edge metadata schema in `peeps-types` docs/comments.
-- [x] Add helper APIs in `peeps` registry for upsert/update/remove operation edges.
+- [x] Define operation-edge metadata schema in `moire-types` docs/comments.
+- [x] Add helper APIs in `moire` registry for upsert/update/remove operation edges.
 - [x] Channel wrappers emit operation edges (`send`, `recv`, etc.) and stop emitting wrapper-internal future nodes.
 - [ ] Lock/semaphore wrappers emit operation edges (`lock`, `acquire`) and stop emitting wrapper-internal future nodes.
 - [x] Notify/oncecell wrappers emit operation edges for waits and stop emitting wrapper-internal future nodes.

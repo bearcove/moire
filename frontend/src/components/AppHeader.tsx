@@ -70,7 +70,7 @@ export function AppHeader({
         height={16}
         aria-hidden="true"
       />
-      <span className="app-header-title">peeps</span>
+      <span className="app-header-title">moire</span>
       <SegmentedGroup
         aria-label="Primary page"
         value={leftPaneTab}

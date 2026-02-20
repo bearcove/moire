@@ -213,9 +213,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.19.1"
+version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
+checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
 name = "bytes"
@@ -1153,6 +1153,172 @@ dependencies = [
 ]
 
 [[package]]
+name = "moire"
+version = "0.1.0"
+dependencies = [
+ "moire-tokio",
+ "moire-wasm",
+]
+
+[[package]]
+name = "moire-backtrace-poc"
+version = "0.1.0"
+dependencies = [
+ "addr2line 0.24.2",
+ "backtrace",
+ "moire-backtrace-poc-leaf",
+ "moire-backtrace-poc-router",
+ "object 0.36.7",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "moire-backtrace-poc-leaf"
+version = "0.1.0"
+dependencies = [
+ "backtrace",
+ "libc",
+]
+
+[[package]]
+name = "moire-backtrace-poc-router"
+version = "0.1.0"
+dependencies = [
+ "moire-backtrace-poc-leaf",
+]
+
+[[package]]
+name = "moire-cli"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-json",
+ "facet-value",
+ "figue",
+ "ureq",
+]
+
+[[package]]
+name = "moire-examples"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "figue",
+ "libc",
+ "moire",
+ "roam",
+ "roam-stream",
+ "tokio",
+ "ur-taking-me-with-you",
+ "ureq",
+]
+
+[[package]]
+name = "moire-runtime"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-json",
+ "facet-value",
+ "moire-source",
+ "moire-sqlite-facet",
+ "moire-types",
+ "moire-wire",
+ "parking_lot",
+ "tokio",
+]
+
+[[package]]
+name = "moire-source"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "facet",
+ "rusqlite",
+]
+
+[[package]]
+name = "moire-sqlite-facet"
+version = "0.1.0"
+dependencies = [
+ "facet-json",
+ "facet-value",
+ "moire-source",
+ "moire-types",
+ "rusqlite",
+]
+
+[[package]]
+name = "moire-tokio"
+version = "0.1.0"
+dependencies = [
+ "facet-json",
+ "facet-value",
+ "moire-runtime",
+ "moire-source",
+ "moire-types",
+ "moire-wire",
+ "parking_lot",
+ "tokio",
+]
+
+[[package]]
+name = "moire-types"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-format",
+ "facet-json",
+ "facet-value",
+ "moire-source",
+ "rusqlite",
+]
+
+[[package]]
+name = "moire-wasm"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "futures-channel",
+ "futures-util",
+ "gloo-timers",
+ "tokio",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "moire-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "facet",
+ "facet-json",
+ "facet-typescript",
+ "facet-value",
+ "figue",
+ "libc",
+ "moire-sqlite-facet",
+ "moire-types",
+ "moire-wire",
+ "rusqlite",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "ur-taking-me-with-you",
+ "ureq",
+]
+
+[[package]]
+name = "moire-wire"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-json",
+ "moire-types",
+]
+
+[[package]]
 name = "mutants"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1235,68 +1401,16 @@ dependencies = [
 [[package]]
 name = "peeps"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "peeps-tokio",
  "peeps-wasm",
 ]
 
 [[package]]
-name = "peeps-backtrace-poc"
-version = "0.1.0"
-dependencies = [
- "addr2line 0.24.2",
- "backtrace",
- "object 0.36.7",
- "peeps-backtrace-poc-leaf",
- "peeps-backtrace-poc-router",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "peeps-backtrace-poc-leaf"
-version = "0.1.0"
-dependencies = [
- "backtrace",
- "libc",
-]
-
-[[package]]
-name = "peeps-backtrace-poc-router"
-version = "0.1.0"
-dependencies = [
- "peeps-backtrace-poc-leaf",
-]
-
-[[package]]
-name = "peeps-cli"
-version = "0.1.0"
-dependencies = [
- "facet",
- "facet-json",
- "facet-value",
- "figue",
- "ureq",
-]
-
-[[package]]
-name = "peeps-examples"
-version = "0.1.0"
-dependencies = [
- "facet",
- "figue",
- "libc",
- "peeps",
- "roam",
- "roam-stream",
- "tokio",
- "ur-taking-me-with-you",
- "ureq",
-]
-
-[[package]]
 name = "peeps-runtime"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "facet",
  "facet-json",
@@ -1312,6 +1426,7 @@ dependencies = [
 [[package]]
 name = "peeps-source"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "camino",
  "facet",
@@ -1321,6 +1436,7 @@ dependencies = [
 [[package]]
 name = "peeps-sqlite-facet"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "facet-json",
  "facet-value",
@@ -1332,6 +1448,7 @@ dependencies = [
 [[package]]
 name = "peeps-tokio"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "facet-json",
  "facet-value",
@@ -1346,6 +1463,7 @@ dependencies = [
 [[package]]
 name = "peeps-types"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "facet",
  "facet-format",
@@ -1358,6 +1476,7 @@ dependencies = [
 [[package]]
 name = "peeps-wasm"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "async-channel",
  "futures-channel",
@@ -1368,30 +1487,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeps-web"
-version = "0.1.0"
-dependencies = [
- "axum",
- "facet",
- "facet-json",
- "facet-typescript",
- "facet-value",
- "figue",
- "libc",
- "peeps-sqlite-facet",
- "peeps-types",
- "peeps-wire",
- "rusqlite",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "ur-taking-me-with-you",
- "ureq",
-]
-
-[[package]]
 name = "peeps-wire"
 version = "0.1.0"
+source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
 dependencies = [
  "facet",
  "facet-json",
@@ -1940,9 +2038,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.116"
+version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3df424c70518695237746f84cede799c9c58fcb37450d7b23716568cc8bc69cb"
+checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
 dependencies = [
  "proc-macro2",
  "quote",

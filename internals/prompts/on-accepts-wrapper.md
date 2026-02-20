@@ -2,20 +2,20 @@
 
 ## Background
 
-The `peeps!()` macro accepts an `on =` parameter that links an instrumented future to a
+The `moire!()` macro accepts an `on =` parameter that links an instrumented future to a
 channel endpoint, creating `Polls`/`Needs` edges in the graph. Currently this requires
 calling `.handle()` on the wrapper type:
 
 ```rust
 let rx_handle = rx.handle().clone();
-peeps!(name = "my_future", on = rx_handle, fut = some_async_work()).await;
+moire!(name = "my_future", on = rx_handle, fut = some_async_work()).await;
 ```
 
-This is bad because `.handle()` is a peeps-specific method that real programs would never
+This is bad because `.handle()` is a moire-specific method that real programs would never
 call. The goal is to make `on =` accept the wrapped type directly:
 
 ```rust
-peeps!(name = "my_future", on = rx, fut = some_async_work()).await;
+moire!(name = "my_future", on = rx, fut = some_async_work()).await;
 ```
 
 ## How `on =` works today
@@ -87,13 +87,13 @@ counterparts) hold `handle: EntityHandle` and expose it via `.handle() -> &Entit
 
 ## Disabled/stub path
 
-When peeps is disabled (stub mode), `instrument_future_on_with_krate` is a no-op and
+When moire is disabled (stub mode), `instrument_future_on_with_krate` is a no-op and
 the trait just needs a stub impl. Make sure the trait is available in both paths or
 gated appropriately so the call sites compile either way.
 
 ## What not to change
 
-- The `peeps!()` macro expansion itself (`&$on`) does not need to change — `&rx`
+- The `moire!()` macro expansion itself (`&$on`) does not need to change — `&rx`
   satisfies `&impl AsEntityRef` once the impls exist.
 - `InstrumentedFuture`, `FutureEdgeRelation`, `EntityRef` internals don't need to change.
 - Do not remove `handle()` — just `#[doc(hidden)]` it.

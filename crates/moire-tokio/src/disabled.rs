@@ -1,0 +1,24 @@
+use std::sync::Once;
+
+static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
+
+#[doc(hidden)]
+pub fn __init_from_macro() {
+    let Some(value) = std::env::var_os("MOIRE_DASHBOARD") else {
+        return;
+    };
+    if value.to_string_lossy().trim().is_empty() {
+        return;
+    }
+
+    DASHBOARD_DISABLED_WARNING_ONCE.call_once(|| {
+        eprintln!(
+            "\n\x1b[1;31m\
+======================================================================\n\
+ MOIRE WARNING: MOIRE_DASHBOARD is set, but moire diagnostics is disabled.\n\
+ This process will NOT connect to moire-web in this build.\n\
+ Enable the `diagnostics` cargo feature of `moire` to use dashboard push.\n\
+======================================================================\x1b[0m\n"
+        );
+    });
+}

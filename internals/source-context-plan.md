@@ -1,4 +1,4 @@
-# Source Capture + PeepsContext Implementation Spec
+# Source Capture + MoireContext Implementation Spec
 
 This is a build-oriented spec. It defines exact API shape, attribution rules, tests, and rollout criteria.
 
@@ -7,7 +7,7 @@ This is a build-oriented spec. It defines exact API shape, attribution rules, te
 Attribution must use two signals:
 
 1. callsite location (`Location::caller()` or explicit `Source`)
-2. callsite crate root (`PeepsContext.manifest_dir`)
+2. callsite crate root (`MoireContext.manifest_dir`)
 
 This must work for cross-crate value usage via a crate-local facade generated at item scope.
 
@@ -15,11 +15,11 @@ This must work for cross-crate value usage via a crate-local facade generated at
 
 ### Core types
 
-`peeps` MUST expose:
+`moire` MUST expose:
 
 ```rust
-pub struct PeepsContext { manifest_dir: &'static str }
-impl PeepsContext {
+pub struct MoireContext { manifest_dir: &'static str }
+impl MoireContext {
     pub const fn new(manifest_dir: &'static str) -> Self;
     pub const fn manifest_dir(self) -> &'static str;
 }
@@ -33,23 +33,23 @@ impl Source {
 
 ### Method shape
 
-For instrumented operations, peeps MUST expose:
+For instrumented operations, moire MUST expose:
 
-- context-bearing entrypoint: `*_with_cx(..., cx: PeepsContext, ...)`
-- explicit-source + context entrypoint for every operation surfaced through `facade!()` across the peeps wrapper API:
-  - either `*_with_source(..., source: Source, cx: PeepsContext, ...)`
+- context-bearing entrypoint: `*_with_cx(..., cx: MoireContext, ...)`
+- explicit-source + context entrypoint for every operation surfaced through `facade!()` across the moire wrapper API:
+  - either `*_with_source(..., source: Source, cx: MoireContext, ...)`
   - or equivalent naming/signature where explicit source can override `Location::caller()`
 - any `*_with_cx` entrypoint that may capture implicit caller location MUST be `#[track_caller]`
 
-For every wrapper type surfaced through `facade!()`, peeps MUST NOT expose inherent methods that clash with facade ergonomic method names.
+For every wrapper type surfaced through `facade!()`, moire MUST NOT expose inherent methods that clash with facade ergonomic method names.
 Those names are reserved for facade-generated extension traits so crate-local context injection can win method resolution.
 If temporary compatibility shims are needed, they MUST use non-conflicting names and be marked deprecated.
 
-For ergonomic methods on facade-covered wrappers, peeps SHOULD keep wrappers with `#[track_caller]` that call explicit-source low-level APIs.
+For ergonomic methods on facade-covered wrappers, moire SHOULD keep wrappers with `#[track_caller]` that call explicit-source low-level APIs.
 
 ### Facade-covered wrapper inventory (normative)
 
-In this plan, "facade-covered wrapper API surface" means the full public wrapper set exported by peeps wrappers, not only `Mutex`.
+In this plan, "facade-covered wrapper API surface" means the full public wrapper set exported by moire wrappers, not only `Mutex`.
 The required coverage set is:
 
 - synchronization: `Mutex<T>`, `RwLock<T>`, `Notify`, `OnceCell<T>`, `Semaphore`
@@ -57,7 +57,7 @@ The required coverage set is:
 - process/task wrappers: `Command`, `Child`, `JoinSet<T>`
 - rpc wrappers: `RpcRequestHandle`, `RpcResponseHandle`
 
-If wrapper types are added or removed in `/Users/amos/bearcove/peeps/crates/peeps/src/enabled.rs` and `/Users/amos/bearcove/peeps/crates/peeps/src/disabled.rs`, this inventory MUST be updated in the same change.
+If wrapper types are added or removed in `/Users/amos/bearcove/moire/crates/moire/src/enabled.rs` and `/Users/amos/bearcove/moire/crates/moire/src/disabled.rs`, this inventory MUST be updated in the same change.
 
 Example requirement:
 
@@ -66,15 +66,15 @@ impl<T> Mutex<T> {
     pub fn lock_with_source(
         &self,
         source: Source,
-        cx: PeepsContext,
+        cx: MoireContext,
     ) -> MutexGuard<'_, T>;
     pub fn try_lock_with_source(
         &self,
         source: Source,
-        cx: PeepsContext,
+        cx: MoireContext,
     ) -> Option<MutexGuard<'_, T>>;
-    pub fn lock_with_cx(&self, cx: PeepsContext) -> MutexGuard<'_, T>;
-    pub fn try_lock_with_cx(&self, cx: PeepsContext) -> Option<MutexGuard<'_, T>>;
+    pub fn lock_with_cx(&self, cx: MoireContext) -> MutexGuard<'_, T>;
+    pub fn try_lock_with_cx(&self, cx: MoireContext) -> Option<MutexGuard<'_, T>>;
 }
 ```
 
@@ -88,39 +88,39 @@ To avoid ambiguity with current usage, macros are split:
 
 2. `facade!()` (new) generates crate-local facade bindings.
 - Must be invoked at item/module scope.
-- Generates `PEEPS_CX`, extension traits/wrappers, and a `prelude` re-export module.
+- Generates `MOIRE_CX`, extension traits/wrappers, and a `prelude` re-export module.
 - Is the normative path for crate-local method ergonomics.
 
 ## Facade contract (`facade!()`)
 
 `facade!()` MUST generate crate-local bindings that inject:
 
-- `PeepsContext::new(env!("CARGO_MANIFEST_DIR"))`
+- `MoireContext::new(env!("CARGO_MANIFEST_DIR"))`
 - `#[track_caller]` at facade method boundary
 
-Type identity MUST remain global (`::peeps::Mutex<T>`), while call context is crate-local.
+Type identity MUST remain global (`::moire::Mutex<T>`), while call context is crate-local.
 Facade methods own ergonomic names like `.lock()` because inherent name clashes are disallowed above.
 Trait method resolution is normative:
 
 - `facade!()` MUST generate `pub mod prelude` that re-exports facade extension traits.
-- callsites using method syntax MUST import `use crate::peeps::prelude::*;`
+- callsites using method syntax MUST import `use crate::moire::prelude::*;`
 - callsites that do not import the prelude MUST use UFCS to call facade traits explicitly.
 
 Representative generated pattern:
 
 ```rust
-pub mod peeps {
-    pub const PEEPS_CX: ::peeps::PeepsContext =
-        ::peeps::PeepsContext::new(env!("CARGO_MANIFEST_DIR"));
+pub mod moire {
+    pub const MOIRE_CX: ::moire::MoireContext =
+        ::moire::MoireContext::new(env!("CARGO_MANIFEST_DIR"));
 
     pub trait MutexExt<T> {
-        fn lock(&self) -> ::peeps::MutexGuard<'_, T>;
+        fn lock(&self) -> ::moire::MutexGuard<'_, T>;
     }
 
-    impl<T> MutexExt<T> for ::peeps::Mutex<T> {
+    impl<T> MutexExt<T> for ::moire::Mutex<T> {
         #[track_caller]
-        fn lock(&self) -> ::peeps::MutexGuard<'_, T> {
-            self.lock_with_source(::peeps::Source::caller(), PEEPS_CX)
+        fn lock(&self) -> ::moire::MutexGuard<'_, T> {
+            self.lock_with_source(::moire::Source::caller(), MOIRE_CX)
         }
     }
 
@@ -163,36 +163,36 @@ When helper chains are too deep, callers MAY capture `Source` upstream and forwa
 
 ## File-by-file changes
 
-### `/Users/amos/bearcove/peeps/crates/peeps/src/enabled.rs`
+### `/Users/amos/bearcove/moire/crates/moire/src/enabled.rs`
 
 - enforce context-bearing methods for instrumented public APIs
 - for all facade-covered wrappers, rename/remove inherent ergonomic names that clash with facade traits
 - ensure location capture uses explicit `Source` override first, `Location::caller()` otherwise
 - ensure every emission path carries `cx.manifest_dir` into attribution
 
-### `/Users/amos/bearcove/peeps/crates/peeps/src/disabled.rs`
+### `/Users/amos/bearcove/moire/crates/moire/src/disabled.rs`
 
 - mirror exact signatures (`*_with_cx` and required explicit-source + context forms for facade-surfaced operations)
 - mirror the no-clashing-method rule so enabled/disabled APIs stay isomorphic
 - keep zero-cost behavior
 
-### `/Users/amos/bearcove/peeps/crates/peeps-types/src/primitives.rs`
+### `/Users/amos/bearcove/moire/crates/moire-types/src/primitives.rs`
 
 - add contextual inference API that accepts `manifest_dir`
 - stop relying on process-global root for new attribution path
 - keep old global-root helpers only as temporary migration shims
 - require cache keys to include `manifest_dir` (not source-only cache keys)
 
-### `/Users/amos/bearcove/peeps/crates/peeps-types/src/entities.rs`
-### `/Users/amos/bearcove/peeps/crates/peeps-types/src/scopes.rs`
-### `/Users/amos/bearcove/peeps/crates/peeps-types/src/edges.rs`
+### `/Users/amos/bearcove/moire/crates/moire-types/src/entities.rs`
+### `/Users/amos/bearcove/moire/crates/moire-types/src/scopes.rs`
+### `/Users/amos/bearcove/moire/crates/moire-types/src/edges.rs`
 
 - route builder-time source/krate fill through contextual inference APIs
 - preserve explicit `krate` overrides when provided
 
 ### callsite adopters (workspace + dependent crates)
 
-- update direct peeps function usage to pass context/source as required
+- update direct moire function usage to pass context/source as required
 - prefer generated facade paths where available
 - preserve existing runtime `init!()` callsites during migration
 
@@ -201,7 +201,7 @@ When helper chains are too deep, callers MAY capture `Source` upstream and forwa
 The implementation is complete only when all scenarios below pass.
 
 1. Direct call, single crate:
-   - `Mutex::lock_with_cx(PeepsContext::new(env!("CARGO_MANIFEST_DIR")))`
+   - `Mutex::lock_with_cx(MoireContext::new(env!("CARGO_MANIFEST_DIR")))`
    - expected: with no explicit source override, `source` points to the direct callsite via `#[track_caller]`; `krate` is that crate
 
 2. Wrapper without good caller threading:
@@ -209,13 +209,13 @@ The implementation is complete only when all scenarios below pass.
    - expected: explicit upstream `Source` forwarding restores user callsite
 
 3. Cross-crate value usage via facade:
-   - crate A creates `::peeps::Mutex<T>`
-   - crate B imports `use crate::peeps::prelude::*;` then calls `.lock()` through B facade trait
+   - crate A creates `::moire::Mutex<T>`
+   - crate B imports `use crate::moire::prelude::*;` then calls `.lock()` through B facade trait
    - expected: attribution uses B manifest root for crate inference
    - this scenario is a representative case; implementation coverage MUST include the full facade-covered wrapper API surface, not only `Mutex`
 
 4. Non-`Mutex` facade interception proof:
-   - use `RwLock<T>` via facade in crate B (import `use crate::peeps::prelude::*;`, call `.read()` or `.write()`)
+   - use `RwLock<T>` via facade in crate B (import `use crate::moire::prelude::*;`, call `.read()` or `.write()`)
    - expected: method resolves through facade trait path (no inherent-name clash)
    - expected: attribution uses B manifest root and B callsite
 
@@ -239,11 +239,11 @@ The implementation is complete only when all scenarios below pass.
 ## Rollout plan
 
 1. API stabilization pass:
-   - finalize `PeepsContext` + `Source` signatures in enabled/disabled
+   - finalize `MoireContext` + `Source` signatures in enabled/disabled
 2. Attribution-core pass:
-   - implement contextual inference in peeps-types
+   - implement contextual inference in moire-types
 3. Callsite pass:
-   - migrate peeps + known dependent crates
+   - migrate moire + known dependent crates
 4. Facade pass:
    - add `facade!()` generated extension traits
 5. Cleanup pass:

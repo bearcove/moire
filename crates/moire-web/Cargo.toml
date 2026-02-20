@@ -1,0 +1,25 @@
+[package]
+name = "moire-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+facet.workspace = true
+facet-json.workspace = true
+facet-typescript.workspace = true
+facet-value.workspace = true
+figue.workspace = true
+moire-sqlite-facet.workspace = true
+moire-types.workspace = true
+moire-wire.workspace = true
+rusqlite.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ureq.workspace = true
+ur-taking-me-with-you.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true

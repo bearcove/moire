@@ -1,0 +1,9 @@
+[package]
+name = "moire-backtrace-poc-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+moire-backtrace-poc-leaf = { path = "../moire-backtrace-poc-leaf" }

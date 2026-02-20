@@ -4,8 +4,8 @@ Scope: first-pass mapping for `status`, `interactive`, and `border` buckets only
 
 Inputs:
 
-- `/Users/amos/bearcove/peeps/internals/color-token-usage.tsv`
-- `/Users/amos/bearcove/peeps/internals/color-token-usage.json`
+- `/Users/amos/bearcove/moire/internals/color-token-usage.tsv`
+- `/Users/amos/bearcove/moire/internals/color-token-usage.json`
 
 Goal of this pass:
 

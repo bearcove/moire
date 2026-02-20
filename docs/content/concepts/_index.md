@@ -24,12 +24,12 @@ all the threads are parked waiting for something to happen.
 Well, if every feature of every library that you ever used was instrumented in
 some way, you could tell who's waiting for what.
 
-The `peeps::peeps!` macro lets you do that — Every future becomes a node in the
-peeps graph and every `await` (or poll) becomes a 'needs' edge between the two:
+The `moire::moire!` macro lets you do that — Every future becomes a node in the
+moire graph and every `await` (or poll) becomes a 'needs' edge between the two:
 
 This is already interesting, but it's extremely noisy and really hard to read.
 
-peeps goes one step further by instrumenting synchronization primitives: If you
+moire goes one step further by instrumenting synchronization primitives: If you
 know every future that's currently waiting for a lock, and you know the future
 that's currently holding the lock, then that's extremely helpful.
 

@@ -1,4 +1,4 @@
-# peeps
+# moire (mwah-ray)
 
 Low-overhead instrumentation for production Rust systems.
 
@@ -12,7 +12,7 @@ Low-overhead instrumentation for production Rust systems.
 
 **Roam + SHM Diagnostics**: Records connection state and shared-memory diagnostics from registered providers.
 
-**Live Dashboard Push**: Instrumented processes push structured JSON snapshots to a `peeps` dashboard server over TCP. The web UI and API read from this live stream.
+**Live Dashboard Push**: Instrumented processes push structured JSON snapshots to a `moire` dashboard server over TCP. The web UI and API read from this live stream.
 
 ## Usage
 
@@ -21,9 +21,9 @@ Low-overhead instrumentation for production Rust systems.
 ```rust
 #[tokio::main]
 async fn main() {
-    peeps::init!();
+    moire::init!();
 
-    peeps::spawn_tracked!("connection_handler", async {
+    moire::spawn_tracked!("connection_handler", async {
         // Task execution is instrumented
     });
 }
@@ -32,34 +32,34 @@ async fn main() {
 Start the dashboard server:
 
 ```bash
-cargo run -p peeps-web
+cargo run -p moire-web
 ```
 
 By default:
-- TCP ingest: `127.0.0.1:9119` (`PEEPS_LISTEN`)
-- HTTP UI: `127.0.0.1:9120` (`PEEPS_HTTP`)
+- TCP ingest: `127.0.0.1:9119` (`MOIRE_LISTEN`)
+- HTTP UI: `127.0.0.1:9120` (`MOIRE_HTTP`)
 
 Protocol debugging:
-- `PEEPS_PROTOCOL_TRACE=1` on `peeps-web` and/or instrumented processes logs every dashboard frame send/receive (size + JSON preview).
+- `MOIRE_PROTOCOL_TRACE=1` on `moire-web` and/or instrumented processes logs every dashboard frame send/receive (size + JSON preview).
 - On dashboard-protocol decode failures, clients now emit a terminal `client_error` frame with stage/error/last-frame preview before disconnecting.
 
 Enable dashboard push in your app:
 
 ```toml
-peeps = { git = "https://github.com/bearcove/peeps", branch = "main", features = ["diagnostics"] }
+moire = { git = "https://github.com/bearcove/moire", branch = "main", features = ["diagnostics"] }
 ```
 
 Run your app with:
 
 ```bash
-PEEPS_DASHBOARD=127.0.0.1:9119 <your-binary>
+MOIRE_DASHBOARD=127.0.0.1:9119 <your-binary>
 ```
 
-`peeps` is push-only: no file dump / SIGUSR1 ingestion mode.
+`moire` is push-only: no file dump / SIGUSR1 ingestion mode.
 
 ## Examples
 
-Runnable scenarios are implemented as subcommands in `crates/peeps-examples`.
+Runnable scenarios are implemented as subcommands in `crates/moire-examples`.
 
 Current scenarios:
 - `channel-full-stall` — bounded mpsc sender blocks on a full queue
@@ -77,16 +77,16 @@ just ex <example-name>
 
 ## Architecture
 
-- `peeps`: Main API — futures, locks, sync, live snapshot collection, optional dashboard push client
-- `peeps-types`: Shared types (graph nodes, snapshot requests/replies)
-- `peeps-web`: SQLite-backed ingest + query server and investigation UI
+- `moire`: Main API — futures, locks, sync, live snapshot collection, optional dashboard push client
+- `moire-types`: Shared types (graph nodes, snapshot requests/replies)
+- `moire-web`: SQLite-backed ingest + query server and investigation UI
 
 ## Testing
 
 Use `pnpm` for frontend workflows:
 
 ```bash
-cd crates/peeps-web/frontend
+cd crates/moire-web/frontend
 pnpm install
 pnpm test
 pnpm build
@@ -109,7 +109,7 @@ Inspector path node attrs must use canonical keys only:
 - `method` (optional)
 - `correlation` (optional)
 
-Legacy alias keys are rejected at the `peeps-web` persistence boundary and covered by CI tests.
+Legacy alias keys are rejected at the `moire-web` persistence boundary and covered by CI tests.
 
 ## Breaking Change: Canonical Attrs Only
 

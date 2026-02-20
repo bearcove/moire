@@ -1,0 +1,19 @@
+[package]
+name = "moire-tokio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+diagnostics = []
+
+[dependencies]
+facet-json.workspace = true
+facet-value.workspace = true
+moire-types.workspace = true
+moire-source.workspace = true
+moire-runtime.workspace = true
+moire-wire.workspace = true
+parking_lot.workspace = true
+tokio.workspace = true

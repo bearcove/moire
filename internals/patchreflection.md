@@ -134,8 +134,8 @@ impl RuntimeDb {
         f(&mut entity.body);
         let after = facet_value::to_value(&entity.body).map_err(MutateError::Encode)?;
 
-        let patch = peeps_patch::diff(&before, &after);
-        if peeps_patch::is_empty(&patch) {
+        let patch = moire_patch::diff(&before, &after);
+        if moire_patch::is_empty(&patch) {
             return Ok(MutateOutcome::NoChange);
         }
 
@@ -160,6 +160,6 @@ once_cell_handle.mutate(|body| {
 
 ## Crate split
 
-- `peeps-patch`: `diff`, `apply`, `is_empty` over `facet_value::Value`
-- `peeps-db-core`: typed runtime state + mutate/commit + change journal
-- `peeps-db-runtime`: global static/sync wrappers and process/task wiring
+- `moire-patch`: `diff`, `apply`, `is_empty` over `facet_value::Value`
+- `moire-db-core`: typed runtime state + mutate/commit + change journal
+- `moire-db-runtime`: global static/sync wrappers and process/task wiring

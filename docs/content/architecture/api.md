@@ -6,7 +6,7 @@ insert_anchor_links = "heading"
 
 This page is the contract the frontend can build against right now.
 
-`peeps-web` intentionally stays dumb. It ingests runtime deltas, stores them in SQLite, and exposes a tiny HTTP surface.
+`moire-web` intentionally stays dumb. It ingests runtime deltas, stores them in SQLite, and exposes a tiny HTTP surface.
 
 ## Base URL and defaults
 
@@ -14,7 +14,7 @@ By default:
 
 1. HTTP API listens on `http://127.0.0.1:9130`
 2. TCP ingest listens on `127.0.0.1:9119`
-3. SQLite path is `peeps-web.sqlite` (override with `PEEPS_DB`)
+3. SQLite path is `moire-web.sqlite` (override with `MOIRE_DB`)
 
 ## Endpoints
 
@@ -259,11 +259,11 @@ The shortest mental model:
 3. each process replies with `CutAck { cut_id, cursor }`
 4. frontend polls `GET /api/cuts/{cut_id}` until `pending_connections == 0`
 
-This is exactly what `peeps-cli cut` does as one command.
+This is exactly what `moire-cli cut` does as one command.
 
 ## Canonical query packs
 
-To reduce hand-written SQL in clients and agents, backend exposes these via `POST /api/query` and `peeps-cli query --name ...` consumes that endpoint:
+To reduce hand-written SQL in clients and agents, backend exposes these via `POST /api/query` and `moire-cli query --name ...` consumes that endpoint:
 
 1. `blockers`
 2. `blocked-senders`

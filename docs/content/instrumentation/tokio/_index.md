@@ -6,9 +6,9 @@ insert_anchor_links = "heading"
 
 Tokio instrumentation is about reconstructing wait relationships without pretending we can recover a stable async call stack from the runtime.
 
-The base layer is futures. A tracked future becomes a node. When it awaits something, peeps records a `needs` edge to whatever it is now blocked on. That gives you a live dependency graph instead of a pile of parked threads.
+The base layer is futures. A tracked future becomes a node. When it awaits something, moire records a `needs` edge to whatever it is now blocked on. That gives you a live dependency graph instead of a pile of parked threads.
 
-From there, peeps instruments the resource boundaries where waiting becomes meaningful:
+From there, moire instruments the resource boundaries where waiting becomes meaningful:
 
 - locks (`lock`)
 - channels (`tx`, `rx`)

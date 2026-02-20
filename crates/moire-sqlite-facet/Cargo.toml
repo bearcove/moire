@@ -1,0 +1,12 @@
+[package]
+name = "moire-sqlite-facet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+facet-json.workspace = true
+facet-value.workspace = true
+moire-source = { workspace = true, features = ["rusqlite"] }
+moire-types = { workspace = true, features = ["rusqlite"] }
+rusqlite.workspace = true

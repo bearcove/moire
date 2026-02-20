@@ -20,20 +20,20 @@ No second terminal should be required for normal use.
 
 Every example must satisfy this:
 
-- `cargo run --bin peeps-examples -- <subcommand>` runs the full scenario.
+- `cargo run --bin moire-examples -- <subcommand>` runs the full scenario.
 - If the scenario needs multiple roles (client/server, caller/callee, etc.), the scenario module itself is responsible for launching and coordinating them.
 - Example startup should fail fast with a clear error if one required role cannot start.
 - Example shutdown should terminate all child work it started.
 
-The runner may set environment (`PEEPS_DASHBOARD`, ports), but it should not contain scenario-specific orchestration logic.
+The runner may set environment (`MOIRE_DASHBOARD`, ports), but it should not contain scenario-specific orchestration logic.
 
 ## Process-Group Contract
 
-`peeps-examples` (`cargo run --bin peeps-examples`, used by `just ex`) is responsible for top-level lifecycle:
+`moire-examples` (`cargo run --bin moire-examples`, used by `just ex`) is responsible for top-level lifecycle:
 
-- It starts `peeps-web` in one process group.
+- It starts `moire-web` in one process group.
 - It runs the chosen scenario in-process.
-- On exit or interrupt, it tears down the `peeps-web` process group and returns.
+- On exit or interrupt, it tears down the `moire-web` process group and returns.
 
 This is required to avoid zombie/orphaned children when examples spawn subprocesses.
 
@@ -46,4 +46,4 @@ When an example needs multiple processes:
 - Propagate cancellation and wait for child exit paths.
 - Treat partial startup as an error; tear down anything already started.
 
-If a scenario cannot be expressed as a single `peeps-examples` subcommand, it does not meet this repo's examples contract yet.
+If a scenario cannot be expressed as a single `moire-examples` subcommand, it does not meet this repo's examples contract yet.

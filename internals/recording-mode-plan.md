@@ -88,7 +88,7 @@ This is the target model we should design toward, even if V1 only implements a s
 
 - `proc_key: string`
 - `proc_time_ms: u64 | null`
-- `snapshot: Snapshot` (existing peeps snapshot payload for that process)
+- `snapshot: Snapshot` (existing moire snapshot payload for that process)
 
 ### UnionGraph
 

@@ -16,10 +16,10 @@ const baseInput = {
     { id: "1/beta", label: "semaphore gate (web:1234)", searchText: "semaphore gate lock web 1234" },
     { id: "2/worker-loop", label: "worker loop (worker:5678)", searchText: "worker loop process worker 5678" },
   ],
-  locations: ["src/main.rs:12", "crates/peeps/src/enabled.rs:505"],
+  locations: ["src/main.rs:12", "crates/moire/src/enabled.rs:505"],
   crates: [
-    { id: "peeps-core", label: "peeps-core" },
-    { id: "peeps-web", label: "peeps-web" },
+    { id: "moire-core", label: "moire-core" },
+    { id: "moire-web", label: "moire-web" },
   ],
   processes: [
     { id: "1", label: "web(1234)" },
@@ -135,12 +135,12 @@ describe("graphFilterSuggestions", () => {
   });
 
   it.each([
-    ["+crate:web", "+crate:peeps-web"],
-    ["-crate:core", "-crate:peeps-core"],
+    ["+crate:web", "+crate:moire-web"],
+    ["-crate:core", "-crate:moire-core"],
     ["+kind:req", "+kind:request"],
     ["-kind:res", "-kind:response"],
     ["+node:wrk", "+node:2/worker-loop"],
-    ["-location:enabled", "-location:crates/peeps/src/enabled.rs:505"],
+    ["-location:enabled", "-location:crates/moire/src/enabled.rs:505"],
     ["groupBy:pro", "groupBy:process"],
     ["groupBy:cr", "groupBy:crate"],
     ["colorBy:pro", "colorBy:process"],

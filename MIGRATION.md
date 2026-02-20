@@ -1,12 +1,12 @@
-# Migration Spec: Consolidate peeps-* Crates into `peeps`
+# Migration Spec: Consolidate moire-* Crates into `moire`
 
 ## Goal
 
-Consolidate `peeps-futures`, `peeps-locks`, and `peeps-sync` into the top-level `peeps` crate so consumers can use:
+Consolidate `moire-futures`, `moire-locks`, and `moire-sync` into the top-level `moire` crate so consumers can use:
 
-- `use peeps::Mutex;`
-- `use peeps::channel;`
-- `use peeps::peep;`
+- `use moire::Mutex;`
+- `use moire::channel;`
+- `use moire::peep;`
 
 while preserving feature-gated diagnostics and the canonical graph emission behavior.
 
@@ -30,7 +30,7 @@ pub use disabled::*;
 
 - Do not add new instrumentation features beyond current behavior.
 - Do not reintroduce task tracking (task nodes/edges, task snapshots, wake edges).
-- Do not preserve `peeps-futures`, `peeps-locks`, or `peeps-sync` as separate published crates.
+- Do not preserve `moire-futures`, `moire-locks`, or `moire-sync` as separate published crates.
 
 ## Constraints
 
@@ -42,7 +42,7 @@ pub use disabled::*;
 
 ## Target API Surface (examples)
 
-Top-level exports from `peeps`:
+Top-level exports from `moire`:
 
 - Locks
   - `Mutex`, `RwLock`
@@ -62,7 +62,7 @@ Top-level exports from `peeps`:
 
 ## Unified Registry Design
 
-Create a new module `peeps::registry`:
+Create a new module `moire::registry`:
 
 ## Canonical Graph Semantics (Stack-Based)
 
@@ -93,7 +93,7 @@ Only the **top** is allowed to emit `needs` edges to resources.
 
 ### Stack API (required)
 
-Implement a small API in `peeps` (or `peeps-tasks` during migration) gated by `diagnostics`:
+Implement a small API in `moire` (or `moire-tasks` during migration) gated by `diagnostics`:
 
 - `stack::push(node_id: &str)`
 - `stack::pop()`
@@ -173,50 +173,50 @@ All resource modules must register themselves into this registry, never maintain
 
 ## Migration Steps
 
-### 1) Create `peeps::registry`
-- New module under `peeps/src/registry.rs`.
-- Aggregates registries currently living in `peeps-sync` and `peeps-locks`.
-- Adds future-related registries from `peeps-futures`.
+### 1) Create `moire::registry`
+- New module under `moire/src/registry.rs`.
+- Aggregates registries currently living in `moire-sync` and `moire-locks`.
+- Adds future-related registries from `moire-futures`.
 - Add RPC request/response and RPC channel endpoint tracking by instrumenting the RPC/channel wrappers themselves (no “collect session then project”).
 
-### 2) Move `peeps-futures` into `peeps`
-- Create `peeps/src/futures/{mod.rs,enabled.rs,disabled.rs}` (shape similar to `peeps-locks`).
+### 2) Move `moire-futures` into `moire`
+- Create `moire/src/futures/{mod.rs,enabled.rs,disabled.rs}` (shape similar to `moire-locks`).
 - Remove all task tracking references:
   - `TaskId`, `TaskSnapshot`, `TaskState`, `WakeEdgeSnapshot`, `task_name()`, `current_task_id()`.
 - Update futures instrumentation to produce only future-related nodes/edges.
 - Register all futures diagnostics in the **central registry**.
 
-### 3) Move `peeps-locks` into `peeps`
-- Create `peeps/src/locks/{mod.rs,enabled.rs,disabled.rs}`.
+### 3) Move `moire-locks` into `moire`
+- Create `moire/src/locks/{mod.rs,enabled.rs,disabled.rs}`.
 - Replace any `current_task_id()` usage with nothing (tasks are not part of the model).
 - Register lock info in the **central registry** (no private lock registry).
 - Preserve `DiagnosticMutex`, `DiagnosticRwLock` behavior.
 
-### 4) Move `peeps-sync` into `peeps`
-- Create `peeps/src/sync/{mod.rs,channels.rs,semaphore.rs,oncecell.rs,enabled.rs,disabled.rs}`.
-- Replace `crate::registry` usage with the new `peeps::registry`.
-- Remove all `peeps_futures::task_name()` and `current_task_id()` references.
+### 4) Move `moire-sync` into `moire`
+- Create `moire/src/sync/{mod.rs,channels.rs,semaphore.rs,oncecell.rs,enabled.rs,disabled.rs}`.
+- Replace `crate::registry` usage with the new `moire::registry`.
+- Remove all `moire_futures::task_name()` and `current_task_id()` references.
 
 ### 5) Update `collect_graph`
 - Replace all calls to old crate-specific `emit_graph` functions.
 - Use `registry::emit_graph(process_name, proc_key)` to emit all nodes/edges.
 - Remove any roam “session snapshot → projection” style collection. RPC/channel wrappers must emit canonical nodes/edges directly into the registry.
 
-### 6) Update `peeps` Public API
+### 6) Update `moire` Public API
 - All internal modules (`futures`, `locks`, `sync`, `registry`, `stack`) are `pub(crate)` only.
-- Re-export all public types at the crate root so consumers use `peeps::Mutex`, `peeps::channel`, `peeps::Semaphore`, etc.
+- Re-export all public types at the crate root so consumers use `moire::Mutex`, `moire::channel`, `moire::Semaphore`, etc.
 - Flat API surface similar to tokio — no public submodule paths.
 
 ### 7) Remove old crates
-- Delete `crates/peeps-futures`, `crates/peeps-locks`, `crates/peeps-sync`.
-- Remove dependencies from workspace and `peeps/Cargo.toml`.
+- Delete `crates/moire-futures`, `crates/moire-locks`, `crates/moire-sync`.
+- Remove dependencies from workspace and `moire/Cargo.toml`.
 - Update any references across the repo.
 
 ---
 
 ## Diagnostics Feature Flags
 
-- Keep single `diagnostics` feature in `peeps`.
+- Keep single `diagnostics` feature in `moire`.
 - Internally gate diagnostic codepaths (`#[cfg(feature = "diagnostics")]`).
 - No cross-crate feature propagation since subcrates are removed.
 
@@ -224,7 +224,7 @@ All resource modules must register themselves into this registry, never maintain
 
 ## Verification Checklist
 
-- `use peeps::Mutex` and `use peeps::channel` compile.
+- `use moire::Mutex` and `use moire::channel` compile.
 - All diagnostics compile away when `diagnostics` is disabled.
 - `collect_graph` returns expected canonical nodes/edges.
 - No references to removed task tracking remain.

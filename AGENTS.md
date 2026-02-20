@@ -15,7 +15,7 @@ Summary: fail fast, loudly, and often. Validate assumptions, reject ambiguous st
 
 ## Documentation Style
 
-Read and follow `/Users/amos/bearcove/peeps/TONE.md` before writing or editing documentation.
+Read and follow `/Users/amos/bearcove/moire/TONE.md` before writing or editing documentation.
 
 When the user provides copy, preserve cadence and phrasing. Do not smooth or rewrite by default; fix only obvious typos unless explicitly asked.
 

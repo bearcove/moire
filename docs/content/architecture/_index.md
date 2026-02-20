@@ -5,9 +5,9 @@ sort_by = "weight"
 insert_anchor_links = "heading"
 +++
 
-peeps has three crates. `peeps` is the instrumentation library linked into your application. `peeps-types` defines the shared data model. `peeps-web` is the server and web frontend. All instrumentation is feature-gated behind `diagnostics` — when the feature is off, every wrapper compiles to a zero-cost pass-through.
+moire has three crates. `moire` is the instrumentation library linked into your application. `moire-types` defines the shared data model. `moire-web` is the server and web frontend. All instrumentation is feature-gated behind `diagnostics` — when the feature is off, every wrapper compiles to a zero-cost pass-through.
 
-The practical problem is still the same: your async system is stuck, every local stack looks "fine", and the real blocker lives in a causal chain across tasks or processes. peeps is built around that reality, not around pretty graph theory.
+The practical problem is still the same: your async system is stuck, every local stack looks "fine", and the real blocker lives in a causal chain across tasks or processes. moire is built around that reality, not around pretty graph theory.
 
 Snapshot capture is pull-based, not push-based. When you trigger a snapshot, the server asks connected processes for their current graph, waits until timeout, and stores a complete-or-explicitly-partial result under one snapshot ID. That gives us "world at time T" semantics, which is what cross-process debugging actually needs.
 

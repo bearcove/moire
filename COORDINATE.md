@@ -8,11 +8,11 @@
 - Agent: Codex (this session)
 - Status: Completed
 - Files touched:
-  - `/Users/amos/bearcove/peeps/crates/peeps-web/frontend/src/App.tsx`
-  - `/Users/amos/bearcove/peeps/crates/peeps-web/frontend/src/api.ts`
-  - `/Users/amos/bearcove/peeps/crates/peeps-web/frontend/src/types.ts`
-  - `/Users/amos/bearcove/peeps/crates/peeps-web/frontend/src/styles.css`
-  - `/Users/amos/bearcove/peeps/crates/peeps-web/frontend/src/components/TimelineView.tsx` (new)
+  - `/Users/amos/bearcove/moire/crates/moire-web/frontend/src/App.tsx`
+  - `/Users/amos/bearcove/moire/crates/moire-web/frontend/src/api.ts`
+  - `/Users/amos/bearcove/moire/crates/moire-web/frontend/src/types.ts`
+  - `/Users/amos/bearcove/moire/crates/moire-web/frontend/src/styles.css`
+  - `/Users/amos/bearcove/moire/crates/moire-web/frontend/src/components/TimelineView.tsx` (new)
 
 ## Task Checklist
 - [x] Inspect current graph selection/focus flow in `App.tsx`
@@ -30,7 +30,7 @@
 - 2026-02-16: Confirmed runtime `events` table exists and is queryable through `/api/sql`.
 - 2026-02-16: Added frontend API helpers for recent timeline events/process options and created isolated `TimelineView` component.
 - 2026-02-16: Wired `App.tsx` mode toggle (`graph` / `timeline`) with timeline query controls (process + window), and click-through to graph focus.
-- 2026-02-16: Verified with `npm run build` in `crates/peeps-web/frontend`.
+- 2026-02-16: Verified with `npm run build` in `crates/moire-web/frontend`.
 
 ## Notes For Other Agents
 - The spike is isolated to timeline-prefixed helpers/state/components and a single mode toggle branch in `App.tsx`.

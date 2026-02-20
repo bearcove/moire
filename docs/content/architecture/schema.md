@@ -4,7 +4,7 @@ weight = 2
 insert_anchor_links = "heading"
 +++
 
-The schema source of truth is the Rust model in `crates/peeps-types/src/lib.rs`.
+The schema source of truth is the Rust model in `crates/moire-types/src/lib.rs`.
 
 This page is intentionally thin and points to those types directly.
 
@@ -38,7 +38,7 @@ For HTTP endpoints and current SQLite ingestion tables, see [API](/architecture/
 
 ## State Modeling Rules
 
-Canonical model rules (as reflected in `crates/peeps-types/src/lib.rs` and re-exported model types):
+Canonical model rules (as reflected in `crates/moire-types/src/lib.rs` and re-exported model types):
 
 1. Prefer enums over booleans, including binary concepts.
 2. Use multiple enums for independent axes.

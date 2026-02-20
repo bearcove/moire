@@ -53,7 +53,7 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --workspace --all-features --all-targets
 
-  peeps-targets:
+  moire-targets:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -65,8 +65,8 @@ jobs:
       - name: Add wasm target
         run: rustup target add wasm32-unknown-unknown
 
-      - name: Check peeps on Linux host
-        run: cargo check -p peeps --features diagnostics
+      - name: Check moire on Linux host
+        run: cargo check -p moire --features diagnostics
 
-      - name: Check peeps on wasm32-unknown-unknown
-        run: cargo check -p peeps --target wasm32-unknown-unknown --features diagnostics
+      - name: Check moire on wasm32-unknown-unknown
+        run: cargo check -p moire --target wasm32-unknown-unknown --features diagnostics

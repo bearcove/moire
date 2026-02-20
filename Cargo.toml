@@ -1,39 +1,39 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/peeps",
-  "crates/peeps-tokio",
-  "crates/peeps-wasm",
-  "crates/peeps-runtime",
-  "crates/peeps-source",
-  "crates/peeps-cli",
-  "crates/peeps-web",
-  "crates/peeps-types",
-  "crates/peeps-wire",
-  "crates/peeps-sqlite-facet",
-  "crates/peeps-examples",
-  "crates/peeps-backtrace-poc",
-  "crates/peeps-backtrace-poc-router",
-  "crates/peeps-backtrace-poc-leaf",
+  "crates/moire",
+  "crates/moire-tokio",
+  "crates/moire-wasm",
+  "crates/moire-runtime",
+  "crates/moire-source",
+  "crates/moire-cli",
+  "crates/moire-web",
+  "crates/moire-types",
+  "crates/moire-wire",
+  "crates/moire-sqlite-facet",
+  "crates/moire-examples",
+  "crates/moire-backtrace-poc",
+  "crates/moire-backtrace-poc-router",
+  "crates/moire-backtrace-poc-leaf",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/bearcove/peeps"
+repository = "https://github.com/bearcove/moire"
 
 [workspace.dependencies]
 # Internal
-peeps = { path = "crates/peeps" }
-peeps-tokio = { path = "crates/peeps-tokio" }
-peeps-wasm = { path = "crates/peeps-wasm" }
-peeps-runtime = { path = "crates/peeps-runtime" }
-peeps-source = { path = "crates/peeps-source" }
-peeps-web = { path = "crates/peeps-web" }
-peeps-types = { path = "crates/peeps-types" }
-peeps-wire = { path = "crates/peeps-wire" }
-peeps-sqlite-facet = { path = "crates/peeps-sqlite-facet" }
+moire = { path = "crates/moire" }
+moire-tokio = { path = "crates/moire-tokio" }
+moire-wasm = { path = "crates/moire-wasm" }
+moire-runtime = { path = "crates/moire-runtime" }
+moire-source = { path = "crates/moire-source" }
+moire-web = { path = "crates/moire-web" }
+moire-types = { path = "crates/moire-types" }
+moire-wire = { path = "crates/moire-wire" }
+moire-sqlite-facet = { path = "crates/moire-sqlite-facet" }
 
 # External
 backtrace = "0.3"
@@ -60,6 +60,6 @@ mime_guess = "2"
 ulid = "1"
 camino = "1.1"
 
-[patch."https://github.com/bearcove/peeps"]
-peeps = { path = "crates/peeps" }
-peeps-types = { path = "crates/peeps-types" }
+[patch."https://github.com/bearcove/moire"]
+moire = { path = "crates/moire" }
+moire-types = { path = "crates/moire-types" }

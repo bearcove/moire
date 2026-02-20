@@ -5,7 +5,7 @@ sort_by = "weight"
 insert_anchor_links = "heading"
 +++
 
-Roam instrumentation is where peeps becomes genuinely cross-process.
+Roam instrumentation is where moire becomes genuinely cross-process.
 
 With local Tokio primitives, you can explain why one runtime is blocked. With Roam, you can explain why process A is blocked on process B, which may itself be blocked on process A.
 

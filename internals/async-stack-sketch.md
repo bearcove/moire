@@ -11,13 +11,13 @@ The goal is simple:
 ## Usage sketch
 
 ```rust
-use peeps::{peeps, EntityHandle, EdgeKind};
+use moire::{moire, EntityHandle, EdgeKind};
 
 async fn handler(tx: &mut MySender, item: Item, tx_handle: EntityHandle) -> Result<(), SendError> {
     // Form 1: just name this future.
     // Side-effect (diagnostics on): creates/updates a "future entity" with name "handler.prep".
     // Side-effect (diagnostics off): no entity, no edge, no stack tracking.
-    peeps! {
+    moire! {
         name = "handler.prep",
         fut = async {
             do_some_prep().await;
@@ -41,7 +41,7 @@ async fn handler(tx: &mut MySender, item: Item, tx_handle: EntityHandle) -> Resu
     //
     // Side-effects (diagnostics off):
     // - this is just `tx.send(item).await`
-    peeps! {
+    moire! {
         name = "mpsc.send",
         on = tx_handle,
         edge = EdgeKind::Polls, // optional; default
@@ -93,7 +93,7 @@ impl<F: Future> Future for InstrumentedFuture<F> {
 
 ## Snapshot + local store sketch
 
-`peeps` runtime keeps a local in-memory state with:
+`moire` runtime keeps a local in-memory state with:
 
 - live entities
 - live edges

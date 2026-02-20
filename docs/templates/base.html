@@ -3,12 +3,12 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}peeps{% endblock title %}</title>
+    <title>{% block title %}moire{% endblock title %}</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
     <nav class="site-nav">
-        <a href="/" class="brand">peeps</a>
+        <a href="/" class="brand">moire</a>
         <span class="spacer"></span>
         <a href="/concepts/" {% if current_path is starting_with("/concepts") %}class="active"{% endif %}>Concepts</a>
         <a href="/instrumentation/" {% if current_path is starting_with("/instrumentation") %}class="active"{% endif %}>Instrumentation</a>
@@ -18,7 +18,7 @@
         {% block body %}{% endblock body %}
     </div>
     <footer class="site-footer">
-        <span>peeps — a <a href="https://github.com/bearcove">bearcove</a> project</span>
+        <span>moire — a <a href="https://github.com/bearcove">bearcove</a> project</span>
     </footer>
     <script>
         (function() {

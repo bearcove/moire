@@ -1,4 +1,4 @@
-# Peeps Strictness Manifesto
+# Moire Strictness Manifesto
 
 ## Principle
 

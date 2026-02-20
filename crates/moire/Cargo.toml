@@ -1,0 +1,15 @@
+[package]
+name = "moire"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+diagnostics = ["moire-tokio/diagnostics", "moire-wasm/diagnostics"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+moire-tokio.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+moire-wasm.workspace = true

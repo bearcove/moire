@@ -203,7 +203,7 @@ export function useStorybookState() {
       { id: "vx-runner", label: "vx-runner" },
       { id: "vx-vfsd", label: "vx-vfsd" },
       { id: "vxd", label: "vxd" },
-      { id: "peeps-collector", label: "peeps-collector" },
+      { id: "moire-collector", label: "moire-collector" },
     ],
     [],
   );
@@ -211,7 +211,7 @@ export function useStorybookState() {
   const filterCrateItems = useMemo<FilterMenuItem[]>(
     () => [
       { id: "roam-session", label: "roam-session" },
-      { id: "peeps-examples", label: "peeps-examples" },
+      { id: "moire-examples", label: "moire-examples" },
       { id: "tokio", label: "tokio" },
     ],
     [],
@@ -594,7 +594,7 @@ export function useStorybookState() {
     const now = Date.now();
     const base = {
       processId: "101",
-      processName: "peeps-examples",
+      processName: "moire-examples",
       processPid: 84025,
       source: fakeSource("roam-session", "/tokio_runtime.rs", 20),
       krate: "roam-session",
@@ -642,10 +642,10 @@ export function useStorybookState() {
   const sampleGraphEntities = useMemo<EntityDef[]>(() => {
     const now = Date.now();
     const base = {
-      processName: "peeps-example",
+      processName: "moire-example",
       processPid: 12345,
-      source: fakeSource("peeps-example", "main.rs", 1),
-      krate: "peeps-example",
+      source: fakeSource("moire-example", "main.rs", 1),
+      krate: "moire-example",
       birthPtime: 100,
       ageMs: 0,
       birthApproxUnixMs: now,
@@ -715,8 +715,8 @@ export function useStorybookState() {
         rawEntityId: "future_c",
         processId: "p2",
         processName: "vx-runner",
-        source: fakeSource("peeps-examples", "main.rs", 20),
-        krate: "peeps-examples",
+        source: fakeSource("moire-examples", "main.rs", 20),
+        krate: "moire-examples",
         name: "runner.tick",
         kind: "future",
         body: { future: {} },

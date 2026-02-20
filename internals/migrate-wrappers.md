@@ -1,8 +1,8 @@
-# Migrating peeps wrappers to the new model
+# Migrating moire wrappers to the new model
 
-## What peeps is
+## What moire is
 
-`peeps` is a runtime observability layer for async Rust. It wraps tokio
+`moire` is a runtime observability layer for async Rust. It wraps tokio
 primitives (channels, mutexes, semaphores, etc.) to track their state over
 time. Every interesting state transition is recorded as a stream of changes,
 which are:
@@ -44,8 +44,8 @@ Everything goes through typed handles:
 - Event recording — via free functions (`record_event_with_source`)
 - Edge recording — via `handle.link_to(...)` and similar
 
-Both are defined in `crates/peeps-runtime/src/handles.rs` and re-exported
-from `peeps_runtime`.
+Both are defined in `crates/moire-runtime/src/handles.rs` and re-exported
+from `moire_runtime`.
 
 The local runtime state structs (`ChannelRuntimeState`, etc.) and all
 `apply_*` / `sync_*` functions are **deleted entirely**.
@@ -62,7 +62,7 @@ within a task).
 **Edges** are directional relationships between entities:
 
 ```rust
-// crates/peeps-types/src/objects/edges.rs
+// crates/moire-types/src/objects/edges.rs
 pub enum EdgeKind {
     Polls,      // a future is actively polling this entity
     WaitingOn,  // a future is suspended waiting on this entity
@@ -75,7 +75,7 @@ pub enum EdgeKind {
 
 ## EntityHandle and mutate()
 
-`EntityHandle<S>` is defined in `crates/peeps-runtime/src/handles.rs`.
+`EntityHandle<S>` is defined in `crates/moire-runtime/src/handles.rs`.
 When the last clone drops, `HandleInner::drop` removes the entity from the
 graph. **Entity presence = alive. Entity absent = dead.** No explicit close
 cause fields are needed.
@@ -153,7 +153,7 @@ self.tx_handle.mutate(|body| body.queue_len -= 1); // no-op if sender gone
 ## Entity body variants
 
 These replace the old generic `ChannelTx(ChannelEndpointEntity)` /
-`ChannelRx(ChannelEndpointEntity)` in `crates/peeps-types/src/objects/entities.rs`.
+`ChannelRx(ChannelEndpointEntity)` in `crates/moire-types/src/objects/entities.rs`.
 
 ### MPSC
 
@@ -210,7 +210,7 @@ RX entity = receiver dropped).
 ### Registration
 
 Add these to the `define_entity_body!` invocation in
-`crates/peeps-types/src/objects/entities.rs` and remove the old
+`crates/moire-types/src/objects/entities.rs` and remove the old
 `ChannelTx` / `ChannelRx` variants:
 
 ```rust
@@ -268,7 +268,7 @@ them). The `Closed` variant is replaced by the `closed: bool` field.
 
 ## EdgeHandle — owned edges that clean up on drop
 
-`EdgeHandle` is defined in `crates/peeps-runtime/src/handles.rs`. It stores
+`EdgeHandle` is defined in `crates/moire-runtime/src/handles.rs`. It stores
 the `(src, dst, kind)` triple of an edge and calls `db.remove_edge` when
 dropped. It does **not** hold references to either entity — it only stores
 `EntityId` values — so it does not keep entities alive. If an endpoint is
@@ -318,7 +318,7 @@ the count reaches zero).
 
 ## Never touch the database directly
 
-Wrapper code in `crates/peeps/src/enabled/` must never call `runtime_db()`
+Wrapper code in `crates/moire/src/enabled/` must never call `runtime_db()`
 or acquire the DB lock directly. All state changes go through the handle
 API:
 
@@ -333,7 +333,7 @@ is a sign the operation should be expressed through one of the above instead.
 ## Source
 
 Sources used to be a raw `String` (`"file.rs:42"`) plus a separate `krate`
-field. They are now a unified `Source` type from `crates/peeps-source`,
+field. They are now a unified `Source` type from `crates/moire-source`,
 interned as `SourceId`.
 
 Constructors for entities, scopes, and edges all accept `impl Into<SourceId>`.
@@ -342,7 +342,7 @@ traits and pass it through unchanged.
 
 ## Method naming rules
 
-These rules apply to wrapper types in `crates/peeps/src/enabled/`:
+These rules apply to wrapper types in `crates/moire/src/enabled/`:
 
 | Rule | Detail |
 |---|---|
@@ -368,7 +368,7 @@ pub fn try_send(&self, value: T, source: Source) -> Result<...> {
 }
 ```
 
-`current_causal_target()` is in `crates/peeps-runtime/src/handles.rs` and
+`current_causal_target()` is in `crates/moire-runtime/src/handles.rs` and
 reads from the `FUTURE_CAUSAL_STACK` task-local.
 
 ### Edge creation: suspending operations
@@ -677,7 +677,7 @@ After migrating a wrapper, the following are deleted:
 - The `name: String` field on wrapper structs
 - `#[allow(clippy::manual_async_fn)]` attributes
 - `#[track_caller]` attributes on wrapper impl methods
-- The corresponding `db.update_*` methods in `crates/peeps-runtime/src/db.rs` that are no longer called
+- The corresponding `db.update_*` methods in `crates/moire-runtime/src/db.rs` that are no longer called
 - `ChannelClosedEvent`, `ChannelWaitStartedEvent`, `ChannelWaitEndedEvent`, `ChannelWaitKind`
 - `ChannelEndpointLifecycle`, `ChannelCloseCause`, `ChannelDetails`, `*ChannelDetails`
 - Old `ChannelTx` / `ChannelRx` entity body variants and `ChannelEndpointEntity`

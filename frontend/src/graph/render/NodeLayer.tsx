@@ -76,7 +76,7 @@ export async function measureGraphLayout(
     const el = document.createElement("div");
     container.appendChild(el);
     const root = createRoot(el);
-    const sampleLabel = subgraphScopeMode === "process" ? "peeps-examples(27139)" : "peeps-example";
+    const sampleLabel = subgraphScopeMode === "process" ? "moire-examples(27139)" : "moire-example";
 
     flushSync(() =>
       root.render(

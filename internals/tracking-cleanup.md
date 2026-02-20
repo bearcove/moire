@@ -6,11 +6,11 @@
 ```rust
 pub fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
     #[allow(deprecated)]
-    peeps::channel(name, buffer, peeps::Source::caller())
+    moire::channel(name, buffer, moire::Source::caller())
 }
 ```
 
-`peeps::channel` is not deprecated. The `#[allow(deprecated)]` was added during a refactor and is no longer needed.
+`moire::channel` is not deprecated. The `#[allow(deprecated)]` was added during a refactor and is no longer needed.
 
 ### Unnecessary `#[track_caller]`
 
@@ -31,7 +31,7 @@ pub fn get_or_init_with_source<'a, F, Fut>(
     &'a self,
     f: F,
     source: Source,
-    cx: PeepsContext,
+    cx: MoireContext,
 ) -> impl Future<Output = &'a T> + 'a
 where
     F: FnOnce() -> Fut + 'a,
