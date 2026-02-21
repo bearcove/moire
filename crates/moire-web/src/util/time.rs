@@ -15,5 +15,7 @@ pub fn now_ms() -> i64 {
 }
 
 pub fn to_i64_u64(value: u64) -> i64 {
-    value.min(i64::MAX as u64) as i64
+    i64::try_from(value).unwrap_or_else(|_| {
+        panic!("invariant violated: value {value} does not fit signed 64-bit SQLite integer")
+    })
 }
