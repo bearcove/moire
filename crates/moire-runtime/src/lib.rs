@@ -1,4 +1,3 @@
-use core::sync::atomic::{AtomicU64, Ordering};
 use ctor::ctor;
 use moire_trace_capture::{
     CaptureOptions, CapturedBacktrace, capture_current, validate_frame_pointers_or_panic,
@@ -36,7 +35,6 @@ pub use self::api::*;
 pub use self::futures::*;
 pub use self::handles::*;
 
-static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
@@ -71,8 +69,7 @@ pub fn init_runtime_from_macro() {
 }
 
 pub(crate) fn capture_backtrace_id() -> BacktraceId {
-    let counter = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
-    let backtrace_id = BacktraceId::from_process_local_counter(counter)
+    let backtrace_id = BacktraceId::next_process_local()
         .expect("backtrace id invariant violated: generated id must be valid and JS-safe");
 
     let captured = capture_current(backtrace_id, CaptureOptions::default()).unwrap_or_else(|err| {
@@ -270,14 +267,8 @@ mod tests {
     #[test]
     fn backtrace_id_layout_is_js_safe_and_prefixed() {
         const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
-        let first = BacktraceId::from_process_local_counter(
-            NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed),
-        )
-        .expect("first backtrace id");
-        let second = BacktraceId::from_process_local_counter(
-            NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed),
-        )
-        .expect("second backtrace id");
+        let first = BacktraceId::next_process_local().expect("first backtrace id");
+        let second = BacktraceId::next_process_local().expect("second backtrace id");
         let expected_prefix = u64::from(first.process_prefix());
 
         assert!(first.get() > 0, "backtrace id must be non-zero");

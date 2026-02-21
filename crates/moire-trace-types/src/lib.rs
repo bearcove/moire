@@ -2,6 +2,7 @@ use facet::Facet;
 use std::error::Error;
 use std::fmt;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +90,12 @@ macro_rules! define_u64_id {
 
             pub fn from_process_local_counter(counter: u64) -> Result<Self, InvariantError> {
                 Self::from_prefixed_counter(process_prefix_u16(), counter)
+            }
+
+            pub fn next_process_local() -> Result<Self, InvariantError> {
+                static NEXT_COUNTER: AtomicU64 = AtomicU64::new(1);
+                let counter = NEXT_COUNTER.fetch_add(1, Ordering::Relaxed);
+                Self::from_process_local_counter(counter)
             }
 
             pub fn get(self) -> u64 {
