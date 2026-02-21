@@ -6,26 +6,30 @@ use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::body::{self, Body, Bytes};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path as AxumPath, Request, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
 use facet::Facet;
 use figue as args;
 use moire_trace_types::BacktraceId;
 use moire_types::{
-    ApiError, BacktraceFrameResolved, BacktraceFrameUnresolved, Change, ConnectedProcessInfo,
+    BacktraceFrameResolved, BacktraceFrameUnresolved, Change, ConnectedProcessInfo,
     ConnectionsResponse, CutStatusResponse, FrameSummary, ProcessSnapshotView, QueryRequest,
     RecordCurrentResponse, RecordStartRequest, RecordingImportBody, RecordingSessionInfo,
     RecordingSessionStatus, ScopeEntityLink, SnapshotBacktrace, SnapshotBacktraceFrame,
     SnapshotCutResponse, SnapshotFrameRecord, SnapshotSymbolicationUpdate, SqlRequest, SqlResponse,
     TimedOutProcess, TriggerCutResponse,
 };
+use moire_web::util::http::{
+    copy_request_headers, json_error, json_ok, skip_request_header, skip_response_header,
+};
+use moire_web::util::time::{now_ms, now_nanos, to_i64_u64};
 use moire_wire::{
     BacktraceRecord, ClientMessage, ModuleIdentity, ModuleManifestEntry, ServerMessage,
     SnapshotRequest, decode_client_message_default, decode_protocol_magic,
@@ -1912,18 +1916,6 @@ async fn proxy_vite(State(state): State<AppState>, request: Request) -> axum::re
     build_proxy_response(proxied)
 }
 
-fn copy_request_headers(headers: &HeaderMap) -> Vec<(String, String)> {
-    headers
-        .iter()
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|v| (name.as_str().to_string(), v.to_string()))
-        })
-        .collect()
-}
-
 fn proxy_vite_blocking(
     method: &str,
     url: &str,
@@ -2000,30 +1992,6 @@ fn build_proxy_response(proxied: ProxiedResponse) -> axum::response::Response {
     }
 
     response
-}
-
-fn skip_request_header(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower == "host" || lower == "content-length" || is_hop_by_hop(&lower)
-}
-
-fn skip_response_header(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower == "content-length" || is_hop_by_hop(&lower)
-}
-
-fn is_hop_by_hop(lowercase_name: &str) -> bool {
-    matches!(
-        lowercase_name,
-        "connection"
-            | "keep-alive"
-            | "proxy-authenticate"
-            | "proxy-authorization"
-            | "te"
-            | "trailers"
-            | "transfer-encoding"
-            | "upgrade"
-    )
 }
 
 async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {
@@ -2411,73 +2379,6 @@ fn into_stored_module_manifest(
             runtime_base: module.runtime_base,
         })
         .collect()
-}
-
-fn json_ok<T>(value: &T) -> axum::response::Response
-where
-    T: for<'facet> Facet<'facet>,
-{
-    match facet_json::to_string(value) {
-        Ok(body) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
-            body,
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-            format!("json encode error: {e}"),
-        )
-            .into_response(),
-    }
-}
-
-fn json_error(status: StatusCode, message: impl Into<String>) -> axum::response::Response {
-    json_with_status(
-        status,
-        &ApiError {
-            error: message.into(),
-        },
-    )
-}
-
-fn json_with_status<T>(status: StatusCode, value: &T) -> axum::response::Response
-where
-    T: for<'facet> Facet<'facet>,
-{
-    match facet_json::to_string(value) {
-        Ok(body) => (
-            status,
-            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
-            body,
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-            format!("json encode error: {e}"),
-        )
-            .into_response(),
-    }
-}
-
-fn now_nanos() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos().min(i64::MAX as u128) as i64)
-        .unwrap_or(0)
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis().min(i64::MAX as u128) as i64)
-        .unwrap_or(0)
-}
-
-fn to_i64_u64(value: u64) -> i64 {
-    value.min(i64::MAX as u64) as i64
 }
 
 fn fetch_scope_entity_links_blocking(

@@ -115,7 +115,7 @@ Exact filenames can shift, but concerns should not.
 
 ## Tracking checklist
 
-- [ ] Step 1 complete
+- [x] Step 1 complete
 - [ ] Step 2 complete
 - [ ] Step 3 complete
 - [ ] Step 4 complete
