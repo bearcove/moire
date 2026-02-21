@@ -105,6 +105,7 @@ Exact filenames can shift, but concerns should not.
 - Keep API layer as thin request/response orchestration.
 - Progress:
   - Recording session state and frame/session helpers moved to `recording/session.rs`.
+  - Recording HTTP handlers moved from `main.rs` to `api/recording.rs` and now call into `recording/session.rs` + `api/snapshot::take_snapshot_internal`.
 
 ### 6) Extract TCP ingest and proxy/dev-server logic
 
