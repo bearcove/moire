@@ -4,12 +4,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use facet::Facet;
 use object::{Object, ObjectSegment};
-use rusqlite::{Transaction, params};
+use rusqlite::Transaction;
+use rusqlite_facet::StatementFacetExt;
 use tracing::{debug, info, warn};
 
 use crate::db::Db;
-use crate::util::time::{now_nanos, to_i64_u64};
+use crate::util::time::now_nanos;
 
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
 const SYMBOLICATION_UNRESOLVED_EAGER_PREFIX: &str = "symbolication engine not wired:";
@@ -27,6 +29,7 @@ const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
 ];
 static SYMBOLIZER_LOADER_ATTEMPT_ID: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Facet)]
 struct SymbolicationCacheEntry {
     status: String,
     function_name: Option<String>,
@@ -38,7 +41,7 @@ struct SymbolicationCacheEntry {
     unresolved_reason: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Facet, Clone)]
 struct PendingFrameJob {
     conn_id: u64,
     backtrace_id: u64,
@@ -46,6 +49,92 @@ struct PendingFrameJob {
     module_path: String,
     module_identity: String,
     rel_pc: u64,
+}
+
+#[derive(Facet)]
+struct PendingFrameLookupParams {
+    conn_id: u64,
+    backtrace_id: u64,
+}
+
+#[derive(Facet)]
+struct CacheLookupParams<'a> {
+    module_identity: &'a str,
+    rel_pc: u64,
+}
+
+#[derive(Facet)]
+struct UpsertSymbolicationCacheParams {
+    module_identity: String,
+    rel_pc: u64,
+    status: String,
+    function_name: Option<String>,
+    crate_name: Option<String>,
+    crate_module_path: Option<String>,
+    source_file_path: Option<String>,
+    source_line: Option<i64>,
+    source_col: Option<i64>,
+    unresolved_reason: Option<String>,
+    updated_at_ns: i64,
+}
+
+#[derive(Facet)]
+struct UpsertSymbolicatedFrameParams {
+    conn_id: u64,
+    backtrace_id: u64,
+    frame_index: u32,
+    module_path: String,
+    rel_pc: u64,
+    status: String,
+    function_name: Option<String>,
+    crate_name: Option<String>,
+    crate_module_path: Option<String>,
+    source_file_path: Option<String>,
+    source_line: Option<i64>,
+    source_col: Option<i64>,
+    unresolved_reason: Option<String>,
+    updated_at_ns: i64,
+}
+
+#[derive(Facet)]
+struct TopFrameLookupParams {
+    conn_id: u64,
+    backtrace_id: u64,
+    exclude_1: &'static str,
+    exclude_2: &'static str,
+    exclude_3: &'static str,
+    exclude_4: &'static str,
+    exclude_5: &'static str,
+    exclude_6: &'static str,
+    exclude_7: &'static str,
+    exclude_8: &'static str,
+    exclude_9: &'static str,
+    exclude_10: &'static str,
+}
+
+#[derive(Facet)]
+struct TopFrameCandidate {
+    frame_index: i64,
+    function_name: Option<String>,
+    crate_name: String,
+    crate_module_path: Option<String>,
+    source_file_path: Option<String>,
+    source_line: Option<i64>,
+    source_col: Option<i64>,
+}
+
+#[derive(Facet)]
+struct TopFrameUpsertParams {
+    conn_id: u64,
+    backtrace_id: u64,
+    frame_index: i64,
+    function_name: Option<String>,
+    crate_name: String,
+    crate_module_path: Option<String>,
+    source_file_path: Option<String>,
+    source_line: Option<i64>,
+    source_col: Option<i64>,
+    updated_at_ns: i64,
 }
 
 enum ModuleSymbolizerState {
@@ -89,8 +178,8 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                 ON sf.conn_id = bf.conn_id
                AND sf.backtrace_id = bf.backtrace_id
                AND sf.frame_index = bf.frame_index
-             WHERE bf.conn_id = ?1
-               AND bf.backtrace_id = ?2
+             WHERE bf.conn_id = :conn_id
+               AND bf.backtrace_id = :backtrace_id
                AND (
                     sf.conn_id IS NULL
                     OR (
@@ -106,23 +195,13 @@ fn symbolicate_pending_frames_for_pairs_blocking(
     let mut processed = 0usize;
     let mut unknown_module_jobs = 0usize;
     for (conn_id, backtrace_id) in pairs {
+        let params = PendingFrameLookupParams {
+            conn_id: *conn_id,
+            backtrace_id: *backtrace_id,
+        };
         let jobs = pending_stmt
-            .query_map(
-                params![to_i64_u64(*conn_id), to_i64_u64(*backtrace_id)],
-                |row| {
-                    Ok(PendingFrameJob {
-                        conn_id: row.get::<_, i64>(0)? as u64,
-                        backtrace_id: row.get::<_, i64>(1)? as u64,
-                        frame_index: row.get::<_, i64>(2)? as u32,
-                        module_path: row.get(3)?,
-                        module_identity: row.get(4)?,
-                        rel_pc: row.get::<_, i64>(5)? as u64,
-                    })
-                },
-            )
-            .map_err(|error| format!("query pending frame rows: {error}"))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("read pending frame row: {error}"))?;
+            .facet_query_ref::<PendingFrameJob, _>(&params)
+            .map_err(|error| format!("query pending frame rows: {error}"))?;
 
         for job in &jobs {
             if job.module_path.starts_with("<unknown-module-id:") {
@@ -430,25 +509,14 @@ fn lookup_symbolication_cache(
             "SELECT status, function_name, crate_name, crate_module_path,
                     source_file_path, source_line, source_col, unresolved_reason
              FROM symbolication_cache
-             WHERE module_identity = ?1 AND rel_pc = ?2",
+             WHERE module_identity = :module_identity AND rel_pc = :rel_pc",
         )
         .map_err(|error| format!("prepare symbolication_cache lookup: {error}"))?;
-    match stmt.query_row(params![module_identity, to_i64_u64(rel_pc)], |row| {
-        Ok(SymbolicationCacheEntry {
-            status: row.get::<_, String>(0)?,
-            function_name: row.get(1)?,
-            crate_name: row.get(2)?,
-            crate_module_path: row.get(3)?,
-            source_file_path: row.get(4)?,
-            source_line: row.get(5)?,
-            source_col: row.get(6)?,
-            unresolved_reason: row.get(7)?,
-        })
-    }) {
-        Ok(entry) => Ok(Some(entry)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(error) => Err(format!("query symbolication_cache: {error}")),
-    }
+    stmt.facet_query_optional_ref::<SymbolicationCacheEntry, _>(&CacheLookupParams {
+        module_identity,
+        rel_pc,
+    })
+    .map_err(|error| format!("query symbolication_cache: {error}"))
 }
 
 fn upsert_symbolication_cache(
@@ -457,11 +525,15 @@ fn upsert_symbolication_cache(
     rel_pc: u64,
     cache: &SymbolicationCacheEntry,
 ) -> Result<(), String> {
-    tx.execute(
-        "INSERT INTO symbolication_cache (
+    let mut stmt = tx
+        .prepare(
+            "INSERT INTO symbolication_cache (
             module_identity, rel_pc, status, function_name, crate_name, crate_module_path,
             source_file_path, source_line, source_col, unresolved_reason, updated_at_ns
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         ) VALUES (
+            :module_identity, :rel_pc, :status, :function_name, :crate_name, :crate_module_path,
+            :source_file_path, :source_line, :source_col, :unresolved_reason, :updated_at_ns
+         )
          ON CONFLICT(module_identity, rel_pc) DO UPDATE SET
             status = excluded.status,
             function_name = excluded.function_name,
@@ -472,20 +544,21 @@ fn upsert_symbolication_cache(
             source_col = excluded.source_col,
             unresolved_reason = excluded.unresolved_reason,
             updated_at_ns = excluded.updated_at_ns",
-        params![
-            module_identity,
-            to_i64_u64(rel_pc),
-            cache.status.as_str(),
-            cache.function_name.as_ref(),
-            cache.crate_name.as_ref(),
-            cache.crate_module_path.as_ref(),
-            cache.source_file_path.as_ref(),
-            cache.source_line,
-            cache.source_col,
-            cache.unresolved_reason.as_ref(),
-            now_nanos(),
-        ],
-    )
+        )
+        .map_err(|error| format!("prepare symbolication_cache upsert: {error}"))?;
+    stmt.facet_execute_ref(&UpsertSymbolicationCacheParams {
+        module_identity: module_identity.to_string(),
+        rel_pc,
+        status: cache.status.clone(),
+        function_name: cache.function_name.clone(),
+        crate_name: cache.crate_name.clone(),
+        crate_module_path: cache.crate_module_path.clone(),
+        source_file_path: cache.source_file_path.clone(),
+        source_line: cache.source_line,
+        source_col: cache.source_col,
+        unresolved_reason: cache.unresolved_reason.clone(),
+        updated_at_ns: now_nanos(),
+    })
     .map_err(|error| format!("upsert symbolication_cache: {error}"))?;
     Ok(())
 }
@@ -499,12 +572,17 @@ fn upsert_symbolicated_frame(
     rel_pc: u64,
     cache: &SymbolicationCacheEntry,
 ) -> Result<(), String> {
-    tx.execute(
-        "INSERT INTO symbolicated_frames (
+    let mut stmt = tx
+        .prepare(
+            "INSERT INTO symbolicated_frames (
             conn_id, backtrace_id, frame_index, module_path, rel_pc, status, function_name,
             crate_name, crate_module_path, source_file_path, source_line, source_col,
             unresolved_reason, updated_at_ns
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+         ) VALUES (
+            :conn_id, :backtrace_id, :frame_index, :module_path, :rel_pc, :status, :function_name,
+            :crate_name, :crate_module_path, :source_file_path, :source_line, :source_col,
+            :unresolved_reason, :updated_at_ns
+         )
          ON CONFLICT(conn_id, backtrace_id, frame_index) DO UPDATE SET
             module_path = excluded.module_path,
             rel_pc = excluded.rel_pc,
@@ -517,23 +595,24 @@ fn upsert_symbolicated_frame(
             source_col = excluded.source_col,
             unresolved_reason = excluded.unresolved_reason,
             updated_at_ns = excluded.updated_at_ns",
-        params![
-            to_i64_u64(conn_id),
-            to_i64_u64(backtrace_id),
-            i64::from(frame_index),
-            module_path,
-            to_i64_u64(rel_pc),
-            cache.status.as_str(),
-            cache.function_name.as_ref(),
-            cache.crate_name.as_ref(),
-            cache.crate_module_path.as_ref(),
-            cache.source_file_path.as_ref(),
-            cache.source_line,
-            cache.source_col,
-            cache.unresolved_reason.as_ref(),
-            now_nanos(),
-        ],
-    )
+        )
+        .map_err(|error| format!("prepare symbolicated_frames upsert: {error}"))?;
+    stmt.facet_execute_ref(&UpsertSymbolicatedFrameParams {
+        conn_id,
+        backtrace_id,
+        frame_index,
+        module_path: module_path.to_string(),
+        rel_pc,
+        status: cache.status.clone(),
+        function_name: cache.function_name.clone(),
+        crate_name: cache.crate_name.clone(),
+        crate_module_path: cache.crate_module_path.clone(),
+        source_file_path: cache.source_file_path.clone(),
+        source_line: cache.source_line,
+        source_col: cache.source_col,
+        unresolved_reason: cache.unresolved_reason.clone(),
+        updated_at_ns: now_nanos(),
+    })
     .map_err(|error| format!("upsert symbolicated_frame[{frame_index}]: {error}"))?;
     Ok(())
 }
@@ -543,81 +622,50 @@ fn update_top_application_frame(
     conn_id: u64,
     backtrace_id: u64,
 ) -> Result<(), String> {
-    let mut query = String::from(
-        "SELECT frame_index, function_name, crate_name, crate_module_path, source_file_path, source_line, source_col
-         FROM symbolicated_frames
-         WHERE conn_id = ?1 AND backtrace_id = ?2
-           AND status = 'resolved'
-           AND crate_name IS NOT NULL
-           AND crate_name NOT IN (",
-    );
-    for (index, _) in TOP_FRAME_CRATE_EXCLUSIONS.iter().enumerate() {
-        if index > 0 {
-            query.push_str(", ");
-        }
-        query.push('?');
-        query.push_str(&(index + 3).to_string());
-    }
-    query.push_str(") ORDER BY frame_index ASC LIMIT 1");
-
-    let params = rusqlite::params_from_iter(
-        std::iter::once(rusqlite::types::Value::from(to_i64_u64(conn_id)))
-            .chain(std::iter::once(rusqlite::types::Value::from(to_i64_u64(
-                backtrace_id,
-            ))))
-            .chain(
-                TOP_FRAME_CRATE_EXCLUSIONS
-                    .iter()
-                    .map(|name| rusqlite::types::Value::from((*name).to_string())),
-            ),
-    );
-
     let mut stmt = tx
-        .prepare(query.as_str())
+        .prepare(
+            "SELECT frame_index, function_name, crate_name, crate_module_path, source_file_path, source_line, source_col
+             FROM symbolicated_frames
+             WHERE conn_id = :conn_id
+               AND backtrace_id = :backtrace_id
+               AND status = 'resolved'
+               AND crate_name IS NOT NULL
+               AND crate_name NOT IN (
+                    :exclude_1, :exclude_2, :exclude_3, :exclude_4, :exclude_5,
+                    :exclude_6, :exclude_7, :exclude_8, :exclude_9, :exclude_10
+               )
+             ORDER BY frame_index ASC
+             LIMIT 1",
+        )
         .map_err(|error| format!("prepare top frame query: {error}"))?;
-    #[allow(clippy::type_complexity)]
-    let selected: Result<
-        Option<(
-            i64,
-            Option<String>,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<i64>,
-            Option<i64>,
-        )>,
-        String,
-    > = match stmt.query_row(params, |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, Option<String>>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, Option<i64>>(5)?,
-            row.get::<_, Option<i64>>(6)?,
-        ))
-    }) {
-        Ok(value) => Ok(Some(value)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(error) => Err(format!("query top frame: {error}")),
-    };
+    let selected = stmt
+        .facet_query_optional_ref::<TopFrameCandidate, _>(&TopFrameLookupParams {
+            conn_id,
+            backtrace_id,
+            exclude_1: TOP_FRAME_CRATE_EXCLUSIONS[0],
+            exclude_2: TOP_FRAME_CRATE_EXCLUSIONS[1],
+            exclude_3: TOP_FRAME_CRATE_EXCLUSIONS[2],
+            exclude_4: TOP_FRAME_CRATE_EXCLUSIONS[3],
+            exclude_5: TOP_FRAME_CRATE_EXCLUSIONS[4],
+            exclude_6: TOP_FRAME_CRATE_EXCLUSIONS[5],
+            exclude_7: TOP_FRAME_CRATE_EXCLUSIONS[6],
+            exclude_8: TOP_FRAME_CRATE_EXCLUSIONS[7],
+            exclude_9: TOP_FRAME_CRATE_EXCLUSIONS[8],
+            exclude_10: TOP_FRAME_CRATE_EXCLUSIONS[9],
+        })
+        .map_err(|error| format!("query top frame: {error}"))?;
 
-    match selected? {
-        Some((
-            frame_index,
-            function_name,
-            crate_name,
-            crate_module_path,
-            source_file_path,
-            source_line,
-            source_col,
-        )) => {
-            tx.execute(
+    match selected {
+        Some(candidate) => {
+            let mut upsert_stmt = tx
+                .prepare(
                 "INSERT INTO top_application_frames (
                     conn_id, backtrace_id, frame_index, function_name, crate_name, crate_module_path,
                     source_file_path, source_line, source_col, updated_at_ns
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ) VALUES (
+                    :conn_id, :backtrace_id, :frame_index, :function_name, :crate_name, :crate_module_path,
+                    :source_file_path, :source_line, :source_col, :updated_at_ns
+                 )
                  ON CONFLICT(conn_id, backtrace_id) DO UPDATE SET
                     frame_index = excluded.frame_index,
                     function_name = excluded.function_name,
@@ -627,27 +675,36 @@ fn update_top_application_frame(
                     source_line = excluded.source_line,
                     source_col = excluded.source_col,
                     updated_at_ns = excluded.updated_at_ns",
-                params![
-                    to_i64_u64(conn_id),
-                    to_i64_u64(backtrace_id),
-                    frame_index,
-                    function_name,
-                    crate_name,
-                    crate_module_path,
-                    source_file_path,
-                    source_line,
-                    source_col,
-                    now_nanos(),
-                ],
             )
-            .map_err(|error| format!("upsert top_application_frame: {error}"))?;
+            .map_err(|error| format!("prepare top frame upsert: {error}"))?;
+            upsert_stmt
+                .facet_execute_ref(&TopFrameUpsertParams {
+                    conn_id,
+                    backtrace_id,
+                    frame_index: candidate.frame_index,
+                    function_name: candidate.function_name,
+                    crate_name: candidate.crate_name,
+                    crate_module_path: candidate.crate_module_path,
+                    source_file_path: candidate.source_file_path,
+                    source_line: candidate.source_line,
+                    source_col: candidate.source_col,
+                    updated_at_ns: now_nanos(),
+                })
+                .map_err(|error| format!("upsert top_application_frame: {error}"))?;
         }
         None => {
-            tx.execute(
-                "DELETE FROM top_application_frames WHERE conn_id = ?1 AND backtrace_id = ?2",
-                params![to_i64_u64(conn_id), to_i64_u64(backtrace_id)],
-            )
-            .map_err(|error| format!("delete top_application_frame: {error}"))?;
+            let mut delete_stmt = tx
+                .prepare(
+                    "DELETE FROM top_application_frames
+                     WHERE conn_id = :conn_id AND backtrace_id = :backtrace_id",
+                )
+                .map_err(|error| format!("prepare top frame delete: {error}"))?;
+            delete_stmt
+                .facet_execute_ref(&PendingFrameLookupParams {
+                    conn_id,
+                    backtrace_id,
+                })
+                .map_err(|error| format!("delete top_application_frame: {error}"))?;
         }
     }
     Ok(())
