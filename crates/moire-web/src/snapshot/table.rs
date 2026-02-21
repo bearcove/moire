@@ -3,7 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use moire_trace_types::{BacktraceId, FrameId, JS_SAFE_INT_MAX_U64};
+use moire_trace_types::{BacktraceId, FrameId, ID_COUNTER_BITS, ID_COUNTER_MAX_U64};
 use moire_types::{
     BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktrace, SnapshotBacktraceFrame,
     SnapshotCutResponse, SnapshotFrameRecord,
@@ -266,7 +266,11 @@ fn load_snapshot_backtrace_table_blocking(
         }
 
         backtraces.push(SnapshotBacktrace {
-            backtrace_id: BacktraceId::new(backtrace_id).map_err(|error| error.to_string())?,
+            backtrace_id: BacktraceId::from_prefixed_counter(
+                (backtrace_id >> ID_COUNTER_BITS) as u16,
+                backtrace_id & ID_COUNTER_MAX_U64,
+            )
+            .map_err(|error| error.to_string())?,
             frame_ids,
         });
     }
@@ -324,17 +328,12 @@ fn stable_frame_id(key: &FrameDedupKey) -> Result<FrameId, String> {
     // r[impl api.snapshot.frame-id-stable]
     let mut hasher = DefaultHasher::new();
     key.hash(&mut hasher);
-    let mut id = hasher.finish() & JS_SAFE_INT_MAX_U64;
-    if id == 0 {
-        id = 1;
+    let mut counter = hasher.finish() & ID_COUNTER_MAX_U64;
+    if counter == 0 {
+        counter = 1;
     }
-    if id > JS_SAFE_INT_MAX_U64 {
-        return Err(format!(
-            "invariant violated: generated frame_id {} exceeds JS-safe max {}",
-            id, JS_SAFE_INT_MAX_U64
-        ));
-    }
-    FrameId::new(id).map_err(|error| format!("invariant violated: {error}"))
+    FrameId::from_process_local_counter(counter)
+        .map_err(|error| format!("invariant violated: {error}"))
 }
 
 #[cfg(test)]

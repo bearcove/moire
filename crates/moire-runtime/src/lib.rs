@@ -6,7 +6,6 @@ use moire_trace_capture::{
 use moire_trace_types::{BacktraceId, FrameKey, ModuleId};
 use moire_types::{
     EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
-    process_prefix_u16,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -38,7 +37,6 @@ pub use self::futures::*;
 pub use self::handles::*;
 
 static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
-static BACKTRACE_ID_PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
@@ -73,9 +71,9 @@ pub fn init_runtime_from_macro() {
 }
 
 pub(crate) fn capture_backtrace_id() -> BacktraceId {
-    let raw = next_backtrace_id_raw();
-    let backtrace_id = BacktraceId::new(raw)
-        .expect("backtrace id invariant violated: generated id must be non-zero");
+    let counter = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
+    let backtrace_id = BacktraceId::from_process_local_counter(counter)
+        .expect("backtrace id invariant violated: generated id must be valid and JS-safe");
 
     let captured = capture_current(backtrace_id, CaptureOptions::default()).unwrap_or_else(|err| {
         panic!("failed to capture backtrace for enabled API boundary: {err}")
@@ -85,21 +83,6 @@ pub(crate) fn capture_backtrace_id() -> BacktraceId {
     remember_backtrace_record(remapped);
 
     backtrace_id
-}
-
-fn next_backtrace_id_raw() -> u64 {
-    // r[impl model.backtrace.id-layout]
-    const BACKTRACE_COUNTER_BITS: u32 = 37;
-    const BACKTRACE_COUNTER_MAX: u64 = (1u64 << BACKTRACE_COUNTER_BITS) - 1;
-
-    let prefix = *BACKTRACE_ID_PROCESS_PREFIX.get_or_init(process_prefix_u16);
-    let counter = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
-    if counter > BACKTRACE_COUNTER_MAX {
-        panic!("backtrace id invariant violated: per-process counter overflow (counter={counter})");
-    }
-    // JS-safe numeric ID layout:
-    // high 16 bits: process prefix, low 37 bits: per-process monotonic counter.
-    ((prefix as u64) << BACKTRACE_COUNTER_BITS) | counter
 }
 
 fn module_state() -> &'static StdMutex<ModuleState> {
@@ -132,8 +115,8 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
                 .next_module_id
                 .checked_add(1)
                 .expect("module id overflow");
-            let global = ModuleId::new(raw_id)
-                .expect("invariant violated: generated module id must be non-zero");
+            let global = ModuleId::from_process_local_counter(raw_id)
+                .expect("invariant violated: generated module id must be valid and JS-safe");
             modules.by_key.insert(key.clone(), global);
             modules.by_id.insert(
                 global.get(),
@@ -286,29 +269,33 @@ mod tests {
     // r[verify model.backtrace.id-layout]
     #[test]
     fn backtrace_id_layout_is_js_safe_and_prefixed() {
-        const BACKTRACE_COUNTER_BITS: u32 = 37;
         const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
-        let expected_prefix = u64::from(process_prefix_u16());
+        let first = BacktraceId::from_process_local_counter(
+            NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed),
+        )
+        .expect("first backtrace id");
+        let second = BacktraceId::from_process_local_counter(
+            NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed),
+        )
+        .expect("second backtrace id");
+        let expected_prefix = u64::from(first.process_prefix());
 
-        let first = next_backtrace_id_raw();
-        let second = next_backtrace_id_raw();
-
-        assert!(first > 0, "backtrace id must be non-zero");
+        assert!(first.get() > 0, "backtrace id must be non-zero");
         assert!(
-            second > first,
+            second.get() > first.get(),
             "backtrace ids must be monotonic per process"
         );
         assert!(
-            first <= JS_SAFE_MAX && second <= JS_SAFE_MAX,
+            first.get() <= JS_SAFE_MAX && second.get() <= JS_SAFE_MAX,
             "backtrace ids must stay JS-safe"
         );
         assert_eq!(
-            first >> BACKTRACE_COUNTER_BITS,
+            first.get() >> moire_trace_types::ID_COUNTER_BITS,
             expected_prefix,
             "upper bits must encode process prefix"
         );
         assert_eq!(
-            second >> BACKTRACE_COUNTER_BITS,
+            second.get() >> moire_trace_types::ID_COUNTER_BITS,
             expected_prefix,
             "upper bits must encode process prefix"
         );

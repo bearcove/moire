@@ -1,6 +1,8 @@
 use facet::Facet;
 use std::error::Error;
 use std::fmt;
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvariantError {
@@ -29,14 +31,29 @@ impl fmt::Display for InvariantError {
 
 impl Error for InvariantError {}
 
+pub const ID_PREFIX_BITS: u32 = 16;
+pub const ID_COUNTER_BITS: u32 = 37;
+pub const ID_COUNTER_MAX_U64: u64 = (1u64 << ID_COUNTER_BITS) - 1;
 pub const JS_SAFE_INT_MAX_U64: u64 = (1u64 << 53) - 1;
+
+fn process_prefix_u16() -> u16 {
+    static PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
+    *PROCESS_PREFIX.get_or_init(|| {
+        let pid = std::process::id() as u64;
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos() as u64)
+            .unwrap_or(0);
+        ((seed ^ pid) & 0xFFFF) as u16
+    })
+}
 
 macro_rules! define_u64_id {
     (
         $(#[$meta:meta])*
         $name:ident,
         field = $field:literal
-        $(, max = $max:expr)?
+        , max = $max:expr
     ) => {
         #[derive(Facet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
         #[facet(transparent)]
@@ -44,24 +61,46 @@ macro_rules! define_u64_id {
         pub struct $name(u64);
 
         impl $name {
-            pub fn new(value: u64) -> Result<Self, InvariantError> {
+            fn from_raw(value: u64) -> Result<Self, InvariantError> {
                 if value == 0 {
                     return Err(InvariantError::ZeroId($field));
                 }
-                $(
-                    if value > $max {
-                        return Err(InvariantError::IdOutOfRange {
-                            field: $field,
-                            max: $max,
-                            got: value,
-                        });
-                    }
-                )?
+                if value > $max {
+                    return Err(InvariantError::IdOutOfRange {
+                        field: $field,
+                        max: $max,
+                        got: value,
+                    });
+                }
                 Ok(Self(value))
+            }
+
+            pub fn from_prefixed_counter(prefix: u16, counter: u64) -> Result<Self, InvariantError> {
+                if counter > ID_COUNTER_MAX_U64 {
+                    return Err(InvariantError::IdOutOfRange {
+                        field: $field,
+                        max: ID_COUNTER_MAX_U64,
+                        got: counter,
+                    });
+                }
+                let raw = ((u64::from(prefix)) << ID_COUNTER_BITS) | counter;
+                Self::from_raw(raw)
+            }
+
+            pub fn from_process_local_counter(counter: u64) -> Result<Self, InvariantError> {
+                Self::from_prefixed_counter(process_prefix_u16(), counter)
             }
 
             pub fn get(self) -> u64 {
                 self.0
+            }
+
+            pub fn process_prefix(self) -> u16 {
+                (self.0 >> ID_COUNTER_BITS) as u16
+            }
+
+            pub fn counter(self) -> u64 {
+                self.0 & ID_COUNTER_MAX_U64
             }
         }
 
@@ -90,7 +129,7 @@ macro_rules! define_u64_id {
                         format!("{field} must be non-negative i64: {error}", field = $field),
                     )))
                 })?;
-                $name::new(value).map_err(|error| {
+                $name::from_raw(value).map_err(|error| {
                     rusqlite::types::FromSqlError::Other(Box::new(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
                         error.to_string(),
@@ -116,27 +155,31 @@ mod tests {
 
     #[test]
     fn backtrace_id_rejects_zero() {
-        let err = BacktraceId::new(0).expect_err("zero id must fail");
+        let err = BacktraceId::from_prefixed_counter(1, 0).expect_err("zero id must fail");
         assert!(matches!(err, InvariantError::ZeroId("backtrace_id")));
     }
 
     #[test]
     fn backtrace_id_rejects_values_above_js_safe_max() {
-        let err = BacktraceId::new(JS_SAFE_INT_MAX_U64 + 1).expect_err("id must be JS-safe");
+        let err = BacktraceId::from_prefixed_counter(u16::MAX, ID_COUNTER_MAX_U64)
+            .expect_err("id must be JS-safe");
         assert!(matches!(
             err,
             InvariantError::IdOutOfRange {
                 field: "backtrace_id",
                 max: JS_SAFE_INT_MAX_U64,
                 got
-            } if got == JS_SAFE_INT_MAX_U64 + 1
+            } if got > JS_SAFE_INT_MAX_U64
         ));
     }
 
     #[test]
     fn backtrace_id_accepts_js_safe_max() {
-        let id = BacktraceId::new(JS_SAFE_INT_MAX_U64).expect("max JS-safe id must work");
+        let id = BacktraceId::from_prefixed_counter(u16::MAX, ID_COUNTER_MAX_U64)
+            .expect("max JS-safe id must work");
         assert_eq!(id.get(), JS_SAFE_INT_MAX_U64);
+        assert_eq!(id.process_prefix(), u16::MAX);
+        assert_eq!(id.counter(), ID_COUNTER_MAX_U64);
     }
 }
 

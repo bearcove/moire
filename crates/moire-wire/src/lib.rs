@@ -326,14 +326,14 @@ mod tests {
     #[test]
     fn client_backtrace_record_wire_shape() {
         let json = client_payload_json(&ClientMessage::BacktraceRecord(BacktraceRecord {
-            id: BacktraceId::new(42).expect("non-zero backtrace id"),
+            id: BacktraceId::from_prefixed_counter(0, 42).expect("valid backtrace id"),
             frames: vec![
                 BacktraceFrameKey {
-                    module_id: ModuleId::new(1).expect("non-zero module id"),
+                    module_id: ModuleId::from_prefixed_counter(0, 1).expect("valid module id"),
                     rel_pc: 4096,
                 },
                 BacktraceFrameKey {
-                    module_id: ModuleId::new(2).expect("non-zero module id"),
+                    module_id: ModuleId::from_prefixed_counter(0, 2).expect("valid module id"),
                     rel_pc: 8192,
                 },
             ],

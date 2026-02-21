@@ -74,21 +74,36 @@ impl fmt::Display for CaptureError {
                     "unsupported platform for trace capture backend: {target_os}; only Unix targets are implemented"
                 )
             }
-            Self::EmptyBacktrace => write!(f, "invariant violated: captured backtrace must be non-empty"),
+            Self::EmptyBacktrace => write!(
+                f,
+                "invariant violated: captured backtrace must be non-empty"
+            ),
             Self::MissingModuleInfo { ip } => {
-                write!(f, "invariant violated: dladdr returned no module info for ip=0x{ip:x}")
+                write!(
+                    f,
+                    "invariant violated: dladdr returned no module info for ip=0x{ip:x}"
+                )
             }
             Self::MissingModulePath { ip } => {
-                write!(f, "invariant violated: module path is required for ip=0x{ip:x}")
+                write!(
+                    f,
+                    "invariant violated: module path is required for ip=0x{ip:x}"
+                )
             }
             Self::ZeroModuleBase { ip } => {
-                write!(f, "invariant violated: module base must be non-zero for ip=0x{ip:x}")
+                write!(
+                    f,
+                    "invariant violated: module base must be non-zero for ip=0x{ip:x}"
+                )
             }
             Self::IpBeforeModuleBase { ip, module_base } => write!(
                 f,
                 "invariant violated: instruction pointer 0x{ip:x} is below module base 0x{module_base:x}"
             ),
-            Self::ModuleIdOverflow => write!(f, "invariant violated: module id overflow while capturing backtrace"),
+            Self::ModuleIdOverflow => write!(
+                f,
+                "invariant violated: module id overflow while capturing backtrace"
+            ),
             Self::InvariantViolation { context, source } => {
                 write!(f, "invariant violated in {context}: {source}")
             }
@@ -132,7 +147,7 @@ mod platform {
     use super::{CaptureError, CaptureOptions, CapturedBacktrace, CapturedModule};
     use moire_trace_types::{BacktraceId, BacktraceRecord, FrameKey, ModuleId, ModulePath};
     use std::collections::BTreeMap;
-    use std::ffi::{c_void, CStr};
+    use std::ffi::{CStr, c_void};
     use std::sync::{Mutex as StdMutex, OnceLock};
 
     pub fn validate_frame_pointers_impl() -> Result<(), String> {
@@ -266,7 +281,7 @@ mod platform {
                     .checked_add(1)
                     .ok_or(CaptureError::ModuleIdOverflow)?;
 
-                let module_id = ModuleId::new(id_value)
+                let module_id = ModuleId::from_process_local_counter(id_value)
                     .map_err(|err| CaptureError::invariant("module_id", err))?;
                 let module_path = ModulePath::new(module.path)
                     .map_err(|err| CaptureError::invariant("module_path", err))?;

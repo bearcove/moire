@@ -1,4 +1,4 @@
-use moire_trace_capture::{capture_current, CaptureOptions};
+use moire_trace_capture::{CaptureOptions, capture_current};
 use moire_trace_types::{BacktraceId, ModuleId};
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -39,8 +39,9 @@ fn capture_trace(label: &str) -> CapturedTrace {
     moire_trace_capture::validate_frame_pointers_or_panic();
 
     static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
-    let backtrace_id = BacktraceId::new(NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed))
-        .expect("invariant violated: generated backtrace id must be non-zero");
+    let backtrace_id =
+        BacktraceId::from_process_local_counter(NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed))
+            .expect("invariant violated: generated backtrace id must be valid");
 
     let captured = capture_current(
         backtrace_id,
