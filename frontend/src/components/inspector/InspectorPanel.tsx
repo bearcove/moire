@@ -23,6 +23,7 @@ export function InspectorPanel({
   focusedEntityId,
   onToggleFocusEntity,
   onOpenScopeKind,
+  onAppendFilterToken,
   scrubbingUnionLayout,
   currentFrameIndex,
   selectedScopeKind,
@@ -37,6 +38,7 @@ export function InspectorPanel({
   focusedEntityId: string | null;
   onToggleFocusEntity: (id: string) => void;
   onOpenScopeKind: (kind: string) => void;
+  onAppendFilterToken?: (token: string) => void;
   scrubbingUnionLayout?: UnionLayout;
   currentFrameIndex?: number;
   selectedScopeKind?: string | null;
@@ -62,6 +64,7 @@ export function InspectorPanel({
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocusEntity}
         onOpenScopeKind={onOpenScopeKind}
+        onAppendFilterToken={onAppendFilterToken}
         entityDiff={entityDiff}
       />
     ) : null;

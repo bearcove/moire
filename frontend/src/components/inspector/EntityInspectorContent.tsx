@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Crosshair, Package } from "@phosphor-icons/react";
 import { NodeChip } from "../../ui/primitives/NodeChip";
 import { Badge } from "../../ui/primitives/Badge";
@@ -13,6 +13,8 @@ import { EntityScopeLinksSection } from "./EntityScopeLinksSection";
 import { MetaSection } from "./MetaTree";
 import { BacktraceRenderer } from "./BacktraceRenderer";
 import { Source } from "./Source";
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../ui/primitives/ContextMenu";
+import { quoteFilterValue } from "../../graphFilter";
 import "./InspectorPanel.css";
 
 type MergedSection = {
@@ -23,10 +25,14 @@ type MergedSection = {
 function EntityDetailsSection({
   entity,
   backtrace,
+  onAppendFilterToken,
 }: {
   entity: EntityDef;
   backtrace?: ResolvedSnapshotBacktrace;
+  onAppendFilterToken?: (token: string) => void;
 }) {
+  const [crateMenu, setCrateMenu] = useState<{ x: number; y: number } | null>(null);
+
   const birthAbsolute =
     isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
       ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, {
@@ -39,17 +45,40 @@ function EntityDetailsSection({
     birthAbsolute,
   ].filter(Boolean).join(" · ");
 
+  const crate = entity.topFrame?.crate_name;
+
   return (
     <>
       <KeyValueRow label="Source">
         <Source source={`${entity.source.path}:${entity.source.line}`} />
       </KeyValueRow>
-      {entity.topFrame?.crate_name && (
+      {crate && (
         <KeyValueRow label="Crate">
           <NodeChip
             icon={<Package size={12} weight="bold" />}
-            label={entity.topFrame.crate_name}
+            label={crate}
+            onContextMenu={onAppendFilterToken ? (e) => {
+              e.preventDefault();
+              setCrateMenu({ x: e.clientX, y: e.clientY });
+            } : undefined}
           />
+          {crateMenu && onAppendFilterToken && (
+            <ContextMenu x={crateMenu.x} y={crateMenu.y} onClose={() => setCrateMenu(null)}>
+              <ContextMenuItem prefix="+" onClick={() => { onAppendFilterToken(`+crate:${quoteFilterValue(crate)}`); setCrateMenu(null); }}>
+                Show only crate
+              </ContextMenuItem>
+              <ContextMenuItem prefix="−" onClick={() => { onAppendFilterToken(`-crate:${quoteFilterValue(crate)}`); setCrateMenu(null); }}>
+                Hide crate
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => { onAppendFilterToken("colorBy:crate"); setCrateMenu(null); }}>
+                Color by crates
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => { onAppendFilterToken("groupBy:crate"); setCrateMenu(null); }}>
+                Group by crates
+              </ContextMenuItem>
+            </ContextMenu>
+          )}
         </KeyValueRow>
       )}
       <KeyValueRow label="Age">
@@ -93,6 +122,7 @@ function MergedEntityInspectorContent({
   focusedEntityId,
   onToggleFocus,
   onOpenScopeKind,
+  onAppendFilterToken,
   entityDiff,
 }: {
   merged: EntityDef;
@@ -100,6 +130,7 @@ function MergedEntityInspectorContent({
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;
+  onAppendFilterToken?: (token: string) => void;
   entityDiff?: EntityDiff | null;
 }) {
   return (
@@ -142,6 +173,7 @@ function MergedEntityInspectorContent({
             focusedEntityId={focusedEntityId}
             onToggleFocus={onToggleFocus}
             onOpenScopeKind={onOpenScopeKind}
+            onAppendFilterToken={onAppendFilterToken}
             showActions={false}
             showScopeLinks={false}
             showMeta={false}
@@ -158,6 +190,7 @@ export function EntityInspectorContent({
   focusedEntityId,
   onToggleFocus,
   onOpenScopeKind,
+  onAppendFilterToken,
   entityDiff,
 }: {
   entity: EntityDef;
@@ -165,6 +198,7 @@ export function EntityInspectorContent({
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;
+  onAppendFilterToken?: (token: string) => void;
   entityDiff?: EntityDiff | null;
 }) {
   if (entity.channelPair) {
@@ -178,6 +212,7 @@ export function EntityInspectorContent({
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocus}
         onOpenScopeKind={onOpenScopeKind}
+        onAppendFilterToken={onAppendFilterToken}
         entityDiff={entityDiff}
       />
     );
@@ -194,6 +229,7 @@ export function EntityInspectorContent({
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocus}
         onOpenScopeKind={onOpenScopeKind}
+        onAppendFilterToken={onAppendFilterToken}
         entityDiff={entityDiff}
       />
     );
@@ -206,6 +242,7 @@ export function EntityInspectorContent({
       focusedEntityId={focusedEntityId}
       onToggleFocus={onToggleFocus}
       onOpenScopeKind={onOpenScopeKind}
+      onAppendFilterToken={onAppendFilterToken}
       entityDiff={entityDiff}
     />
   );
@@ -217,6 +254,7 @@ function EntityInspectorBody({
   focusedEntityId,
   onToggleFocus,
   onOpenScopeKind,
+  onAppendFilterToken,
   entityDiff,
   showActions = true,
   showScopeLinks = true,
@@ -227,6 +265,7 @@ function EntityInspectorBody({
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;
+  onAppendFilterToken?: (token: string) => void;
   entityDiff?: EntityDiff | null;
   showActions?: boolean;
   showScopeLinks?: boolean;
@@ -278,7 +317,7 @@ function EntityInspectorBody({
       )}
 
       <div className="inspector-kv-table">
-        <EntityDetailsSection entity={entity} backtrace={backtrace} />
+        <EntityDetailsSection entity={entity} backtrace={backtrace} onAppendFilterToken={onAppendFilterToken} />
         <EntityBodySection entity={entity} />
       </div>
       {showScopeLinks && <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />}

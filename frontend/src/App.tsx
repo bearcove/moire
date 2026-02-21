@@ -51,6 +51,19 @@ import {
   tokenizeFilterQuery,
 } from "./graphFilter";
 
+// ── Debug globals ──────────────────────────────────────────────
+
+declare global {
+  interface Window {
+    __moire: {
+      snapshotWire: { current: SnapshotCutResponse | null };
+      entities: EntityDef[];
+      edges: EdgeDef[];
+      backtracesById: BacktraceIndex;
+    };
+  }
+}
+
 // ── Snapshot state machine ─────────────────────────────────────
 
 export type SnapshotState =
@@ -1241,6 +1254,15 @@ export function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [focusedEntityId, inspectorOpen, selection, setFocusedEntityFilter]);
 
+  useEffect(() => {
+    window.__moire = {
+      snapshotWire: snapshotWireRef,
+      entities: allEntities,
+      edges: allEdges,
+      backtracesById,
+    };
+  }, [allEntities, allEdges, backtracesById]);
+
   const isBusy = snap.phase === "cutting" || snap.phase === "loading";
   const connCount = connections?.connected_processes ?? 0;
   const waitingForProcesses = connCount === 0 && snap.phase === "idle";
@@ -1457,6 +1479,7 @@ export function App() {
               onToggleFocusEntity={(id) => {
                 setFocusedEntityFilter(focusedEntityId === id ? null : id);
               }}
+              onAppendFilterToken={appendFilterTokenCallback}
               onOpenScopeKind={(kind) => {
                 setLeftPaneTab("scopes");
                 setSelection(null);

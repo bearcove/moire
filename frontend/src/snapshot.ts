@@ -171,8 +171,8 @@ export function isPendingFrame(frame: SnapshotBacktraceFrame): boolean {
   return "unresolved" in frame && frame.unresolved.reason === "symbolication pending";
 }
 
-function crateFromModulePath(modulePath: string): string {
-  const crate = modulePath.split("::")[0]?.trim();
+function crateFromFunctionName(functionName: string): string {
+  const crate = functionName.split("::")[0]?.trim();
   return crate && crate.length > 0 ? crate : "~no-crate";
 }
 
@@ -190,7 +190,7 @@ function resolveBacktraceDisplay(
   }
   const firstResolved = record.frames.find(isResolvedFrame)?.resolved;
   if (firstResolved) {
-    const krate = crateFromModulePath(firstResolved.module_path);
+    const krate = crateFromFunctionName(firstResolved.function_name);
     return {
       source: {
         path: firstResolved.source_file,
