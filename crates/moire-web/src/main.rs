@@ -22,9 +22,13 @@ use moire_types::{
     TimedOutProcess, TriggerCutResponse,
 };
 use moire_web::api::sql::{execute_named_query_request, execute_sql_request};
+use moire_web::app::{
+    AppState, ConnectedProcess, CutState, DevProxyState, ServerState, SnapshotPending,
+    SnapshotStreamState, remember_snapshot,
+};
 use moire_web::db::{
-    Db, StoredModuleManifestEntry, backtrace_frames_for_store, fetch_scope_entity_links_blocking,
-    init_sqlite, into_stored_module_manifest, load_next_connection_id, persist_backtrace_record,
+    Db, backtrace_frames_for_store, fetch_scope_entity_links_blocking, init_sqlite,
+    into_stored_module_manifest, load_next_connection_id, persist_backtrace_record,
     persist_connection_closed, persist_connection_module_manifest, persist_connection_upsert,
     persist_cut_ack, persist_cut_request, persist_delta_batch,
 };
@@ -49,55 +53,6 @@ use tokio::process::Child;
 use tokio::sync::{Mutex, Notify, mpsc};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
-
-#[derive(Clone)]
-struct AppState {
-    inner: Arc<Mutex<ServerState>>,
-    db: Arc<Db>,
-    dev_proxy: Option<DevProxyState>,
-}
-
-#[derive(Clone)]
-struct DevProxyState {
-    base_url: Arc<String>,
-}
-
-struct ServerState {
-    next_conn_id: u64,
-    next_cut_id: u64,
-    next_snapshot_id: i64,
-    next_session_id: u64,
-    connections: HashMap<u64, ConnectedProcess>,
-    cuts: BTreeMap<String, CutState>,
-    pending_snapshots: HashMap<i64, SnapshotPending>,
-    snapshot_streams: HashMap<i64, SnapshotStreamState>,
-    last_snapshot_json: Option<String>,
-    recording: Option<RecordingState>,
-}
-
-struct ConnectedProcess {
-    process_name: String,
-    pid: u32,
-    handshake_received: bool,
-    module_manifest: Vec<StoredModuleManifestEntry>,
-    tx: mpsc::Sender<Vec<u8>>,
-}
-
-struct CutState {
-    requested_at_ns: i64,
-    pending_conn_ids: BTreeSet<u64>,
-    acks: BTreeMap<u64, moire_types::CutAck>,
-}
-
-struct SnapshotPending {
-    pending_conn_ids: BTreeSet<u64>,
-    replies: HashMap<u64, moire_wire::SnapshotReply>,
-    notify: Arc<Notify>,
-}
-
-struct SnapshotStreamState {
-    pairs: Vec<(u64, u64)>,
-}
 
 #[derive(Facet, Debug)]
 struct Cli {
@@ -595,15 +550,6 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-}
-
-async fn remember_snapshot(state: &AppState, snapshot: &SnapshotCutResponse) {
-    let Ok(json) = facet_json::to_string(snapshot) else {
-        warn!("failed to serialize snapshot for cache");
-        return;
-    };
-    let mut guard = state.inner.lock().await;
-    guard.last_snapshot_json = Some(json);
 }
 
 async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
