@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use crate::scenarios::spawn_tracked;
-use roam_stream::{accept, HandshakeConfig, NoDispatcher};
+use roam_stream::{HandshakeConfig, NoDispatcher, accept};
 use tokio::process::{Child, Command};
 
 fn swift_package_path(workspace_root: &Path) -> PathBuf {
@@ -43,8 +43,10 @@ pub async fn run(workspace_root: &Path) -> Result<(), String> {
         .map_err(|e| format!("failed to accept swift peer connection: {e}"))?;
     println!("swift peer connected from {peer_addr}");
 
-    let mut config = HandshakeConfig::default();
-    config.name = Some("rust-host".to_string());
+    let config = HandshakeConfig {
+        name: Some("rust-host".to_string()),
+        ..Default::default()
+    };
 
     let (handle, _incoming, driver) = accept(stream, config, NoDispatcher)
         .await

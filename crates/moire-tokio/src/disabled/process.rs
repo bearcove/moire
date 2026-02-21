@@ -97,11 +97,15 @@ impl Command {
     }
 
     #[cfg(unix)]
+    /// # Safety
+    ///
+    /// Caller must ensure the closure is safe to run in the child process after fork.
     pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
     where
         F: FnMut() -> io::Result<()> + Send + Sync + 'static,
     {
-        self.0.pre_exec(f);
+        // SAFETY: caller guarantees the pre-exec closure is safe to run
+        unsafe { self.0.pre_exec(f) };
         self
     }
 

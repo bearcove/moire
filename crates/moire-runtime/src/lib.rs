@@ -1,10 +1,12 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 use ctor::ctor;
-use moire_trace_capture::{capture_current, validate_frame_pointers_or_panic, CaptureOptions, CapturedBacktrace};
+use moire_trace_capture::{
+    CaptureOptions, CapturedBacktrace, capture_current, validate_frame_pointers_or_panic,
+};
 use moire_trace_types::{BacktraceId, FrameKey, ModuleId};
 use moire_types::{
-    process_prefix_u16, EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody,
-    ScopeId, TaskScopeBody,
+    EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
+    process_prefix_u16,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -93,9 +95,7 @@ fn next_backtrace_id_raw() -> u64 {
     let prefix = *BACKTRACE_ID_PROCESS_PREFIX.get_or_init(process_prefix_u16);
     let counter = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
     if counter > BACKTRACE_COUNTER_MAX {
-        panic!(
-            "backtrace id invariant violated: per-process counter overflow (counter={counter})"
-        );
+        panic!("backtrace id invariant violated: per-process counter overflow (counter={counter})");
     }
     // JS-safe numeric ID layout:
     // high 16 bits: process prefix, low 37 bits: per-process monotonic counter.
@@ -155,12 +155,15 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
         .frames
         .iter()
         .map(|frame| {
-            let module_id = local_to_global.get(&frame.module_id.get()).copied().unwrap_or_else(|| {
-                panic!(
-                    "invariant violated: missing local module mapping for module_id {}",
-                    frame.module_id.get()
-                )
-            });
+            let module_id = local_to_global
+                .get(&frame.module_id.get())
+                .copied()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "invariant violated: missing local module mapping for module_id {}",
+                        frame.module_id.get()
+                    )
+                });
             FrameKey {
                 module_id,
                 rel_pc: frame.rel_pc,
@@ -223,7 +226,7 @@ pub fn current_process_scope_id() -> Option<ScopeId> {
 }
 
 pub fn current_tokio_task_key() -> Option<String> {
-    tokio::task::try_id().map(|id| String::from(id.to_string()))
+    tokio::task::try_id().map(|id| id.to_string())
 }
 
 pub struct TaskScopeRegistration {
@@ -291,7 +294,10 @@ mod tests {
         let second = next_backtrace_id_raw();
 
         assert!(first > 0, "backtrace id must be non-zero");
-        assert!(second > first, "backtrace ids must be monotonic per process");
+        assert!(
+            second > first,
+            "backtrace ids must be monotonic per process"
+        );
         assert!(
             first <= JS_SAFE_MAX && second <= JS_SAFE_MAX,
             "backtrace ids must stay JS-safe"

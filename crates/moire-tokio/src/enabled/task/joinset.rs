@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use moire_runtime::{
-    instrument_future_with_handle, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
+    EntityHandle, FUTURE_CAUSAL_STACK, instrument_future_with_handle, register_current_task_scope,
 };
 use moire_types::FutureEntity;
 
@@ -79,5 +79,14 @@ where
         let fut_handle = EntityHandle::new("joinset.join_next", FutureEntity {});
         let fut = self.inner.join_next();
         instrument_future_with_handle(fut_handle, fut, Some(handle.entity_ref()), None)
+    }
+}
+
+impl<T> Default for JoinSet<T>
+where
+    T: Send + 'static,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }

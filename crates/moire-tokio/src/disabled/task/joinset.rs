@@ -41,3 +41,12 @@ where
         self.0.join_next()
     }
 }
+
+impl<T> Default for JoinSet<T>
+where
+    T: Send + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -4,13 +4,13 @@ use moire_types::{
     Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PTime, PullChangesResponse, Scope,
     ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId, TaskScopeBody,
 };
-use std::collections::{hash_map::DefaultHasher, BTreeMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 use super::{
-    current_process_scope_id, current_tokio_task_key, COMPACT_TARGET_CHANGES,
-    MAX_CHANGES_BEFORE_COMPACT,
+    COMPACT_TARGET_CHANGES, MAX_CHANGES_BEFORE_COMPACT, current_process_scope_id,
+    current_tokio_task_key,
 };
 
 pub(crate) fn runtime_db() -> &'static StdMutex<RuntimeDb> {
@@ -21,12 +21,7 @@ pub(crate) fn runtime_db() -> &'static StdMutex<RuntimeDb> {
 pub(crate) fn runtime_stream_id() -> StreamId {
     static STREAM_ID: OnceLock<StreamId> = OnceLock::new();
     STREAM_ID
-        .get_or_init(|| {
-            StreamId(String::from(format!(
-                "{DEFAULT_STREAM_ID_PREFIX}:{}",
-                std::process::id()
-            )))
-        })
+        .get_or_init(|| StreamId(format!("{DEFAULT_STREAM_ID_PREFIX}:{}", std::process::id())))
         .clone()
 }
 
@@ -121,8 +116,10 @@ impl RuntimeDb {
                         EntityId::new(entity_id.as_str()),
                         ScopeId::new(scope_id.as_str()),
                     );
-                    if !seen_entity_scope_links.contains_key(&key) {
-                        seen_entity_scope_links.insert(key, ());
+                    if let std::collections::btree_map::Entry::Vacant(e) =
+                        seen_entity_scope_links.entry(key)
+                    {
+                        e.insert(());
                         keep_seq.insert(stamped.seq_no, ());
                     }
                 }
@@ -133,8 +130,8 @@ impl RuntimeDb {
                         dst: EntityId::new(dst.as_str()),
                         kind: *kind,
                     };
-                    if !seen_edges.contains_key(&key) {
-                        seen_edges.insert(key, ());
+                    if let std::collections::btree_map::Entry::Vacant(e) = seen_edges.entry(key) {
+                        e.insert(());
                         keep_seq.insert(stamped.seq_no, ());
                     }
                 }
@@ -150,14 +147,14 @@ impl RuntimeDb {
 
         self.changes.retain(|c| keep_seq.contains_key(&c.seq_no));
         let new_front = self.changes.front().map(|c| c.seq_no);
-        if let (Some(old_front), Some(new_front)) = (old_front, new_front) {
-            if new_front > old_front {
-                self.compacted_before_seq_no = Some(
-                    self.compacted_before_seq_no
-                        .map(|existing| existing.max(new_front))
-                        .unwrap_or(new_front),
-                );
-            }
+        if let (Some(old_front), Some(new_front)) = (old_front, new_front)
+            && new_front > old_front
+        {
+            self.compacted_before_seq_no = Some(
+                self.compacted_before_seq_no
+                    .map(|existing| existing.max(new_front))
+                    .unwrap_or(new_front),
+            );
         }
         // TODO: replace this with checkpoint-aware compaction once we plumb
         // checkpoint materialization and replay handoff.
@@ -172,10 +169,8 @@ impl RuntimeDb {
         if let Some(scope_id) = current_process_scope_id() {
             self.link_entity_to_scope(&entity_id, &scope_id);
         }
-        if should_link_task_scope {
-            if let Some(scope_id) = self.ensure_current_task_scope_id() {
-                self.link_entity_to_scope(&entity_id, &scope_id);
-            }
+        if should_link_task_scope && let Some(scope_id) = self.ensure_current_task_scope_id() {
+            self.link_entity_to_scope(&entity_id, &scope_id);
         }
         if let Some(entity_json) = entity_json {
             self.push_change(InternalChange::UpsertEntity {
@@ -197,14 +192,12 @@ impl RuntimeDb {
         }
     }
 
-    pub(crate) fn register_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
-        self.task_scope_ids.insert(
-            String::from(task_key.as_str()),
-            ScopeId::new(scope_id.as_str()),
-        );
+    pub(crate) fn register_task_scope_id(&mut self, task_key: &str, scope_id: &ScopeId) {
+        self.task_scope_ids
+            .insert(String::from(task_key), ScopeId::new(scope_id.as_str()));
     }
 
-    pub(crate) fn unregister_task_scope_id(&mut self, task_key: &String, scope_id: &ScopeId) {
+    pub(crate) fn unregister_task_scope_id(&mut self, task_key: &str, scope_id: &ScopeId) {
         if self
             .task_scope_ids
             .get(task_key)
@@ -307,7 +300,7 @@ impl RuntimeDb {
             return;
         }
         let mut links_to_remove = Vec::new();
-        for (entity_scope, _) in &self.entity_scope_links {
+        for entity_scope in self.entity_scope_links.keys() {
             if &entity_scope.0 == id {
                 links_to_remove.push((
                     EntityId::new(entity_scope.0.as_str()),
@@ -344,7 +337,7 @@ impl RuntimeDb {
         }
         self.task_scope_ids.retain(|_, scope_id| scope_id != id);
         let mut links_to_remove = Vec::new();
-        for (entity_scope, _) in &self.entity_scope_links {
+        for entity_scope in self.entity_scope_links.keys() {
             if &entity_scope.1 == id {
                 links_to_remove.push((
                     EntityId::new(entity_scope.0.as_str()),

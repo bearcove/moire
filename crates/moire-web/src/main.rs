@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, hash_map::Entry};
 use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::{Path as FsPath, PathBuf};
@@ -8,13 +8,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use axum::Router;
 use axum::body::{self, Body, Bytes};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path as AxumPath, Request, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
-use axum::Router;
 use facet::Facet;
 use figue as args;
 use moire_trace_types::BacktraceId;
@@ -27,19 +27,19 @@ use moire_types::{
     TimedOutProcess, TriggerCutResponse,
 };
 use moire_wire::{
-    decode_client_message_default, decode_protocol_magic, encode_server_message_default,
     BacktraceRecord, ClientMessage, ModuleIdentity, ModuleManifestEntry, ServerMessage,
-    SnapshotRequest,
+    SnapshotRequest, decode_client_message_default, decode_protocol_magic,
+    encode_server_message_default,
 };
 use object::{Object, ObjectSegment};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
+use std::collections::hash_map::DefaultHasher;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Child;
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{Mutex, Notify, mpsc};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
-use std::collections::hash_map::DefaultHasher;
 
 #[derive(Clone)]
 struct AppState {
@@ -176,14 +176,12 @@ fn main() {
     if let (Ok(fd_str), Ok(pgid_str)) = (
         std::env::var(REAPER_PIPE_FD_ENV),
         std::env::var(REAPER_PGID_ENV),
+    ) && let (Ok(fd), Ok(pgid)) = (
+        fd_str.parse::<libc::c_int>(),
+        pgid_str.parse::<libc::pid_t>(),
     ) {
-        if let (Ok(fd), Ok(pgid)) = (
-            fd_str.parse::<libc::c_int>(),
-            pgid_str.parse::<libc::pid_t>(),
-        ) {
-            reaper_main(fd, pgid);
-            return;
-        }
+        reaper_main(fd, pgid);
+        return;
     }
 
     ur_taking_me_with_you::die_with_parent();
@@ -450,7 +448,7 @@ async fn api_sql(State(state): State<AppState>, body: Bytes) -> impl IntoRespons
             return json_error(
                 StatusCode::BAD_REQUEST,
                 format!("invalid request json: {e}"),
-            )
+            );
         }
     };
 
@@ -473,7 +471,7 @@ async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoRespo
             return json_error(
                 StatusCode::BAD_REQUEST,
                 format!("invalid request json: {e}"),
-            )
+            );
         }
     };
 
@@ -621,7 +619,7 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
             );
         } else {
             unchanged_ticks = unchanged_ticks.saturating_add(1);
-            if unchanged_ticks % 30 == 0 {
+            if unchanged_ticks.is_multiple_of(30) {
                 info!(
                     snapshot_id,
                     completed_frames = completed,
@@ -1043,7 +1041,7 @@ fn merge_frame_state(
             return Err(format!(
                 "invariant violated: conflicting resolved symbolication for frame key ({}, {}, {:#x})",
                 key.module_identity, key.module_path, key.rel_pc
-            ))
+            ));
         }
         _ => {}
     }
@@ -1214,26 +1212,27 @@ fn load_snapshot_backtrace_table_blocking(
                 None => {
                     let assigned = stable_frame_id(&key)?;
                     if let Some(existing_key) =
-                        frame_id_by_key.iter().find_map(|(existing_key, existing_id)| {
-                            if *existing_id == assigned {
-                                Some(existing_key.clone())
-                            } else {
-                                None
-                            }
-                        })
+                        frame_id_by_key
+                            .iter()
+                            .find_map(|(existing_key, existing_id)| {
+                                if *existing_id == assigned {
+                                    Some(existing_key.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                        && existing_key != key
                     {
-                        if existing_key != key {
-                            return Err(format!(
-                                "invariant violated: stable frame_id collision id={} existing=({}, {}, {:#x}) incoming=({}, {}, {:#x})",
-                                assigned,
-                                existing_key.module_identity,
-                                existing_key.module_path,
-                                existing_key.rel_pc,
-                                key.module_identity,
-                                key.module_path,
-                                key.rel_pc
-                            ));
-                        }
+                        return Err(format!(
+                            "invariant violated: stable frame_id collision id={} existing=({}, {}, {:#x}) incoming=({}, {}, {:#x})",
+                            assigned,
+                            existing_key.module_identity,
+                            existing_key.module_path,
+                            existing_key.rel_pc,
+                            key.module_identity,
+                            key.module_path,
+                            key.rel_pc
+                        ));
                     }
                     frame_id_by_key.insert(key, assigned);
                     frame_by_id.insert(assigned, frame.clone());
@@ -1291,7 +1290,7 @@ async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl In
                 return json_error(
                     StatusCode::BAD_REQUEST,
                     format!("invalid request json: {e}"),
-                )
+                );
             }
         }
     };
@@ -1301,7 +1300,7 @@ async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl In
         if guard
             .recording
             .as_ref()
-            .map_or(false, |r| r.stopped_at_unix_ms.is_none())
+            .is_some_and(|r| r.stopped_at_unix_ms.is_none())
         {
             return json_error(StatusCode::CONFLICT, "recording already in progress");
         }
@@ -1410,7 +1409,7 @@ async fn api_record_stop(State(state): State<AppState>) -> impl IntoResponse {
         match &mut guard.recording {
             None => return json_error(StatusCode::NOT_FOUND, "no recording in progress"),
             Some(rec) if rec.stopped_at_unix_ms.is_some() => {
-                return json_error(StatusCode::NOT_FOUND, "no recording in progress")
+                return json_error(StatusCode::NOT_FOUND, "no recording in progress");
             }
             Some(rec) => {
                 rec.stopped_at_unix_ms = Some(now_ms());
@@ -1491,7 +1490,7 @@ async fn api_record_export(State(state): State<AppState>) -> impl IntoResponse {
             return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("failed to serialize session: {e}"),
-            )
+            );
         }
     };
 
@@ -1549,7 +1548,7 @@ async fn api_record_import(State(state): State<AppState>, body: Bytes) -> impl I
                 return json_error(
                     StatusCode::BAD_REQUEST,
                     format!("failed to re-serialize frame {}: {e}", f.frame_index),
-                )
+                );
             }
         };
         let summary = summary_by_index.get(&f.frame_index);
@@ -1810,7 +1809,7 @@ async fn ensure_frontend_deps(workspace_root: &PathBuf) -> Result<(), String> {
 
     let status = tokio::process::Command::new("pnpm")
         .arg("install")
-        .current_dir(&workspace_root)
+        .current_dir(workspace_root)
         .env("CI", "true")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -2054,13 +2053,13 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         guard.next_conn_id += 1;
         guard.connections.insert(
             conn_id,
-                ConnectedProcess {
-                    process_name: format!("unknown-{conn_id}"),
-                    pid: 0,
-                    handshake_received: false,
-                    module_manifest: Vec::new(),
-                    tx: msg_tx,
-                },
+            ConnectedProcess {
+                process_name: format!("unknown-{conn_id}"),
+                pid: 0,
+                handshake_received: false,
+                module_manifest: Vec::new(),
+                tx: msg_tx,
+            },
         );
         conn_id
     };
@@ -2173,14 +2172,13 @@ async fn read_messages(
                     conn.module_manifest = stored_manifest.clone();
                 }
                 drop(guard);
-                if let Err(e) =
-                    persist_connection_upsert(
-                        state.db_path.clone(),
-                        conn_id,
-                        process_name.clone(),
-                        pid,
-                    )
-                        .await
+                if let Err(e) = persist_connection_upsert(
+                    state.db_path.clone(),
+                    conn_id,
+                    process_name.clone(),
+                    pid,
+                )
+                .await
                 {
                     warn!(conn_id, %e, "failed to persist handshake");
                 }
@@ -2195,10 +2193,7 @@ async fn read_messages(
                 }
                 info!(
                     conn_id,
-                    process_name,
-                    pid,
-                    module_manifest_entries,
-                    "handshake accepted"
+                    process_name, pid, module_manifest_entries, "handshake accepted"
                 );
             }
             ClientMessage::SnapshotReply(reply) => {
@@ -2317,7 +2312,10 @@ async fn read_messages(
                     persist_backtrace_record(state.db_path.clone(), conn_id, backtrace_id, frames)
                         .await?;
                 if !inserted {
-                    debug!(conn_id, backtrace_id, "backtrace already existed in storage");
+                    debug!(
+                        conn_id,
+                        backtrace_id, "backtrace already existed in storage"
+                    );
                 }
             }
         }
@@ -2493,8 +2491,8 @@ fn fetch_scope_entity_links_blocking(
     let links = stmt
         .query_map(params![to_i64_u64(conn_id)], |row| {
             Ok(ScopeEntityLink {
-                scope_id: row.get::<_, String>(0)?.into(),
-                entity_id: row.get::<_, String>(1)?.into(),
+                scope_id: row.get::<_, String>(0)?,
+                entity_id: row.get::<_, String>(1)?,
             })
         })
         .map_err(|e| format!("query scope_entity_links: {e}"))?
@@ -2775,17 +2773,19 @@ fn init_sqlite(db_path: &PathBuf) -> Result<(), String> {
 fn load_next_connection_id(db_path: &PathBuf) -> Result<u64, String> {
     let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
     let max_conn_id = conn
-        .query_row("SELECT COALESCE(MAX(conn_id), 0) FROM connections", [], |row| {
-            row.get::<_, i64>(0)
-        })
+        .query_row(
+            "SELECT COALESCE(MAX(conn_id), 0) FROM connections",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
         .map_err(|e| format!("read max conn_id: {e}"))?;
     if max_conn_id < 0 {
         return Err(format!(
             "invariant violated: negative conn_id in storage ({max_conn_id})"
         ));
     }
-    let max_conn_id = u64::try_from(max_conn_id)
-        .map_err(|e| format!("convert max conn_id to u64: {e}"))?;
+    let max_conn_id =
+        u64::try_from(max_conn_id).map_err(|e| format!("convert max conn_id to u64: {e}"))?;
     max_conn_id
         .checked_add(1)
         .ok_or_else(|| String::from("invariant violated: conn_id overflow"))
@@ -3151,7 +3151,7 @@ struct PendingFrameJob {
 
 enum ModuleSymbolizerState {
     Ready {
-        loader: addr2line::Loader,
+        loader: Box<addr2line::Loader>,
         linked_image_base: u64,
     },
     Failed(String),
@@ -3165,9 +3165,11 @@ async fn symbolicate_pending_frames_for_pairs(
         return Ok(0);
     }
     let pairs = pairs.to_vec();
-    tokio::task::spawn_blocking(move || symbolicate_pending_frames_for_pairs_blocking(&db_path, &pairs))
-        .await
-        .map_err(|e| format!("join symbolication worker: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        symbolicate_pending_frames_for_pairs_blocking(&db_path, &pairs)
+    })
+    .await
+    .map_err(|e| format!("join symbolication worker: {e}"))?
 }
 
 fn symbolicate_pending_frames_for_pairs_blocking(
@@ -3430,7 +3432,7 @@ fn resolve_frame_symbolication(
                         "symbolication debug object opened"
                     );
                     ModuleSymbolizerState::Ready {
-                        loader,
+                        loader: Box::new(loader),
                         linked_image_base,
                     }
                 }
@@ -3499,7 +3501,7 @@ fn resolve_frame_symbolication(
             return unresolved(format!(
                 "lookup frames for '{}' +0x{:x}: {e}",
                 job.module_path, job.rel_pc
-            ))
+            ));
         }
     };
     debug!(
@@ -3512,35 +3514,34 @@ fn resolve_frame_symbolication(
     loop {
         match frames.next() {
             Ok(Some(frame)) => {
-                if function_name.is_none() {
-                    if let Some(function) = frame.function {
-                        match function.demangle() {
-                            Ok(name) => {
-                                function_name = Some(strip_rust_hash_suffix(name.as_ref()).to_owned())
-                            }
-                            Err(_) => match function.raw_name() {
-                                Ok(name) => {
-                                    function_name =
-                                        Some(strip_rust_hash_suffix(name.as_ref()).to_owned())
-                                }
-                                Err(e) => {
-                                    return unresolved(format!(
-                                        "decode function name for '{}' +0x{:x}: {e}",
-                                        job.module_path, job.rel_pc
-                                    ))
-                                }
-                            },
+                if function_name.is_none()
+                    && let Some(function) = frame.function
+                {
+                    match function.demangle() {
+                        Ok(name) => {
+                            function_name = Some(strip_rust_hash_suffix(name.as_ref()).to_owned())
                         }
+                        Err(_) => match function.raw_name() {
+                            Ok(name) => {
+                                function_name =
+                                    Some(strip_rust_hash_suffix(name.as_ref()).to_owned())
+                            }
+                            Err(e) => {
+                                return unresolved(format!(
+                                    "decode function name for '{}' +0x{:x}: {e}",
+                                    job.module_path, job.rel_pc
+                                ));
+                            }
+                        },
                     }
                 }
-                if source_file.is_none() {
-                    if let Some(location) = frame.location {
-                        if let Some(path) = location.file {
-                            source_file = Some(path.to_string());
-                            source_line = location.line.map(i64::from);
-                            source_col = location.column.map(i64::from);
-                        }
-                    }
+                if source_file.is_none()
+                    && let Some(location) = frame.location
+                    && let Some(path) = location.file
+                {
+                    source_file = Some(path.to_string());
+                    source_line = location.line.map(i64::from);
+                    source_col = location.column.map(i64::from);
                 }
                 if function_name.is_some() && source_file.is_some() {
                     break;
@@ -3551,14 +3552,14 @@ fn resolve_frame_symbolication(
                 return unresolved(format!(
                     "iterate frames for '{}' +0x{:x}: {e}",
                     job.module_path, job.rel_pc
-                ))
+                ));
             }
         }
     }
-    if function_name.is_none() {
-        if let Some(symbol) = loader.find_symbol(lookup_pc) {
-            function_name = Some(strip_rust_hash_suffix(symbol).to_owned());
-        }
+    if function_name.is_none()
+        && let Some(symbol) = loader.find_symbol(lookup_pc)
+    {
+        function_name = Some(strip_rust_hash_suffix(symbol).to_owned());
     }
 
     let Some(source_file_path) = source_file else {
@@ -3625,8 +3626,8 @@ fn strip_rust_hash_suffix(name: &str) -> &str {
 }
 
 fn linked_image_base_for_file(path: &FsPath) -> Result<u64, String> {
-    let data = std::fs::read(path)
-        .map_err(|e| format!("read debug object '{}': {e}", path.display()))?;
+    let data =
+        std::fs::read(path).map_err(|e| format!("read debug object '{}': {e}", path.display()))?;
     let object = object::File::parse(&*data)
         .map_err(|e| format!("parse debug object '{}': {e}", path.display()))?;
     object
@@ -3802,6 +3803,7 @@ fn update_top_application_frame(
     let mut stmt = tx
         .prepare(query.as_str())
         .map_err(|e| format!("prepare top frame query: {e}"))?;
+    #[allow(clippy::type_complexity)]
     let selected: Result<
         Option<(
             i64,
@@ -4179,7 +4181,10 @@ mod tests {
         let b = stable_frame_id(&key_b).expect("frame id for key_b");
 
         assert_eq!(a1, a2, "same frame key must map to same frame_id");
-        assert_ne!(a1, b, "different frame keys should map to different frame_id");
+        assert_ne!(
+            a1, b,
+            "different frame keys should map to different frame_id"
+        );
         assert!(a1 > 0 && b > 0, "frame ids must be non-zero");
         assert!(
             a1 <= JS_SAFE_MAX && b <= JS_SAFE_MAX,

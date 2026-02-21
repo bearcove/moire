@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use moire_runtime::{
-    current_causal_target, instrument_operation_on, AsEntityRef, EdgeHandle, EntityHandle,
-    EntityRef, WeakEntityHandle,
+    AsEntityRef, EdgeHandle, EntityHandle, EntityRef, WeakEntityHandle, current_causal_target,
+    instrument_operation_on,
 };
 
 #[derive(Clone)]
@@ -272,13 +272,13 @@ fn holder_released(
     let Some(holder_ref) = holder_ref.take() else {
         return;
     };
-    if let Ok(mut counts) = holder_counts.lock() {
-        if let Some(entry) = counts.get_mut(&holder_ref) {
-            if entry.count > 1 {
-                entry.count -= 1;
-            } else {
-                counts.remove(&holder_ref);
-            }
+    if let Ok(mut counts) = holder_counts.lock()
+        && let Some(entry) = counts.get_mut(&holder_ref)
+    {
+        if entry.count > 1 {
+            entry.count -= 1;
+        } else {
+            counts.remove(&holder_ref);
         }
     }
 }

@@ -77,11 +77,11 @@ impl Command {
     pub fn env(&mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> &mut Self {
         let key = key.as_ref().to_owned();
         let val = val.as_ref().to_owned();
-        self.env.push(String::from(format!(
+        self.env.push(format!(
             "{}={}",
             key.to_string_lossy(),
             val.to_string_lossy()
-        )));
+        ));
         self.inner.env(&key, &val);
         self
     }
@@ -95,11 +95,8 @@ impl Command {
             .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
             .collect();
         for (k, v) in &vars {
-            self.env.push(String::from(format!(
-                "{}={}",
-                k.to_string_lossy(),
-                v.to_string_lossy()
-            )));
+            self.env
+                .push(format!("{}={}", k.to_string_lossy(), v.to_string_lossy()));
         }
         self.inner.envs(vars);
         self
@@ -180,6 +177,10 @@ impl Command {
 
     #[cfg(unix)]
     /// Sets a pre-exec hook, matching [`tokio::process::Command::pre_exec`].
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure the closure is safe to run in the child process after fork.
     pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
     where
         F: FnMut() -> io::Result<()> + Send + Sync + 'static,
@@ -203,7 +204,7 @@ impl Command {
     }
 
     fn entity_name(&self) -> String {
-        String::from(format!("command.{}", self.program))
+        format!("command.{}", self.program)
     }
 
     fn entity_body(&self) -> CommandEntity {
@@ -226,7 +227,7 @@ impl Child {
             args: diag.args.clone(),
             env: diag.env.clone(),
         };
-        let name = String::from(format!("command.{}", diag.program));
+        let name = format!("command.{}", diag.program);
         let handle = EntityHandle::new(name, body);
         Self {
             inner: Some(child),
