@@ -1,17 +1,36 @@
+use facet::Facet;
 use rusqlite::Connection;
+use rusqlite_facet::ConnectionFacetExt;
 
 use crate::db::Db;
 
 const DB_SCHEMA_VERSION: i64 = 4;
+
+#[derive(Facet)]
+struct NoParams;
+
+#[derive(Facet)]
+struct UserVersionRow {
+    user_version: i64,
+}
+
+#[derive(Facet)]
+struct MaxConnIdRow {
+    max_conn_id: i64,
+}
 
 pub fn init_sqlite(db: &Db) -> Result<(), String> {
     let conn = db.open()?;
     conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
         .map_err(|error| format!("init sqlite pragmas: {error}"))?;
 
-    let user_version: i64 = conn
-        .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .map_err(|error| format!("read sqlite user_version: {error}"))?;
+    let user_version = conn
+        .facet_query_one_ref::<UserVersionRow, _>(
+            "SELECT user_version AS user_version FROM pragma_user_version",
+            &NoParams,
+        )
+        .map_err(|error| format!("read sqlite user_version: {error}"))?
+        .user_version;
 
     if user_version > DB_SCHEMA_VERSION {
         return Err(format!(
@@ -34,12 +53,12 @@ pub fn init_sqlite(db: &Db) -> Result<(), String> {
 pub fn load_next_connection_id(db: &Db) -> Result<u64, String> {
     let conn = db.open()?;
     let max_conn_id = conn
-        .query_row(
-            "SELECT COALESCE(MAX(conn_id), 0) FROM connections",
-            [],
-            |row| row.get::<_, i64>(0),
+        .facet_query_one_ref::<MaxConnIdRow, _>(
+            "SELECT COALESCE(MAX(conn_id), 0) AS max_conn_id FROM connections",
+            &NoParams,
         )
-        .map_err(|error| format!("read max conn_id: {error}"))?;
+        .map_err(|error| format!("read max conn_id: {error}"))?
+        .max_conn_id;
     if max_conn_id < 0 {
         return Err(format!(
             "invariant violated: negative conn_id in storage ({max_conn_id})"
