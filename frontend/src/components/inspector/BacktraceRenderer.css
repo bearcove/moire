@@ -3,32 +3,26 @@
 .bt-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
-  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  cursor: pointer;
   white-space: nowrap;
   line-height: 1.4;
 }
 
-.bt-badge:hover {
-  background: color-mix(in srgb, white 4%, var(--bg-elevated));
-  border-color: var(--border-default);
-}
-
-.bt-badge-icon {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.bt-badge-location {
+a.bt-badge-location {
   color: var(--text-primary);
   font-weight: 500;
+  text-decoration: none;
+}
+
+a.bt-badge-location:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .bt-badge-location--pending {
@@ -36,15 +30,36 @@
   font-style: italic;
 }
 
-.bt-badge-count {
+.bt-badge-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: transparent;
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.bt-badge-expand:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border-default);
 }
 
 /* ── Function name coloring ──────────────────────────────── */
 
 .bt-fn-prefix {
   color: var(--text-muted);
+}
+
+.bt-dialog-app-crate {
+  font-family: var(--font-mono);
+  color: var(--accent);
 }
 
 /* ── Dialog overlay ──────────────────────────────────────── */
@@ -62,7 +77,7 @@
 
 .bt-dialog {
   width: min(92vw, 900px);
-  max-height: 85vh;
+  height: calc(100vh - 30px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -71,7 +86,6 @@
   border-radius: var(--radius-control);
   background: var(--bg-surface);
   padding: 16px;
-  box-shadow: 0 20px 60px var(--shadow-strong);
 }
 
 .bt-dialog-header {
@@ -164,6 +178,15 @@
 
 .bt-frame-row--unresolved {
   opacity: 0.65;
+}
+
+.bt-frame-row--app {
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+}
+
+.bt-frame-row--app .bt-fn {
+  font-weight: 600;
 }
 
 .bt-fn {

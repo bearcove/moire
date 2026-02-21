@@ -12,7 +12,6 @@ import { EntityBodySection } from "./EntityBodySection";
 import { EntityScopeLinksSection } from "./EntityScopeLinksSection";
 import { MetaSection } from "./MetaTree";
 import { BacktraceRenderer } from "./BacktraceRenderer";
-import { Source } from "./Source";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../ui/primitives/ContextMenu";
 import { quoteFilterValue } from "../../graphFilter";
 import "./InspectorPanel.css";
@@ -49,8 +48,11 @@ function EntityDetailsSection({
 
   return (
     <>
-      <KeyValueRow label="Source">
-        <Source source={`${entity.source.path}:${entity.source.line}`} />
+      <KeyValueRow label="Created at">
+        {backtrace
+          ? <BacktraceRenderer backtrace={backtrace} />
+          : <NodeChip label={`${entity.source.path.split("/").pop() ?? entity.source.path}:${entity.source.line}`} href={`zed://file${entity.source.path}:${entity.source.line}`} />
+        }
       </KeyValueRow>
       {crate && (
         <KeyValueRow label="Crate">
@@ -86,11 +88,6 @@ function EntityDetailsSection({
           <DurationDisplay ms={entity.ageMs} />
         </span>
       </KeyValueRow>
-      {backtrace && (
-        <KeyValueRow label="Backtrace">
-          <BacktraceRenderer backtrace={backtrace} />
-        </KeyValueRow>
-      )}
     </>
   );
 }
