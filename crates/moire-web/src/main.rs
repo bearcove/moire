@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::body::Bytes;
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -19,7 +18,7 @@ use moire_web::api::recording::{
     api_record_stop,
 };
 use moire_web::api::snapshot::{api_snapshot, api_snapshot_current, api_snapshot_symbolication_ws};
-use moire_web::api::sql::{execute_named_query_request, execute_sql_request};
+use moire_web::api::sql::{api_query, api_sql};
 use moire_web::app::{AppState, ConnectedProcess, DevProxyState, ServerState};
 use moire_web::db::{
     Db, backtrace_frames_for_store, init_sqlite, into_stored_module_manifest,
@@ -210,14 +209,6 @@ async fn run() -> Result<(), String> {
 
 async fn health() -> impl IntoResponse {
     "ok"
-}
-
-async fn api_sql(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
-    execute_sql_request(body, state.db.clone()).await
-}
-
-async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
-    execute_named_query_request(body, state.db.clone()).await
 }
 
 fn parse_cli() -> Result<Cli, String> {
