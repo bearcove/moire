@@ -11,11 +11,11 @@ rustdoc-args = ["--html-in-header", "arborium-header.html"]
 
 [features]
 default = []
-rusqlite = ["dep:rusqlite", "moire-trace-types/rusqlite"]
+rusqlite = ["dep:rusqlite", "dep:facet-json", "moire-trace-types/rusqlite"]
 
 [dependencies]
 facet.workspace = true
-facet-json.workspace = true
+facet-json = { workspace = true, optional = true }
 facet-value.workspace = true
 moire-trace-types.workspace = true
 rusqlite = { workspace = true, optional = true }

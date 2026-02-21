@@ -57,8 +57,6 @@ axum = { version = "0.8", features = ["ws"] }
 rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 ureq = "2.12"
 addr2line = "0.24"
-rust-embed = "8"
-ulid = "1"
 
 [patch."https://github.com/bearcove/moire"]
 moire = { path = "crates/moire" }

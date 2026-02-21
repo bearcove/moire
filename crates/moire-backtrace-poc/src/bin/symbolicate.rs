@@ -156,6 +156,8 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
+type ResolveResult = (String, String, Option<u32>, Option<u32>, bool);
+
 struct ModuleResolver {
     loader: Loader,
     linked_image_base: u64,
@@ -186,10 +188,7 @@ impl ModuleResolver {
         })
     }
 
-    fn resolve(
-        &self,
-        probe: u64,
-    ) -> Result<(String, String, Option<u32>, Option<u32>, bool), String> {
+    fn resolve(&self, probe: u64) -> Result<ResolveResult, String> {
         let mut function_name = "<no-function-symbol>".to_owned();
         let mut source_path = "<no-source-location>".to_owned();
         let mut line = None;
@@ -205,25 +204,25 @@ impl ModuleResolver {
             .next()
             .map_err(|e| format!("iterating frames failed at 0x{probe:x}: {e}"))?
         {
-            if function_name == "<no-function-symbol>" {
-                if let Some(func) = frame.function {
-                    if let Ok(demangled) = func.demangle() {
-                        function_name = demangled.into_owned();
-                    } else if let Ok(raw) = func.raw_name() {
-                        function_name = raw.into_owned();
-                    }
+            if function_name == "<no-function-symbol>"
+                && let Some(func) = frame.function
+            {
+                if let Ok(demangled) = func.demangle() {
+                    function_name = demangled.into_owned();
+                } else if let Ok(raw) = func.raw_name() {
+                    function_name = raw.into_owned();
                 }
             }
 
-            if source_path == "<no-source-location>" {
-                if let Some(location) = frame.location {
-                    if let Some(file) = location.file {
-                        source_path = file.to_owned();
-                        absolute_flag = Path::new(file).is_absolute();
-                    }
-                    line = location.line;
-                    column = location.column;
+            if source_path == "<no-source-location>"
+                && let Some(location) = frame.location
+            {
+                if let Some(file) = location.file {
+                    source_path = file.to_owned();
+                    absolute_flag = Path::new(file).is_absolute();
                 }
+                line = location.line;
+                column = location.column;
             }
 
             if function_name != "<no-function-symbol>" && source_path != "<no-source-location>" {
@@ -231,10 +230,10 @@ impl ModuleResolver {
             }
         }
 
-        if function_name == "<no-function-symbol>" {
-            if let Some(symbol) = self.loader.find_symbol(probe) {
-                function_name = strip_rust_hash_suffix(symbol).to_owned();
-            }
+        if function_name == "<no-function-symbol>"
+            && let Some(symbol) = self.loader.find_symbol(probe)
+        {
+            function_name = strip_rust_hash_suffix(symbol).to_owned();
         }
 
         if source_path == "<no-source-location>" {
