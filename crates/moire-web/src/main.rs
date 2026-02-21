@@ -26,6 +26,7 @@ use moire_types::{
     SnapshotCutResponse, SnapshotFrameRecord, SnapshotSymbolicationUpdate, SqlRequest, SqlResponse,
     TimedOutProcess, TriggerCutResponse,
 };
+use moire_web::db::Db;
 use moire_web::util::http::{
     copy_request_headers, json_error, json_ok, skip_request_header, skip_response_header,
 };
@@ -48,7 +49,7 @@ use tracing::{debug, error, info, warn};
 #[derive(Clone)]
 struct AppState {
     inner: Arc<Mutex<ServerState>>,
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     dev_proxy: Option<DevProxyState>,
 }
 
@@ -240,9 +241,10 @@ async fn run() -> Result<(), String> {
     // r[impl config.web.db-path]
     let db_path =
         PathBuf::from(std::env::var("MOIRE_DB").unwrap_or_else(|_| "moire-web.sqlite".into()));
-    init_sqlite(&db_path).map_err(|e| format!("failed to init sqlite at {:?}: {e}", db_path))?;
-    let next_conn_id = load_next_connection_id(&db_path)
-        .map_err(|e| format!("failed to load next connection id at {:?}: {e}", db_path))?;
+    let db = Db::new(db_path);
+    init_sqlite(&db).map_err(|e| format!("failed to init sqlite at {:?}: {e}", db.path()))?;
+    let next_conn_id = load_next_connection_id(&db)
+        .map_err(|e| format!("failed to load next connection id at {:?}: {e}", db.path()))?;
 
     let mut dev_vite_child: Option<Child> = None;
     let dev_proxy = if cli.dev {
@@ -269,7 +271,7 @@ async fn run() -> Result<(), String> {
             last_snapshot_json: None,
             recording: None,
         })),
-        db_path: Arc::new(db_path),
+        db: Arc::new(db),
         dev_proxy,
     };
 
@@ -392,8 +394,7 @@ async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse {
         requested_connections,
         "cut requested via API"
     );
-    if let Err(e) = persist_cut_request(state.db_path.clone(), cut_id_string.clone(), now_ns).await
-    {
+    if let Err(e) = persist_cut_request(state.db.clone(), cut_id_string.clone(), now_ns).await {
         error!(%e, cut_id = %cut_id_string, "failed to persist cut request");
     }
     let payload = match encode_server_message_default(&request) {
@@ -456,9 +457,8 @@ async fn api_sql(State(state): State<AppState>, body: Bytes) -> impl IntoRespons
         }
     };
 
-    let db_path = state.db_path.clone();
-    match tokio::task::spawn_blocking(move || sql_query_blocking(&db_path, req.sql.as_str())).await
-    {
+    let db = state.db.clone();
+    match tokio::task::spawn_blocking(move || sql_query_blocking(&db, req.sql.as_str())).await {
         Ok(Ok(resp)) => json_ok(&resp),
         Ok(Err(err)) => json_error(StatusCode::BAD_REQUEST, err),
         Err(e) => json_error(
@@ -479,10 +479,10 @@ async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoRespo
         }
     };
 
-    let db_path = state.db_path.clone();
+    let db = state.db.clone();
     let name = req.name.to_string();
     let limit = req.limit.unwrap_or(50);
-    match tokio::task::spawn_blocking(move || query_named_blocking(&db_path, &name, limit)).await {
+    match tokio::task::spawn_blocking(move || query_named_blocking(&db, &name, limit)).await {
         Ok(Ok(resp)) => json_ok(&resp),
         Ok(Err(err)) => json_error(StatusCode::BAD_REQUEST, err),
         Err(e) => json_error(
@@ -564,10 +564,10 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
     let mut unchanged_ticks = 0u32;
 
     loop {
-        if let Err(e) = symbolicate_pending_frames_for_pairs(state.db_path.clone(), &pairs).await {
+        if let Err(e) = symbolicate_pending_frames_for_pairs(state.db.clone(), &pairs).await {
             warn!(snapshot_id, %e, "symbolication pass failed");
         }
-        let table = load_snapshot_backtrace_table(state.db_path.clone(), &pairs).await;
+        let table = load_snapshot_backtrace_table(state.db.clone(), &pairs).await;
         let completed = table
             .frames
             .iter()
@@ -852,9 +852,9 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
 
             let mut processes = Vec::with_capacity(partial.len());
             for (conn_id, process_name, pid, ptime_now_ms, snapshot) in partial {
-                let db_path = state.db_path.clone();
+                let db = state.db.clone();
                 let scope_entity_links = tokio::task::spawn_blocking(move || {
-                    fetch_scope_entity_links_blocking(&db_path, conn_id)
+                    fetch_scope_entity_links_blocking(&db, conn_id)
                 })
                 .await
                 .unwrap_or_else(|e| {
@@ -921,7 +921,7 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             },
         );
     }
-    let table = load_snapshot_backtrace_table(state.db_path.clone(), &pairs).await;
+    let table = load_snapshot_backtrace_table(state.db.clone(), &pairs).await;
     response.backtraces = table.backtraces;
     response.frames = table.frames;
     let completed_frames = response
@@ -1060,7 +1060,7 @@ fn merge_frame_state(
 }
 
 async fn load_snapshot_backtrace_table(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     pairs: &[(u64, u64)],
 ) -> SnapshotBacktraceTable {
     if pairs.is_empty() {
@@ -1071,18 +1071,18 @@ async fn load_snapshot_backtrace_table(
     }
 
     let pairs = pairs.to_vec();
-    tokio::task::spawn_blocking(move || load_snapshot_backtrace_table_blocking(&db_path, &pairs))
+    tokio::task::spawn_blocking(move || load_snapshot_backtrace_table_blocking(&db, &pairs))
         .await
         .unwrap_or_else(|e| panic!("join snapshot backtrace loader: {e}"))
         .unwrap_or_else(|e| panic!("load snapshot backtrace table: {e}"))
 }
 
 fn load_snapshot_backtrace_table_blocking(
-    db_path: &PathBuf,
+    db: &Db,
     pairs: &[(u64, u64)],
 ) -> Result<SnapshotBacktraceTable, String> {
     // r[impl api.snapshot.frame-catalog]
-    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let conn = db.open()?;
 
     let mut backtrace_owner: BTreeMap<u64, u64> = BTreeMap::new();
     for (conn_id, backtrace_id) in pairs {
@@ -2031,13 +2031,8 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         );
         conn_id
     };
-    if let Err(e) = persist_connection_upsert(
-        state.db_path.clone(),
-        conn_id,
-        format!("unknown-{conn_id}"),
-        0,
-    )
-    .await
+    if let Err(e) =
+        persist_connection_upsert(state.db.clone(), conn_id, format!("unknown-{conn_id}"), 0).await
     {
         warn!(conn_id, %e, "failed to persist connection row");
     }
@@ -2075,7 +2070,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
     for notify in to_notify {
         notify.notify_one();
     }
-    if let Err(e) = persist_connection_closed(state.db_path.clone(), conn_id).await {
+    if let Err(e) = persist_connection_closed(state.db.clone(), conn_id).await {
         warn!(conn_id, %e, "failed to persist connection close");
     }
 
@@ -2140,22 +2135,15 @@ async fn read_messages(
                     conn.module_manifest = stored_manifest.clone();
                 }
                 drop(guard);
-                if let Err(e) = persist_connection_upsert(
-                    state.db_path.clone(),
-                    conn_id,
-                    process_name.clone(),
-                    pid,
-                )
-                .await
+                if let Err(e) =
+                    persist_connection_upsert(state.db.clone(), conn_id, process_name.clone(), pid)
+                        .await
                 {
                     warn!(conn_id, %e, "failed to persist handshake");
                 }
-                if let Err(e) = persist_connection_module_manifest(
-                    state.db_path.clone(),
-                    conn_id,
-                    stored_manifest,
-                )
-                .await
+                if let Err(e) =
+                    persist_connection_module_manifest(state.db.clone(), conn_id, stored_manifest)
+                        .await
                 {
                     warn!(conn_id, %e, "failed to persist module manifest");
                 }
@@ -2195,7 +2183,7 @@ async fn read_messages(
                 }
             }
             ClientMessage::DeltaBatch(batch) => {
-                if let Err(e) = persist_delta_batch(state.db_path.clone(), conn_id, batch).await {
+                if let Err(e) = persist_delta_batch(state.db.clone(), conn_id, batch).await {
                     warn!(conn_id, %e, "failed to persist delta batch");
                 }
             }
@@ -2220,7 +2208,7 @@ async fn read_messages(
                 }
                 drop(guard);
                 if let Err(e) = persist_cut_ack(
-                    state.db_path.clone(),
+                    state.db.clone(),
                     cut_id_text,
                     conn_id,
                     cursor_stream_id,
@@ -2277,7 +2265,7 @@ async fn read_messages(
                     );
                 }
                 let inserted =
-                    persist_backtrace_record(state.db_path.clone(), conn_id, backtrace_id, frames)
+                    persist_backtrace_record(state.db.clone(), conn_id, backtrace_id, frames)
                         .await?;
                 if !inserted {
                     debug!(
@@ -2382,10 +2370,10 @@ fn into_stored_module_manifest(
 }
 
 fn fetch_scope_entity_links_blocking(
-    db_path: &PathBuf,
+    db: &Db,
     conn_id: u64,
 ) -> Result<Vec<ScopeEntityLink>, String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let conn = db.open()?;
     let mut stmt = conn
         .prepare("SELECT scope_id, entity_id FROM entity_scope_links WHERE conn_id = ?1")
         .map_err(|e| format!("prepare scope_entity_links: {e}"))?;
@@ -2402,13 +2390,13 @@ fn fetch_scope_entity_links_blocking(
     Ok(links)
 }
 
-fn sql_query_blocking(db_path: &PathBuf, sql: &str) -> Result<SqlResponse, String> {
+fn sql_query_blocking(db: &Db, sql: &str) -> Result<SqlResponse, String> {
     let sql = sql.trim();
     if sql.is_empty() {
         return Err("empty SQL".to_string());
     }
 
-    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let conn = db.open()?;
     let mut stmt = conn.prepare(sql).map_err(|e| format!("prepare sql: {e}"))?;
     if !stmt.readonly() {
         return Err("only read-only statements are allowed".to_string());
@@ -2445,9 +2433,9 @@ fn sql_query_blocking(db_path: &PathBuf, sql: &str) -> Result<SqlResponse, Strin
     })
 }
 
-fn query_named_blocking(db_path: &PathBuf, name: &str, limit: u32) -> Result<SqlResponse, String> {
+fn query_named_blocking(db: &Db, name: &str, limit: u32) -> Result<SqlResponse, String> {
     let sql = named_query_sql(name, limit)?;
-    sql_query_blocking(db_path, &sql)
+    sql_query_blocking(db, &sql)
 }
 
 fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
@@ -2644,8 +2632,8 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
     }
 }
 
-fn init_sqlite(db_path: &PathBuf) -> Result<(), String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+fn init_sqlite(db: &Db) -> Result<(), String> {
+    let conn = db.open()?;
     conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
         .map_err(|e| format!("init sqlite pragmas: {e}"))?;
 
@@ -2671,8 +2659,8 @@ fn init_sqlite(db_path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-fn load_next_connection_id(db_path: &PathBuf) -> Result<u64, String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+fn load_next_connection_id(db: &Db) -> Result<u64, String> {
+    let conn = db.open()?;
     let max_conn_id = conn
         .query_row(
             "SELECT COALESCE(MAX(conn_id), 0) FROM connections",
@@ -2891,13 +2879,13 @@ fn managed_schema_sql() -> &'static str {
 }
 
 async fn persist_connection_upsert(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     conn_id: u64,
     process_name: String,
     pid: u32,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let conn = db.open()?;
         conn.execute(
             "INSERT INTO connections (conn_id, process_name, pid, connected_at_ns, disconnected_at_ns)
              VALUES (?1, ?2, ?3, ?4, NULL)
@@ -2918,9 +2906,9 @@ async fn persist_connection_upsert(
     .map_err(|e| format!("join sqlite: {e}"))?
 }
 
-async fn persist_connection_closed(db_path: Arc<PathBuf>, conn_id: u64) -> Result<(), String> {
+async fn persist_connection_closed(db: Arc<Db>, conn_id: u64) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let conn = db.open()?;
         conn.execute(
             "UPDATE connections SET disconnected_at_ns = ?2 WHERE conn_id = ?1",
             params![to_i64_u64(conn_id), now_nanos()],
@@ -2933,12 +2921,12 @@ async fn persist_connection_closed(db_path: Arc<PathBuf>, conn_id: u64) -> Resul
 }
 
 async fn persist_connection_module_manifest(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     conn_id: u64,
     module_manifest: Vec<StoredModuleManifestEntry>,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let mut conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let mut conn = db.open()?;
         let tx = conn
             .transaction()
             .map_err(|e| format!("start transaction: {e}"))?;
@@ -2974,13 +2962,13 @@ async fn persist_connection_module_manifest(
 
 // r[impl symbolicate.server-store]
 async fn persist_backtrace_record(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     conn_id: u64,
     backtrace_id: u64,
     frames: Vec<BacktraceFramePersist>,
 ) -> Result<bool, String> {
     tokio::task::spawn_blocking(move || {
-        let mut conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let mut conn = db.open()?;
         let tx = conn
             .transaction()
             .map_err(|e| format!("start transaction: {e}"))?;
@@ -3059,26 +3047,24 @@ enum ModuleSymbolizerState {
 }
 
 async fn symbolicate_pending_frames_for_pairs(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     pairs: &[(u64, u64)],
 ) -> Result<usize, String> {
     if pairs.is_empty() {
         return Ok(0);
     }
     let pairs = pairs.to_vec();
-    tokio::task::spawn_blocking(move || {
-        symbolicate_pending_frames_for_pairs_blocking(&db_path, &pairs)
-    })
-    .await
-    .map_err(|e| format!("join symbolication worker: {e}"))?
+    tokio::task::spawn_blocking(move || symbolicate_pending_frames_for_pairs_blocking(&db, &pairs))
+        .await
+        .map_err(|e| format!("join symbolication worker: {e}"))?
 }
 
 fn symbolicate_pending_frames_for_pairs_blocking(
-    db_path: &PathBuf,
+    db: &Db,
     pairs: &[(u64, u64)],
 ) -> Result<usize, String> {
     let started = Instant::now();
-    let mut conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let mut conn = db.open()?;
     conn.busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .map_err(|e| format!("set sqlite busy_timeout: {e}"))?;
     let tx = conn
@@ -3783,12 +3769,12 @@ fn update_top_application_frame(
 }
 
 async fn persist_cut_request(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     cut_id: String,
     requested_at_ns: i64,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let conn = db.open()?;
         conn.execute(
             "INSERT INTO cuts (cut_id, requested_at_ns) VALUES (?1, ?2)
              ON CONFLICT(cut_id) DO UPDATE SET requested_at_ns = excluded.requested_at_ns",
@@ -3802,14 +3788,14 @@ async fn persist_cut_request(
 }
 
 async fn persist_cut_ack(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     cut_id: String,
     conn_id: u64,
     stream_id: String,
     next_seq_no: u64,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let conn = db.open()?;
         conn.execute(
             "INSERT INTO cut_acks (cut_id, conn_id, stream_id, next_seq_no, received_at_ns)
              VALUES (?1, ?2, ?3, ?4, ?5)
@@ -3833,21 +3819,21 @@ async fn persist_cut_ack(
 }
 
 async fn persist_delta_batch(
-    db_path: Arc<PathBuf>,
+    db: Arc<Db>,
     conn_id: u64,
     batch: moire_types::PullChangesResponse,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || persist_delta_batch_blocking(&db_path, conn_id, &batch))
+    tokio::task::spawn_blocking(move || persist_delta_batch_blocking(&db, conn_id, &batch))
         .await
         .map_err(|e| format!("join sqlite: {e}"))?
 }
 
 fn persist_delta_batch_blocking(
-    db_path: &PathBuf,
+    db: &Db,
     conn_id: u64,
     batch: &moire_types::PullChangesResponse,
 ) -> Result<(), String> {
-    let mut conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let mut conn = db.open()?;
     let tx = conn
         .transaction()
         .map_err(|e| format!("start transaction: {e}"))?;
