@@ -1,23 +1,23 @@
 use facet::Facet;
 use facet_value::Value;
-use moire_types::{ConnectionId, ScopeEntityLink, SqlResponse};
+use moire_types::{ProcessId, ScopeEntityLink, SqlResponse};
 use rusqlite_facet::ConnectionFacetExt;
 
 use crate::db::Db;
 
 #[derive(Facet)]
 struct ScopeEntityLinkParams {
-    conn_id: ConnectionId,
+    process_id: ProcessId,
 }
 
 pub fn fetch_scope_entity_links_blocking(
     db: &Db,
-    conn_id: ConnectionId,
+    process_id: ProcessId,
 ) -> Result<Vec<ScopeEntityLink>, String> {
     let conn = db.open()?;
     conn.facet_query_ref::<ScopeEntityLink, _>(
-        "SELECT scope_id, entity_id FROM entity_scope_links WHERE conn_id = :conn_id",
-        &ScopeEntityLinkParams { conn_id },
+        "SELECT scope_id, entity_id FROM entity_scope_links WHERE process_id = :process_id",
+        &ScopeEntityLinkParams { process_id },
     )
     .map_err(|error| format!("query scope_entity_links: {error}"))
 }
@@ -85,8 +85,8 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              json_extract(dst.entity_json, '$.name') as blocked_on_name, \
              e.kind_json \
              from edges e \
-             left join entities src on src.conn_id = e.conn_id and src.stream_id = e.stream_id and src.entity_id = e.src_id \
-             left join entities dst on dst.conn_id = e.conn_id and dst.stream_id = e.stream_id and dst.entity_id = e.dst_id \
+             left join entities src on src.process_id = e.process_id and src.entity_id = e.src_id \
+             left join entities dst on dst.process_id = e.process_id and dst.entity_id = e.dst_id \
              where e.kind_json = '\"needs\"' \
              order by e.updated_at_ns desc \
              limit {limit}"
@@ -99,8 +99,8 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              json_extract(ch.entity_json, '$.name') as waiting_on_name, \
              e.updated_at_ns \
              from edges e \
-             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
-             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
+             join entities f on f.process_id = e.process_id and f.entity_id = e.src_id \
+             left join entities ch on ch.process_id = e.process_id and ch.entity_id = e.dst_id \
              where e.kind_json = '\"needs\"' \
                and json_extract(f.entity_json, '$.body') = 'future' \
                and json_extract(f.entity_json, '$.name') like '%.send' \
@@ -115,8 +115,8 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              json_extract(ch.entity_json, '$.name') as waiting_on_name, \
              e.updated_at_ns \
              from edges e \
-             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
-             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
+             join entities f on f.process_id = e.process_id and f.entity_id = e.src_id \
+             left join entities ch on ch.process_id = e.process_id and ch.entity_id = e.dst_id \
              where e.kind_json = '\"needs\"' \
                and json_extract(f.entity_json, '$.body') = 'future' \
                and json_extract(f.entity_json, '$.name') like '%.recv' \
@@ -130,8 +130,8 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              e.dst_id as waiting_on_entity_id, \
              json_extract(ch.entity_json, '$.name') as waiting_on_name \
              from edges e \
-             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
-             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
+             join entities f on f.process_id = e.process_id and f.entity_id = e.src_id \
+             left join entities ch on ch.process_id = e.process_id and ch.entity_id = e.dst_id \
              where e.kind_json = '\"needs\"' \
                and json_extract(f.entity_json, '$.body') = 'future' \
                and json_extract(f.entity_json, '$.name') like '%.send' \
@@ -185,17 +185,16 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              l.entity_id, \
              json_extract(e.entity_json, '$.name') as entity_name \
              from entity_scope_links l \
-             left join scopes s on s.conn_id = l.conn_id and s.stream_id = l.stream_id and s.scope_id = l.scope_id \
-             left join entities e on e.conn_id = l.conn_id and e.stream_id = l.stream_id and e.entity_id = l.entity_id \
+             left join scopes s on s.process_id = l.process_id and s.scope_id = l.scope_id \
+             left join entities e on e.process_id = l.process_id and e.entity_id = l.entity_id \
              order by scope_name asc, entity_name asc \
              limit {limit}"
         )),
         "missing-scope-links" => Ok(format!(
             "select \
-             e.conn_id as process_id, \
+             e.process_id as process_id, \
              c.process_name, \
              c.pid, \
-             e.stream_id, \
              e.entity_id, \
              json_extract(e.entity_json, '$.name') as entity_name, \
              json_extract(e.entity_json, '$.body') as entity_body, \
@@ -209,40 +208,34 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              end as missing_task_scope_link \
              from entities e \
              left join connections c \
-               on c.conn_id = e.conn_id \
+               on c.process_id = e.process_id \
              left join ( \
                select \
-                 l.conn_id, \
-                 l.stream_id, \
+                 l.process_id, \
                  l.entity_id, \
                  count(*) as process_scope_count \
                from entity_scope_links l \
                join scopes s \
-                 on s.conn_id = l.conn_id \
-                and s.stream_id = l.stream_id \
+                 on s.process_id = l.process_id \
                 and s.scope_id = l.scope_id \
                where json_extract(s.scope_json, '$.body') = 'process' \
-               group by l.conn_id, l.stream_id, l.entity_id \
+               group by l.process_id, l.entity_id \
              ) p \
-               on p.conn_id = e.conn_id \
-              and p.stream_id = e.stream_id \
+               on p.process_id = e.process_id \
               and p.entity_id = e.entity_id \
              left join ( \
                select \
-                 l.conn_id, \
-                 l.stream_id, \
+                 l.process_id, \
                  l.entity_id, \
                  count(*) as task_scope_count \
                from entity_scope_links l \
                join scopes s \
-                 on s.conn_id = l.conn_id \
-                and s.stream_id = l.stream_id \
+                 on s.process_id = l.process_id \
                 and s.scope_id = l.scope_id \
                where json_extract(s.scope_json, '$.body') = 'task' \
-               group by l.conn_id, l.stream_id, l.entity_id \
+               group by l.process_id, l.entity_id \
              ) t \
-               on t.conn_id = e.conn_id \
-              and t.stream_id = e.stream_id \
+               on t.process_id = e.process_id \
               and t.entity_id = e.entity_id \
              where p.process_scope_count is null \
                 or (json_extract(e.entity_json, '$.body') = 'future' and t.task_scope_count is null) \
@@ -257,8 +250,8 @@ fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
              json_extract(dst.entity_json, '$.name') as blocked_on_name, \
              e.updated_at_ns \
              from edges e \
-             left join entities src on src.conn_id = e.conn_id and src.stream_id = e.stream_id and src.entity_id = e.src_id \
-             left join entities dst on dst.conn_id = e.conn_id and dst.stream_id = e.stream_id and dst.entity_id = e.dst_id \
+             left join entities src on src.process_id = e.process_id and src.entity_id = e.src_id \
+             left join entities dst on dst.process_id = e.process_id and dst.entity_id = e.dst_id \
              where e.kind_json = '\"needs\"' \
              order by e.updated_at_ns asc \
              limit {limit}"

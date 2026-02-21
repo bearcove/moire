@@ -15,7 +15,7 @@ use crate::db::{Db, StoredModuleManifestEntry};
 use crate::proxy::proxy_vite;
 use crate::recording::session::RecordingState;
 use moire_trace_types::BacktraceId;
-use moire_types::SnapshotCutResponse;
+use moire_types::{ProcessId, SnapshotCutResponse};
 use moire_wire::SnapshotReply;
 use tokio::sync::{Mutex, Notify, mpsc};
 
@@ -48,6 +48,7 @@ pub struct ServerState {
 }
 
 pub struct ConnectedProcess {
+    pub process_id: Option<ProcessId>,
     pub process_name: String,
     pub pid: u32,
     pub handshake_received: bool,

@@ -5,7 +5,7 @@ use rusqlite_facet::ConnectionFacetExt;
 
 use crate::db::Db;
 
-const DB_SCHEMA_VERSION: i64 = 5;
+const DB_SCHEMA_VERSION: i64 = 6;
 
 #[derive(Facet)]
 struct NoParams;
@@ -101,40 +101,43 @@ fn managed_schema_sql() -> &'static str {
     "
     CREATE TABLE IF NOT EXISTS connections (
         conn_id INTEGER PRIMARY KEY,
+        process_id TEXT NOT NULL,
         process_name TEXT NOT NULL,
         pid INTEGER NOT NULL,
         connected_at_ns INTEGER NOT NULL,
         disconnected_at_ns INTEGER
     );
+    CREATE INDEX IF NOT EXISTS idx_connections_process_id
+        ON connections (process_id);
 
     CREATE TABLE IF NOT EXISTS connection_modules (
-        conn_id INTEGER NOT NULL,
+        process_id TEXT NOT NULL,
         module_id INTEGER NOT NULL,
         module_index INTEGER NOT NULL,
         module_path TEXT NOT NULL,
         module_identity TEXT NOT NULL,
         arch TEXT NOT NULL,
         runtime_base INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, module_index),
-        UNIQUE (conn_id, module_id)
+        PRIMARY KEY (process_id, module_index),
+        UNIQUE (process_id, module_id)
     );
 
     CREATE TABLE IF NOT EXISTS backtraces (
-        conn_id INTEGER NOT NULL,
+        process_id TEXT NOT NULL,
         backtrace_id INTEGER NOT NULL,
         frame_count INTEGER NOT NULL,
         received_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, backtrace_id)
+        PRIMARY KEY (backtrace_id)
     );
 
     CREATE TABLE IF NOT EXISTS backtrace_frames (
-        conn_id INTEGER NOT NULL,
+        process_id TEXT NOT NULL,
         backtrace_id INTEGER NOT NULL,
         frame_index INTEGER NOT NULL,
         module_path TEXT NOT NULL,
         module_identity TEXT NOT NULL,
         rel_pc INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, backtrace_id, frame_index)
+        PRIMARY KEY (backtrace_id, frame_index)
     );
     CREATE INDEX IF NOT EXISTS idx_backtrace_frames_identity_pc
         ON backtrace_frames (module_identity, rel_pc);
@@ -155,7 +158,7 @@ fn managed_schema_sql() -> &'static str {
     );
 
     CREATE TABLE IF NOT EXISTS symbolicated_frames (
-        conn_id INTEGER NOT NULL,
+        process_id TEXT NOT NULL,
         backtrace_id INTEGER NOT NULL,
         frame_index INTEGER NOT NULL,
         module_path TEXT NOT NULL,
@@ -169,13 +172,13 @@ fn managed_schema_sql() -> &'static str {
         source_col INTEGER,
         unresolved_reason TEXT,
         updated_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, backtrace_id, frame_index)
+        PRIMARY KEY (backtrace_id, frame_index)
     );
     CREATE INDEX IF NOT EXISTS idx_symbolicated_frames_backtrace
-        ON symbolicated_frames (conn_id, backtrace_id, frame_index);
+        ON symbolicated_frames (backtrace_id, frame_index);
 
     CREATE TABLE IF NOT EXISTS top_application_frames (
-        conn_id INTEGER NOT NULL,
+        process_id TEXT NOT NULL,
         backtrace_id INTEGER NOT NULL,
         frame_index INTEGER NOT NULL,
         function_name TEXT,
@@ -185,7 +188,7 @@ fn managed_schema_sql() -> &'static str {
         source_line INTEGER,
         source_col INTEGER,
         updated_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, backtrace_id)
+        PRIMARY KEY (backtrace_id)
     );
 
     CREATE TABLE IF NOT EXISTS cuts (
@@ -195,25 +198,22 @@ fn managed_schema_sql() -> &'static str {
 
     CREATE TABLE IF NOT EXISTS cut_acks (
         cut_id TEXT NOT NULL,
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         next_seq_no INTEGER NOT NULL,
         received_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (cut_id, conn_id)
+        PRIMARY KEY (cut_id, process_id)
     );
 
     CREATE TABLE IF NOT EXISTS stream_cursors (
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         next_seq_no INTEGER NOT NULL,
         updated_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, stream_id)
+        PRIMARY KEY (process_id)
     );
 
     CREATE TABLE IF NOT EXISTS delta_batches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         from_seq_no INTEGER NOT NULL,
         next_seq_no INTEGER NOT NULL,
         truncated INTEGER NOT NULL,
@@ -224,51 +224,47 @@ fn managed_schema_sql() -> &'static str {
     );
 
     CREATE TABLE IF NOT EXISTS entities (
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         entity_id TEXT NOT NULL,
         entity_json TEXT NOT NULL,
         updated_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, stream_id, entity_id)
+        PRIMARY KEY (entity_id)
     );
 
     CREATE TABLE IF NOT EXISTS scopes (
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         scope_id TEXT NOT NULL,
         scope_json TEXT NOT NULL,
         updated_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, stream_id, scope_id)
+        PRIMARY KEY (scope_id)
     );
 
     CREATE TABLE IF NOT EXISTS entity_scope_links (
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         entity_id TEXT NOT NULL,
         scope_id TEXT NOT NULL,
         updated_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, stream_id, entity_id, scope_id)
+        PRIMARY KEY (entity_id, scope_id)
     );
 
     CREATE TABLE IF NOT EXISTS edges (
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         src_id TEXT NOT NULL,
         dst_id TEXT NOT NULL,
         kind_json TEXT NOT NULL,
         edge_json TEXT NOT NULL,
         updated_at_ns INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, stream_id, src_id, dst_id, kind_json)
+        PRIMARY KEY (src_id, dst_id, kind_json)
     );
 
     CREATE TABLE IF NOT EXISTS events (
-        conn_id INTEGER NOT NULL,
-        stream_id TEXT NOT NULL,
+        process_id TEXT NOT NULL,
         seq_no INTEGER NOT NULL,
         event_id TEXT NOT NULL,
         event_json TEXT NOT NULL,
         at_ms INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, stream_id, seq_no)
+        PRIMARY KEY (event_id),
+        UNIQUE (process_id, seq_no)
     );
     "
 }

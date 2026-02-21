@@ -19,13 +19,8 @@ pub(crate) fn runtime_db() -> &'static StdMutex<RuntimeDb> {
 }
 
 pub(crate) fn runtime_stream_id() -> StreamId {
-    static STREAM_ID: OnceLock<StreamId> = OnceLock::new();
-    STREAM_ID
-        .get_or_init(|| StreamId(format!("{DEFAULT_STREAM_ID_PREFIX}:{}", std::process::id())))
-        .clone()
+    StreamId(super::runtime_process_id().as_str().to_owned())
 }
-
-use super::DEFAULT_STREAM_ID_PREFIX;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(super) struct EdgeKey {

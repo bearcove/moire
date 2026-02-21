@@ -19,10 +19,14 @@ pub async fn api_connections(State(state): State<AppState>) -> impl IntoResponse
     let mut processes: Vec<ConnectedProcessInfo> = guard
         .connections
         .iter()
-        .map(|(conn_id, conn)| ConnectedProcessInfo {
-            conn_id: *conn_id,
-            process_name: conn.process_name.clone(),
-            pid: conn.pid,
+        .filter_map(|(conn_id, conn)| {
+            let process_id = conn.process_id.clone()?;
+            Some(ConnectedProcessInfo {
+                conn_id: *conn_id,
+                process_id,
+                process_name: conn.process_name.clone(),
+                pid: conn.pid,
+            })
         })
         .collect();
     processes.sort_by(|a, b| {

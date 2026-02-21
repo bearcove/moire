@@ -1,4 +1,4 @@
-use crate::{ConnectionId, CutId, SessionId};
+use crate::{ConnectionId, CutId, ProcessId, SessionId};
 use facet::Facet;
 use moire_trace_types::{BacktraceId, FrameId, RelPc};
 
@@ -12,6 +12,7 @@ pub struct ConnectionsResponse {
 #[derive(Facet)]
 pub struct ConnectedProcessInfo {
     pub conn_id: ConnectionId,
+    pub process_id: ProcessId,
     pub process_name: String,
     pub pid: u32,
 }
@@ -120,7 +121,7 @@ pub struct SnapshotSymbolicationUpdate {
 /// Per-process envelope inside a snapshot cut.
 #[derive(Facet)]
 pub struct ProcessSnapshotView {
-    pub process_id: ConnectionId,
+    pub process_id: ProcessId,
     pub process_name: String,
     pub pid: u32,
     pub ptime_now_ms: u64,
@@ -137,7 +138,7 @@ pub struct ScopeEntityLink {
 
 #[derive(Facet)]
 pub struct TimedOutProcess {
-    pub process_id: ConnectionId,
+    pub process_id: ProcessId,
     pub process_name: String,
     pub pid: u32,
 }

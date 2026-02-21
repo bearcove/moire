@@ -1,4 +1,4 @@
-use crate::{ConnectionId, SessionId};
+use crate::{ProcessId, SessionId};
 use facet::Facet;
 
 /// Status of a recording session.
@@ -34,7 +34,7 @@ pub struct RecordingFrame {
 /// Per-process data within a recording frame.
 #[derive(Facet)]
 pub struct ProcessFrameView {
-    pub process_id: ConnectionId,
+    pub process_id: ProcessId,
     pub process_name: String,
     pub pid: u32,
     pub ptime_now_ms: u64,

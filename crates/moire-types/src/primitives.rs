@@ -125,6 +125,10 @@ pub struct ConnectionId(pub(crate) u64);
 
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
+pub struct ProcessId(pub(crate) String);
+
+#[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct SessionId(pub(crate) String);
 
 impl EntityId {
@@ -178,6 +182,16 @@ impl fmt::Display for ConnectionId {
     }
 }
 
+impl ProcessId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 impl SessionId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -189,6 +203,20 @@ impl SessionId {
 
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl ToSql for ProcessId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for ProcessId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(ProcessId::new(String::column_result(value)?))
     }
 }
 
@@ -266,6 +294,10 @@ pub(crate) fn next_scope_id() -> ScopeId {
 
 pub(crate) fn next_event_id() -> EventId {
     EventId(next_opaque_id())
+}
+
+pub fn next_process_id() -> ProcessId {
+    ProcessId(next_opaque_id())
 }
 
 pub fn process_prefix_u16() -> u16 {

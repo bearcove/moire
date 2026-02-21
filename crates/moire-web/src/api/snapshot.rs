@@ -234,7 +234,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
 
     let snapshot_id;
     let notify;
-    let txs: Vec<(ConnectionId, mpsc::Sender<Vec<u8>>)>;
+    let txs: Vec<(ConnectionId, moire_types::ProcessId, mpsc::Sender<Vec<u8>>)>;
     {
         let mut guard = state.inner.lock().await;
         snapshot_id = guard.next_snapshot_id;
@@ -243,12 +243,13 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         txs = guard
             .connections
             .iter()
-            .map(|(id, conn)| (*id, conn.tx.clone()))
+            .filter_map(|(id, conn)| Some((*id, conn.process_id.clone()?, conn.tx.clone())))
             .collect();
 
         notify = Arc::new(tokio::sync::Notify::new());
         if !txs.is_empty() {
-            let pending_conn_ids: BTreeSet<ConnectionId> = txs.iter().map(|(id, _)| *id).collect();
+            let pending_conn_ids: BTreeSet<ConnectionId> =
+                txs.iter().map(|(id, _, _)| *id).collect();
             guard.pending_snapshots.insert(
                 snapshot_id,
                 SnapshotPending {
@@ -321,7 +322,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             }
         };
 
-    for (_, tx) in &txs {
+    for (_, _, tx) in &txs {
         if let Err(e) = tx.try_send(request_frame.clone()) {
             tracing::debug!(%e, "failed to send snapshot request to connection");
         }
@@ -337,10 +338,19 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     let (pending, conn_info) = {
         let mut guard = state.inner.lock().await;
         let pending = guard.pending_snapshots.remove(&snapshot_id);
-        let conn_info: HashMap<ConnectionId, (String, u32)> = guard
+        let conn_info: HashMap<ConnectionId, (moire_types::ProcessId, String, u32)> = guard
             .connections
             .iter()
-            .map(|(id, conn)| (*id, (conn.process_name.clone(), conn.pid)))
+            .filter_map(|(id, conn)| {
+                Some((
+                    *id,
+                    (
+                        conn.process_id.clone()?,
+                        conn.process_name.clone(),
+                        conn.pid,
+                    ),
+                ))
+            })
             .collect();
         (pending, conn_info)
     };
@@ -348,24 +358,36 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     let (processes, timed_out_processes) = match pending {
         None => (vec![], vec![]),
         Some(p) => {
-            let partial: Vec<(ConnectionId, String, u32, u64, moire_types::Snapshot)> = p
+            let partial: Vec<(
+                moire_types::ProcessId,
+                String,
+                u32,
+                u64,
+                moire_types::Snapshot,
+            )> = p
                 .replies
                 .into_iter()
                 .filter_map(|(conn_id, reply)| {
                     let snapshot = reply.snapshot?;
-                    let (process_name, pid) = conn_info
+                    let (process_id, process_name, pid) = conn_info
                         .get(&conn_id)
-                        .map(|(name, pid)| (name.clone(), *pid))
-                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
-                    Some((conn_id, process_name, pid, reply.ptime_now_ms, snapshot))
+                        .map(|(process_id, name, pid)| (process_id.clone(), name.clone(), *pid))
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "invariant violated: snapshot reply for conn {} has no conn_info row",
+                                conn_id
+                            )
+                        });
+                    Some((process_id, process_name, pid, reply.ptime_now_ms, snapshot))
                 })
                 .collect();
 
             let mut processes = Vec::with_capacity(partial.len());
-            for (conn_id, process_name, pid, ptime_now_ms, snapshot) in partial {
+            for (process_id, process_name, pid, ptime_now_ms, snapshot) in partial {
                 let db = state.db.clone();
+                let process_id_for_links = process_id.clone();
                 let scope_entity_links = tokio::task::spawn_blocking(move || {
-                    fetch_scope_entity_links_blocking(&db, conn_id)
+                    fetch_scope_entity_links_blocking(&db, process_id_for_links)
                 })
                 .await
                 .unwrap_or_else(|e| {
@@ -377,7 +399,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     vec![]
                 });
                 processes.push(ProcessSnapshotView {
-                    process_id: conn_id,
+                    process_id,
                     process_name,
                     pid,
                     ptime_now_ms,
@@ -391,12 +413,17 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                 .pending_conn_ids
                 .into_iter()
                 .map(|conn_id| {
-                    let (process_name, pid) = conn_info
+                    let (process_id, process_name, pid) = conn_info
                         .get(&conn_id)
-                        .map(|(name, pid)| (name.clone(), *pid))
-                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
+                        .map(|(process_id, name, pid)| (process_id.clone(), name.clone(), *pid))
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "invariant violated: timed-out conn {} has no conn_info row",
+                                conn_id
+                            )
+                        });
                     TimedOutProcess {
-                        process_id: conn_id,
+                        process_id,
                         process_name,
                         pid,
                     }

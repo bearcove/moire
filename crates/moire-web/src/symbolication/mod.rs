@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use facet::Facet;
 use moire_trace_types::{BacktraceId, RelPc};
-use moire_types::ConnectionId;
+use moire_types::ProcessId;
 use object::{Object, ObjectSegment};
 use rusqlite::Transaction;
 use rusqlite_facet::StatementFacetExt;
@@ -45,7 +45,7 @@ struct SymbolicationCacheEntry {
 
 #[derive(Facet, Clone)]
 struct PendingFrameJob {
-    conn_id: ConnectionId,
+    process_id: ProcessId,
     backtrace_id: BacktraceId,
     frame_index: u32,
     module_path: String,
@@ -81,7 +81,7 @@ struct UpsertSymbolicationCacheParams {
 
 #[derive(Facet)]
 struct UpsertSymbolicatedFrameParams {
-    conn_id: ConnectionId,
+    process_id: ProcessId,
     backtrace_id: BacktraceId,
     frame_index: u32,
     module_path: String,
@@ -99,7 +99,7 @@ struct UpsertSymbolicatedFrameParams {
 
 #[derive(Facet)]
 struct TopFrameLookupParams {
-    conn_id: ConnectionId,
+    process_id: ProcessId,
     backtrace_id: BacktraceId,
     exclude_1: &'static str,
     exclude_2: &'static str,
@@ -126,7 +126,7 @@ struct TopFrameCandidate {
 
 #[derive(Facet)]
 struct TopFrameUpsertParams {
-    conn_id: ConnectionId,
+    process_id: ProcessId,
     backtrace_id: BacktraceId,
     frame_index: i64,
     function_name: Option<String>,
@@ -140,7 +140,7 @@ struct TopFrameUpsertParams {
 
 #[derive(Facet)]
 struct TopFrameDeleteParams {
-    conn_id: ConnectionId,
+    process_id: ProcessId,
     backtrace_id: BacktraceId,
 }
 
@@ -181,15 +181,15 @@ fn symbolicate_pending_frames_for_backtraces_blocking(
 
     let mut pending_stmt = tx
         .prepare(
-            "SELECT bf.conn_id, bf.backtrace_id, bf.frame_index, bf.module_path, bf.module_identity, bf.rel_pc
+            "SELECT bf.process_id, bf.backtrace_id, bf.frame_index, bf.module_path, bf.module_identity, bf.rel_pc
              FROM backtrace_frames bf
              LEFT JOIN symbolicated_frames sf
-                ON sf.conn_id = bf.conn_id
+                ON sf.process_id = bf.process_id
                AND sf.backtrace_id = bf.backtrace_id
                AND sf.frame_index = bf.frame_index
              WHERE bf.backtrace_id = :backtrace_id
                AND (
-                    sf.conn_id IS NULL
+                    sf.process_id IS NULL
                     OR (
                         sf.status = 'unresolved'
                         AND sf.unresolved_reason LIKE 'symbolication engine not wired:%'
@@ -225,7 +225,7 @@ fn symbolicate_pending_frames_for_backtraces_blocking(
                             .is_some_and(should_retry_unresolved_reason)
                     {
                         debug!(
-                            conn_id = %job.conn_id,
+                            process_id = %job.process_id.as_str(),
                             backtrace_id = %job.backtrace_id,
                             frame_index = job.frame_index,
                             "retrying previously scaffolded unresolved cache entry"
@@ -256,7 +256,7 @@ fn symbolicate_pending_frames_for_backtraces_blocking(
             };
             upsert_symbolicated_frame(
                 &tx,
-                job.conn_id,
+                job.process_id.clone(),
                 job.backtrace_id,
                 job.frame_index,
                 job.module_path.as_str(),
@@ -266,14 +266,14 @@ fn symbolicate_pending_frames_for_backtraces_blocking(
             processed += 1;
         }
         if !jobs.is_empty() {
-            let owner_conn_id = jobs[0].conn_id;
-            if jobs.iter().any(|job| job.conn_id != owner_conn_id) {
+            let owner_process_id = jobs[0].process_id.clone();
+            if jobs.iter().any(|job| job.process_id != owner_process_id) {
                 return Err(format!(
-                    "invariant violated: backtrace {} spans multiple conn_id values in pending frame rows",
+                    "invariant violated: backtrace {} spans multiple process_id values in pending frame rows",
                     backtrace_id
                 ));
             }
-            update_top_application_frame(&tx, owner_conn_id, *backtrace_id)?;
+            update_top_application_frame(&tx, owner_process_id, *backtrace_id)?;
         }
     }
 
@@ -585,7 +585,7 @@ fn upsert_symbolication_cache(
 
 fn upsert_symbolicated_frame(
     tx: &Transaction<'_>,
-    conn_id: ConnectionId,
+    process_id: ProcessId,
     backtrace_id: BacktraceId,
     frame_index: u32,
     module_path: &str,
@@ -595,15 +595,16 @@ fn upsert_symbolicated_frame(
     let mut stmt = tx
         .prepare(
             "INSERT INTO symbolicated_frames (
-            conn_id, backtrace_id, frame_index, module_path, rel_pc, status, function_name,
+            process_id, backtrace_id, frame_index, module_path, rel_pc, status, function_name,
             crate_name, crate_module_path, source_file_path, source_line, source_col,
             unresolved_reason, updated_at_ns
          ) VALUES (
-            :conn_id, :backtrace_id, :frame_index, :module_path, :rel_pc, :status, :function_name,
+            :process_id, :backtrace_id, :frame_index, :module_path, :rel_pc, :status, :function_name,
             :crate_name, :crate_module_path, :source_file_path, :source_line, :source_col,
             :unresolved_reason, :updated_at_ns
          )
-         ON CONFLICT(conn_id, backtrace_id, frame_index) DO UPDATE SET
+         ON CONFLICT(backtrace_id, frame_index) DO UPDATE SET
+            process_id = excluded.process_id,
             module_path = excluded.module_path,
             rel_pc = excluded.rel_pc,
             status = excluded.status,
@@ -618,7 +619,7 @@ fn upsert_symbolicated_frame(
         )
         .map_err(|error| format!("prepare symbolicated_frames upsert: {error}"))?;
     stmt.facet_execute_ref(&UpsertSymbolicatedFrameParams {
-        conn_id,
+        process_id,
         backtrace_id,
         frame_index,
         module_path: module_path.to_string(),
@@ -639,14 +640,14 @@ fn upsert_symbolicated_frame(
 
 fn update_top_application_frame(
     tx: &Transaction<'_>,
-    conn_id: ConnectionId,
+    process_id: ProcessId,
     backtrace_id: BacktraceId,
 ) -> Result<(), String> {
     let mut stmt = tx
         .prepare(
             "SELECT frame_index, function_name, crate_name, crate_module_path, source_file_path, source_line, source_col
              FROM symbolicated_frames
-             WHERE conn_id = :conn_id
+             WHERE process_id = :process_id
                AND backtrace_id = :backtrace_id
                AND status = 'resolved'
                AND crate_name IS NOT NULL
@@ -660,7 +661,7 @@ fn update_top_application_frame(
         .map_err(|error| format!("prepare top frame query: {error}"))?;
     let selected = stmt
         .facet_query_optional_ref::<TopFrameCandidate, _>(&TopFrameLookupParams {
-            conn_id,
+            process_id: process_id.clone(),
             backtrace_id,
             exclude_1: TOP_FRAME_CRATE_EXCLUSIONS[0],
             exclude_2: TOP_FRAME_CRATE_EXCLUSIONS[1],
@@ -680,13 +681,14 @@ fn update_top_application_frame(
             let mut upsert_stmt = tx
                 .prepare(
                 "INSERT INTO top_application_frames (
-                    conn_id, backtrace_id, frame_index, function_name, crate_name, crate_module_path,
+                    process_id, backtrace_id, frame_index, function_name, crate_name, crate_module_path,
                     source_file_path, source_line, source_col, updated_at_ns
                  ) VALUES (
-                    :conn_id, :backtrace_id, :frame_index, :function_name, :crate_name, :crate_module_path,
+                    :process_id, :backtrace_id, :frame_index, :function_name, :crate_name, :crate_module_path,
                     :source_file_path, :source_line, :source_col, :updated_at_ns
                  )
-                 ON CONFLICT(conn_id, backtrace_id) DO UPDATE SET
+                 ON CONFLICT(backtrace_id) DO UPDATE SET
+                    process_id = excluded.process_id,
                     frame_index = excluded.frame_index,
                     function_name = excluded.function_name,
                     crate_name = excluded.crate_name,
@@ -699,7 +701,7 @@ fn update_top_application_frame(
             .map_err(|error| format!("prepare top frame upsert: {error}"))?;
             upsert_stmt
                 .facet_execute_ref(&TopFrameUpsertParams {
-                    conn_id,
+                    process_id: process_id.clone(),
                     backtrace_id,
                     frame_index: candidate.frame_index,
                     function_name: candidate.function_name,
@@ -716,12 +718,12 @@ fn update_top_application_frame(
             let mut delete_stmt = tx
                 .prepare(
                     "DELETE FROM top_application_frames
-                     WHERE conn_id = :conn_id AND backtrace_id = :backtrace_id",
+                     WHERE process_id = :process_id AND backtrace_id = :backtrace_id",
                 )
                 .map_err(|error| format!("prepare top frame delete: {error}"))?;
             delete_stmt
                 .facet_execute_ref(&TopFrameDeleteParams {
-                    conn_id,
+                    process_id,
                     backtrace_id,
                 })
                 .map_err(|error| format!("delete top_application_frame: {error}"))?;

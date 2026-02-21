@@ -166,6 +166,7 @@ async fn send_handshake_if_manifest_changed(
         return Ok(());
     }
     let handshake = ClientMessage::Handshake(moire_wire::Handshake {
+        process_id: super::runtime_process_id(),
         process_name: process_name.to_string(),
         pid: std::process::id(),
         args: std::env::args().collect(),

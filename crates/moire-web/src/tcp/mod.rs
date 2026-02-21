@@ -42,6 +42,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         guard.connections.insert(
             conn_id,
             ConnectedProcess {
+                process_id: None,
                 process_name: format!("unknown-{conn_id}"),
                 pid: 0,
                 handshake_received: false,
@@ -51,11 +52,6 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         );
         conn_id
     };
-    if let Err(e) =
-        persist_connection_upsert(state.db.clone(), conn_id, format!("unknown-{conn_id}"), 0).await
-    {
-        warn!(conn_id = %conn_id, %e, "failed to persist connection row");
-    }
 
     let writer_handle = tokio::spawn(async move {
         while let Some(frame) = msg_rx.recv().await {
@@ -141,32 +137,43 @@ async fn read_messages(
             ClientMessage::Handshake(handshake) => {
                 validate_handshake(&handshake)
                     .map_err(|e| format!("reject handshake for conn {conn_id}: {e}"))?;
+                let process_id = handshake.process_id.clone();
                 let process_name = handshake.process_name.to_string();
                 let pid = handshake.pid;
                 let module_manifest_entries = handshake.module_manifest.len();
                 let stored_manifest = into_stored_module_manifest(handshake.module_manifest);
                 let mut guard = state.inner.lock().await;
                 if let Some(conn) = guard.connections.get_mut(&conn_id) {
+                    conn.process_id = Some(process_id.clone());
                     conn.process_name = process_name.clone();
                     conn.pid = pid;
                     conn.handshake_received = true;
                     conn.module_manifest = stored_manifest.clone();
                 }
                 drop(guard);
-                if let Err(e) =
-                    persist_connection_upsert(state.db.clone(), conn_id, process_name.clone(), pid)
-                        .await
+                if let Err(e) = persist_connection_upsert(
+                    state.db.clone(),
+                    conn_id,
+                    process_id.clone(),
+                    process_name.clone(),
+                    pid,
+                )
+                .await
                 {
                     warn!(conn_id = %conn_id, %e, "failed to persist handshake");
                 }
-                if let Err(e) =
-                    persist_connection_module_manifest(state.db.clone(), conn_id, stored_manifest)
-                        .await
+                if let Err(e) = persist_connection_module_manifest(
+                    state.db.clone(),
+                    process_id.clone(),
+                    stored_manifest,
+                )
+                .await
                 {
                     warn!(conn_id = %conn_id, %e, "failed to persist module manifest");
                 }
                 info!(
                     conn_id = %conn_id,
+                    process_id = %process_id.as_str(),
                     process_name, pid, module_manifest_entries, "handshake accepted"
                 );
             }
@@ -201,7 +208,18 @@ async fn read_messages(
                 }
             }
             ClientMessage::DeltaBatch(batch) => {
-                if let Err(e) = persist_delta_batch(state.db.clone(), conn_id, batch).await {
+                let process_id = {
+                    let guard = state.inner.lock().await;
+                    guard
+                        .connections
+                        .get(&conn_id)
+                        .and_then(|conn| conn.process_id.clone())
+                };
+                let Some(process_id) = process_id else {
+                    warn!(conn_id = %conn_id, "received delta batch before handshake");
+                    continue;
+                };
+                if let Err(e) = persist_delta_batch(state.db.clone(), process_id, batch).await {
                     warn!(conn_id = %conn_id, %e, "failed to persist delta batch");
                 }
             }
@@ -210,6 +228,17 @@ async fn read_messages(
                 let cursor_stream_id = ack.cursor.stream_id.0.to_string();
                 let cursor_next_seq_no = ack.cursor.next_seq_no.0;
                 let cut_id = ack.cut_id.clone();
+                let process_id = {
+                    let guard = state.inner.lock().await;
+                    guard
+                        .connections
+                        .get(&conn_id)
+                        .and_then(|conn| conn.process_id.clone())
+                };
+                let Some(process_id) = process_id else {
+                    warn!(conn_id = %conn_id, "received cut ack before handshake");
+                    continue;
+                };
                 let mut guard = state.inner.lock().await;
                 if let Some(cut) = guard.cuts.get_mut(&cut_id) {
                     cut.pending_conn_ids.remove(&conn_id);
@@ -232,7 +261,7 @@ async fn read_messages(
                 if let Err(e) = persist_cut_ack(
                     state.db.clone(),
                     cut_id_text,
-                    conn_id,
+                    process_id,
                     cursor_stream_id,
                     cursor_next_seq_no,
                 )
@@ -251,12 +280,18 @@ async fn read_messages(
                 );
             }
             ClientMessage::BacktraceRecord(record) => {
-                let (handshake_received, manifest) = {
+                let (handshake_received, process_id, manifest) = {
                     let guard = state.inner.lock().await;
                     guard
                         .connections
                         .get(&conn_id)
-                        .map(|conn| (conn.handshake_received, conn.module_manifest.clone()))
+                        .map(|conn| {
+                            (
+                                conn.handshake_received,
+                                conn.process_id.clone(),
+                                conn.module_manifest.clone(),
+                            )
+                        })
                         .ok_or_else(|| {
                             format!(
                                 "invariant violated: unknown connection {} for backtrace {}",
@@ -270,10 +305,16 @@ async fn read_messages(
                         record.id, conn_id
                     ));
                 }
+                let Some(process_id) = process_id else {
+                    return Err(format!(
+                        "protocol violation: received backtrace {} before process id was set on conn {}",
+                        record.id, conn_id
+                    ));
+                };
                 let backtrace_id = record.id;
                 let frames = backtrace_frames_for_store(&manifest, &record)?;
                 let inserted =
-                    persist_backtrace_record(state.db.clone(), conn_id, backtrace_id, frames)
+                    persist_backtrace_record(state.db.clone(), process_id, backtrace_id, frames)
                         .await?;
                 if !inserted {
                     debug!(
@@ -288,6 +329,9 @@ async fn read_messages(
 }
 
 fn validate_handshake(handshake: &moire_wire::Handshake) -> Result<(), String> {
+    if handshake.process_id.as_str().trim().is_empty() {
+        return Err("process_id must be non-empty".to_string());
+    }
     if handshake.process_name.trim().is_empty() {
         return Err("process_name must be non-empty".to_string());
     }

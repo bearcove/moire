@@ -4,7 +4,8 @@ use moire_trace_capture::{
 };
 use moire_trace_types::{BacktraceId, FrameKey, ModuleId, RelPc, RuntimeBase};
 use moire_types::{
-    EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
+    EntityId, Event, EventKind, EventTarget, ProcessId, ProcessScopeBody, ScopeBody, ScopeId,
+    TaskScopeBody, next_process_id,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -14,7 +15,6 @@ use std::sync::{Mutex as StdMutex, OnceLock};
 pub(crate) const MAX_EVENTS: usize = 16_384;
 pub(crate) const MAX_CHANGES_BEFORE_COMPACT: usize = 65_536;
 pub(crate) const COMPACT_TARGET_CHANGES: usize = 8_192;
-pub(crate) const DEFAULT_STREAM_ID_PREFIX: &str = "proc";
 pub(crate) const DASHBOARD_PUSH_MAX_CHANGES: u32 = 2048;
 pub(crate) const DASHBOARD_PUSH_INTERVAL_MS: u64 = 100;
 pub(crate) const DASHBOARD_RECONNECT_DELAY_MS: u64 = 500;
@@ -37,6 +37,7 @@ pub use self::futures::*;
 pub use self::handles::*;
 
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
+static PROCESS_ID: OnceLock<ProcessId> = OnceLock::new();
 static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<BacktraceId, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
 static MODULE_STATE: OnceLock<StdMutex<ModuleState>> = OnceLock::new();
@@ -66,6 +67,10 @@ pub fn init_runtime_from_macro() {
         )
     });
     dashboard::init_dashboard_push_loop(&process_name);
+}
+
+pub(crate) fn runtime_process_id() -> ProcessId {
+    PROCESS_ID.get_or_init(next_process_id).clone()
 }
 
 pub(crate) fn capture_backtrace_id() -> BacktraceId {

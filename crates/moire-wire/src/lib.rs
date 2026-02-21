@@ -2,7 +2,7 @@ use facet::Facet;
 pub use moire_trace_types::{
     BacktraceRecord, FrameKey as BacktraceFrameKey, ModuleId, RelPc, RuntimeBase,
 };
-use moire_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
+use moire_types::{CutAck, CutRequest, ProcessId, PullChangesResponse, Snapshot};
 use std::fmt;
 
 pub const DEFAULT_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
@@ -141,6 +141,7 @@ pub struct ModuleManifestEntry {
 
 #[derive(Facet)]
 pub struct Handshake {
+    pub process_id: ProcessId,
     pub process_name: String,
     pub pid: u32,
     pub args: Vec<String>,
@@ -264,7 +265,7 @@ pub fn decode_server_message_default(frame: &[u8]) -> Result<ServerMessage, Wire
 mod tests {
     use super::*;
     use moire_trace_types::{BacktraceId, ModuleId};
-    use moire_types::{CutId, SeqNo, Snapshot, StreamCursor, StreamId};
+    use moire_types::{CutId, ProcessId, SeqNo, Snapshot, StreamCursor, StreamId};
 
     fn client_payload_json(message: &ClientMessage) -> String {
         let frame = encode_client_message_default(message).expect("client frame should encode");
@@ -286,6 +287,7 @@ mod tests {
     fn client_handshake_wire_shape() {
         let module_id = ModuleId::next().expect("valid module id");
         let json = client_payload_json(&ClientMessage::Handshake(Handshake {
+            process_id: ProcessId::new("0011223344556677"),
             process_name: "vixenfs-swift".into(),
             pid: 42,
             args: vec!["/usr/bin/vixenfs-swift".into(), "--verbose".into()],
@@ -298,7 +300,11 @@ mod tests {
                 arch: "aarch64".into(),
             }],
         }));
-        assert!(json.contains(r#""handshake":{"process_name":"vixenfs-swift","pid":42"#));
+        assert!(
+            json.contains(
+                r#""handshake":{"process_id":"0011223344556677","process_name":"vixenfs-swift","pid":42"#
+            )
+        );
         assert!(json.contains(r#""module_id":"#));
         assert!(json.contains(r#""module_path":"/usr/lib/libvixenfs_swift.dylib""#));
         assert!(json.contains(r#""runtime_base":4294967296"#));
