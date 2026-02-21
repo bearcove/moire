@@ -2,9 +2,15 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
+mod persist;
 mod query;
 mod schema;
 
+pub use persist::{
+    BacktraceFramePersist, StoredModuleManifestEntry, backtrace_frames_for_store,
+    into_stored_module_manifest, persist_backtrace_record, persist_connection_closed,
+    persist_connection_module_manifest, persist_connection_upsert,
+};
 pub use query::{fetch_scope_entity_links_blocking, query_named_blocking, sql_query_blocking};
 pub use schema::{init_sqlite, load_next_connection_id};
 

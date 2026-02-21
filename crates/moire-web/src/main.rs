@@ -27,7 +27,9 @@ use moire_types::{
     TriggerCutResponse,
 };
 use moire_web::db::{
-    Db, fetch_scope_entity_links_blocking, init_sqlite, load_next_connection_id,
+    Db, StoredModuleManifestEntry, backtrace_frames_for_store, fetch_scope_entity_links_blocking,
+    init_sqlite, into_stored_module_manifest, load_next_connection_id, persist_backtrace_record,
+    persist_connection_closed, persist_connection_module_manifest, persist_connection_upsert,
     query_named_blocking, sql_query_blocking,
 };
 use moire_web::util::http::{
@@ -35,9 +37,8 @@ use moire_web::util::http::{
 };
 use moire_web::util::time::{now_ms, now_nanos, to_i64_u64};
 use moire_wire::{
-    BacktraceRecord, ClientMessage, ModuleIdentity, ModuleManifestEntry, ServerMessage,
-    SnapshotRequest, decode_client_message_default, decode_protocol_magic,
-    encode_server_message_default,
+    ClientMessage, ServerMessage, SnapshotRequest, decode_client_message_default,
+    decode_protocol_magic, encode_server_message_default,
 };
 use object::{Object, ObjectSegment};
 use rusqlite::params;
@@ -126,22 +127,6 @@ struct StoredFrame {
     process_count: u32,
     capture_duration_ms: f64,
     json: String,
-}
-
-#[derive(Clone)]
-struct BacktraceFramePersist {
-    frame_index: u32,
-    rel_pc: u64,
-    module_path: String,
-    module_identity: String,
-}
-
-#[derive(Clone)]
-struct StoredModuleManifestEntry {
-    module_path: String,
-    module_identity: String,
-    arch: String,
-    runtime_base: u64,
 }
 
 #[derive(Facet, Debug)]
@@ -2323,191 +2308,6 @@ fn validate_handshake(handshake: &moire_wire::Handshake) -> Result<(), String> {
     }
 
     Ok(())
-}
-
-fn backtrace_frames_for_store(
-    module_manifest: &[StoredModuleManifestEntry],
-    record: &BacktraceRecord,
-) -> Result<Vec<BacktraceFramePersist>, String> {
-    let mut frames = Vec::with_capacity(record.frames.len());
-    for (frame_index, frame) in record.frames.iter().enumerate() {
-        let module_id = frame.module_id.get();
-        let module_idx = (module_id - 1) as usize;
-        let Some(module) = module_manifest.get(module_idx) else {
-            return Err(format!(
-                "invariant violated: backtrace frame {frame_index} references module_id {module_id} (index {}), but manifest has {} entries",
-                module_idx,
-                module_manifest.len()
-            ));
-        };
-        frames.push(BacktraceFramePersist {
-            frame_index: frame_index as u32,
-            rel_pc: frame.rel_pc,
-            module_path: module.module_path.clone(),
-            module_identity: module.module_identity.clone(),
-        });
-    }
-    Ok(frames)
-}
-
-fn module_identity_key(identity: &ModuleIdentity) -> String {
-    match identity {
-        ModuleIdentity::BuildId(build_id) => format!("build_id:{build_id}"),
-        ModuleIdentity::DebugId(debug_id) => format!("debug_id:{debug_id}"),
-    }
-}
-
-fn into_stored_module_manifest(
-    module_manifest: Vec<ModuleManifestEntry>,
-) -> Vec<StoredModuleManifestEntry> {
-    module_manifest
-        .into_iter()
-        .map(|module| StoredModuleManifestEntry {
-            module_path: module.module_path,
-            module_identity: module_identity_key(&module.identity),
-            arch: module.arch,
-            runtime_base: module.runtime_base,
-        })
-        .collect()
-}
-
-async fn persist_connection_upsert(
-    db: Arc<Db>,
-    conn_id: u64,
-    process_name: String,
-    pid: u32,
-) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let conn = db.open()?;
-        conn.execute(
-            "INSERT INTO connections (conn_id, process_name, pid, connected_at_ns, disconnected_at_ns)
-             VALUES (?1, ?2, ?3, ?4, NULL)
-             ON CONFLICT(conn_id) DO UPDATE SET
-               process_name = excluded.process_name,
-               pid = excluded.pid",
-            params![
-                to_i64_u64(conn_id),
-                process_name,
-                i64::from(pid),
-                now_nanos()
-            ],
-        )
-        .map_err(|e| format!("upsert connection: {e}"))?;
-        Ok::<(), String>(())
-    })
-    .await
-    .map_err(|e| format!("join sqlite: {e}"))?
-}
-
-async fn persist_connection_closed(db: Arc<Db>, conn_id: u64) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let conn = db.open()?;
-        conn.execute(
-            "UPDATE connections SET disconnected_at_ns = ?2 WHERE conn_id = ?1",
-            params![to_i64_u64(conn_id), now_nanos()],
-        )
-        .map_err(|e| format!("close connection: {e}"))?;
-        Ok::<(), String>(())
-    })
-    .await
-    .map_err(|e| format!("join sqlite: {e}"))?
-}
-
-async fn persist_connection_module_manifest(
-    db: Arc<Db>,
-    conn_id: u64,
-    module_manifest: Vec<StoredModuleManifestEntry>,
-) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let mut conn = db.open()?;
-        let tx = conn
-            .transaction()
-            .map_err(|e| format!("start transaction: {e}"))?;
-        tx.execute(
-            "DELETE FROM connection_modules WHERE conn_id = ?1",
-            params![to_i64_u64(conn_id)],
-        )
-        .map_err(|e| format!("delete connection_modules: {e}"))?;
-
-        for (module_index, module) in module_manifest.iter().enumerate() {
-            tx.execute(
-                "INSERT INTO connection_modules (
-                    conn_id, module_index, module_path, module_identity, arch, runtime_base
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    to_i64_u64(conn_id),
-                    module_index as i64,
-                    module.module_path.as_str(),
-                    module.module_identity.as_str(),
-                    module.arch.as_str(),
-                    to_i64_u64(module.runtime_base),
-                ],
-            )
-            .map_err(|e| format!("insert connection_module[{module_index}]: {e}"))?;
-        }
-        tx.commit()
-            .map_err(|e| format!("commit connection_modules: {e}"))?;
-        Ok::<(), String>(())
-    })
-    .await
-    .map_err(|e| format!("join sqlite: {e}"))?
-}
-
-// r[impl symbolicate.server-store]
-async fn persist_backtrace_record(
-    db: Arc<Db>,
-    conn_id: u64,
-    backtrace_id: u64,
-    frames: Vec<BacktraceFramePersist>,
-) -> Result<bool, String> {
-    tokio::task::spawn_blocking(move || {
-        let mut conn = db.open()?;
-        let tx = conn
-            .transaction()
-            .map_err(|e| format!("start transaction: {e}"))?;
-        let inserted = tx
-            .execute(
-                "INSERT INTO backtraces (conn_id, backtrace_id, frame_count, received_at_ns)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(conn_id, backtrace_id) DO NOTHING",
-                params![
-                    to_i64_u64(conn_id),
-                    to_i64_u64(backtrace_id),
-                    frames.len() as i64,
-                    now_nanos()
-                ],
-            )
-            .map_err(|e| format!("insert backtrace: {e}"))?
-            > 0;
-        if inserted {
-            for frame in &frames {
-                tx.execute(
-                    "INSERT INTO backtrace_frames (
-                        conn_id, backtrace_id, frame_index, module_path, module_identity, rel_pc
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![
-                        to_i64_u64(conn_id),
-                        to_i64_u64(backtrace_id),
-                        i64::from(frame.frame_index),
-                        frame.module_path.as_str(),
-                        frame.module_identity.as_str(),
-                        to_i64_u64(frame.rel_pc),
-                    ],
-                )
-                .map_err(|e| {
-                    format!(
-                        "insert backtrace frame {}/{}: {e}",
-                        frame.frame_index, backtrace_id
-                    )
-                })?;
-            }
-        }
-        tx.commit()
-            .map_err(|e| format!("commit backtrace record: {e}"))?;
-        Ok::<bool, String>(inserted)
-    })
-    .await
-    .map_err(|e| format!("join sqlite: {e}"))?
 }
 
 struct SymbolicationCacheEntry {
