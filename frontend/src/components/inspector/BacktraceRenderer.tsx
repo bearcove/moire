@@ -1,24 +1,36 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Stack, FileRs } from "@phosphor-icons/react";
-import type { SnapshotBacktraceFrame } from "../../api/types.generated";
+import type { SnapshotBacktraceFrame, SourcePreviewResponse } from "../../api/types.generated";
 import type { ResolvedSnapshotBacktrace } from "../../snapshot";
 import { assignScopeColorRgbByKey, type ScopeColorPair } from "../graph/scopeColors";
+import { apiClient } from "../../api";
 import { Source } from "./Source";
 import { CratePill } from "../../ui/primitives/CratePill";
 import { ClosurePill } from "../../ui/primitives/ClosurePill";
 import { tokenizeRustName, parseSlim, RustTokens } from "../../ui/primitives/RustName";
 import { FrameCard } from "../../ui/primitives/FrameCard";
+import { SourcePreview } from "../../ui/primitives/SourcePreview";
 import "./BacktraceRenderer.css";
 
 const SYSTEM_CRATES = new Set([
-  "std", "core", "alloc",
-  "tokio", "tokio_util",
-  "futures", "futures_core", "futures_util",
-  "moire", "moire_trace_capture", "moire_runtime", "moire_tokio",
+  "std",
+  "core",
+  "alloc",
+  "tokio",
+  "tokio_util",
+  "futures",
+  "futures_core",
+  "futures_util",
+  "moire",
+  "moire_trace_capture",
+  "moire_runtime",
+  "moire_tokio",
 ]);
 
-function isResolved(frame: SnapshotBacktraceFrame): frame is { resolved: { module_path: string; function_name: string; source_file: string; line?: number } } {
+function isResolved(frame: SnapshotBacktraceFrame): frame is {
+  resolved: { module_path: string; function_name: string; source_file: string; line?: number };
+} {
   return "resolved" in frame;
 }
 
@@ -69,9 +81,9 @@ export function BacktraceBadge({
 }) {
   const topFrame = useMemo(
     () =>
-      backtrace.frames.find((f) => isResolved(f) && !isSystemFrame(f))
-      ?? backtrace.frames.find((f) => isResolved(f))
-      ?? backtrace.frames[0],
+      backtrace.frames.find((f) => isResolved(f) && !isSystemFrame(f)) ??
+      backtrace.frames.find((f) => isResolved(f)) ??
+      backtrace.frames[0],
     [backtrace.frames],
   );
 
@@ -95,7 +107,12 @@ export function BacktraceBadge({
       ) : (
         <span className="bt-badge-location bt-badge-location--pending">pending…</span>
       )}
-      <button type="button" className="bt-badge-expand" onClick={onExpand} title="View full backtrace">
+      <button
+        type="button"
+        className="bt-badge-expand"
+        onClick={onExpand}
+        title="View full backtrace"
+      >
         <Stack size={11} weight="bold" />
       </button>
     </span>
@@ -112,16 +129,41 @@ export function BacktracePanel({
   onClose: () => void;
 }) {
   const [showSystem, setShowSystem] = useState(false);
+  const [previews, setPreviews] = useState<Map<number, SourcePreviewResponse>>(new Map());
 
   const appCrate = useMemo(() => detectAppCrate(backtrace.frames), [backtrace.frames]);
 
   const crateColors = useMemo(() => {
     const crates = backtrace.frames
       .filter(isResolved)
-      .map(f => extractCrate(f.resolved.function_name) ?? "")
+      .map((f) => extractCrate(f.resolved.function_name) ?? "")
       .filter(Boolean);
     return assignScopeColorRgbByKey(crates);
   }, [backtrace.frames]);
+
+  // Eagerly fetch source previews for all non-system resolved frames.
+  useEffect(() => {
+    const targets = backtrace.frame_ids
+      .map((frameId, i) => ({ frameId, frame: backtrace.frames[i] }))
+      .filter(({ frame }) => isResolved(frame) && !isSystemFrame(frame));
+
+    Promise.allSettled(
+      targets.map(({ frameId }) =>
+        apiClient.fetchSourcePreview(frameId).then((res) => [frameId, res] as const),
+      ),
+    )
+      .then((results) => {
+        const map = new Map<number, SourcePreviewResponse>();
+        for (const r of results) {
+          if (r.status === "fulfilled") {
+            const [frameId, res] = r.value;
+            map.set(frameId, res);
+          }
+        }
+        setPreviews(map);
+      })
+      .catch(() => {});
+  }, [backtrace]);
 
   const systemCount = useMemo(
     () => backtrace.frames.filter((f) => isResolved(f) && isSystemFrame(f)).length,
@@ -132,14 +174,11 @@ export function BacktracePanel({
     [backtrace.frames],
   );
 
-  // Annotate each frame with whether its crate repeats the previous visible frame's crate.
   const annotatedFrames = useMemo(() => {
-    const visible = backtrace.frames
-      .map((frame, origIndex) => ({ frame, origIndex }))
-      .filter(({ frame }) => isResolved(frame) ? (showSystem || !isSystemFrame(frame)) : true);
-
-    return visible.map(({ frame, origIndex }) => ({ frame, origIndex }));
-  }, [backtrace.frames, showSystem]);
+    return backtrace.frames
+      .map((frame, origIndex) => ({ frame, origIndex, frameId: backtrace.frame_ids[origIndex] }))
+      .filter(({ frame }) => (isResolved(frame) ? showSystem || !isSystemFrame(frame) : true));
+  }, [backtrace, showSystem]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -157,7 +196,12 @@ export function BacktracePanel({
           <span className="bt-dialog-meta">
             {backtrace.frames.length} frames
             {unresolvedCount > 0 && <> · {unresolvedCount} unresolved</>}
-            {appCrate && <> · app: <span className="bt-dialog-app-crate">{appCrate}</span></>}
+            {appCrate && (
+              <>
+                {" "}
+                · app: <span className="bt-dialog-app-crate">{appCrate}</span>
+              </>
+            )}
           </span>
           <button
             type="button"
@@ -172,12 +216,13 @@ export function BacktracePanel({
         </div>
 
         <div className="bt-frame-list">
-          {annotatedFrames.map(({ frame, origIndex }) => (
+          {annotatedFrames.map(({ frame, origIndex, frameId }) => (
             <FrameRow
               key={frameKey(frame, origIndex)}
               frame={frame}
               crateColors={crateColors}
               appCrate={appCrate}
+              preview={previews.get(frameId)}
             />
           ))}
         </div>
@@ -192,12 +237,14 @@ function FrameRow({
   frame,
   crateColors,
   appCrate,
+  preview,
 }: {
   frame: SnapshotBacktraceFrame;
   crateColors: Map<string, ScopeColorPair>;
   appCrate: string | null;
+  preview: SourcePreviewResponse | undefined;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [nameExpanded, setNameExpanded] = useState(false);
 
   if (!isResolved(frame)) {
     return (
@@ -214,41 +261,54 @@ function FrameRow({
 
   const { function_name, source_file, line } = frame.resolved;
   const crate = extractCrate(function_name);
-  const crateColor = crate ? crateColors.get(crate) ?? null : null;
-  const isApp = appCrate != null && crate === appCrate;
+  const crateColor = crate ? (crateColors.get(crate) ?? null) : null;
+  const isApp = appCrate !== null && crate === appCrate;
+
+  // App frames start with source preview open; others start closed.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [previewOpen, setPreviewOpen] = useState(isApp);
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const allTokens = useMemo(() => tokenizeRustName(function_name), [function_name]);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const { slim, closureCount, wasStripped } = useMemo(() => parseSlim(allTokens), [allTokens]);
 
-  const sourceStr = source_file.length > 0
-    ? (line != null ? `${source_file}:${line}` : source_file)
-    : null;
+  const sourceStr =
+    source_file.length > 0 ? (line != null ? `${source_file}:${line}` : source_file) : null;
 
-  const rowClass = [
-    "bt-frame-row",
-    isApp && "bt-frame-row--app",
-  ].filter(Boolean).join(" ");
+  const rowClass = ["bt-frame-row", isApp && "bt-frame-row--app"].filter(Boolean).join(" ");
 
   return (
     <FrameCard>
       <div className={rowClass}>
         <div className="bt-fn-line">
-          {crate && (
-            <CratePill name={crate} color={crateColor ?? undefined} />
-          )}
+          {crate && <CratePill name={crate} color={crateColor ?? undefined} />}
           <span
             className={`bt-fn${wasStripped ? " bt-fn--expandable" : ""}`}
             title={function_name}
-            onClick={wasStripped ? () => setExpanded(v => !v) : undefined}
+            onClick={wasStripped ? () => setNameExpanded((v) => !v) : undefined}
             role={wasStripped ? "button" : undefined}
           >
-            <RustTokens tokens={expanded ? allTokens : slim} />
+            <RustTokens tokens={nameExpanded ? allTokens : slim} />
           </span>
           {closureCount > 0 && <ClosurePill />}
+          {sourceStr && (
+            <span className="bt-source-row">
+              <Source source={sourceStr} />
+              {preview && (
+                <button
+                  type="button"
+                  className="bt-preview-toggle"
+                  onClick={() => setPreviewOpen((v) => !v)}
+                  title={previewOpen ? "Hide source" : "Show source"}
+                >
+                  {previewOpen ? "▲" : "▼"}
+                </button>
+              )}
+            </span>
+          )}
         </div>
-        {sourceStr && <Source source={sourceStr} />}
+        {previewOpen && preview && <SourcePreview preview={preview} />}
       </div>
     </FrameCard>
   );
@@ -256,20 +316,17 @@ function FrameRow({
 
 // ── Widget ───────────────────────────────────────────────────────────────────
 
-export function BacktraceRenderer({
-  backtrace,
-}: {
-  backtrace: ResolvedSnapshotBacktrace;
-}) {
+export function BacktraceRenderer({ backtrace }: { backtrace: ResolvedSnapshotBacktrace }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
       <BacktraceBadge backtrace={backtrace} onExpand={() => setOpen(true)} />
-      {open && createPortal(
-        <BacktracePanel backtrace={backtrace} onClose={() => setOpen(false)} />,
-        document.body,
-      )}
+      {open &&
+        createPortal(
+          <BacktracePanel backtrace={backtrace} onClose={() => setOpen(false)} />,
+          document.body,
+        )}
     </>
   );
 }

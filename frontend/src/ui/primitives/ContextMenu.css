@@ -17,7 +17,7 @@
     background: transparent;
     color: var(--text-primary);
     text-align: left;
-    padding: 7px 10px;
+    padding: 4px 8px;
     border-radius: 0;
     font-size: var(--font-size-sm);
     cursor: pointer;
@@ -52,15 +52,8 @@
 }
 
 .ui-context-menu-separator {
-    height: 5px;
+    height: 1px;
     flex-shrink: 0;
     position: relative;
-}
-
-.ui-context-menu-separator::after {
-    content: '';
-    position: absolute;
-    inset: 2px 0;
-    height: 1px;
     background: var(--border-default);
 }

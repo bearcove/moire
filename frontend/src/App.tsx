@@ -258,14 +258,8 @@ export function App() {
     [clampInspectorPosition],
   );
 
-  const allEntities = useMemo(
-    () => (snap.phase === "ready" ? snap.entities : []),
-    [snap],
-  );
-  const allEdges = useMemo(
-    () => (snap.phase === "ready" ? snap.edges : []),
-    [snap],
-  );
+  const allEntities = useMemo(() => (snap.phase === "ready" ? snap.entities : []), [snap]);
+  const allEdges = useMemo(() => (snap.phase === "ready" ? snap.edges : []), [snap]);
   const backtracesById = useMemo(
     () => (snap.phase === "ready" ? snap.backtracesById : new Map()),
     [snap],

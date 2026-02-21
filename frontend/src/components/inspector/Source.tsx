@@ -1,5 +1,5 @@
 import React from "react";
-import { FileRs } from "@phosphor-icons/react";
+import { FileRsIcon } from "@phosphor-icons/react";
 import "./Source.css";
 
 function shortSource(source: string): string {
@@ -20,7 +20,7 @@ export function Source({ source }: { source: string }) {
       href={`zed://file${source}`}
       title={`Open ${source} in Zed`}
     >
-      <FileRs size={11} weight="bold" />
+      <FileRsIcon size={11} weight="bold" />
       {shortSource(source)}
     </a>
   );

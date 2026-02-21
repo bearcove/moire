@@ -207,6 +207,29 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   flex-shrink: 0;
 }
 
+.bt-source-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.bt-preview-toggle {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  font-size: 9px;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.bt-preview-toggle:hover {
+  color: var(--text-primary);
+}
+
 @media (max-width: 700px) {
   .bt-dialog {
     width: 98vw;
