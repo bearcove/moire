@@ -84,6 +84,7 @@ Exact filenames can shift, but concerns should not.
 - Move HTTP handlers from `main.rs` into `api/*`.
 - Handlers call into `db/`, `snapshot/`, `recording/`, `symbolication/`; no inline SQL.
 - Progress:
+  - Connections/cut handlers moved from `main.rs` to `api/connections.rs`.
   - SQL/query request handling moved to `api/sql.rs` with thin wrappers in `main.rs`.
   - Snapshot HTTP/WS handlers and snapshot capture orchestration moved to `api/snapshot.rs`.
   - Shared app/runtime state types (`AppState`, `ServerState`, connection/cut/snapshot state records) and snapshot caching helper moved to `app/mod.rs`.

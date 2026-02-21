@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
@@ -7,35 +7,28 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{Path as AxumPath, Request, State};
+use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
 use facet::Facet;
 use figue as args;
-use moire_types::{
-    ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse, TriggerCutResponse,
-};
+use moire_web::api::connections::{api_connections, api_cut_status, api_trigger_cut};
 use moire_web::api::recording::{
     api_record_current, api_record_export, api_record_frame, api_record_import, api_record_start,
     api_record_stop,
 };
 use moire_web::api::snapshot::{api_snapshot, api_snapshot_current, api_snapshot_symbolication_ws};
 use moire_web::api::sql::{execute_named_query_request, execute_sql_request};
-use moire_web::app::{AppState, ConnectedProcess, CutState, DevProxyState, ServerState};
+use moire_web::app::{AppState, ConnectedProcess, DevProxyState, ServerState};
 use moire_web::db::{
     Db, backtrace_frames_for_store, init_sqlite, into_stored_module_manifest,
     load_next_connection_id, persist_backtrace_record, persist_connection_closed,
     persist_connection_module_manifest, persist_connection_upsert, persist_cut_ack,
-    persist_cut_request, persist_delta_batch,
+    persist_delta_batch,
 };
 use moire_web::proxy::vite::proxy_vite_request;
-use moire_web::util::http::json_ok;
-use moire_web::util::time::now_nanos;
-use moire_wire::{
-    ClientMessage, ServerMessage, decode_client_message_default, decode_protocol_magic,
-    encode_server_message_default,
-};
+use moire_wire::{ClientMessage, decode_client_message_default, decode_protocol_magic};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Child;
@@ -217,115 +210,6 @@ async fn run() -> Result<(), String> {
 
 async fn health() -> impl IntoResponse {
     "ok"
-}
-
-async fn api_connections(State(state): State<AppState>) -> impl IntoResponse {
-    let guard = state.inner.lock().await;
-    let mut processes: Vec<ConnectedProcessInfo> = guard
-        .connections
-        .iter()
-        .map(|(conn_id, conn)| ConnectedProcessInfo {
-            conn_id: *conn_id,
-            process_name: conn.process_name.clone(),
-            pid: conn.pid,
-        })
-        .collect();
-    processes.sort_by(|a, b| {
-        a.process_name
-            .cmp(&b.process_name)
-            .then_with(|| a.pid.cmp(&b.pid))
-            .then_with(|| a.conn_id.cmp(&b.conn_id))
-    });
-
-    json_ok(&ConnectionsResponse {
-        connected_processes: processes.len(),
-        processes,
-    })
-}
-
-async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse {
-    let (cut_id, cut_id_string, now_ns, requested_connections, outbound) = {
-        let mut guard = state.inner.lock().await;
-        let cut_num = guard.next_cut_id;
-        guard.next_cut_id += 1;
-        let cut_id_string = format!("cut:{cut_num}");
-        let cut_id = moire_types::CutId(String::from(cut_id_string.as_str()));
-        let now_ns = now_nanos();
-        let mut pending_conn_ids = BTreeSet::new();
-        let mut outbound = Vec::new();
-        for (conn_id, conn) in &guard.connections {
-            pending_conn_ids.insert(*conn_id);
-            outbound.push((*conn_id, conn.tx.clone()));
-        }
-
-        guard.cuts.insert(
-            cut_id_string.clone(),
-            CutState {
-                requested_at_ns: now_ns,
-                pending_conn_ids,
-                acks: BTreeMap::new(),
-            },
-        );
-
-        (cut_id, cut_id_string, now_ns, outbound.len(), outbound)
-    };
-
-    let request = ServerMessage::CutRequest(moire_types::CutRequest { cut_id });
-    info!(
-        cut_id = %cut_id_string,
-        requested_connections,
-        "cut requested via API"
-    );
-    if let Err(e) = persist_cut_request(state.db.clone(), cut_id_string.clone(), now_ns).await {
-        error!(%e, cut_id = %cut_id_string, "failed to persist cut request");
-    }
-    let payload = match encode_server_message_default(&request) {
-        Ok(payload) => payload,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to encode cut request: {e}"),
-            )
-                .into_response();
-        }
-    };
-
-    for (conn_id, tx) in outbound {
-        if let Err(e) = tx.try_send(payload.clone()) {
-            warn!(conn_id, %e, "failed to enqueue cut request");
-        }
-    }
-
-    json_ok(&TriggerCutResponse {
-        cut_id: cut_id_string,
-        requested_at_ns: now_ns,
-        requested_connections,
-    })
-}
-
-async fn api_cut_status(
-    State(state): State<AppState>,
-    AxumPath(cut_id): AxumPath<String>,
-) -> impl IntoResponse {
-    let guard = state.inner.lock().await;
-    let Some(cut) = guard.cuts.get(&cut_id) else {
-        return (StatusCode::NOT_FOUND, format!("unknown cut id: {cut_id}")).into_response();
-    };
-
-    let pending_conn_ids: Vec<u64> = cut.pending_conn_ids.iter().copied().collect();
-    info!(
-        cut_id = %cut_id,
-        pending_connections = cut.pending_conn_ids.len(),
-        acked_connections = cut.acks.len(),
-        "cut status requested"
-    );
-    json_ok(&CutStatusResponse {
-        cut_id,
-        requested_at_ns: cut.requested_at_ns,
-        pending_connections: cut.pending_conn_ids.len(),
-        acked_connections: cut.acks.len(),
-        pending_conn_ids,
-    })
 }
 
 async fn api_sql(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
