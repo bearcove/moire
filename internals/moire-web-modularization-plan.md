@@ -94,6 +94,7 @@ Exact filenames can shift, but concerns should not.
   - Snapshot backtrace/frame catalog loading and frame-id tests moved to `snapshot/table.rs`.
   - Snapshot SQLite read path moved behind `snapshot/repository.rs`; `snapshot/table.rs` now assembles state from repository batches instead of inline SQL.
   - Symbolication pass logic (pending jobs, cache lookup/upsert, top-frame update) moved to `symbolication/mod.rs`.
+  - Symbolication stream logs now emit lifecycle/progress fields only (`completed_frames`, `total_frames`, `updated_frame_count`, `done`) and drop noisy per-pass resolved/unresolved/pending breakdowns.
 
 ### 5) Extract recording flow
 

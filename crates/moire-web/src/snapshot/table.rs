@@ -44,10 +44,6 @@ pub fn is_pending_frame(frame: &SnapshotBacktraceFrame) -> bool {
     )
 }
 
-pub fn is_resolved_frame(frame: &SnapshotBacktraceFrame) -> bool {
-    matches!(frame, SnapshotBacktraceFrame::Resolved(_))
-}
-
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 struct FrameDedupKey {
     module_identity: String,

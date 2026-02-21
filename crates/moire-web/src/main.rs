@@ -34,8 +34,7 @@ use moire_web::recording::session::{
     recording_session_info,
 };
 use moire_web::snapshot::table::{
-    collect_snapshot_backtrace_pairs, is_pending_frame, is_resolved_frame,
-    load_snapshot_backtrace_table,
+    collect_snapshot_backtrace_pairs, is_pending_frame, load_snapshot_backtrace_table,
 };
 use moire_web::symbolication::symbolicate_pending_frames_for_pairs;
 use moire_web::util::http::{json_error, json_ok};
@@ -479,13 +478,6 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
             .filter(|record| !is_pending_frame(&record.frame))
             .count();
         let total = table.frames.len();
-        let resolved = table
-            .frames
-            .iter()
-            .filter(|record| is_resolved_frame(&record.frame))
-            .count();
-        let pending = total.saturating_sub(completed);
-        let unresolved = total.saturating_sub(resolved).saturating_sub(pending);
 
         let mut updated_frames = Vec::new();
         for record in &table.frames {
@@ -519,9 +511,6 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
                 snapshot_id,
                 completed_frames = completed,
                 total_frames = total,
-                resolved_frames = resolved,
-                unresolved_frames = unresolved,
-                pending_frames = pending,
                 updated_frame_count = update.updated_frames.len(),
                 done = update.done,
                 "symbolication stream update sent"
@@ -533,9 +522,6 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
                     snapshot_id,
                     completed_frames = completed,
                     total_frames = total,
-                    resolved_frames = resolved,
-                    unresolved_frames = unresolved,
-                    pending_frames = pending,
                     unchanged_ticks,
                     "symbolication stream stalled waiting for more frame updates"
                 );
@@ -565,9 +551,6 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
                     snapshot_id,
                     total_frames = total,
                     completed_frames = completed,
-                    resolved_frames = resolved,
-                    unresolved_frames = unresolved,
-                    pending_frames = pending,
                     forced_unresolved_frames = forced_updates.len(),
                     unchanged_ticks,
                     "symbolication stream forcing completion after prolonged stall"
