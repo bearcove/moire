@@ -115,6 +115,7 @@ Exact filenames can shift, but concerns should not.
 - Progress:
   - TCP accept loop, connection lifecycle, wire message ingest, and handshake validation moved to `tcp/mod.rs`.
   - Vite proxy request/response forwarding moved to `proxy/vite.rs`.
+  - Dev proxy route handler and Vite startup/dependency/readiness/reaper lifecycle moved from `main.rs` to `proxy/mod.rs`.
 
 ### 7) Shrink `main.rs` to bootstrap
 
