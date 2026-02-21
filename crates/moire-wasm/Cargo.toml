@@ -15,6 +15,7 @@ diagnostics = []
 
 [dependencies]
 async-channel = "2"
+async-lock = "3"
 futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
