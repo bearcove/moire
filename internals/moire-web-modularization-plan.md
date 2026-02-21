@@ -98,6 +98,8 @@ Exact filenames can shift, but concerns should not.
 
 - Move record start/stop/frame/export/import logic into `recording/`.
 - Keep API layer as thin request/response orchestration.
+- Progress:
+  - Recording session state and frame/session helpers moved to `recording/session.rs`.
 
 ### 6) Extract TCP ingest and proxy/dev-server logic
 

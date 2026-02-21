@@ -17,10 +17,9 @@ use facet::Facet;
 use figue as args;
 use moire_types::{
     BacktraceFrameUnresolved, ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse,
-    FrameSummary, ProcessSnapshotView, RecordCurrentResponse, RecordStartRequest,
-    RecordingImportBody, RecordingSessionInfo, RecordingSessionStatus, SnapshotBacktraceFrame,
-    SnapshotCutResponse, SnapshotFrameRecord, SnapshotSymbolicationUpdate, TimedOutProcess,
-    TriggerCutResponse,
+    ProcessSnapshotView, RecordCurrentResponse, RecordStartRequest, RecordingImportBody,
+    SnapshotBacktraceFrame, SnapshotCutResponse, SnapshotFrameRecord, SnapshotSymbolicationUpdate,
+    TimedOutProcess, TriggerCutResponse,
 };
 use moire_web::api::sql::{execute_named_query_request, execute_sql_request};
 use moire_web::db::{
@@ -28,6 +27,10 @@ use moire_web::db::{
     init_sqlite, into_stored_module_manifest, load_next_connection_id, persist_backtrace_record,
     persist_connection_closed, persist_connection_module_manifest, persist_connection_upsert,
     persist_cut_ack, persist_cut_request, persist_delta_batch,
+};
+use moire_web::recording::session::{
+    RecordingState, build_imported_frames, export_frame_rows, frame_json_by_index, push_frame,
+    recording_session_info,
 };
 use moire_web::snapshot::table::{
     collect_snapshot_backtrace_pairs, is_pending_frame, is_resolved_frame,
@@ -102,30 +105,6 @@ struct SnapshotPending {
 
 struct SnapshotStreamState {
     pairs: Vec<(u64, u64)>,
-}
-
-struct RecordingState {
-    session_id: String,
-    interval_ms: u32,
-    started_at_unix_ms: i64,
-    stopped_at_unix_ms: Option<i64>,
-    frames: Vec<StoredFrame>,
-    max_frames: u32,
-    max_memory_bytes: u64,
-    overflowed: bool,
-    total_frames_captured: u32,
-    approx_memory_bytes: u64,
-    total_capture_ms: f64,
-    max_capture_ms: f64,
-    stop_signal: Arc<Notify>,
-}
-
-struct StoredFrame {
-    frame_index: u32,
-    captured_at_unix_ms: i64,
-    process_count: u32,
-    capture_duration_ms: f64,
-    json: String,
 }
 
 #[derive(Facet, Debug)]
@@ -971,37 +950,13 @@ async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl In
                     if recording.session_id != loop_session_id || recording.stopped_at_unix_ms.is_some() {
                         break;
                     }
-                    if recording.frames.len() as u32 >= recording.max_frames {
-                        recording.overflowed = true;
-                        let dropped = recording.frames.remove(0);
-                        recording.approx_memory_bytes = recording
-                            .approx_memory_bytes
-                            .saturating_sub(dropped.json.len() as u64);
-                    }
-                    let frame_index = recording.total_frames_captured;
-                    recording.total_frames_captured += 1;
-                    recording.total_capture_ms += capture_duration_ms;
-                    if capture_duration_ms > recording.max_capture_ms {
-                        recording.max_capture_ms = capture_duration_ms;
-                    }
-                    let json_len = json.len() as u64;
-                    recording.frames.push(StoredFrame {
-                        frame_index,
+                    push_frame(
+                        recording,
                         captured_at_unix_ms,
                         process_count,
                         capture_duration_ms,
                         json,
-                    });
-                    recording.approx_memory_bytes += json_len;
-                    while recording.approx_memory_bytes > recording.max_memory_bytes
-                        && !recording.frames.is_empty()
-                    {
-                        recording.overflowed = true;
-                        let dropped = recording.frames.remove(0);
-                        recording.approx_memory_bytes = recording
-                            .approx_memory_bytes
-                            .saturating_sub(dropped.json.len() as u64);
-                    }
+                    );
                 }
             }
         }
@@ -1052,22 +1007,13 @@ async fn api_record_frame(
     let Some(recording) = &guard.recording else {
         return json_error(StatusCode::NOT_FOUND, "no recording");
     };
-    if recording.frames.is_empty() {
-        return json_error(StatusCode::NOT_FOUND, "frame not found");
-    }
-    let first_index = recording.frames[0].frame_index;
-    if frame_index < first_index {
-        return json_error(StatusCode::NOT_FOUND, "frame not found (dropped)");
-    }
-    let vec_index = (frame_index - first_index) as usize;
-    let Some(frame) = recording.frames.get(vec_index) else {
+    let Some(frame_json) = frame_json_by_index(recording, frame_index) else {
         return json_error(StatusCode::NOT_FOUND, "frame not found");
     };
-    // Serve the pre-serialized JSON directly.
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
-        frame.json.clone(),
+        frame_json.to_string(),
     )
         .into_response()
 }
@@ -1082,16 +1028,7 @@ async fn api_record_export(State(state): State<AppState>) -> impl IntoResponse {
             return json_error(StatusCode::CONFLICT, "recording is still in progress");
         }
         let session_info = recording_session_info(recording);
-        let frames_json: Vec<String> = recording
-            .frames
-            .iter()
-            .map(|f| {
-                format!(
-                    r#"{{"frame_index":{},"snapshot":{}}}"#,
-                    f.frame_index, f.json
-                )
-            })
-            .collect();
+        let frames_json = export_frame_rows(&recording.frames);
         (session_info, frames_json)
     };
 
@@ -1144,37 +1081,10 @@ async fn api_record_import(State(state): State<AppState>, body: Bytes) -> impl I
         );
     }
 
-    let summary_by_index: HashMap<u32, &FrameSummary> = import
-        .session
-        .frames
-        .iter()
-        .map(|f| (f.frame_index, f))
-        .collect();
-
-    let mut frames: Vec<StoredFrame> = Vec::with_capacity(import.frames.len());
-    for f in &import.frames {
-        let json = match facet_json::to_string(&f.snapshot) {
-            Ok(j) => j,
-            Err(e) => {
-                return json_error(
-                    StatusCode::BAD_REQUEST,
-                    format!("failed to re-serialize frame {}: {e}", f.frame_index),
-                );
-            }
-        };
-        let summary = summary_by_index.get(&f.frame_index);
-        let captured_at_unix_ms = summary.map_or(0, |s| s.captured_at_unix_ms);
-        let process_count = summary.map_or(0, |s| s.process_count);
-        let capture_duration_ms = summary.map_or(0.0, |s| s.capture_duration_ms);
-        frames.push(StoredFrame {
-            frame_index: f.frame_index,
-            captured_at_unix_ms,
-            process_count,
-            capture_duration_ms,
-            json,
-        });
-    }
-    frames.sort_by_key(|f| f.frame_index);
+    let frames = match build_imported_frames(&import) {
+        Ok(frames) => frames,
+        Err(error) => return json_error(StatusCode::BAD_REQUEST, error),
+    };
 
     let approx_memory_bytes: u64 = frames.iter().map(|f| f.json.len() as u64).sum();
     let total_frames_captured = frames.len() as u32;
@@ -1215,45 +1125,6 @@ async fn api_record_import(State(state): State<AppState>, body: Bytes) -> impl I
     json_ok(&RecordCurrentResponse {
         session: Some(recording_session_info(rec)),
     })
-}
-
-fn recording_session_info(rec: &RecordingState) -> RecordingSessionInfo {
-    let status = if rec.stopped_at_unix_ms.is_none() {
-        RecordingSessionStatus::Recording
-    } else {
-        RecordingSessionStatus::Stopped
-    };
-    let avg_capture_ms = if rec.total_frames_captured > 0 {
-        rec.total_capture_ms / rec.total_frames_captured as f64
-    } else {
-        0.0
-    };
-    let frames = rec
-        .frames
-        .iter()
-        .map(|f| FrameSummary {
-            frame_index: f.frame_index,
-            captured_at_unix_ms: f.captured_at_unix_ms,
-            process_count: f.process_count,
-            capture_duration_ms: f.capture_duration_ms,
-        })
-        .collect();
-    RecordingSessionInfo {
-        session_id: rec.session_id.clone(),
-        status,
-        interval_ms: rec.interval_ms,
-        started_at_unix_ms: rec.started_at_unix_ms,
-        stopped_at_unix_ms: rec.stopped_at_unix_ms,
-        frame_count: rec.frames.len() as u32,
-        max_frames: rec.max_frames,
-        max_memory_bytes: rec.max_memory_bytes,
-        overflowed: rec.overflowed,
-        approx_memory_bytes: rec.approx_memory_bytes,
-        avg_capture_ms,
-        max_capture_ms: rec.max_capture_ms,
-        total_capture_ms: rec.total_capture_ms,
-        frames,
-    }
 }
 
 fn parse_cli() -> Result<Cli, String> {
