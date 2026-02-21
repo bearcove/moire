@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
-use moire_trace_types::{FrameId, RelPc};
+use moire_trace_types::{BacktraceId, FrameId, RelPc};
 use moire_types::{
     BacktraceFrameResolved, BacktraceFrameUnresolved, ConnectionId, SnapshotBacktraceFrame,
     SnapshotCutResponse, SnapshotFrameRecord,
@@ -17,20 +17,20 @@ pub struct SnapshotBacktraceTable {
 
 pub fn collect_snapshot_backtrace_pairs(
     snapshot: &SnapshotCutResponse,
-) -> Vec<(ConnectionId, u64)> {
+) -> Vec<(ConnectionId, BacktraceId)> {
     let mut pairs = Vec::new();
     for process in &snapshot.processes {
         for entity in &process.snapshot.entities {
-            pairs.push((process.process_id, entity.backtrace.get()));
+            pairs.push((process.process_id, entity.backtrace));
         }
         for scope in &process.snapshot.scopes {
-            pairs.push((process.process_id, scope.backtrace.get()));
+            pairs.push((process.process_id, scope.backtrace));
         }
         for edge in &process.snapshot.edges {
-            pairs.push((process.process_id, edge.backtrace.get()));
+            pairs.push((process.process_id, edge.backtrace));
         }
         for event in &process.snapshot.events {
-            pairs.push((process.process_id, event.backtrace.get()));
+            pairs.push((process.process_id, event.backtrace));
         }
     }
     pairs.sort_unstable();
@@ -55,7 +55,7 @@ struct FrameDedupKey {
 
 pub async fn load_snapshot_backtrace_table(
     db: Arc<Db>,
-    pairs: &[(ConnectionId, u64)],
+    pairs: &[(ConnectionId, BacktraceId)],
 ) -> SnapshotBacktraceTable {
     if pairs.is_empty() {
         return SnapshotBacktraceTable { frames: vec![] };
@@ -70,7 +70,7 @@ pub async fn load_snapshot_backtrace_table(
 
 fn load_snapshot_backtrace_table_blocking(
     db: &Db,
-    pairs: &[(ConnectionId, u64)],
+    pairs: &[(ConnectionId, BacktraceId)],
 ) -> Result<SnapshotBacktraceTable, String> {
     // r[impl api.snapshot.frame-catalog]
     let batches = load_backtrace_frame_batches(db, pairs)?;

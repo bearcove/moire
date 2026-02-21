@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use facet::Facet;
-use moire_trace_types::{ModuleId, RelPc, RuntimeBase};
+use moire_trace_types::{BacktraceId, ModuleId, RelPc, RuntimeBase};
 use moire_types::ConnectionId;
 use moire_wire::{BacktraceRecord, ModuleIdentity, ModuleManifestEntry};
 use rusqlite_facet::{ConnectionFacetExt, StatementFacetExt};
@@ -59,7 +59,7 @@ struct ConnectionModuleInsertParams {
 #[derive(Facet)]
 struct BacktraceInsertParams {
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     frame_count: i64,
     received_at_ns: i64,
 }
@@ -67,7 +67,7 @@ struct BacktraceInsertParams {
 #[derive(Facet)]
 struct BacktraceFrameInsertParams {
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     frame_index: u32,
     module_path: String,
     module_identity: String,
@@ -341,7 +341,7 @@ pub async fn persist_connection_module_manifest(
 pub async fn persist_backtrace_record(
     db: Arc<Db>,
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     frames: Vec<BacktraceFramePersist>,
 ) -> Result<bool, String> {
     tokio::task::spawn_blocking(move || {
@@ -391,7 +391,8 @@ pub async fn persist_backtrace_record(
                         .map_err(|error| {
                             format!(
                                 "insert backtrace frame {}/{}: {error}",
-                                frame.frame_index, backtrace_id
+                                frame.frame_index,
+                                backtrace_id.get()
                             )
                         })?;
                 }

@@ -174,7 +174,7 @@ impl ConnectionId {
 
 impl fmt::Display for ConnectionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "CONNECTION#{:x}", self.0)
     }
 }
 

@@ -14,6 +14,7 @@ use crate::api::sql::{api_query, api_sql};
 use crate::db::{Db, StoredModuleManifestEntry};
 use crate::proxy::proxy_vite;
 use crate::recording::session::RecordingState;
+use moire_trace_types::BacktraceId;
 use moire_types::SnapshotCutResponse;
 use moire_wire::SnapshotReply;
 use tokio::sync::{Mutex, Notify, mpsc};
@@ -67,7 +68,7 @@ pub struct SnapshotPending {
 }
 
 pub struct SnapshotStreamState {
-    pub pairs: Vec<(ConnectionId, u64)>,
+    pub pairs: Vec<(ConnectionId, BacktraceId)>,
 }
 
 impl ServerState {

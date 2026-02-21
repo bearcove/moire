@@ -118,6 +118,15 @@ macro_rules! define_u64_id {
             }
         }
 
+        impl core::fmt::Display for $name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let kind = stringify!($name)
+                    .trim_end_matches("Id")
+                    .to_ascii_uppercase();
+                write!(f, "{kind}#{:x}", self.0)
+            }
+        }
+
         #[cfg(feature = "rusqlite")]
         impl rusqlite::types::ToSql for $name {
             fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {

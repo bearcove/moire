@@ -272,7 +272,7 @@ async fn read_messages(
                         conn_id.get()
                     ));
                 }
-                let backtrace_id = record.id.get();
+                let backtrace_id = record.id;
                 let frames = backtrace_frames_for_store(&manifest, &record)?;
                 let inserted =
                     persist_backtrace_record(state.db.clone(), conn_id, backtrace_id, frames)
@@ -280,7 +280,8 @@ async fn read_messages(
                 if !inserted {
                     debug!(
                         conn_id = conn_id.get(),
-                        backtrace_id, "backtrace already existed in storage"
+                        backtrace_id = backtrace_id.get(),
+                        "backtrace already existed in storage"
                     );
                 }
             }

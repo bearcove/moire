@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use facet::Facet;
-use moire_trace_types::RelPc;
+use moire_trace_types::{BacktraceId, RelPc};
 use moire_types::ConnectionId;
 use object::{Object, ObjectSegment};
 use rusqlite::Transaction;
@@ -46,7 +46,7 @@ struct SymbolicationCacheEntry {
 #[derive(Facet, Clone)]
 struct PendingFrameJob {
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     frame_index: u32,
     module_path: String,
     module_identity: String,
@@ -56,7 +56,7 @@ struct PendingFrameJob {
 #[derive(Facet)]
 struct PendingFrameLookupParams {
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
 }
 
 #[derive(Facet)]
@@ -83,7 +83,7 @@ struct UpsertSymbolicationCacheParams {
 #[derive(Facet)]
 struct UpsertSymbolicatedFrameParams {
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     frame_index: u32,
     module_path: String,
     rel_pc: RelPc,
@@ -101,7 +101,7 @@ struct UpsertSymbolicatedFrameParams {
 #[derive(Facet)]
 struct TopFrameLookupParams {
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     exclude_1: &'static str,
     exclude_2: &'static str,
     exclude_3: &'static str,
@@ -128,7 +128,7 @@ struct TopFrameCandidate {
 #[derive(Facet)]
 struct TopFrameUpsertParams {
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     frame_index: i64,
     function_name: Option<String>,
     crate_name: String,
@@ -149,7 +149,7 @@ enum ModuleSymbolizerState {
 
 pub async fn symbolicate_pending_frames_for_pairs(
     db: Arc<Db>,
-    pairs: &[(ConnectionId, u64)],
+    pairs: &[(ConnectionId, BacktraceId)],
 ) -> Result<usize, String> {
     if pairs.is_empty() {
         return Ok(0);
@@ -162,7 +162,7 @@ pub async fn symbolicate_pending_frames_for_pairs(
 
 fn symbolicate_pending_frames_for_pairs_blocking(
     db: &Db,
-    pairs: &[(ConnectionId, u64)],
+    pairs: &[(ConnectionId, BacktraceId)],
 ) -> Result<usize, String> {
     let started = Instant::now();
     let mut conn = db.open()?;
@@ -221,7 +221,7 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                     {
                         debug!(
                             conn_id = job.conn_id.get(),
-                            backtrace_id = job.backtrace_id,
+                            backtrace_id = %job.backtrace_id,
                             frame_index = job.frame_index,
                             "retrying previously scaffolded unresolved cache entry"
                         );
@@ -574,7 +574,7 @@ fn upsert_symbolication_cache(
 fn upsert_symbolicated_frame(
     tx: &Transaction<'_>,
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
     frame_index: u32,
     module_path: &str,
     rel_pc: RelPc,
@@ -628,7 +628,7 @@ fn upsert_symbolicated_frame(
 fn update_top_application_frame(
     tx: &Transaction<'_>,
     conn_id: ConnectionId,
-    backtrace_id: u64,
+    backtrace_id: BacktraceId,
 ) -> Result<(), String> {
     let mut stmt = tx
         .prepare(
