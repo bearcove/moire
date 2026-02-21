@@ -21,6 +21,7 @@ moire-types.workspace = true
 moire-trace-types.workspace = true
 moire-wire.workspace = true
 rusqlite.workspace = true
+rusqlite-facet.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

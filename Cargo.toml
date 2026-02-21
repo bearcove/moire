@@ -37,6 +37,7 @@ moire-trace-types = { path = "crates/moire-trace-types" }
 moire-trace-capture = { path = "crates/moire-trace-capture" }
 moire-wire = { path = "crates/moire-wire" }
 moire-sqlite-facet = { path = "crates/moire-sqlite-facet" }
+rusqlite-facet = { path = "crates/rusqlite-facet" }
 
 # External
 ctor = "0.2"
