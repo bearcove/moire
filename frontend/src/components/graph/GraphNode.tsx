@@ -39,8 +39,8 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
         ? def.rpcPair.resp.body.response
         : null;
     const respStatus = respBody?.status;
-    const respStatusKey = respStatus == null ? "pending" : Object.keys(respStatus)[0];
-    const respTone: Tone = respStatus == null ? "warn" : "ok" in respStatus ? "ok" : "error" in respStatus ? "crit" : "warn";
+    const respStatusKey = respStatus == null ? "pending" : typeof respStatus === "string" ? respStatus : Object.keys(respStatus)[0];
+    const respTone: Tone = respStatus == null || typeof respStatus === "string" ? "warn" : "ok" in respStatus ? "ok" : "error" in respStatus ? "crit" : "warn";
     return {
       kind: "rpc_pair",
       label: def.name,

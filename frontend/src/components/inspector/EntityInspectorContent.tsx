@@ -41,9 +41,6 @@ function EntityDetailsSection({
 
   return (
     <>
-      <KeyValueRow label="Backtrace ID">
-        <span className="inspector-mono">{entity.backtraceId}</span>
-      </KeyValueRow>
       <KeyValueRow label="Source">
         <Source source={`${entity.source.path}:${entity.source.line}`} />
       </KeyValueRow>
@@ -61,9 +58,9 @@ function EntityDetailsSection({
         </span>
       </KeyValueRow>
       {backtrace && (
-        <div className="inspector-backtrace-slot">
+        <KeyValueRow label="Backtrace">
           <BacktraceRenderer backtrace={backtrace} />
-        </div>
+        </KeyValueRow>
       )}
     </>
   );

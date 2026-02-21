@@ -179,7 +179,7 @@ function crateFromModulePath(modulePath: string): string {
 function resolveBacktraceDisplay(
   backtraces: Map<number, ResolvedSnapshotBacktrace>,
   backtraceId: number,
-  context: string,
+  _context: string,
 ): { source: RenderSource; topFrame?: RenderTopFrame } {
   const record = backtraces.get(backtraceId);
   if (!record) {
@@ -314,9 +314,10 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
   if ("request" in body) return { label: "in_flight", tone: "warn" };
   if ("response" in body) {
     const s = (body as ResponseBody).response.status;
+    if (s === "pending") return { label: "pending", tone: "warn" };
+    if (s === "cancelled") return { label: "cancelled", tone: "neutral" };
     if ("ok" in s) return { label: "ok", tone: "ok" };
     if ("error" in s) return { label: "error", tone: "crit" };
-    if ("cancelled" in s) return { label: "cancelled", tone: "neutral" };
     return { label: "pending", tone: "warn" };
   }
   if ("lock" in body) return { label: "held", tone: "crit" };

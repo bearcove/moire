@@ -3,7 +3,7 @@ import { PaperPlaneTilt } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import type { EntityBody } from "../../api/types.generated";
-import type { EntityDef } from "../../snapshot";
+import type { EntityDef, Tone } from "../../snapshot";
 
 type RequestBody = Extract<EntityBody, { request: unknown }>;
 type ResponseBody = Extract<EntityBody, { response: unknown }>;
@@ -25,14 +25,15 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
   if ("response" in body) {
     const resp = (body as ResponseBody).response;
     const s = resp.status;
-    const statusKey = "ok" in s ? "ok" : "error" in s ? "error" : "cancelled" in s ? "cancelled" : "pending";
+    const statusKey = typeof s === "string" ? s : "ok" in s ? "ok" : "error" in s ? "error" : "pending";
+    const statusTone: Tone = statusKey === "ok" ? "ok" : statusKey === "error" ? "crit" : "warn";
     return (
       <>
         <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
           <span className="inspector-mono">{resp.service_name}.{resp.method_name}</span>
         </KeyValueRow>
         <KeyValueRow label="Status">
-          <Badge tone={"ok" in s ? "ok" : "error" in s ? "crit" : "warn"}>
+          <Badge tone={statusTone}>
             {statusKey}
           </Badge>
         </KeyValueRow>

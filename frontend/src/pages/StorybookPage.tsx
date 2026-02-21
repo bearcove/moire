@@ -1156,8 +1156,8 @@ export function StorybookPage({
           wide
         >
           <div className="ui-section-stack">
-            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[0]} title="Runtime Capture" />
-            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[1]} title="Mixed Resolved/Unresolved" />
+            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[0]} />
+            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[1]} />
           </div>
         </Section>
 

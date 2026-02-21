@@ -1094,11 +1094,64 @@ export function App() {
             const pendingFrames = existingSnapshot.frames.filter((record) =>
               isPendingFrame(record.frame),
             ).length;
-            setSymbolicationProgress(
-              pendingFrames > 0
-                ? { resolved: resolvedFrames, pending: pendingFrames, total: totalFrames }
-                : null,
-            );
+            if (pendingFrames > 0) {
+              setSymbolicationProgress({
+                resolved: resolvedFrames,
+                pending: pendingFrames,
+                total: totalFrames,
+              });
+              appLog(
+                "existing snapshot has %d pending frames, opening symbolication stream",
+                pendingFrames,
+              );
+              symbolicationStreamStopRef.current = apiClient.streamSnapshotSymbolication(
+                existingSnapshot.snapshot_id,
+                (update) => {
+                  const current = snapshotWireRef.current;
+                  if (!current || current.snapshot_id !== update.snapshot_id) return;
+                  const next = applySymbolicationUpdateToSnapshot(current, update);
+                  snapshotWireRef.current = next;
+                  const nextConverted = convertSnapshot(next, effectiveSubgraphScopeMode);
+                  setSnap({
+                    phase: "ready",
+                    ...nextConverted,
+                    scopes: extractScopes(next),
+                    backtracesById: buildBacktraceIndex(next),
+                  });
+                  const nextResolved = next.frames.filter((record) =>
+                    isResolvedFrame(record.frame),
+                  ).length;
+                  const nextPending = next.frames.filter((record) =>
+                    isPendingFrame(record.frame),
+                  ).length;
+                  if (update.done || nextPending === 0) {
+                    setSymbolicationProgress(null);
+                    appLog(
+                      "existing snapshot symbolication done resolved=%d pending=%d total=%d",
+                      nextResolved,
+                      nextPending,
+                      next.frames.length,
+                    );
+                    if (symbolicationStreamStopRef.current) {
+                      symbolicationStreamStopRef.current();
+                      symbolicationStreamStopRef.current = null;
+                    }
+                  } else {
+                    setSymbolicationProgress({
+                      resolved: nextResolved,
+                      pending: nextPending,
+                      total: next.frames.length,
+                    });
+                  }
+                },
+                (error) => {
+                  console.error("[moire:symbolication] existing snapshot stream error", error);
+                  setSymbolicationProgress(null);
+                },
+              );
+            } else {
+              setSymbolicationProgress(null);
+            }
             appLog("startup poll done using existing snapshot");
             break;
           }

@@ -347,10 +347,10 @@ export interface ResponseEntity {
 }
 
 export type ResponseStatus =
-  | { pending: "pending" }
+  | "pending"
   | { ok: Json }
   | { error: ResponseError }
-  | { cancelled: "cancelled" };
+  | "cancelled";
 
 export type ResponseError =
   | { internal: string }

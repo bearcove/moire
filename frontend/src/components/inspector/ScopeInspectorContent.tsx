@@ -3,6 +3,7 @@ import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { formatProcessLabel } from "../../processLabel";
 import type { ResolvedSnapshotBacktrace, ScopeDef } from "../../snapshot";
 import { BacktraceRenderer } from "./BacktraceRenderer";
+import { Source } from "./Source";
 import "./InspectorPanel.css";
 
 export function ScopeInspectorContent({
@@ -25,21 +26,18 @@ export function ScopeInspectorContent({
       <KeyValueRow label="Scope id">
         <span className="inspector-mono">{scope.scopeId}</span>
       </KeyValueRow>
-      <KeyValueRow label="Backtrace ID">
-        <span className="inspector-mono">{scope.backtraceId}</span>
-      </KeyValueRow>
       {scope.source && (
         <KeyValueRow label="Source">
-          <span className="inspector-mono">{scope.source.path}:{scope.source.line}</span>
+          <Source source={`${scope.source.path}:${scope.source.line}`} />
         </KeyValueRow>
       )}
       <KeyValueRow label="Members">
         <span className="inspector-mono">{scope.memberEntityIds.length}</span>
       </KeyValueRow>
       {backtrace && (
-        <div className="inspector-backtrace-slot">
+        <KeyValueRow label="Backtrace">
           <BacktraceRenderer backtrace={backtrace} />
-        </div>
+        </KeyValueRow>
       )}
     </div>
   );

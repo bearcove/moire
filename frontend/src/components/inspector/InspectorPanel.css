@@ -259,10 +259,6 @@
     margin-top: 2px;
 }
 
-.inspector-backtrace-slot {
-    margin-top: 6px;
-}
-
 .inspector-mono {
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);

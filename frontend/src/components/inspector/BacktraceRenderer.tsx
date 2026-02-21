@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Stack, ArrowSquareOut } from "@phosphor-icons/react";
 import type { SnapshotBacktraceFrame } from "../../api/types.generated";
 import type { ResolvedSnapshotBacktrace } from "../../snapshot";
 import "./BacktraceRenderer.css";
@@ -21,10 +22,13 @@ function isResolved(frame: SnapshotBacktraceFrame): frame is { resolved: { modul
 }
 
 function isSystemFrame(frame: SnapshotBacktraceFrame): boolean {
-  const modulePath = isResolved(frame) ? frame.resolved.module_path : frame.unresolved.module_path;
+  if (!isResolved(frame)) return false;
+  const modulePath = frame.resolved.module_path;
   return SYSTEM_PREFIXES.some((prefix) => modulePath.startsWith(prefix));
 }
 
+// Index is intentional: a backtrace can contain the same frame multiple times (recursion).
+// eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
 function frameKey(frame: SnapshotBacktraceFrame, index: number): string {
   if (isResolved(frame)) {
     return `r:${index}:${frame.resolved.module_path}:${frame.resolved.function_name}:${frame.resolved.source_file}:${frame.resolved.line ?? ""}`;
@@ -32,189 +36,200 @@ function frameKey(frame: SnapshotBacktraceFrame, index: number): string {
   return `u:${index}:${frame.unresolved.module_path}:${frame.unresolved.rel_pc}`;
 }
 
-function frameText(frame: SnapshotBacktraceFrame): string {
-  if (isResolved(frame)) {
-    return [
-      frame.resolved.function_name,
-      frame.resolved.module_path,
-      frame.resolved.source_file,
-      frame.resolved.line != null ? String(frame.resolved.line) : "",
-    ]
-      .join(" ")
-      .toLowerCase();
-  }
-  return [
-    frame.unresolved.module_path,
-    String(frame.unresolved.rel_pc),
-    frame.unresolved.reason,
-  ]
-    .join(" ")
-    .toLowerCase();
+function shortFileName(path: string): string {
+  return path.split("/").pop() ?? path;
 }
 
-function renderFrameLabel(frame: SnapshotBacktraceFrame): React.ReactNode {
-  if (isResolved(frame)) {
-    const location = frame.resolved.line != null
-      ? `${frame.resolved.source_file}:${frame.resolved.line}`
-      : frame.resolved.source_file;
-    return (
-      <>
-        <span className="bt-frame-fn">{frame.resolved.function_name}</span>
-        <span className="bt-frame-meta">{frame.resolved.module_path}</span>
-        <span className="bt-frame-src">{location}</span>
-      </>
-    );
-  }
+function zedUrl(path: string, line?: number): string {
+  return line != null ? `zed://file${path}:${line}` : `zed://file${path}`;
+}
+
+function shortFunctionName(name: string): string {
+  // Strip generic parameters: foo::bar::<T>::baz -> foo::bar::baz
+  const stripped = name.replace(/<[^>]*>/g, "");
+  // Take last two segments: some::long::path::func -> path::func
+  const parts = stripped.split("::");
+  if (parts.length <= 2) return stripped;
+  return parts.slice(-2).join("::");
+}
+
+/** Compact badge for inline use in the inspector KV table. */
+export function BacktraceBadge({
+  backtrace,
+  onClick,
+}: {
+  backtrace: ResolvedSnapshotBacktrace;
+  onClick: () => void;
+}) {
+  const topFrame = useMemo(() => {
+    return backtrace.frames.find((f) => isResolved(f) && !isSystemFrame(f))
+      ?? backtrace.frames.find((f) => isResolved(f))
+      ?? backtrace.frames[0];
+  }, [backtrace.frames]);
+
+  const location = topFrame && isResolved(topFrame)
+    ? `${shortFileName(topFrame.resolved.source_file)}${topFrame.resolved.line != null ? `:${topFrame.resolved.line}` : ""}`
+    : null;
 
   return (
-    <>
-      <span className="bt-frame-fn bt-frame-fn--unresolved">unresolved</span>
-      <span className="bt-frame-meta">{frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}</span>
-      <span className="bt-frame-src">{frame.unresolved.reason}</span>
-    </>
+    <button type="button" className="bt-badge" onClick={onClick}>
+      <Stack size={12} weight="bold" className="bt-badge-icon" />
+      {location ? (
+        <span className="bt-badge-location">{location}</span>
+      ) : (
+        <span className="bt-badge-location bt-badge-location--pending">pending</span>
+      )}
+      <span className="bt-badge-count">{backtrace.frames.length}f</span>
+    </button>
   );
 }
 
-export function BacktraceRenderer({
+/** Full backtrace panel, opened from the badge. */
+export function BacktracePanel({
   backtrace,
-  title = "Backtrace",
+  onClose,
 }: {
   backtrace: ResolvedSnapshotBacktrace;
-  title?: string;
+  onClose: () => void;
 }) {
-  const [showUserFrames, setShowUserFrames] = useState(false);
-  const [showSystemFrames, setShowSystemFrames] = useState(false);
-  const [includeFilter, setIncludeFilter] = useState("");
-  const [excludeFilter, setExcludeFilter] = useState("");
-  const [fullscreen, setFullscreen] = useState(false);
-
-  const topFrame = useMemo(() => {
-    return backtrace.frames.find((frame) => !isSystemFrame(frame)) ?? backtrace.frames[0];
-  }, [backtrace.frames]);
+  const [showSystem, setShowSystem] = useState(false);
 
   const userFrames = useMemo(
-    () => backtrace.frames.filter((frame) => !isSystemFrame(frame)),
+    () => backtrace.frames.filter((f) => isResolved(f) && !isSystemFrame(f)),
     [backtrace.frames],
   );
   const systemFrames = useMemo(
-    () => backtrace.frames.filter((frame) => isSystemFrame(frame)),
+    () => backtrace.frames.filter((f) => isResolved(f) && isSystemFrame(f)),
+    [backtrace.frames],
+  );
+  const unresolvedFrames = useMemo(
+    () => backtrace.frames.filter((f) => !isResolved(f)),
     [backtrace.frames],
   );
 
-  const includeNeedle = includeFilter.trim().toLowerCase();
-  const excludeNeedle = excludeFilter.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    const keep = (frame: SnapshotBacktraceFrame) => {
-      const hay = frameText(frame);
-      if (includeNeedle && !hay.includes(includeNeedle)) return false;
-      if (excludeNeedle && hay.includes(excludeNeedle)) return false;
-      return true;
-    };
-    return {
-      user: userFrames.filter(keep),
-      system: systemFrames.filter(keep),
-    };
-  }, [userFrames, systemFrames, includeNeedle, excludeNeedle]);
-
   useEffect(() => {
-    if (!fullscreen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFullscreen(false);
+      if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fullscreen]);
+  }, [onClose]);
 
-  function renderPanel(isFullscreen: boolean): React.ReactNode {
-    return (
-      <section
-        className={isFullscreen ? "bt-panel bt-panel--fullscreen" : "bt-panel"}
-        aria-label={`${title} ${backtrace.backtrace_id}`}
-      >
-        <div className="bt-header">
-          <div className="bt-title">
-            <span>{title}</span>
-            <span className="bt-id">#{backtrace.backtrace_id}</span>
-          </div>
-          <div className="bt-header-actions">
-            <span className="bt-count">{backtrace.frames.length} frames</span>
-            <button
-              type="button"
-              className="bt-toggle bt-toggle--expand"
-              onClick={() => setFullscreen((v) => !v)}
-            >
-              {isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
-            </button>
-          </div>
-        </div>
-
-        {topFrame && (
-          <div className="bt-top">
-            <div className="bt-top-label">Top frame</div>
-            <div className="bt-frame">{renderFrameLabel(topFrame)}</div>
-          </div>
-        )}
-
-        <div className="bt-filters">
-          <input
-            className="bt-input"
-            value={includeFilter}
-            onChange={(event) => setIncludeFilter(event.target.value)}
-            placeholder="include filter (function/module/path)"
-            aria-label="Include frame filter"
-          />
-          <input
-            className="bt-input"
-            value={excludeFilter}
-            onChange={(event) => setExcludeFilter(event.target.value)}
-            placeholder="exclude filter"
-            aria-label="Exclude frame filter"
-          />
-        </div>
-
-        <div className="bt-controls">
-          <button type="button" className="bt-toggle" onClick={() => setShowUserFrames((v) => !v)}>
-            {showUserFrames ? "Hide user frames" : "Show user frames"} ({filtered.user.length})
+  return (
+    <div className="bt-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="bt-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="bt-dialog-header">
+          <span className="bt-dialog-title">
+            Backtrace <span className="bt-dialog-id">#{backtrace.backtrace_id}</span>
+          </span>
+          <span className="bt-dialog-meta">
+            {backtrace.frames.length} frames
+            {unresolvedFrames.length > 0 && (
+              <> · {unresolvedFrames.length} unresolved</>
+            )}
+          </span>
+          <button type="button" className="bt-dialog-close" onClick={onClose}>
+            Esc
           </button>
-          {showUserFrames && (
-            <button type="button" className="bt-toggle" onClick={() => setShowSystemFrames((v) => !v)}>
-              {showSystemFrames ? "Hide system frames" : "Show system frames"} ({filtered.system.length})
-            </button>
-          )}
         </div>
 
-        {showUserFrames && (
-          <div className="bt-list">
-            {filtered.user.map((frame, index) => (
-              <div className="bt-frame" key={frameKey(frame, index)}>
-                {renderFrameLabel(frame)}
-              </div>
-            ))}
+        {userFrames.length > 0 && (
+          <div className="bt-section">
+            <div className="bt-section-label">User frames ({userFrames.length})</div>
+            <div className="bt-frame-list">
+              {/* eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames */}
+              {userFrames.map((frame, index) => (
+                <FrameRow key={frameKey(frame, index)} frame={frame} />
+              ))}
+            </div>
           </div>
         )}
 
-        {showUserFrames && showSystemFrames && (
-          <div className="bt-list bt-list--system">
-            {filtered.system.map((frame, index) => (
-              <div className="bt-frame" key={frameKey(frame, index)}>
-                {renderFrameLabel(frame)}
-              </div>
-            ))}
+        <div className="bt-section-controls">
+          <button
+            type="button"
+            className="bt-section-toggle"
+            onClick={() => setShowSystem((v) => !v)}
+          >
+            {showSystem ? "Hide" : "Show"} system frames ({systemFrames.length})
+          </button>
+        </div>
+
+        {showSystem && systemFrames.length > 0 && (
+          <div className="bt-section bt-section--system">
+            <div className="bt-section-label">System frames ({systemFrames.length})</div>
+            <div className="bt-frame-list">
+              {/* eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames */}
+              {systemFrames.map((frame, index) => (
+                <FrameRow key={frameKey(frame, index)} frame={frame} />
+              ))}
+            </div>
           </div>
         )}
-      </section>
-    );
-  }
+
+        {unresolvedFrames.length > 0 && (
+          <div className="bt-section bt-section--unresolved">
+            <div className="bt-section-label">Unresolved ({unresolvedFrames.length})</div>
+            <div className="bt-frame-list">
+              {/* eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames */}
+              {unresolvedFrames.map((frame, index) => {
+                if (!("unresolved" in frame)) return null;
+                return (
+                  <div className="bt-frame-row" key={frameKey(frame, index)}>
+                    <span className="bt-fn bt-fn--unresolved">
+                      {frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}
+                    </span>
+                    <span className="bt-reason">{frame.unresolved.reason}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FrameRow({ frame }: { frame: SnapshotBacktraceFrame }) {
+  if (!isResolved(frame)) return null;
+  const { function_name, source_file, line } = frame.resolved;
+  const hasSource = source_file.length > 0;
+  const fileName = hasSource ? shortFileName(source_file) : null;
+  const location = fileName != null ? (line != null ? `${fileName}:${line}` : fileName) : null;
+  const href = hasSource ? zedUrl(source_file, line) : null;
+
+  return (
+    <div className="bt-frame-row">
+      <span className="bt-fn" title={function_name}>{shortFunctionName(function_name)}</span>
+      {location && href ? (
+        <a className="bt-src" href={href} title={`Open ${source_file}${line != null ? `:${line}` : ""} in Zed`}>
+          {location}
+          <ArrowSquareOut size={10} weight="bold" className="bt-src-icon" />
+        </a>
+      ) : (
+        <span className="bt-src bt-src--none">no source</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Inline backtrace widget for inspector panels.
+ * Renders a compact badge; clicking opens a full backtrace dialog.
+ */
+export function BacktraceRenderer({
+  backtrace,
+}: {
+  backtrace: ResolvedSnapshotBacktrace;
+}) {
+  const [open, setOpen] = useState(false);
 
   return (
     <>
-      {renderPanel(false)}
-      {fullscreen && (
-        <div className="bt-overlay" role="dialog" aria-modal="true" onClick={() => setFullscreen(false)}>
-          <div className="bt-overlay-inner" onClick={(event) => event.stopPropagation()}>
-            {renderPanel(true)}
-          </div>
-        </div>
+      <BacktraceBadge backtrace={backtrace} onClick={() => setOpen(true)} />
+      {open && (
+        <BacktracePanel backtrace={backtrace} onClose={() => setOpen(false)} />
       )}
     </>
   );
