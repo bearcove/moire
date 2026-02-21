@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use facet::Facet;
 use moire_wire::{BacktraceRecord, ModuleIdentity, ModuleManifestEntry};
 use rusqlite::params;
+use rusqlite_facet::{ConnectionFacetExt, StatementFacetExt};
 
 use crate::db::Db;
 use crate::util::time::{now_nanos, to_i64_u64};
@@ -20,6 +22,68 @@ pub struct StoredModuleManifestEntry {
     pub module_identity: String,
     pub arch: String,
     pub runtime_base: u64,
+}
+
+#[derive(Facet)]
+struct ConnectionUpsertParams {
+    conn_id: u64,
+    process_name: String,
+    pid: u32,
+    connected_at_ns: i64,
+}
+
+#[derive(Facet)]
+struct ConnectionClosedParams {
+    conn_id: u64,
+    disconnected_at_ns: i64,
+}
+
+#[derive(Facet)]
+struct ConnectionIdParams {
+    conn_id: u64,
+}
+
+#[derive(Facet)]
+struct ConnectionModuleInsertParams {
+    conn_id: u64,
+    module_index: i64,
+    module_path: String,
+    module_identity: String,
+    arch: String,
+    runtime_base: u64,
+}
+
+#[derive(Facet)]
+struct BacktraceInsertParams {
+    conn_id: u64,
+    backtrace_id: u64,
+    frame_count: i64,
+    received_at_ns: i64,
+}
+
+#[derive(Facet)]
+struct BacktraceFrameInsertParams {
+    conn_id: u64,
+    backtrace_id: u64,
+    frame_index: u32,
+    module_path: String,
+    module_identity: String,
+    rel_pc: u64,
+}
+
+#[derive(Facet)]
+struct CutRequestParams {
+    cut_id: String,
+    requested_at_ns: i64,
+}
+
+#[derive(Facet)]
+struct CutAckParams {
+    cut_id: String,
+    conn_id: u64,
+    stream_id: String,
+    next_seq_no: u64,
+    received_at_ns: i64,
 }
 
 pub fn backtrace_frames_for_store(
@@ -76,18 +140,18 @@ pub async fn persist_connection_upsert(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let conn = db.open()?;
-        conn.execute(
+        conn.facet_execute_ref(
             "INSERT INTO connections (conn_id, process_name, pid, connected_at_ns, disconnected_at_ns)
-             VALUES (?1, ?2, ?3, ?4, NULL)
+             VALUES (:conn_id, :process_name, :pid, :connected_at_ns, NULL)
              ON CONFLICT(conn_id) DO UPDATE SET
                process_name = excluded.process_name,
                pid = excluded.pid",
-            params![
-                to_i64_u64(conn_id),
+            &ConnectionUpsertParams {
+                conn_id,
                 process_name,
-                i64::from(pid),
-                now_nanos()
-            ],
+                pid,
+                connected_at_ns: now_nanos(),
+            },
         )
         .map_err(|error| format!("upsert connection: {error}"))?;
         Ok::<(), String>(())
@@ -99,9 +163,14 @@ pub async fn persist_connection_upsert(
 pub async fn persist_connection_closed(db: Arc<Db>, conn_id: u64) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let conn = db.open()?;
-        conn.execute(
-            "UPDATE connections SET disconnected_at_ns = ?2 WHERE conn_id = ?1",
-            params![to_i64_u64(conn_id), now_nanos()],
+        conn.facet_execute_ref(
+            "UPDATE connections
+             SET disconnected_at_ns = :disconnected_at_ns
+             WHERE conn_id = :conn_id",
+            &ConnectionClosedParams {
+                conn_id,
+                disconnected_at_ns: now_nanos(),
+            },
         )
         .map_err(|error| format!("close connection: {error}"))?;
         Ok::<(), String>(())
@@ -120,27 +189,37 @@ pub async fn persist_connection_module_manifest(
         let tx = conn
             .transaction()
             .map_err(|error| format!("start transaction: {error}"))?;
-        tx.execute(
-            "DELETE FROM connection_modules WHERE conn_id = ?1",
-            params![to_i64_u64(conn_id)],
-        )
-        .map_err(|error| format!("delete connection_modules: {error}"))?;
+        {
+            let mut delete_stmt = tx
+                .prepare("DELETE FROM connection_modules WHERE conn_id = :conn_id")
+                .map_err(|error| format!("prepare delete connection_modules: {error}"))?;
+            delete_stmt
+                .facet_execute_ref(&ConnectionIdParams { conn_id })
+                .map_err(|error| format!("delete connection_modules: {error}"))?;
+        }
 
-        for (module_index, module) in module_manifest.iter().enumerate() {
-            tx.execute(
-                "INSERT INTO connection_modules (
-                    conn_id, module_index, module_path, module_identity, arch, runtime_base
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    to_i64_u64(conn_id),
-                    module_index as i64,
-                    module.module_path.as_str(),
-                    module.module_identity.as_str(),
-                    module.arch.as_str(),
-                    to_i64_u64(module.runtime_base),
-                ],
-            )
-            .map_err(|error| format!("insert connection_module[{module_index}]: {error}"))?;
+        {
+            let mut insert_stmt = tx
+                .prepare(
+                    "INSERT INTO connection_modules (
+                        conn_id, module_index, module_path, module_identity, arch, runtime_base
+                     ) VALUES (
+                        :conn_id, :module_index, :module_path, :module_identity, :arch, :runtime_base
+                     )",
+                )
+                .map_err(|error| format!("prepare insert connection_modules: {error}"))?;
+            for (module_index, module) in module_manifest.iter().enumerate() {
+                insert_stmt
+                    .facet_execute_ref(&ConnectionModuleInsertParams {
+                        conn_id,
+                        module_index: module_index as i64,
+                        module_path: module.module_path.clone(),
+                        module_identity: module.module_identity.clone(),
+                        arch: module.arch.clone(),
+                        runtime_base: module.runtime_base,
+                    })
+                    .map_err(|error| format!("insert connection_module[{module_index}]: {error}"))?;
+            }
         }
         tx.commit()
             .map_err(|error| format!("commit connection_modules: {error}"))?;
@@ -162,41 +241,52 @@ pub async fn persist_backtrace_record(
         let tx = conn
             .transaction()
             .map_err(|error| format!("start transaction: {error}"))?;
-        let inserted = tx
-            .execute(
-                "INSERT INTO backtraces (conn_id, backtrace_id, frame_count, received_at_ns)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(conn_id, backtrace_id) DO NOTHING",
-                params![
-                    to_i64_u64(conn_id),
-                    to_i64_u64(backtrace_id),
-                    frames.len() as i64,
-                    now_nanos()
-                ],
-            )
-            .map_err(|error| format!("insert backtrace: {error}"))?
-            > 0;
-        if inserted {
-            for frame in &frames {
-                tx.execute(
-                    "INSERT INTO backtrace_frames (
-                        conn_id, backtrace_id, frame_index, module_path, module_identity, rel_pc
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![
-                        to_i64_u64(conn_id),
-                        to_i64_u64(backtrace_id),
-                        i64::from(frame.frame_index),
-                        frame.module_path.as_str(),
-                        frame.module_identity.as_str(),
-                        to_i64_u64(frame.rel_pc),
-                    ],
+        let inserted = {
+            let mut insert_backtrace_stmt = tx
+                .prepare(
+                    "INSERT INTO backtraces (conn_id, backtrace_id, frame_count, received_at_ns)
+                     VALUES (:conn_id, :backtrace_id, :frame_count, :received_at_ns)
+                     ON CONFLICT(conn_id, backtrace_id) DO NOTHING",
                 )
-                .map_err(|error| {
-                    format!(
-                        "insert backtrace frame {}/{}: {error}",
-                        frame.frame_index, backtrace_id
+                .map_err(|error| format!("prepare insert backtrace: {error}"))?;
+            insert_backtrace_stmt
+                .facet_execute_ref(&BacktraceInsertParams {
+                    conn_id,
+                    backtrace_id,
+                    frame_count: frames.len() as i64,
+                    received_at_ns: now_nanos(),
+                })
+                .map_err(|error| format!("insert backtrace: {error}"))?
+                > 0
+        };
+        if inserted {
+            {
+                let mut insert_frame_stmt = tx
+                    .prepare(
+                        "INSERT INTO backtrace_frames (
+                            conn_id, backtrace_id, frame_index, module_path, module_identity, rel_pc
+                         ) VALUES (
+                            :conn_id, :backtrace_id, :frame_index, :module_path, :module_identity, :rel_pc
+                         )",
                     )
-                })?;
+                    .map_err(|error| format!("prepare insert backtrace frames: {error}"))?;
+                for frame in &frames {
+                    insert_frame_stmt
+                        .facet_execute_ref(&BacktraceFrameInsertParams {
+                            conn_id,
+                            backtrace_id,
+                            frame_index: frame.frame_index,
+                            module_path: frame.module_path.clone(),
+                            module_identity: frame.module_identity.clone(),
+                            rel_pc: frame.rel_pc,
+                        })
+                        .map_err(|error| {
+                            format!(
+                                "insert backtrace frame {}/{}: {error}",
+                                frame.frame_index, backtrace_id
+                            )
+                        })?;
+                }
             }
         }
         tx.commit()
@@ -214,10 +304,13 @@ pub async fn persist_cut_request(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let conn = db.open()?;
-        conn.execute(
+        conn.facet_execute_ref(
             "INSERT INTO cuts (cut_id, requested_at_ns) VALUES (?1, ?2)
              ON CONFLICT(cut_id) DO UPDATE SET requested_at_ns = excluded.requested_at_ns",
-            params![cut_id, requested_at_ns],
+            &CutRequestParams {
+                cut_id,
+                requested_at_ns,
+            },
         )
         .map_err(|error| format!("upsert cut: {error}"))?;
         Ok::<(), String>(())
@@ -235,20 +328,20 @@ pub async fn persist_cut_ack(
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let conn = db.open()?;
-        conn.execute(
+        conn.facet_execute_ref(
             "INSERT INTO cut_acks (cut_id, conn_id, stream_id, next_seq_no, received_at_ns)
              VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(cut_id, conn_id) DO UPDATE SET
                stream_id = excluded.stream_id,
                next_seq_no = excluded.next_seq_no,
                received_at_ns = excluded.received_at_ns",
-            params![
+            &CutAckParams {
                 cut_id,
-                to_i64_u64(conn_id),
+                conn_id,
                 stream_id,
-                to_i64_u64(next_seq_no),
-                now_nanos()
-            ],
+                next_seq_no,
+                received_at_ns: now_nanos(),
+            },
         )
         .map_err(|error| format!("upsert cut ack: {error}"))?;
         Ok::<(), String>(())
