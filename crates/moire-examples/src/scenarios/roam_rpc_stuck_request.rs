@@ -2,9 +2,9 @@ use std::io;
 use std::process::Stdio;
 use std::time::Duration;
 
-use crate::scenarios::spawn_tracked;
+use moire::task::FutureExt as _;
 use roam::service;
-use roam_stream::{accept, connect, Connector, HandshakeConfig, NoDispatcher};
+use roam_stream::{Connector, HandshakeConfig, NoDispatcher, accept, connect};
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
 
@@ -64,9 +64,12 @@ pub async fn run() -> Result<(), String> {
         .await
         .map_err(|e| format!("server handshake should succeed: {e}"))?;
 
-    spawn_tracked("roam.server_driver", async move {
-        let _ = driver.run().await;
-    });
+    moire::task::spawn(
+        async move {
+            let _ = driver.run().await;
+        }
+        .named("roam.server_driver"),
+    );
 
     println!("server ready: requests to sleepy_forever will stall forever");
     println!("press Ctrl+C to exit");

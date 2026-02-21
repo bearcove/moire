@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use crate::scenarios::spawn_tracked;
+use moire::task::FutureExt as _;
 use roam_stream::{HandshakeConfig, NoDispatcher, accept};
 use tokio::process::{Child, Command};
 
@@ -52,16 +52,22 @@ pub async fn run(workspace_root: &Path) -> Result<(), String> {
         .await
         .map_err(|e| format!("roam handshake with swift peer should succeed: {e}"))?;
 
-    spawn_tracked("roam.rust_host_driver", async move {
-        let _ = driver.run().await;
-    });
+    moire::task::spawn(
+        async move {
+            let _ = driver.run().await;
+        }
+        .named("roam.rust_host_driver"),
+    );
 
     let request_handle = handle.clone();
-    spawn_tracked("rust.calls.swift_noop", async move {
-        let _ = request_handle
-            .call_raw(0xfeed_f00d, "swift.noop.stall", Vec::new())
-            .await;
-    });
+    moire::task::spawn(
+        async move {
+            let _ = request_handle
+                .call_raw(0xfeed_f00d, "swift.noop.stall", Vec::new())
+                .await;
+        }
+        .named("rust.calls.swift_noop"),
+    );
 
     println!("example running. rust issues one RPC call that swift intentionally never answers.");
     println!("open moire-web and inspect request/connection wait edges across this process.");

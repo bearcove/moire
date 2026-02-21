@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::scenarios::spawn_tracked;
-use moire::sync::mpsc::channel;
-use moire::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use moire::sync::Mutex;
+use moire::sync::mpsc::channel;
+use moire::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
+use moire::task::FutureExt as _;
 
 type RequestId = u64;
 type ResponsePayload = String;
@@ -25,7 +25,7 @@ pub async fn run() -> Result<(), String> {
     let (response_bus_tx, mut response_bus_rx) = channel("demo.response_bus", 4);
 
     let pending_for_request = Arc::clone(&pending_by_request_id);
-    spawn_tracked("client.request_42.await_response", async move {
+    moire::task::spawn(async move {
         let request_id = 42_u64;
         let (tx, rx) = oneshot_channel("demo.request_42.response");
 
@@ -36,20 +36,23 @@ pub async fn run() -> Result<(), String> {
         );
 
         rx.await.expect("request unexpectedly completed");
-    });
+    }.named("client.request_42.await_response"));
 
     let bus_tx_for_network = response_bus_tx.clone();
-    spawn_tracked("network.inject_single_response", async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        println!("network delivered one response for request 42");
-        bus_tx_for_network
-            .send((42_u64, String::from("ok")))
-            .await
-            .expect("response bus unexpectedly closed");
-    });
+    moire::task::spawn(
+        async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            println!("network delivered one response for request 42");
+            bus_tx_for_network
+                .send((42_u64, String::from("ok")))
+                .await
+                .expect("response bus unexpectedly closed");
+        }
+        .named("network.inject_single_response"),
+    );
 
     let pending_for_router = Arc::clone(&pending_by_request_id);
-    spawn_tracked("router.match_response_to_pending_request", async move {
+    moire::task::spawn(async move {
         loop {
             let Some((request_id, payload)) = response_bus_rx.recv().await else {
                 return;
@@ -71,7 +74,7 @@ pub async fn run() -> Result<(), String> {
                 "router miss: looked for key {lookup_key}, map has {known_keys:?}; sender stays alive but unreachable"
             );
         }
-    });
+    }.named("router.match_response_to_pending_request"));
 
     println!("example running. open moire-web and inspect demo.request_42.response");
     println!("press Ctrl+C to exit");

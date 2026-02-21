@@ -6,17 +6,3 @@ pub mod roam_rpc_stuck_request;
 #[cfg(feature = "roam")]
 pub mod roam_rust_swift_stuck_request;
 pub mod semaphore_starvation;
-
-use std::future::Future;
-
-use moire::task::{FutureExt as _, JoinHandle};
-
-pub fn spawn_tracked<T>(
-    name: impl Into<String>,
-    task: impl Future<Output = T> + Send + 'static,
-) -> JoinHandle<T>
-where
-    T: Send + 'static,
-{
-    moire::task::spawn(task.named(name))
-}

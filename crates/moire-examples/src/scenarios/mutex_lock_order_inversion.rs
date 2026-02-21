@@ -1,5 +1,5 @@
-use crate::scenarios::spawn_tracked;
 use moire::sync::Mutex;
+use moire::task::FutureExt as _;
 use std::sync::Arc;
 use std::sync::Barrier;
 use std::time::Duration;
@@ -14,7 +14,7 @@ fn spawn_lock_order_worker(
     ready_barrier: Arc<Barrier>,
     completed_tx: oneshot::Sender<()>,
 ) {
-    spawn_tracked(task_name, async move {
+    moire::task::spawn(async move {
         let _first_guard = first.lock();
         println!("{task_name} locked {first_name}; waiting for peer");
 
@@ -27,7 +27,7 @@ fn spawn_lock_order_worker(
 
         println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
         let _ = completed_tx.send(());
-    });
+    }.named(task_name));
 }
 
 pub async fn run() -> Result<(), String> {
@@ -58,22 +58,31 @@ pub async fn run() -> Result<(), String> {
         beta_done_tx,
     );
 
-    spawn_tracked("observer.alpha_completion", async move {
-        let _ = alpha_done_rx.await;
-        println!("observer.alpha_completion unexpectedly unblocked");
-    });
-
-    spawn_tracked("observer.beta_completion", async move {
-        let _ = beta_done_rx.await;
-        println!("observer.beta_completion unexpectedly unblocked");
-    });
-
-    spawn_tracked("observer.async_heartbeat", async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            println!("async heartbeat: runtime is alive while worker threads are deadlocked");
+    moire::task::spawn(
+        async move {
+            let _ = alpha_done_rx.await;
+            println!("observer.alpha_completion unexpectedly unblocked");
         }
-    });
+        .named("observer.alpha_completion"),
+    );
+
+    moire::task::spawn(
+        async move {
+            let _ = beta_done_rx.await;
+            println!("observer.beta_completion unexpectedly unblocked");
+        }
+        .named("observer.beta_completion"),
+    );
+
+    moire::task::spawn(
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                println!("async heartbeat: runtime is alive while worker threads are deadlocked");
+            }
+        }
+        .named("observer.async_heartbeat"),
+    );
 
     println!(
         "example running. two tracked tokio tasks should deadlock on demo.shared.left/demo.shared.right"
