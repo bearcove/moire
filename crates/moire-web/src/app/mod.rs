@@ -68,7 +68,7 @@ pub struct SnapshotPending {
 }
 
 pub struct SnapshotStreamState {
-    pub pairs: Vec<(ConnectionId, BacktraceId)>,
+    pub backtrace_ids: Vec<BacktraceId>,
 }
 
 impl ServerState {

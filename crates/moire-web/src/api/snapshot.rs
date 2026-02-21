@@ -18,9 +18,9 @@ use tracing::{error, info, warn};
 use crate::app::{AppState, ConnectionId, SnapshotPending, SnapshotStreamState, remember_snapshot};
 use crate::db::fetch_scope_entity_links_blocking;
 use crate::snapshot::table::{
-    collect_snapshot_backtrace_pairs, is_pending_frame, load_snapshot_backtrace_table,
+    collect_snapshot_backtrace_ids, is_pending_frame, load_snapshot_backtrace_table,
 };
-use crate::symbolication::symbolicate_pending_frames_for_pairs;
+use crate::symbolication::symbolicate_pending_frames_for_backtraces;
 use crate::util::http::{json_error, json_ok};
 use crate::util::time::now_ms;
 
@@ -64,14 +64,14 @@ pub async fn api_snapshot_current(State(state): State<AppState>) -> impl IntoRes
 }
 
 async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut socket: WebSocket) {
-    let pairs = {
+    let backtrace_ids = {
         let guard = state.inner.lock().await;
         guard
             .snapshot_streams
             .get(&snapshot_id)
-            .map(|entry| entry.pairs.clone())
+            .map(|entry| entry.backtrace_ids.clone())
     };
-    let Some(pairs) = pairs else {
+    let Some(backtrace_ids) = backtrace_ids else {
         warn!(
             snapshot_id,
             "symbolication stream requested for unknown snapshot id"
@@ -91,7 +91,7 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
 
     info!(
         snapshot_id,
-        backtrace_pairs = pairs.len(),
+        backtrace_count = backtrace_ids.len(),
         "symbolication stream opened"
     );
     let mut previous_frames: BTreeMap<FrameId, SnapshotBacktraceFrame> = BTreeMap::new();
@@ -99,10 +99,12 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
     let mut unchanged_ticks = 0u32;
 
     loop {
-        if let Err(e) = symbolicate_pending_frames_for_pairs(state.db.clone(), &pairs).await {
+        if let Err(e) =
+            symbolicate_pending_frames_for_backtraces(state.db.clone(), &backtrace_ids).await
+        {
             warn!(snapshot_id, %e, "symbolication pass failed");
         }
-        let table = load_snapshot_backtrace_table(state.db.clone(), &pairs).await;
+        let table = load_snapshot_backtrace_table(state.db.clone(), &backtrace_ids).await;
         let completed = table
             .frames
             .iter()
@@ -273,9 +275,12 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             frames: vec![],
         };
         let mut guard = state.inner.lock().await;
-        guard
-            .snapshot_streams
-            .insert(snapshot_id, SnapshotStreamState { pairs: vec![] });
+        guard.snapshot_streams.insert(
+            snapshot_id,
+            SnapshotStreamState {
+                backtrace_ids: vec![],
+            },
+        );
         drop(guard);
         remember_snapshot(state, &response).await;
         return response;
@@ -304,9 +309,12 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     frames: vec![],
                 };
                 let mut guard = state.inner.lock().await;
-                guard
-                    .snapshot_streams
-                    .insert(snapshot_id, SnapshotStreamState { pairs: vec![] });
+                guard.snapshot_streams.insert(
+                    snapshot_id,
+                    SnapshotStreamState {
+                        backtrace_ids: vec![],
+                    },
+                );
                 drop(guard);
                 remember_snapshot(state, &response).await;
                 return response;
@@ -413,19 +421,19 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         timed_out_count = response.timed_out_processes.len(),
         "snapshot request completed"
     );
-    let pairs = collect_snapshot_backtrace_pairs(&response);
+    let backtrace_ids = collect_snapshot_backtrace_ids(&response);
     {
         let mut guard = state.inner.lock().await;
         guard.snapshot_streams.insert(
             snapshot_id,
             SnapshotStreamState {
-                pairs: pairs.clone(),
+                backtrace_ids: backtrace_ids.clone(),
             },
         );
     }
     info!(
         snapshot_id,
-        backtrace_pairs = pairs.len(),
+        backtrace_count = backtrace_ids.len(),
         "snapshot queued for symbolication stream"
     );
     remember_snapshot(state, &response).await;

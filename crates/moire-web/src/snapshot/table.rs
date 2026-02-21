@@ -4,8 +4,8 @@ use std::sync::{Mutex, OnceLock};
 
 use moire_trace_types::{BacktraceId, FrameId, RelPc};
 use moire_types::{
-    BacktraceFrameResolved, BacktraceFrameUnresolved, ConnectionId, SnapshotBacktraceFrame,
-    SnapshotCutResponse, SnapshotFrameRecord,
+    BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktraceFrame, SnapshotCutResponse,
+    SnapshotFrameRecord,
 };
 
 use crate::db::Db;
@@ -15,27 +15,25 @@ pub struct SnapshotBacktraceTable {
     pub frames: Vec<SnapshotFrameRecord>,
 }
 
-pub fn collect_snapshot_backtrace_pairs(
-    snapshot: &SnapshotCutResponse,
-) -> Vec<(ConnectionId, BacktraceId)> {
-    let mut pairs = Vec::new();
+pub fn collect_snapshot_backtrace_ids(snapshot: &SnapshotCutResponse) -> Vec<BacktraceId> {
+    let mut backtrace_ids = Vec::new();
     for process in &snapshot.processes {
         for entity in &process.snapshot.entities {
-            pairs.push((process.process_id, entity.backtrace));
+            backtrace_ids.push(entity.backtrace);
         }
         for scope in &process.snapshot.scopes {
-            pairs.push((process.process_id, scope.backtrace));
+            backtrace_ids.push(scope.backtrace);
         }
         for edge in &process.snapshot.edges {
-            pairs.push((process.process_id, edge.backtrace));
+            backtrace_ids.push(edge.backtrace);
         }
         for event in &process.snapshot.events {
-            pairs.push((process.process_id, event.backtrace));
+            backtrace_ids.push(event.backtrace);
         }
     }
-    pairs.sort_unstable();
-    pairs.dedup();
-    pairs
+    backtrace_ids.sort_unstable();
+    backtrace_ids.dedup();
+    backtrace_ids
 }
 
 pub fn is_pending_frame(frame: &SnapshotBacktraceFrame) -> bool {
@@ -55,14 +53,14 @@ struct FrameDedupKey {
 
 pub async fn load_snapshot_backtrace_table(
     db: Arc<Db>,
-    pairs: &[(ConnectionId, BacktraceId)],
+    backtrace_ids: &[BacktraceId],
 ) -> SnapshotBacktraceTable {
-    if pairs.is_empty() {
+    if backtrace_ids.is_empty() {
         return SnapshotBacktraceTable { frames: vec![] };
     }
 
-    let pairs = pairs.to_vec();
-    tokio::task::spawn_blocking(move || load_snapshot_backtrace_table_blocking(&db, &pairs))
+    let backtrace_ids = backtrace_ids.to_vec();
+    tokio::task::spawn_blocking(move || load_snapshot_backtrace_table_blocking(&db, &backtrace_ids))
         .await
         .unwrap_or_else(|error| panic!("join snapshot backtrace loader: {error}"))
         .unwrap_or_else(|error| panic!("load snapshot backtrace table: {error}"))
@@ -70,10 +68,10 @@ pub async fn load_snapshot_backtrace_table(
 
 fn load_snapshot_backtrace_table_blocking(
     db: &Db,
-    pairs: &[(ConnectionId, BacktraceId)],
+    backtrace_ids: &[BacktraceId],
 ) -> Result<SnapshotBacktraceTable, String> {
     // r[impl api.snapshot.frame-catalog]
-    let batches = load_backtrace_frame_batches(db, pairs)?;
+    let batches = load_backtrace_frame_batches(db, backtrace_ids)?;
 
     let mut frame_id_by_key: BTreeMap<FrameDedupKey, FrameId> = BTreeMap::new();
     let mut frame_by_id: BTreeMap<FrameId, SnapshotBacktraceFrame> = BTreeMap::new();

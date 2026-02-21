@@ -55,7 +55,6 @@ struct PendingFrameJob {
 
 #[derive(Facet)]
 struct PendingFrameLookupParams {
-    conn_id: ConnectionId,
     backtrace_id: BacktraceId,
 }
 
@@ -139,6 +138,12 @@ struct TopFrameUpsertParams {
     updated_at_ns: i64,
 }
 
+#[derive(Facet)]
+struct TopFrameDeleteParams {
+    conn_id: ConnectionId,
+    backtrace_id: BacktraceId,
+}
+
 enum ModuleSymbolizerState {
     Ready {
         loader: Box<addr2line::Loader>,
@@ -147,22 +152,24 @@ enum ModuleSymbolizerState {
     Failed(String),
 }
 
-pub async fn symbolicate_pending_frames_for_pairs(
+pub async fn symbolicate_pending_frames_for_backtraces(
     db: Arc<Db>,
-    pairs: &[(ConnectionId, BacktraceId)],
+    backtrace_ids: &[BacktraceId],
 ) -> Result<usize, String> {
-    if pairs.is_empty() {
+    if backtrace_ids.is_empty() {
         return Ok(0);
     }
-    let pairs = pairs.to_vec();
-    tokio::task::spawn_blocking(move || symbolicate_pending_frames_for_pairs_blocking(&db, &pairs))
-        .await
-        .map_err(|error| format!("join symbolication worker: {error}"))?
+    let backtrace_ids = backtrace_ids.to_vec();
+    tokio::task::spawn_blocking(move || {
+        symbolicate_pending_frames_for_backtraces_blocking(&db, &backtrace_ids)
+    })
+    .await
+    .map_err(|error| format!("join symbolication worker: {error}"))?
 }
 
-fn symbolicate_pending_frames_for_pairs_blocking(
+fn symbolicate_pending_frames_for_backtraces_blocking(
     db: &Db,
-    pairs: &[(ConnectionId, BacktraceId)],
+    backtrace_ids: &[BacktraceId],
 ) -> Result<usize, String> {
     let started = Instant::now();
     let mut conn = db.open()?;
@@ -180,8 +187,7 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                 ON sf.conn_id = bf.conn_id
                AND sf.backtrace_id = bf.backtrace_id
                AND sf.frame_index = bf.frame_index
-             WHERE bf.conn_id = :conn_id
-               AND bf.backtrace_id = :backtrace_id
+             WHERE bf.backtrace_id = :backtrace_id
                AND (
                     sf.conn_id IS NULL
                     OR (
@@ -196,9 +202,8 @@ fn symbolicate_pending_frames_for_pairs_blocking(
     let mut module_cache: HashMap<String, ModuleSymbolizerState> = HashMap::new();
     let mut processed = 0usize;
     let mut unknown_module_jobs = 0usize;
-    for (conn_id, backtrace_id) in pairs {
+    for backtrace_id in backtrace_ids {
         let params = PendingFrameLookupParams {
-            conn_id: *conn_id,
             backtrace_id: *backtrace_id,
         };
         let jobs = pending_stmt
@@ -261,7 +266,14 @@ fn symbolicate_pending_frames_for_pairs_blocking(
             processed += 1;
         }
         if !jobs.is_empty() {
-            update_top_application_frame(&tx, *conn_id, *backtrace_id)?;
+            let owner_conn_id = jobs[0].conn_id;
+            if jobs.iter().any(|job| job.conn_id != owner_conn_id) {
+                return Err(format!(
+                    "invariant violated: backtrace {} spans multiple conn_id values in pending frame rows",
+                    backtrace_id
+                ));
+            }
+            update_top_application_frame(&tx, owner_conn_id, *backtrace_id)?;
         }
     }
 
@@ -708,7 +720,7 @@ fn update_top_application_frame(
                 )
                 .map_err(|error| format!("prepare top frame delete: {error}"))?;
             delete_stmt
-                .facet_execute_ref(&PendingFrameLookupParams {
+                .facet_execute_ref(&TopFrameDeleteParams {
                     conn_id,
                     backtrace_id,
                 })
