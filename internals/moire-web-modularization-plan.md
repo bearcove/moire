@@ -81,6 +81,8 @@ Exact filenames can shift, but concerns should not.
 
 - Move HTTP handlers from `main.rs` into `api/*`.
 - Handlers call into `db/`, `snapshot/`, `recording/`, `symbolication/`; no inline SQL.
+- Progress:
+  - SQL/query request handling moved to `api/sql.rs` with thin wrappers in `main.rs`.
 
 ### 4) Extract snapshot and symbolication
 

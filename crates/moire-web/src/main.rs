@@ -20,17 +20,16 @@ use figue as args;
 use moire_trace_types::BacktraceId;
 use moire_types::{
     BacktraceFrameResolved, BacktraceFrameUnresolved, Change, ConnectedProcessInfo,
-    ConnectionsResponse, CutStatusResponse, FrameSummary, ProcessSnapshotView, QueryRequest,
+    ConnectionsResponse, CutStatusResponse, FrameSummary, ProcessSnapshotView,
     RecordCurrentResponse, RecordStartRequest, RecordingImportBody, RecordingSessionInfo,
     RecordingSessionStatus, SnapshotBacktrace, SnapshotBacktraceFrame, SnapshotCutResponse,
-    SnapshotFrameRecord, SnapshotSymbolicationUpdate, SqlRequest, TimedOutProcess,
-    TriggerCutResponse,
+    SnapshotFrameRecord, SnapshotSymbolicationUpdate, TimedOutProcess, TriggerCutResponse,
 };
+use moire_web::api::sql::{execute_named_query_request, execute_sql_request};
 use moire_web::db::{
     Db, StoredModuleManifestEntry, backtrace_frames_for_store, fetch_scope_entity_links_blocking,
     init_sqlite, into_stored_module_manifest, load_next_connection_id, persist_backtrace_record,
     persist_connection_closed, persist_connection_module_manifest, persist_connection_upsert,
-    query_named_blocking, sql_query_blocking,
 };
 use moire_web::util::http::{
     copy_request_headers, json_error, json_ok, skip_request_header, skip_response_header,
@@ -434,49 +433,11 @@ async fn api_cut_status(
 }
 
 async fn api_sql(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
-    let req: SqlRequest = match facet_json::from_slice(&body) {
-        Ok(req) => req,
-        Err(e) => {
-            return json_error(
-                StatusCode::BAD_REQUEST,
-                format!("invalid request json: {e}"),
-            );
-        }
-    };
-
-    let db = state.db.clone();
-    match tokio::task::spawn_blocking(move || sql_query_blocking(&db, req.sql.as_str())).await {
-        Ok(Ok(resp)) => json_ok(&resp),
-        Ok(Err(err)) => json_error(StatusCode::BAD_REQUEST, err),
-        Err(e) => json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("sql worker join error: {e}"),
-        ),
-    }
+    execute_sql_request(body, state.db.clone()).await
 }
 
 async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
-    let req: QueryRequest = match facet_json::from_slice(&body) {
-        Ok(req) => req,
-        Err(e) => {
-            return json_error(
-                StatusCode::BAD_REQUEST,
-                format!("invalid request json: {e}"),
-            );
-        }
-    };
-
-    let db = state.db.clone();
-    let name = req.name.to_string();
-    let limit = req.limit.unwrap_or(50);
-    match tokio::task::spawn_blocking(move || query_named_blocking(&db, &name, limit)).await {
-        Ok(Ok(resp)) => json_ok(&resp),
-        Ok(Err(err)) => json_error(StatusCode::BAD_REQUEST, err),
-        Err(e) => json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("query worker join error: {e}"),
-        ),
-    }
+    execute_named_query_request(body, state.db.clone()).await
 }
 
 async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
