@@ -1,5 +1,5 @@
 use facet::Facet;
-use moire_trace_types::BacktraceId;
+use moire_trace_types::{BacktraceId, FrameId};
 
 /// API response for connected processes.
 #[derive(Facet)]
@@ -75,12 +75,12 @@ pub struct SnapshotCutResponse {
 #[derive(Facet, Clone, Debug)]
 pub struct SnapshotBacktrace {
     pub backtrace_id: BacktraceId,
-    pub frame_ids: Vec<u64>,
+    pub frame_ids: Vec<FrameId>,
 }
 
 #[derive(Facet, Clone, Debug)]
 pub struct SnapshotFrameRecord {
-    pub frame_id: u64,
+    pub frame_id: FrameId,
     pub frame: SnapshotBacktraceFrame,
 }
 

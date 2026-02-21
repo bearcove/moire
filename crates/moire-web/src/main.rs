@@ -14,6 +14,7 @@ use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
 use facet::Facet;
 use figue as args;
+use moire_trace_types::FrameId;
 use moire_types::{
     BacktraceFrameUnresolved, ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse,
     ProcessSnapshotView, RecordCurrentResponse, RecordStartRequest, RecordingImportBody,
@@ -463,7 +464,7 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
         backtrace_pairs = pairs.len(),
         "symbolication stream opened"
     );
-    let mut previous_frames: BTreeMap<u64, SnapshotBacktraceFrame> = BTreeMap::new();
+    let mut previous_frames: BTreeMap<FrameId, SnapshotBacktraceFrame> = BTreeMap::new();
     let mut previous_completed = 0usize;
     let mut unchanged_ticks = 0u32;
 

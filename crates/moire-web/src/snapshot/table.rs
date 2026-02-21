@@ -3,7 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use moire_trace_types::BacktraceId;
+use moire_trace_types::{BacktraceId, FrameId, JS_SAFE_INT_MAX_U64};
 use moire_types::{
     BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktrace, SnapshotBacktraceFrame,
     SnapshotCutResponse, SnapshotFrameRecord,
@@ -132,8 +132,8 @@ fn load_snapshot_backtrace_table_blocking(
         .map_err(|error| format!("prepare symbolicated_frames read: {error}"))?;
 
     let mut backtraces = Vec::with_capacity(backtrace_owner.len());
-    let mut frame_id_by_key: BTreeMap<FrameDedupKey, u64> = BTreeMap::new();
-    let mut frame_by_id: BTreeMap<u64, SnapshotBacktraceFrame> = BTreeMap::new();
+    let mut frame_id_by_key: BTreeMap<FrameDedupKey, FrameId> = BTreeMap::new();
+    let mut frame_by_id: BTreeMap<FrameId, SnapshotBacktraceFrame> = BTreeMap::new();
 
     for (backtrace_id, conn_id) in backtrace_owner {
         let raw_rows = raw_stmt
@@ -224,7 +224,8 @@ fn load_snapshot_backtrace_table_blocking(
                 Some(existing) => {
                     let existing_frame = frame_by_id.get(existing).cloned().ok_or_else(|| {
                         format!(
-                            "invariant violated: frame id {existing} missing from frame map for backtrace {backtrace_id}"
+                            "invariant violated: frame id {} missing from frame map for backtrace {backtrace_id}",
+                            existing.get()
                         )
                     })?;
                     let merged = merge_frame_state(&existing_frame, &frame, &key)?;
@@ -247,7 +248,7 @@ fn load_snapshot_backtrace_table_blocking(
                     {
                         return Err(format!(
                             "invariant violated: stable frame_id collision id={} existing=({}, {}, {:#x}) incoming=({}, {}, {:#x})",
-                            assigned,
+                            assigned.get(),
                             existing_key.module_identity,
                             existing_key.module_path,
                             existing_key.rel_pc,
@@ -319,23 +320,21 @@ fn merge_frame_state(
     }
 }
 
-fn stable_frame_id(key: &FrameDedupKey) -> Result<u64, String> {
+fn stable_frame_id(key: &FrameDedupKey) -> Result<FrameId, String> {
     // r[impl api.snapshot.frame-id-stable]
-    // Keep frame ids JavaScript-safe (<= 2^53 - 1).
-    const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
     let mut hasher = DefaultHasher::new();
     key.hash(&mut hasher);
-    let mut id = hasher.finish() & JS_SAFE_MAX;
+    let mut id = hasher.finish() & JS_SAFE_INT_MAX_U64;
     if id == 0 {
         id = 1;
     }
-    if id > JS_SAFE_MAX {
+    if id > JS_SAFE_INT_MAX_U64 {
         return Err(format!(
             "invariant violated: generated frame_id {} exceeds JS-safe max {}",
-            id, JS_SAFE_MAX
+            id, JS_SAFE_INT_MAX_U64
         ));
     }
-    Ok(id)
+    FrameId::new(id).map_err(|error| format!("invariant violated: {error}"))
 }
 
 #[cfg(test)]
@@ -366,9 +365,9 @@ mod tests {
             a1, b,
             "different frame keys should map to different frame_id"
         );
-        assert!(a1 > 0 && b > 0, "frame ids must be non-zero");
+        assert!(a1.get() > 0 && b.get() > 0, "frame ids must be non-zero");
         assert!(
-            a1 <= JS_SAFE_MAX && b <= JS_SAFE_MAX,
+            a1.get() <= JS_SAFE_MAX && b.get() <= JS_SAFE_MAX,
             "frame ids must remain JS-safe"
         );
     }
