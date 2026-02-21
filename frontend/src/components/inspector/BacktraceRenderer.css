@@ -171,9 +171,9 @@ a.bt-badge-location:hover .bt-badge-file-icon {
 
 .bt-frame-row {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 3px 0 3px 6px;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0 4px 6px;
   font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 40%, transparent);
@@ -201,8 +201,6 @@ a.bt-badge-location:hover .bt-badge-file-icon {
 }
 
 .bt-fn {
-  flex: 1;
-  min-width: 0;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -217,10 +215,10 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  font-size: calc(var(--font-size-sm) - 1px);
   text-decoration: none;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .bt-src:hover {
