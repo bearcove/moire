@@ -228,8 +228,22 @@ fn merge_frame_state(
     }
 }
 
+static FRAME_ID_REGISTRY: OnceLock<Mutex<BTreeMap<FrameDedupKey, FrameId>>> = OnceLock::new();
+
+/// Given a raw FrameId u64 value, return the `(frame_id, module_identity, rel_pc)` triple
+/// that was stored in the global registry when this frame was first seen.
+/// Returns `None` if the frame_id is not in the registry.
+// r[impl api.source.preview.security]
+pub fn lookup_frame_source_by_raw(raw_id: u64) -> Option<(FrameId, String, RelPc)> {
+    let registry = FRAME_ID_REGISTRY.get()?;
+    let guard = registry.lock().ok()?;
+    guard
+        .iter()
+        .find(|(_, id)| id.as_u64() == raw_id)
+        .map(|(key, id)| (*id, key.module_identity.clone(), key.rel_pc))
+}
+
 fn stable_frame_id(key: &FrameDedupKey) -> Result<FrameId, String> {
-    static FRAME_ID_REGISTRY: OnceLock<Mutex<BTreeMap<FrameDedupKey, FrameId>>> = OnceLock::new();
     let registry = FRAME_ID_REGISTRY.get_or_init(|| Mutex::new(BTreeMap::new()));
     let mut guard = registry
         .lock()

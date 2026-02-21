@@ -10,6 +10,7 @@ use crate::api::recording::{
     api_record_stop,
 };
 use crate::api::snapshot::{api_snapshot, api_snapshot_current, api_snapshot_symbolication_ws};
+use crate::api::source::api_source_preview;
 use crate::api::sql::{api_query, api_sql};
 use crate::db::{Db, StoredModuleManifestEntry};
 use crate::proxy::proxy_vite;
@@ -121,7 +122,8 @@ pub fn build_router(state: AppState) -> Router {
             get(api_record_frame),
         )
         .route("/api/record/current/export", get(api_record_export))
-        .route("/api/record/import", post(api_record_import));
+        .route("/api/record/import", post(api_record_import))
+        .route("/api/source/preview", get(api_source_preview));
     if state.dev_proxy.is_some() {
         app = app.fallback(any(proxy_vite));
     }

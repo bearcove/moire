@@ -392,5 +392,6 @@ export function createMockApiClient(): ApiClient {
     fetchRecordingFrame: (_frameIndex) => delay(MOCK_SNAPSHOT, 300),
     exportRecording: () => Promise.resolve(new Blob(["{}"], { type: "application/json" })),
     importRecording: () => Promise.reject(new Error("import not supported in mock")),
+    fetchSourcePreview: (_frameId) => Promise.reject(new Error("source preview not supported in mock")),
   };
 }

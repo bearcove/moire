@@ -195,6 +195,21 @@ pub struct RecordingImportFrame {
     pub snapshot: facet_value::Value,
 }
 
+/// Response for `GET /api/source/preview`.
+// r[impl api.source.preview]
+#[derive(Facet)]
+pub struct SourcePreviewResponse {
+    pub frame_id: FrameId,
+    pub source_file: String,
+    pub target_line: u32,
+    #[facet(skip_unless_truthy)]
+    pub target_col: Option<u32>,
+    pub total_lines: u32,
+    /// Full arborium-highlighted HTML for the entire file.
+    /// The frontend splits this into per-line strings using splitHighlightedHtml.
+    pub html: String,
+}
+
 #[derive(Facet)]
 pub struct RecordingImportBody {
     pub version: u32,

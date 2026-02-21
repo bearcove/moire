@@ -106,6 +106,12 @@ macro_rules! define_u64_id {
             }
         }
 
+        impl $name {
+            pub fn as_u64(self) -> u64 {
+                self.0
+            }
+        }
+
         impl core::fmt::Display for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 let kind = stringify!($name)

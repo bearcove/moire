@@ -46,7 +46,6 @@ a.bt-badge-location:hover .bt-badge-file-icon {
 .bt-badge-location--pending {
   border-radius: var(--radius-control);
   color: var(--text-muted);
-  font-style: italic;
 }
 
 .bt-badge-expand {
@@ -62,11 +61,35 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   color: var(--accent);
 }
 
-/* ── Function name coloring ──────────────────────────────── */
+/* ── Rust name token coloring ────────────────────────────── */
 
-.bt-fn-prefix {
-  color: var(--text-muted);
+/* Local contrast ladder — independent of the (currently flat) global text vars */
+.bt-frame-list {
+  --bt-fn:      light-dark(#111111, #efefef);  /* function name — nearly primary */
+  --bt-prefix:  light-dark(#808080, #909090);  /* module path prefix — clearly dim */
+  --bt-sep:     light-dark(#b0b0b0, #555555);  /* :: separators — dimmest */
+  --bt-kw:      light-dark(#5a7fbf, #7eb7f7);  /* keywords: as dyn impl */
+  --bt-angle:   light-dark(#7a9abf, #6a9abf);  /* < > brackets */
+  --bt-life:    light-dark(#5a8a5a, #8ec07c);  /* 'lifetime */
+  --bt-prim:    light-dark(#a0623a, #d08770);  /* u8 bool str … */
+  --bt-close:   light-dark(#909090, #787878);  /* {{closure}} */
 }
+
+/* prefix (before last ::) */
+.bt-tok            { color: var(--bt-prefix); }
+.bt-tok--sep       { color: var(--bt-sep); }
+.bt-tok--angle     { color: var(--bt-angle); }
+.bt-tok--kw        { color: var(--bt-kw); }
+.bt-tok--lifetime  { color: var(--bt-life); }
+.bt-tok--primitive { color: var(--bt-prim); }
+.bt-tok--closure   { color: var(--bt-close); }
+
+/* fn part (after last ::) — brighter */
+.bt-tok--fn                  { color: var(--bt-fn); font-weight: 500; }
+.bt-tok--sep.bt-tok--fn      { color: var(--bt-prefix); }
+.bt-tok--angle.bt-tok--fn    { color: var(--bt-angle); }
+.bt-tok--kw.bt-tok--fn       { color: var(--bt-kw); }
+.bt-tok--closure.bt-tok--fn  { color: var(--bt-close); font-weight: 400; }
 
 .bt-dialog-app-crate {
   font-family: var(--font-mono);
@@ -215,8 +238,7 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-muted);
-  font-size: calc(var(--font-size-sm) - 1px);
+  color: var(--bt-prefix);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -228,7 +250,6 @@ a.bt-badge-location:hover .bt-badge-file-icon {
 
 .bt-src--none {
   color: var(--text-muted);
-  font-style: italic;
   cursor: default;
 }
 
@@ -248,7 +269,6 @@ a.bt-badge-location:hover .bt-badge-file-icon {
 
 .bt-reason {
   color: var(--text-muted);
-  font-style: italic;
   flex-shrink: 0;
 }
 

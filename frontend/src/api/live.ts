@@ -8,6 +8,7 @@ import type {
   SnapshotSymbolicationUpdate,
   SqlResponse,
   SnapshotCutResponse,
+  SourcePreviewResponse,
   TriggerCutResponse,
 } from "./types.generated";
 import { apiLog } from "../debug";
@@ -162,6 +163,8 @@ export function createLiveApiClient(): ApiClient {
       }
       return res.blob();
     },
+    fetchSourcePreview: (frameId: number) =>
+      getJson<SourcePreviewResponse>(`/api/source/preview?frame_id=${frameId}`),
     importRecording: async (file: File) => {
       apiLog("POST /api/record/import request size=%d", file.size);
       const res = await fetch("/api/record/import", {
