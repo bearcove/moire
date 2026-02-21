@@ -76,6 +76,8 @@ Exact filenames can shift, but concerns should not.
 - Add `db::Db` facade that owns the database location/open policy.
 - Move schema init/reset and query/persist helpers into `db/`.
 - Replace function signatures taking `&PathBuf` db paths with `&Db` / `Arc<Db>`.
+- Progress:
+  - Schema init/versioning, query packs, and persistence helpers (connections, backtraces, cuts, delta batches) now live in `db/*`.
 
 ### 3) Extract API handlers by concern
 
