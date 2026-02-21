@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::io::Read;
 use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
@@ -7,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::Router;
-use axum::body::{self, Body, Bytes};
+use axum::body::Bytes;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path as AxumPath, Request, State};
 use axum::http::{StatusCode, header};
@@ -28,6 +27,7 @@ use moire_web::db::{
     persist_connection_closed, persist_connection_module_manifest, persist_connection_upsert,
     persist_cut_ack, persist_cut_request, persist_delta_batch,
 };
+use moire_web::proxy::vite::proxy_vite_request;
 use moire_web::recording::session::{
     RecordingState, build_imported_frames, export_frame_rows, frame_json_by_index, push_frame,
     recording_session_info,
@@ -37,9 +37,7 @@ use moire_web::snapshot::table::{
     load_snapshot_backtrace_table,
 };
 use moire_web::symbolication::symbolicate_pending_frames_for_pairs;
-use moire_web::util::http::{
-    copy_request_headers, json_error, json_ok, skip_request_header, skip_response_header,
-};
+use moire_web::util::http::{json_error, json_ok};
 use moire_web::util::time::{now_ms, now_nanos};
 use moire_wire::{
     ClientMessage, ServerMessage, SnapshotRequest, decode_client_message_default,
@@ -62,12 +60,6 @@ struct AppState {
 #[derive(Clone)]
 struct DevProxyState {
     base_url: Arc<String>,
-}
-
-struct ProxiedResponse {
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
 }
 
 struct ServerState {
@@ -1355,121 +1347,7 @@ async fn proxy_vite(State(state): State<AppState>, request: Request) -> axum::re
     let Some(proxy) = state.dev_proxy.clone() else {
         return (StatusCode::NOT_FOUND, "not found").into_response();
     };
-    let (parts, body) = request.into_parts();
-    let method = parts.method.as_str().to_string();
-    let path_and_query = parts
-        .uri
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .unwrap_or("/");
-    let url = format!("{}{}", proxy.base_url, path_and_query);
-    let headers = copy_request_headers(&parts.headers);
-    let body = match body::to_bytes(body, PROXY_BODY_LIMIT_BYTES).await {
-        Ok(body) => body.to_vec(),
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("failed to read request body: {e}"),
-            )
-                .into_response();
-        }
-    };
-
-    let proxied = match tokio::task::spawn_blocking(move || {
-        proxy_vite_blocking(&method, &url, headers, body)
-    })
-    .await
-    {
-        Ok(Ok(response)) => response,
-        Ok(Err(err)) => return (StatusCode::BAD_GATEWAY, err).into_response(),
-        Err(err) => {
-            return (
-                StatusCode::BAD_GATEWAY,
-                format!("proxy worker join error: {err}"),
-            )
-                .into_response();
-        }
-    };
-
-    build_proxy_response(proxied)
-}
-
-fn proxy_vite_blocking(
-    method: &str,
-    url: &str,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-) -> Result<ProxiedResponse, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(2))
-        .timeout_read(Duration::from_secs(30))
-        .build();
-    let mut req = agent.request(method, url);
-
-    for (name, value) in headers {
-        if skip_request_header(&name) {
-            continue;
-        }
-        req = req.set(&name, &value);
-    }
-
-    let resp = if body.is_empty() && (method == "GET" || method == "HEAD") {
-        match req.call() {
-            Ok(resp) => resp,
-            Err(ureq::Error::Status(_, resp)) => resp,
-            Err(ureq::Error::Transport(err)) => {
-                return Err(format!("Vite proxy request failed for {url}: {err}"));
-            }
-        }
-    } else {
-        match req.send_bytes(&body) {
-            Ok(resp) => resp,
-            Err(ureq::Error::Status(_, resp)) => resp,
-            Err(ureq::Error::Transport(err)) => {
-                return Err(format!("Vite proxy request failed for {url}: {err}"));
-            }
-        }
-    };
-
-    let status = resp.status();
-    let mut response_headers = Vec::new();
-    for name in resp.headers_names() {
-        for value in resp.all(&name) {
-            response_headers.push((name.clone(), value.to_string()));
-        }
-    }
-
-    let mut response_body = Vec::new();
-    resp.into_reader()
-        .read_to_end(&mut response_body)
-        .map_err(|e| format!("failed reading Vite proxy response body: {e}"))?;
-
-    Ok(ProxiedResponse {
-        status,
-        headers: response_headers,
-        body: response_body,
-    })
-}
-
-fn build_proxy_response(proxied: ProxiedResponse) -> axum::response::Response {
-    let status = StatusCode::from_u16(proxied.status).unwrap_or(StatusCode::BAD_GATEWAY);
-    let mut response = axum::response::Response::new(Body::from(proxied.body));
-    *response.status_mut() = status;
-
-    for (name, value) in proxied.headers {
-        if skip_response_header(&name) {
-            continue;
-        }
-        let Ok(header_name) = header::HeaderName::from_str(&name) else {
-            continue;
-        };
-        let Ok(header_value) = header::HeaderValue::from_str(&value) else {
-            continue;
-        };
-        response.headers_mut().append(header_name, header_value);
-    }
-
-    response
+    proxy_vite_request(proxy.base_url.as_str(), request, PROXY_BODY_LIMIT_BYTES).await
 }
 
 async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {

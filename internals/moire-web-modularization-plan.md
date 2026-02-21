@@ -105,6 +105,8 @@ Exact filenames can shift, but concerns should not.
 
 - Move TCP accept/handshake/message ingestion into `tcp/`.
 - Move Vite/proxy/reaper into `proxy/`.
+- Progress:
+  - Vite proxy request/response forwarding moved to `proxy/vite.rs`.
 
 ### 7) Shrink `main.rs` to bootstrap
 
