@@ -104,6 +104,12 @@
 
 .graph-node--expanded {
     z-index: 10;
+
+    .graph-node-frame {
+        overflow: initial;
+        text-overflow: initial;
+        white-space: pre-wrap;
+    }
 }
 
 /* ── Frame lines ── */
@@ -140,7 +146,9 @@
     font-family: var(--font-mono);
     font-size: 10px;
     line-height: 1.3;
-    white-space: pre-wrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
     max-width: 600px;
     margin: 0;
     padding: 0;

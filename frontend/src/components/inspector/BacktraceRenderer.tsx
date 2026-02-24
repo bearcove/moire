@@ -18,17 +18,21 @@ function isResolved(frame: SnapshotBacktraceFrame): frame is {
   return "resolved" in frame;
 }
 
+function crateOf(functionName: string): string | null {
+  return parseSlim(tokenizeRustName(functionName)).crate;
+}
+
 function isSystemFrame(frame: SnapshotBacktraceFrame): boolean {
   if (!isResolved(frame)) return false;
-  const crate = extractCrate(frame.resolved.function_name);
-  return crate !== null && isSystemCrate(crate);
+  const krate = crateOf(frame.resolved.function_name);
+  return krate !== null && isSystemCrate(krate);
 }
 
 function detectAppCrate(frames: SnapshotBacktraceFrame[]): string | null {
   for (const frame of frames) {
     if (!isResolved(frame)) continue;
     if (/(?:^|::)main$/.test(frame.resolved.function_name)) {
-      return frame.resolved.function_name.split("::")[0] ?? null;
+      return crateOf(frame.resolved.function_name);
     }
   }
   return null;
@@ -39,15 +43,6 @@ function frameKey(frame: SnapshotBacktraceFrame, index: number): string {
     return `r:${index}:${frame.resolved.module_path}:${frame.resolved.function_name}:${frame.resolved.source_file}:${frame.resolved.line ?? ""}`;
   }
   return `u:${index}:${frame.unresolved.module_path}:${frame.unresolved.rel_pc}`;
-}
-
-function extractCrate(functionName: string): string | null {
-  if (functionName.startsWith("<")) {
-    const m = functionName.match(/^<([a-zA-Z_][a-zA-Z0-9_]*)::/);
-    return m?.[1] ?? null;
-  }
-  const sep = functionName.indexOf("::");
-  return sep === -1 ? null : functionName.slice(0, sep);
 }
 
 function zedUrl(path: string, line?: number): string {
@@ -120,7 +115,7 @@ export function BacktracePanel({
   const crateColors = useMemo(() => {
     const crates = backtrace.frames
       .filter(isResolved)
-      .map((f) => extractCrate(f.resolved.function_name) ?? "")
+      .map((f) => crateOf(f.resolved.function_name) ?? "")
       .filter(Boolean);
     return assignScopeColorRgbByKey(crates);
   }, [backtrace.frames]);
@@ -245,7 +240,7 @@ function FrameRow({
   }
 
   const { function_name, source_file, line } = frame.resolved;
-  const crate = extractCrate(function_name);
+  const crate = crateOf(function_name);
   const crateColor = crate ? (crateColors.get(crate) ?? null) : null;
   const isApp = appCrate !== null && crate === appCrate;
 

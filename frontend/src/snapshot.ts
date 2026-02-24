@@ -10,6 +10,7 @@ import type {
 } from "./api/types.generated";
 import { registerCustomKindSpec } from "./nodeKindSpec";
 import { canonicalScopeKind } from "./scopeKindSpec";
+import { tokenizeRustName, parseSlim } from "./ui/primitives/RustName";
 
 // ── Body type helpers ──────────────────────────────────────────
 
@@ -181,8 +182,8 @@ export function isPendingFrame(frame: SnapshotBacktraceFrame): boolean {
 }
 
 function crateFromFunctionName(functionName: string): string {
-  const crate = functionName.split("::")[0]?.trim();
-  return crate && crate.length > 0 ? crate : "~no-crate";
+  const { crate } = parseSlim(tokenizeRustName(functionName));
+  return crate ?? "~no-crate";
 }
 
 const SYSTEM_CRATES = new Set([
