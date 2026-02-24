@@ -1,0 +1,18 @@
+[package]
+name = "moire-macros"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata]
+
+[package.metadata."docs.rs"]
+rustdoc-args = ["--html-in-header", "arborium-header.html"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+unsynn.workspace = true

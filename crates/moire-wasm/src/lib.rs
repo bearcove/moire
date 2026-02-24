@@ -4,6 +4,26 @@
 
 use std::future::Future;
 
+#[cfg(feature = "diagnostics")]
+#[doc(hidden)]
+pub mod __internal {
+    use std::future::IntoFuture;
+
+    pub type InstrumentedFuture<F> = F;
+
+    pub fn instrument_future<F, O, M>(
+        _name: impl Into<String>,
+        fut: F,
+        _on: Option<O>,
+        _meta: Option<M>,
+    ) -> F::IntoFuture
+    where
+        F: IntoFuture,
+    {
+        fut.into_future()
+    }
+}
+
 /// Task utilities matching `moire::task` on native.
 pub mod task {
     use std::future::Future;

@@ -65,6 +65,20 @@
 //! - **native** (`not(target_arch = "wasm32")`) → `moire-tokio`
 //! - **wasm32** → `moire-wasm` (all instrumentation is a no-op; API surface is identical)
 
+#[cfg(feature = "diagnostics")]
+pub use moire_macros::instrument;
+#[cfg(not(feature = "diagnostics"))]
+pub use moire_macros_noop::instrument;
+
+#[cfg(feature = "diagnostics")]
+#[doc(hidden)]
+pub mod __internal {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use moire_tokio::__internal::*;
+    #[cfg(target_arch = "wasm32")]
+    pub use moire_wasm::__internal::*;
+}
+
 // r[impl api.backend.native]
 #[cfg(not(target_arch = "wasm32"))]
 pub use moire_tokio::*;

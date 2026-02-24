@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { CodeBlock } from "@phosphor-icons/react";
+import React from "react";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { kindIcon } from "../../nodeKindSpec";
 import { useSourceLine } from "../../api/useSourceLine";
+import { langIcon } from "./langIcon";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import "./GraphNode.css";
 
@@ -28,7 +28,7 @@ function FrameLine({ frame, showSource }: { frame: GraphFrameData; showSource?: 
 
   return (
     <div className="graph-node-frame-row">
-      <CodeBlock size={10} className="graph-node-frame-icon" />
+      {langIcon(frame.source_file, 10, "graph-node-frame-icon")}
       {sourceHtml ? (
         <pre
           className="graph-node-frame arborium-hl"
@@ -45,10 +45,17 @@ function FrameLine({ frame, showSource }: { frame: GraphFrameData; showSource?: 
   );
 }
 
-export function GraphNode({ data }: { data: GraphNodeData }) {
+export function GraphNode({
+  data,
+  expanded = false,
+  onToggleExpand,
+}: {
+  data: GraphNodeData;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+}) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
-  const [expanded, setExpanded] = useState(false);
 
   const collapsedFrames = pickCollapsedFrames(data.frames);
   const visibleFrames = expanded ? data.frames : collapsedFrames;
@@ -119,10 +126,10 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
             .filter(Boolean)
             .join(" ")}
           onClick={
-            canExpand
+            canExpand && onToggleExpand
               ? (e) => {
                   e.stopPropagation();
-                  setExpanded(!expanded);
+                  onToggleExpand();
                 }
               : undefined
           }

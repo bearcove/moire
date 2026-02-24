@@ -1,0 +1,13 @@
+[package]
+name = "moire-macros-noop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata]
+
+[package.metadata."docs.rs"]
+rustdoc-args = ["--html-in-header", "arborium-header.html"]
+
+[lib]
+proc-macro = true

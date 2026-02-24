@@ -80,6 +80,7 @@ export function GraphViewport({
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
   const isEmpty = entityDefs.length === 0;
   const closeNodeContextMenu = useCallback(() => setNodeContextMenu(null), []);
+  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     setHasFitted(false);
@@ -151,6 +152,7 @@ export function GraphViewport({
         geometry={geometry}
         onBackgroundClick={() => {
           closeNodeContextMenu();
+          setExpandedNodeId(null);
           onSelect(null);
         }}
       >
@@ -175,6 +177,8 @@ export function GraphViewport({
             <NodeLayer
               nodes={nodes}
               selectedNodeId={selection?.kind === "entity" ? selection.id : null}
+              expandedNodeId={expandedNodeId}
+              onExpandNode={setExpandedNodeId}
               ghostNodeIds={effectiveGhostNodeIds}
               onNodeClick={(id) => {
                 closeNodeContextMenu();

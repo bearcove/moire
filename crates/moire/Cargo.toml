@@ -11,7 +11,15 @@ rustdoc-args = ["--html-in-header", "arborium-header.html"]
 
 [features]
 default = []
-diagnostics = ["moire-tokio/diagnostics", "moire-wasm/diagnostics"]
+diagnostics = [
+  "dep:moire-macros",
+  "moire-tokio/diagnostics",
+  "moire-wasm/diagnostics",
+]
+
+[dependencies]
+moire-macros-noop.workspace = true
+moire-macros = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 moire-tokio.workspace = true

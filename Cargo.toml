@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
   "crates/moire",
+  "crates/moire-macros",
+  "crates/moire-macros-noop",
   "crates/moire-tokio",
   "crates/moire-wasm",
   "crates/moire-runtime",
@@ -26,6 +28,8 @@ repository = "https://github.com/bearcove/moire"
 [workspace.dependencies]
 # Internal
 moire = { path = "crates/moire" }
+moire-macros = { path = "crates/moire-macros" }
+moire-macros-noop = { path = "crates/moire-macros-noop" }
 moire-tokio = { path = "crates/moire-tokio" }
 moire-wasm = { path = "crates/moire-wasm" }
 moire-runtime = { path = "crates/moire-runtime" }
@@ -51,6 +55,9 @@ ur-taking-me-with-you = { path = "../roam/rust/ur-taking-me-with-you", features 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.49", features = ["full"] }
+proc-macro2 = "1"
+quote = "1"
+unsynn = "0.3"
 axum = { version = "0.8", features = ["ws"] }
 rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 ureq = "2.12"

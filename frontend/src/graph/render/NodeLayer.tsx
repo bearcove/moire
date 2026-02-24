@@ -14,6 +14,8 @@ export interface NodeLayerProps {
   nodes: GeometryNode[];
   selectedNodeId?: string | null;
   hoveredNodeId?: string | null;
+  expandedNodeId?: string | null;
+  onExpandNode?: (id: string | null) => void;
   onNodeClick?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
@@ -112,21 +114,36 @@ export function NodeLayer({
   nodes,
   selectedNodeId,
   hoveredNodeId: _hoveredNodeId,
+  expandedNodeId,
+  onExpandNode,
   onNodeClick,
   onNodeContextMenu,
   onNodeHover,
   ghostNodeIds,
 }: NodeLayerProps) {
+
   if (nodes.length === 0) return null;
+
+  // Render expanded node last so it paints on top (SVG has no z-index).
+  const ordered = expandedNodeId
+    ? [...nodes].sort((a, b) =>
+        a.id === expandedNodeId ? 1 : b.id === expandedNodeId ? -1 : 0,
+      )
+    : nodes;
 
   return (
     <>
-      {nodes.map((node) => {
+      {ordered.map((node) => {
         const { x, y, width, height } = node.worldRect;
         const selected = node.id === selectedNodeId;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
+        const isExpanded = expandedNodeId === node.id;
         const cardContent = (
-          <GraphNode data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }} />
+          <GraphNode
+            data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }}
+            expanded={isExpanded}
+            onToggleExpand={() => onExpandNode?.(isExpanded ? null : node.id)}
+          />
         );
 
         return (
