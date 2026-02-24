@@ -1,7 +1,7 @@
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import type { EntityDef, EdgeDef } from "../snapshot";
-import { graphNodeDataFromEntity } from "../components/graph/GraphNode";
+import { graphNodeDataFromEntity } from "../components/graph/graphNodeData";
 import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } from "./geometry";
 
 // ── ELK layout ────────────────────────────────────────────────

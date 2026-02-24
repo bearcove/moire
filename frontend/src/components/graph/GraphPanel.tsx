@@ -10,7 +10,7 @@ import { assignScopeColorRgbByKey } from "./scopeColors";
 import type { FrameRenderResult } from "../../recording/unionGraph";
 import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
-import { computeNodeSublabel } from "./GraphNode";
+import { computeNodeSublabel } from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import "./GraphPanel.css";
 

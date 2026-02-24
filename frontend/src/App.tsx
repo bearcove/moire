@@ -145,7 +145,9 @@ const INSPECTOR_MARGIN = 12;
 // ── App ────────────────────────────────────────────────────────
 
 export function App() {
-  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities" | "events">("graph");
+  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities" | "events">(
+    "graph",
+  );
   const [selectedScopeKind, setSelectedScopeKind] = useState<string | null>(null);
   const [selectedScope, setSelectedScope] = useState<ScopeDef | null>(null);
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
@@ -157,9 +159,7 @@ export function App() {
   const [inspectedSelection, setInspectedSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
-  const [graphFilterText, setGraphFilterText] = useState(
-    "colorBy:crate groupBy:process source:on",
-  );
+  const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process source:on");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [symbolicationProgress, setSymbolicationProgress] = useState<{
     resolved: number;
