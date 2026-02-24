@@ -201,16 +201,17 @@ pub(crate) fn backtrace_records_after(
 }
 
 pub(crate) fn aether_entity_for_current_task() -> Option<EntityId> {
-    let task_id = tokio::task::try_id()?;
-    let entity_id = EntityId::new(format!("AETHER#{task_id}"));
+    let task_key = match tokio::task::try_id() {
+        Some(id) => id.to_string(),
+        None => "main".to_string(),
+    };
+    let entity_id = EntityId::new(format!("AETHER#{task_key}"));
     if let Ok(mut db) = db::runtime_db().lock() {
         if !db.entities.contains_key(&entity_id) {
             let mut entity = Entity::new(
                 capture_backtrace_id(),
-                format!("aether#{task_id}"),
-                EntityBody::Aether(AetherEntity {
-                    task_id: task_id.to_string(),
-                }),
+                format!("aether#{task_key}"),
+                EntityBody::Aether(AetherEntity { task_id: task_key }),
             );
             entity.id = entity_id.clone();
             db.upsert_entity(entity);
