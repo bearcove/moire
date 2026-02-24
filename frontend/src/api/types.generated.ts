@@ -9,17 +9,22 @@ export interface SourcePreviewResponse {
   source_file: string;
   target_line: number;
   target_col?: number;
-  /**
-   * When the target line is uninteresting (`.await`, `}`, etc.), this gives
-   * the line range of the containing statement for compact display.
-   */
-  display_range?: LineRange;
   total_lines: number;
   /**
    * Full arborium-highlighted HTML for the entire file.
    * The frontend splits this into per-line strings using splitHighlightedHtml.
    */
   html: string;
+  /**
+   * Highlighted HTML for the cut scope excerpt (function/impl with cuts).
+   * When present, the frontend should prefer this over windowing into `html`.
+   */
+  context_html?: string;
+  /**
+   * 1-based inclusive line range of the scope in the original file.
+   * Line 1 of context_html = line context_range.start in the original.
+   */
+  context_range?: LineRange;
 }
 
 /**

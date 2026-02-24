@@ -55,3 +55,17 @@
     white-space: pre;
 }
 
+.ui-source-preview__sep {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    padding: 0;
+    padding-right: 12px;
+}
+
+.ui-source-preview__sep-label {
+    color: var(--text-tertiary);
+    opacity: 0.5;
+    letter-spacing: 2px;
+}
+

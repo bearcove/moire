@@ -1,12 +1,12 @@
-use arborium::tree_sitter;
 use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use facet::Facet;
 use moire_trace_types::{FrameId, RelPc};
-use moire_types::{LineRange, SourcePreviewResponse};
+use moire_types::SourcePreviewResponse;
 use rusqlite_facet::ConnectionFacetExt;
 
+use crate::api::source_context::cut_source;
 use crate::app::AppState;
 use crate::db::Db;
 use crate::snapshot::table::lookup_frame_source_by_raw;
@@ -131,69 +131,6 @@ fn html_escape(s: &str) -> String {
     result
 }
 
-/// Node kinds that represent "interesting" statements in Rust's tree-sitter grammar.
-const INTERESTING_RUST_KINDS: &[&str] = &[
-    "let_declaration",
-    "const_item",
-    "static_item",
-    "expression_statement",
-    "macro_invocation",
-    "function_item",
-    "closure_expression",
-    "if_expression",
-    "match_expression",
-    "for_expression",
-    "while_expression",
-    "loop_expression",
-    "return_expression",
-    "assignment_expression",
-    "compound_assignment_expr",
-];
-
-/// Given source content and a target position, use tree-sitter to find the
-/// containing statement when the target line is uninteresting (`.await`, `}`, etc.).
-///
-/// Returns `Some(LineRange)` when the containing statement starts on a different
-/// line than `target_line`, `None` otherwise.
-fn find_display_range(
-    lang_name: &str,
-    content: &str,
-    target_line: u32,
-    target_col: Option<u32>,
-) -> Option<LineRange> {
-    let ts_lang = arborium::get_language(lang_name)?;
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&ts_lang).ok()?;
-    let tree = parser.parse(content.as_bytes(), None)?;
-
-    let row = target_line - 1; // tree-sitter is 0-based
-    let col = target_col.unwrap_or(0);
-    let point = tree_sitter::Point::new(row as usize, col as usize);
-
-    let node = tree
-        .root_node()
-        .named_descendant_for_point_range(point, point)?;
-
-    // Walk up until we find an interesting node
-    let mut current = node;
-    let interesting = loop {
-        if INTERESTING_RUST_KINDS.contains(&current.kind()) {
-            break current;
-        }
-        current = current.parent()?;
-    };
-
-    let start = interesting.start_position().row as u32 + 1;
-    let end = interesting.end_position().row as u32 + 1;
-
-    // Only return a range if it differs from just the target line
-    if start == target_line && end == target_line {
-        return None;
-    }
-
-    Some(LineRange { start, end })
-}
-
 fn lookup_source_in_db(
     db: &Db,
     frame_id: FrameId,
@@ -240,15 +177,30 @@ fn lookup_source_in_db(
 
     let lang = arborium_language(&source_file_path);
 
-    let display_range = lang.and_then(|l| find_display_range(l, &content, target_line, target_col));
-
+    // Full file highlight
     let html = match lang {
-        Some(lang) => {
+        Some(lang_name) => {
             let mut hl = arborium::Highlighter::new();
-            hl.highlight(lang, &content)
+            hl.highlight(lang_name, &content)
                 .unwrap_or_else(|_| html_escape(&content))
         }
         None => html_escape(&content),
+    };
+
+    // Language-aware context: cut the scope and highlight the excerpt
+    let (context_html, context_range) = match lang {
+        Some(lang_name) => match cut_source(&content, lang_name, target_line, target_col) {
+            Some(cut_result) => {
+                let highlighted = {
+                    let mut hl = arborium::Highlighter::new();
+                    hl.highlight(lang_name, &cut_result.cut_source)
+                        .unwrap_or_else(|_| html_escape(&cut_result.cut_source))
+                };
+                (Some(highlighted), Some(cut_result.scope_range))
+            }
+            None => (None, None),
+        },
+        None => (None, None),
     };
 
     Ok(Some(SourcePreviewResponse {
@@ -256,8 +208,9 @@ fn lookup_source_in_db(
         source_file: source_file_path,
         target_line,
         target_col,
-        display_range,
         total_lines,
         html,
+        context_html,
+        context_range,
     }))
 }

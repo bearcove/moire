@@ -3,7 +3,7 @@ import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { kindIcon } from "../../nodeKindSpec";
 import { useSourceLine } from "../../api/useSourceLine";
 import { useSourcePreview } from "../../api/useSourcePreview";
-import { splitHighlightedHtml } from "../../utils/highlightedHtml";
+import { splitHighlightedHtml, collapseContextLines } from "../../utils/highlightedHtml";
 import { langIcon } from "./langIcon";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import "./GraphNode.css";
@@ -74,29 +74,36 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
     );
   }
 
-  const allLines = splitHighlightedHtml(preview.html);
-  const range = preview.display_range;
-  const startLine = range ? range.start : preview.target_line;
-  const endLine = range ? range.end : preview.target_line;
-  const startIdx = startLine - 1;
-  const endIdx = endLine; // slice end is exclusive
-  const slice = allLines.slice(startIdx, endIdx);
+  // Prefer context_html (language-aware scope excerpt with cuts) over full file
+  const useContext = preview.context_html != null && preview.context_range != null;
+  const rawLines = splitHighlightedHtml(useContext ? preview.context_html! : preview.html);
+  const startLineNum = useContext ? preview.context_range!.start : 1;
+  const collapsed = useContext
+    ? collapseContextLines(rawLines, startLineNum)
+    : rawLines.map((html, i) => ({ lineNum: startLineNum + i, html, isSeparator: false }));
 
   return (
     <div className="graph-node-frame-row graph-node-frame-row--expanded">
       {langIcon(frame.source_file, 10, "graph-node-frame-icon")}
       <pre className="graph-node-frame-block arborium-hl">
-        {slice.map((html, i) => {
-          const lineNum = startLine + i;
-          const isTarget = lineNum === preview.target_line;
+        {collapsed.map((entry) => {
+          if (entry.isSeparator) {
+            return (
+              <div key={`sep-${entry.lineNum}`} className="graph-node-frame-block__sep">
+                <span className="graph-node-frame-block__gutter" />
+                <span className="graph-node-frame-block__sep-label">⋯</span>
+              </div>
+            );
+          }
+          const isTarget = entry.lineNum === preview.target_line;
           return (
             <div
-              key={lineNum}
+              key={entry.lineNum}
               className={`graph-node-frame-block__line${isTarget ? " graph-node-frame-block__line--target" : ""}`}
             >
-              <span className="graph-node-frame-block__gutter">{lineNum}</span>
+              <span className="graph-node-frame-block__gutter">{entry.lineNum}</span>
               {/* eslint-disable-next-line react/no-danger */}
-              <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: html }} />
+              <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: entry.html }} />
               {isTarget && (
                 <a className="graph-node-frame-block__loc" href={zedHref(frame.source_file, preview.target_line)} onClick={stopPropagation}>{location}</a>
               )}

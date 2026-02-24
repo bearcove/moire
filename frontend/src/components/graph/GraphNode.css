@@ -222,6 +222,19 @@
     text-underline-offset: 2px;
 }
 
+/* ── Cut separator ── */
+
+.graph-node-frame-block__sep {
+    display: flex;
+    flex-direction: row;
+}
+
+.graph-node-frame-block__sep-label {
+    color: var(--text-tertiary);
+    opacity: 0.5;
+    letter-spacing: 2px;
+}
+
 /* ── Status/cycle tones ── */
 
 .graph-node--cycle {

@@ -1,3 +1,48 @@
+/** Strip all HTML tags to get plain text. */
+export function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]*>/g, "");
+}
+
+/** Check if a highlighted HTML line is a context cut marker (the "slash-star ... star-slash" placeholder). */
+export function isContextCutMarker(htmlLine: string): boolean {
+  const plain = stripHtmlTags(htmlLine).trim();
+  return plain === "/* ... */";
+}
+
+export interface CollapsedLine {
+  lineNum: number;
+  html: string;
+  isSeparator: boolean;
+}
+
+/**
+ * Collapse cut marker lines (and their following empty lines) into single separator entries.
+ * Input: per-line HTML strings from splitHighlightedHtml applied to context_html.
+ * startLineNum: the 1-based line number of the first line in `lines`.
+ */
+export function collapseContextLines(
+  lines: string[],
+  startLineNum: number,
+): CollapsedLine[] {
+  const result: CollapsedLine[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const lineNum = startLineNum + i;
+    if (isContextCutMarker(lines[i])) {
+      result.push({ lineNum, html: "", isSeparator: true });
+      i++;
+      // Skip following empty lines (part of the same cut region)
+      while (i < lines.length && stripHtmlTags(lines[i]).trim() === "") {
+        i++;
+      }
+    } else {
+      result.push({ lineNum, html: lines[i], isSeparator: false });
+      i++;
+    }
+  }
+  return result;
+}
+
 /**
  * Split arborium-highlighted HTML into per-line strings while preserving
  * tag nesting balance across line boundaries.
