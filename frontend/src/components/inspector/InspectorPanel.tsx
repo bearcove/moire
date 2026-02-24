@@ -63,6 +63,7 @@ export function InspectorPanel({
       <EntityInspectorContent
         entity={entity}
         backtrace={backtracesById?.get(entity.backtraceId)}
+        backtracesById={backtracesById}
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocusEntity}
         onOpenScopeKind={onOpenScopeKind}

@@ -425,6 +425,13 @@ export function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<s
 const TX_KINDS = new Set(["mpsc_tx", "broadcast_tx", "watch_tx", "oneshot_tx"]);
 const RX_KINDS = new Set(["mpsc_rx", "broadcast_rx", "watch_rx", "oneshot_rx"]);
 
+const TX_KIND_TO_PAIR_KIND: Record<string, string> = {
+  mpsc_tx: "channel_pair",
+  broadcast_tx: "broadcast_pair",
+  watch_tx: "watch_pair",
+  oneshot_tx: "oneshot_pair",
+};
+
 // f[impl merge.channel] f[impl merge.channel.id] f[impl merge.channel.name] f[impl merge.channel.status] f[impl merge.channel.guard]
 export function mergeChannelPairs(
   entities: EntityDef[],
@@ -465,6 +472,8 @@ export function mergeChannelPairs(
 
     const channelName = txEntity.name.endsWith(":tx") ? txEntity.name.slice(0, -3) : txEntity.name;
 
+    const pairKind = TX_KIND_TO_PAIR_KIND[txEntity.kind] ?? "channel_pair";
+
     const mergedStatus =
       txEntity.status.tone === "ok" && rxEntity.status.tone === "ok"
         ? ({ label: "open", tone: "ok" } as const)
@@ -474,7 +483,7 @@ export function mergeChannelPairs(
       ...txEntity,
       id: mergedId,
       name: channelName,
-      kind: "channel_pair",
+      kind: pairKind,
       status: mergedStatus,
       stat: txEntity.stat,
       statTone: txEntity.statTone,

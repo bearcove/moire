@@ -7,7 +7,7 @@ import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import type { EntityDef } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
-import type { ResolvedSnapshotBacktrace } from "../../snapshot";
+import type { BacktraceIndex, ResolvedSnapshotBacktrace } from "../../snapshot";
 import { EntityBodySection } from "./EntityBodySection";
 import { EntityScopeLinksSection } from "./EntityScopeLinksSection";
 import { MetaSection } from "./MetaTree";
@@ -123,6 +123,7 @@ function MergedEntityInspectorContent({
   onOpenScopeKind,
   onAppendFilterToken,
   entityDiff,
+  backtracesById,
 }: {
   merged: EntityDef;
   sections: readonly MergedSection[];
@@ -131,6 +132,7 @@ function MergedEntityInspectorContent({
   onOpenScopeKind?: (kind: string) => void;
   onAppendFilterToken?: (token: string) => void;
   entityDiff?: EntityDiff | null;
+  backtracesById?: BacktraceIndex;
 }) {
   return (
     <>
@@ -169,6 +171,7 @@ function MergedEntityInspectorContent({
           </legend>
           <EntityInspectorBody
             entity={section.entity}
+            backtrace={backtracesById?.get(section.entity.backtraceId)}
             focusedEntityId={focusedEntityId}
             onToggleFocus={onToggleFocus}
             onOpenScopeKind={onOpenScopeKind}
@@ -186,6 +189,7 @@ function MergedEntityInspectorContent({
 export function EntityInspectorContent({
   entity,
   backtrace,
+  backtracesById,
   focusedEntityId,
   onToggleFocus,
   onOpenScopeKind,
@@ -195,6 +199,7 @@ export function EntityInspectorContent({
 }: {
   entity: EntityDef;
   backtrace?: ResolvedSnapshotBacktrace;
+  backtracesById?: BacktraceIndex;
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;
@@ -215,6 +220,7 @@ export function EntityInspectorContent({
         onOpenScopeKind={onOpenScopeKind}
         onAppendFilterToken={onAppendFilterToken}
         entityDiff={entityDiff}
+        backtracesById={backtracesById}
       />
     );
   }
@@ -232,6 +238,7 @@ export function EntityInspectorContent({
         onOpenScopeKind={onOpenScopeKind}
         onAppendFilterToken={onAppendFilterToken}
         entityDiff={entityDiff}
+        backtracesById={backtracesById}
       />
     );
   }

@@ -280,6 +280,24 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     category: "channel",
     icon: iconFactory(Pipe),
   },
+  oneshot_pair: {
+    canonical: "oneshot_pair",
+    displayName: "Oneshot",
+    category: "channel",
+    icon: iconFactory(Lightning),
+  },
+  broadcast_pair: {
+    canonical: "broadcast_pair",
+    displayName: "Broadcast",
+    category: "channel",
+    icon: iconFactory(Pipe),
+  },
+  watch_pair: {
+    canonical: "watch_pair",
+    displayName: "Watch",
+    category: "channel",
+    icon: iconFactory(Eye),
+  },
 };
 
 export function kindDisplayName(kind: string): string {
