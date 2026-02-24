@@ -65,6 +65,8 @@ export type EntityDef = {
   channelPair?: { tx: EntityDef; rx: EntityDef };
   /** Present when this is a merged request/response RPC pair node. */
   rpcPair?: { req: EntityDef; resp: EntityDef };
+  /** For lock entities: name of the entity currently holding the lock. */
+  holderName?: string;
 };
 
 // f[impl display.edge]
@@ -320,7 +322,7 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
     if ("error" in s) return { label: "error", tone: "crit" };
     return { label: "pending", tone: "warn" };
   }
-  if ("lock" in body) return { label: "held", tone: "crit" };
+  if ("lock" in body) return { label: "unlocked", tone: "ok" };
   if ("mpsc_tx" in body || "mpsc_rx" in body) return { label: "active", tone: "ok" };
   if ("broadcast_tx" in body) return { label: "active", tone: "ok" };
   if ("broadcast_rx" in body) {
@@ -678,7 +680,15 @@ export function convertSnapshot(
     }
   }
 
-  // Second pass: build edges.
+  // Index lock entities by id so we can patch them when we see `holds` edges.
+  const lockEntitiesById = new Map<string, EntityDef>();
+  const entityById = new Map<string, EntityDef>();
+  for (const ent of allEntities) {
+    entityById.set(ent.id, ent);
+    if ("lock" in ent.body) lockEntitiesById.set(ent.id, ent);
+  }
+
+  // Second pass: build edges, and derive lock state from `holds` edges inline.
   for (const proc of snapshot.processes) {
     for (let i = 0; i < proc.snapshot.edges.length; i++) {
       const e = proc.snapshot.edges[i];
@@ -688,6 +698,15 @@ export function convertSnapshot(
         target: e.dst,
         kind: e.kind,
       });
+
+      if (e.kind === "holds") {
+        const lockEntity = lockEntitiesById.get(e.src);
+        if (lockEntity) {
+          lockEntity.status = { label: "locked", tone: "warn" };
+          const holder = entityById.get(e.dst);
+          if (holder) lockEntity.holderName = holder.name;
+        }
+      }
     }
   }
 

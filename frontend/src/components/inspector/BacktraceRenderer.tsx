@@ -175,7 +175,7 @@ export function BacktracePanel({
         }
         setPreviews(map);
       })
-      .catch(() => { });
+      .catch(() => {});
   }, [backtrace]);
 
   const systemCount = useMemo(
@@ -268,7 +268,6 @@ function FrameRow({
           <span className="bt-fn bt-fn--unresolved">
             {frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}
           </span>
-          <span className="bt-reason">—</span>
         </div>
       </FrameCard>
     );
@@ -279,9 +278,9 @@ function FrameRow({
   const crateColor = crate ? (crateColors.get(crate) ?? null) : null;
   const isApp = appCrate !== null && crate === appCrate;
 
-  // App frames start with source preview open; others start closed.
+  // Non-system resolved frames start with source preview open.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [previewOpen, _setPreviewOpen] = useState(isApp);
+  const [previewOpen, _setPreviewOpen] = useState(!isSystemFrame(frame));
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const allTokens = useMemo(() => tokenizeRustName(function_name), [function_name]);
@@ -321,7 +320,13 @@ function FrameRow({
 
 // ── Widget ───────────────────────────────────────────────────────────────────
 
-export function BacktraceRenderer({ backtrace, openTrigger }: { backtrace: ResolvedSnapshotBacktrace; openTrigger?: number }) {
+export function BacktraceRenderer({
+  backtrace,
+  openTrigger,
+}: {
+  backtrace: ResolvedSnapshotBacktrace;
+  openTrigger?: number;
+}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {

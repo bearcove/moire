@@ -42,11 +42,22 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
   }
 
   if ("lock" in body) {
+    const isLocked = entity.status.label === "locked";
     return (
       <>
         <KeyValueRow label="Lock kind">
           <span className="inspector-mono">{body.lock.kind}</span>
         </KeyValueRow>
+        <KeyValueRow label="State">
+          <Badge tone={isLocked ? "warn" : "ok"}>
+            {isLocked ? "locked" : "unlocked"}
+          </Badge>
+        </KeyValueRow>
+        {isLocked && entity.holderName && (
+          <KeyValueRow label="Held by">
+            <span className="inspector-mono">{entity.holderName}</span>
+          </KeyValueRow>
+        )}
       </>
     );
   }
