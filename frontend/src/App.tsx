@@ -157,6 +157,7 @@ export function App() {
   const [openBacktraceTrigger, setOpenBacktraceTrigger] = useState(0);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [inspectedSelection, setInspectedSelection] = useState<GraphSelection>(null);
+  const [pinnedNodeIds, setPinnedNodeIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process source:on");
@@ -1418,6 +1419,8 @@ export function App() {
                 onFocusConnected={setFocusedEntityFilter}
                 onAppendFilterToken={appendFilterTokenCallback}
                 floatingFilterBar
+                pinnedNodeIds={pinnedNodeIds}
+                onPinnedNodesChange={setPinnedNodeIds}
               />
             ) : leftPaneTab === "scopes" ? (
               <ScopeTablePanel

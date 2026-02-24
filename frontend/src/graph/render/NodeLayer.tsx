@@ -7,6 +7,7 @@ import { GraphNode } from "../../components/graph/GraphNode";
 import { graphNodeDataFromEntity, computeNodeSublabel, type GraphNodeData } from "../../components/graph/graphNodeData";
 import { scopeKindIcon } from "../../scopeKindSpec";
 import type { GraphFilterLabelMode } from "../../graphFilter";
+import type { NodeExpandState } from "../../components/graph/GraphViewport";
 import "../../components/graph/ScopeGroupNode.css";
 import "./NodeLayer.css";
 
@@ -14,8 +15,7 @@ export interface NodeLayerProps {
   nodes: GeometryNode[];
   selectedNodeId?: string | null;
   hoveredNodeId?: string | null;
-  expandedNodeId?: string | null;
-  onExpandNode?: (id: string | null) => void;
+  nodeExpandStates?: Map<string, NodeExpandState>;
   onNodeClick?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
@@ -45,6 +45,7 @@ export async function measureGraphLayout(
   subgraphScopeMode: SubgraphScopeMode = "none",
   labelBy?: GraphFilterLabelMode,
   showSource?: boolean,
+  pinnedNodeIds?: Set<string>,
 ): Promise<GraphMeasureResult> {
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
   await Promise.resolve();
@@ -70,9 +71,16 @@ export async function measureGraphLayout(
     const root = createRoot(el);
 
     const sublabel = labelBy ? computeNodeSublabel(def, labelBy) : undefined;
+    const isPinned = pinnedNodeIds?.has(def.id) ?? false;
     // During measurement, useSourceLine hooks won't fire (sync render),
     // so frame lines show fn·file:line fallback text — same height as final.
-    flushSync(() => root.render(<GraphNode data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }} />));
+    flushSync(() => root.render(
+      <GraphNode
+        data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
+        expanded={isPinned}
+        pinned={isPinned}
+      />
+    ));
     sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
     root.unmount();
   }
@@ -114,8 +122,7 @@ export function NodeLayer({
   nodes,
   selectedNodeId,
   hoveredNodeId: _hoveredNodeId,
-  expandedNodeId,
-  onExpandNode,
+  nodeExpandStates,
   onNodeClick,
   onNodeContextMenu,
   onNodeHover,
@@ -124,10 +131,13 @@ export function NodeLayer({
 
   if (nodes.length === 0) return null;
 
-  // Render expanded node last so it paints on top (SVG has no z-index).
-  const ordered = expandedNodeId
+  // Render expanded/pinned nodes last so they paint on top (SVG has no z-index).
+  const expandedId = nodeExpandStates
+    ? [...nodeExpandStates].find(([, s]) => s === "expanded")?.[0] ?? null
+    : null;
+  const ordered = expandedId
     ? [...nodes].sort((a, b) =>
-        a.id === expandedNodeId ? 1 : b.id === expandedNodeId ? -1 : 0,
+        a.id === expandedId ? 1 : b.id === expandedId ? -1 : 0,
       )
     : nodes;
 
@@ -137,12 +147,14 @@ export function NodeLayer({
         const { x, y, width, height } = node.worldRect;
         const selected = node.id === selectedNodeId;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
-        const isExpanded = expandedNodeId === node.id;
+        const expandState = nodeExpandStates?.get(node.id);
+        const isExpanded = expandState === "expanded" || expandState === "pinned";
+        const isPinned = expandState === "pinned";
         const cardContent = (
           <GraphNode
             data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }}
             expanded={isExpanded}
-            onToggleExpand={() => onExpandNode?.(isExpanded ? null : node.id)}
+            pinned={isPinned}
           />
         );
 

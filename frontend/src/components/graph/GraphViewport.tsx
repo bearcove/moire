@@ -12,6 +12,9 @@ import { NodeLayer } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, GeometryGroup, GeometryNode } from "../../graph/geometry";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../ui/primitives/ContextMenu";
 
+// Node interaction states: unselected → selected → expanded → pinned
+export type NodeExpandState = "collapsed" | "expanded" | "pinned";
+
 export function GraphViewport({
   entityDefs,
   snapPhase,
@@ -29,6 +32,7 @@ export function GraphViewport({
   onAppendFilterToken,
   ghostNodeIds,
   ghostEdgeIds,
+  onPinnedNodesChange,
 }: {
   entityDefs: EntityDef[];
   snapPhase: "idle" | "cutting" | "loading" | "ready" | "error";
@@ -46,6 +50,7 @@ export function GraphViewport({
   onAppendFilterToken: (token: string) => void;
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
+  onPinnedNodesChange?: (pinnedIds: Set<string>) => void;
 }) {
   const effectiveGhostNodeIds = useMemo(() => {
     if (!geometry || selection?.kind !== "entity") return ghostNodeIds;
@@ -80,7 +85,15 @@ export function GraphViewport({
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
   const isEmpty = entityDefs.length === 0;
   const closeNodeContextMenu = useCallback(() => setNodeContextMenu(null), []);
-  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
+  // Per-node expand state: absent = collapsed, "expanded" = visual overlay, "pinned" = relayouted
+  const [nodeExpandStates, setNodeExpandStates] = useState<Map<string, NodeExpandState>>(new Map());
+  const pinnedNodeIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const [id, state] of nodeExpandStates) {
+      if (state === "pinned") s.add(id);
+    }
+    return s;
+  }, [nodeExpandStates]);
 
   useEffect(() => {
     setHasFitted(false);
@@ -152,7 +165,14 @@ export function GraphViewport({
         geometry={geometry}
         onBackgroundClick={() => {
           closeNodeContextMenu();
-          setExpandedNodeId(null);
+          // Clear non-pinned expand states on background click
+          setNodeExpandStates((prev) => {
+            const next = new Map<string, NodeExpandState>();
+            for (const [id, state] of prev) {
+              if (state === "pinned") next.set(id, "pinned");
+            }
+            return next.size === prev.size ? prev : next;
+          });
           onSelect(null);
         }}
       >
@@ -177,12 +197,49 @@ export function GraphViewport({
             <NodeLayer
               nodes={nodes}
               selectedNodeId={selection?.kind === "entity" ? selection.id : null}
-              expandedNodeId={expandedNodeId}
-              onExpandNode={setExpandedNodeId}
+              nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
               onNodeClick={(id) => {
                 closeNodeContextMenu();
-                onSelect({ kind: "entity", id });
+                const isSelected = selection?.kind === "entity" && selection.id === id;
+                const currentState = nodeExpandStates.get(id);
+
+                if (!isSelected) {
+                  // Click 1: select (clear any non-pinned expand)
+                  setNodeExpandStates((prev) => {
+                    const next = new Map<string, NodeExpandState>();
+                    for (const [nid, state] of prev) {
+                      if (state === "pinned") next.set(nid, "pinned");
+                    }
+                    return next;
+                  });
+                  onSelect({ kind: "entity", id });
+                } else if (!currentState || currentState === "collapsed") {
+                  // Click 2: expand (visual overlay)
+                  setNodeExpandStates((prev) => {
+                    const next = new Map(prev);
+                    next.set(id, "expanded");
+                    return next;
+                  });
+                } else if (currentState === "expanded") {
+                  // Click 3: pin (triggers relayout)
+                  setNodeExpandStates((prev) => {
+                    const next = new Map(prev);
+                    next.set(id, "pinned");
+                    return next;
+                  });
+                  onPinnedNodesChange?.(new Set([...pinnedNodeIds, id]));
+                } else if (currentState === "pinned") {
+                  // Click on pinned node: unpin (triggers relayout)
+                  setNodeExpandStates((prev) => {
+                    const next = new Map(prev);
+                    next.delete(id);
+                    return next;
+                  });
+                  const nextPinned = new Set(pinnedNodeIds);
+                  nextPinned.delete(id);
+                  onPinnedNodesChange?.(nextPinned);
+                }
               }}
               onNodeContextMenu={(id, clientX, clientY) => {
                 const graphFlow = graphFlowRef.current;

@@ -48,18 +48,16 @@ function FrameLine({ frame, showSource }: { frame: GraphFrameData; showSource?: 
 export function GraphNode({
   data,
   expanded = false,
-  onToggleExpand,
+  pinned = false,
 }: {
   data: GraphNodeData;
   expanded?: boolean;
-  onToggleExpand?: () => void;
+  pinned?: boolean;
 }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
-  const collapsedFrames = pickCollapsedFrames(data.frames);
-  const visibleFrames = expanded ? data.frames : collapsedFrames;
-  const canExpand = data.frames.length > collapsedFrames.length;
+  const visibleFrames = expanded ? data.frames : pickCollapsedFrames(data.frames);
 
   const topFrame = data.frames[0];
   const topLocation = topFrame ? formatFileLocation(topFrame) : undefined;
@@ -70,6 +68,7 @@ export function GraphNode({
         "graph-card",
         "graph-node",
         expanded && "graph-node--expanded",
+        pinned && "graph-node--pinned",
         data.inCycle && "graph-node--cycle",
         data.selected && "graph-card--selected",
         data.statTone === "crit" && "graph-card--stat-crit",
@@ -119,21 +118,8 @@ export function GraphNode({
         {topLocation && <span className="graph-node-location">{topLocation}</span>}
       </div>
       {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
-      {/* Frame lines: click to expand/collapse */}
       {visibleFrames.length > 0 && (
-        <div
-          className={["graph-node-frames", canExpand && "graph-node-frames--expandable"]
-            .filter(Boolean)
-            .join(" ")}
-          onClick={
-            canExpand && onToggleExpand
-              ? (e) => {
-                  e.stopPropagation();
-                  onToggleExpand();
-                }
-              : undefined
-          }
-        >
+        <div className="graph-node-frames">
           {visibleFrames.map((frame, _i) => (
             <FrameLine key={frame.frame_id} frame={frame} showSource={data.showSource} />
           ))}

@@ -56,6 +56,8 @@ export function GraphPanel({
   onFocusConnected,
   onAppendFilterToken,
   floatingFilterBar = false,
+  pinnedNodeIds,
+  onPinnedNodesChange,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
@@ -83,13 +85,18 @@ export function GraphPanel({
   onFocusConnected: (entityId: string) => void;
   onAppendFilterToken: (token: string) => void;
   floatingFilterBar?: boolean;
+  pinnedNodeIds?: Set<string>;
+  onPinnedNodesChange?: (pinnedIds: Set<string>) => void;
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
+
+  // Serialize pinned set for stable dependency tracking
+  const pinnedKey = pinnedNodeIds ? [...pinnedNodeIds].sort().join(",") : "";
 
   useEffect(() => {
     if (unionFrameLayout) return;
     if (entityDefs.length === 0) return;
-    measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode, showSource)
+    measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode, showSource, pinnedNodeIds)
       .then((measurements) =>
         layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
@@ -97,7 +104,8 @@ export function GraphPanel({
       )
       .then(setLayout)
       .catch(console.error);
-  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, unionFrameLayout, showSource]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- pinnedKey is the serialized form of pinnedNodeIds
+  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, unionFrameLayout, showSource, pinnedKey]);
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
   const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
@@ -203,6 +211,7 @@ export function GraphPanel({
         onAppendFilterToken={onAppendFilterToken}
         ghostNodeIds={unionFrameLayout?.ghostNodeIds}
         ghostEdgeIds={unionFrameLayout?.ghostEdgeIds}
+        onPinnedNodesChange={onPinnedNodesChange}
       />
     </div>
   );
