@@ -100,6 +100,12 @@
     margin-top: 2px;
 }
 
+/* ── Expanded state ── */
+
+.graph-node--expanded {
+    z-index: 10;
+}
+
 /* ── Frame lines ── */
 
 .graph-node-frames {
@@ -113,11 +119,24 @@
     cursor: pointer;
 }
 
+.graph-node-frame-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.graph-node-frame-icon {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
 .graph-node-frame {
     font-family: var(--font-mono);
     font-size: 10px;
     line-height: 1.3;
-    white-space: nowrap;
+    white-space: pre;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 400px;
@@ -128,10 +147,6 @@
 
 .graph-node-frame--text {
     color: var(--text-secondary);
-    display: flex;
-    flex-direction: row;
-    align-items: baseline;
-    gap: 4px;
 }
 
 .graph-node-frame-fn {
@@ -144,12 +159,6 @@
 
 .graph-node-frame-loc {
     color: var(--text-tertiary);
-}
-
-.graph-node-frames-hint {
-    font-size: 9px;
-    color: var(--text-tertiary);
-    line-height: 1.2;
 }
 
 /* ── Status/cycle tones ── */

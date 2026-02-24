@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { App } from "./App";
-import { StorybookPage, useStorybookState } from "./pages/StorybookPage";
+import { StorybookPage } from "./pages/StorybookPage";
+import { useStorybookState } from "./pages/useStorybookState";
 
 function StorybookSplitScreen() {
   const state = useStorybookState();
