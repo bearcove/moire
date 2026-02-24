@@ -16,6 +16,8 @@
 //! | [`watch`] | [`tokio::sync::watch`] |
 //! | [`Mutex`] | [`tokio::sync::Mutex`] |
 //! | [`RwLock`] | [`tokio::sync::RwLock`] |
+//! | [`SyncMutex`] | [`parking_lot::Mutex`] |
+//! | [`SyncRwLock`] | [`parking_lot::RwLock`] |
 //! | [`Semaphore`] | [`tokio::sync::Semaphore`] |
 //! | [`Notify`] | [`tokio::sync::Notify`] |
 //! | [`OnceCell`] | [`tokio::sync::OnceCell`] |

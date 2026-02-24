@@ -1,3 +1,4 @@
+use std::fmt;
 use std::future::Future;
 use std::time::Duration;
 
@@ -12,6 +13,12 @@ pub struct Interval(tokio::time::Interval);
 impl Interval {
     pub fn tick(&mut self) -> impl Future<Output = tokio::time::Instant> + '_ {
         self.0.tick()
+    }
+}
+
+impl fmt::Debug for Interval {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 

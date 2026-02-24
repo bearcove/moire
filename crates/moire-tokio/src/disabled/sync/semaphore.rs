@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 pub use tokio::sync::{AcquireError, OwnedSemaphorePermit, SemaphorePermit, TryAcquireError};
@@ -57,5 +58,11 @@ impl Semaphore {
 
     pub fn try_acquire_many_owned(&self, n: u32) -> Result<OwnedSemaphorePermit, TryAcquireError> {
         Arc::clone(&self.0).try_acquire_many_owned(n)
+    }
+}
+
+impl fmt::Debug for Semaphore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }

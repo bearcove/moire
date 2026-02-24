@@ -104,10 +104,14 @@ The `moire` crate re-exports the appropriate backend based on target:
 ### Synchronization
 
 > r[api.mutex]
-> `moire::Mutex::new(name, value)` wraps `parking_lot::Mutex`. Locking is synchronous and blocking, not async. Contention is tracked on the `lock` entity with kind `mutex`.
+> `moire::Mutex::new(name, value)` wraps `tokio::sync::Mutex`. Locking is asynchronous (`.lock().await`). Contention is tracked on the `lock` entity with kind `mutex`.
+>
+> `moire::SyncMutex::new(name, value)` wraps `parking_lot::Mutex` for synchronous/blocking locking.
 
 > r[api.rwlock]
-> `moire::RwLock::new(name, value)` wraps `parking_lot::RwLock`. Locking is synchronous and blocking, not async. Contention is tracked on the `lock` entity with kind `rwlock`.
+> `moire::RwLock::new(name, value)` wraps `tokio::sync::RwLock`. Locking is asynchronous (`.read().await` / `.write().await`). Contention is tracked on the `lock` entity with kind `rwlock`.
+>
+> `moire::SyncRwLock::new(name, value)` wraps `parking_lot::RwLock` for synchronous/blocking locking.
 
 > r[api.semaphore]
 > `moire::Semaphore::new(name, permits)` wraps `tokio::sync::Semaphore`. `max_permits` and `handed_out_permits` are tracked.
@@ -184,7 +188,7 @@ An entity is a runtime object that exists over time: a future, a lock, a channel
 >
 > **Async / Tokio primitives:**
 > - `future` — a spawned task or instrumented future
-> - `lock` — a `parking_lot` mutex or rwlock, with `kind` (`mutex` | `rwlock` | `other`)
+> - `lock` — a tracked mutex or rwlock (Tokio async or `parking_lot` sync), with `kind` (`mutex` | `rwlock` | `other`)
 > - `mpsc_tx` — mpsc channel sender, with `queue_len` and optional `capacity`
 > - `mpsc_rx` — mpsc channel receiver
 > - `broadcast_tx` — broadcast sender, with `capacity`

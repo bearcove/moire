@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt;
 use std::future::Future;
 
 use moire_runtime::{
@@ -88,5 +89,17 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T> fmt::Debug for JoinSet<T>
+where
+    T: Send + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JoinSet")
+            .field("len", &self.len())
+            .field("is_empty", &self.is_empty())
+            .finish()
     }
 }

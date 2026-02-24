@@ -1,4 +1,4 @@
-use moire::sync::Mutex;
+use moire::sync::SyncMutex;
 use moire::task::FutureExt as _;
 use std::sync::Arc;
 use std::sync::Barrier;
@@ -8,9 +8,9 @@ use tokio::sync::oneshot;
 fn spawn_lock_order_worker(
     task_name: &'static str,
     first_name: &'static str,
-    first: Arc<Mutex<()>>,
+    first: Arc<SyncMutex<()>>,
     second_name: &'static str,
-    second: Arc<Mutex<()>>,
+    second: Arc<SyncMutex<()>>,
     ready_barrier: Arc<Barrier>,
     completed_tx: oneshot::Sender<()>,
 ) {
@@ -31,8 +31,8 @@ fn spawn_lock_order_worker(
 }
 
 pub async fn run() -> Result<(), String> {
-    let left = Arc::new(Mutex::new("demo.shared.left", ()));
-    let right = Arc::new(Mutex::new("demo.shared.right", ()));
+    let left = Arc::new(SyncMutex::new("demo.shared.left", ()));
+    let right = Arc::new(SyncMutex::new("demo.shared.right", ()));
     let ready_barrier = Arc::new(Barrier::new(2));
 
     let (alpha_done_tx, alpha_done_rx) = oneshot::channel::<()>();

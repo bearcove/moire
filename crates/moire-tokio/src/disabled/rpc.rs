@@ -1,7 +1,7 @@
 use moire_types::{RequestEntity, ResponseEntity};
 
 /// No-op RPC request handle for the disabled (no-instrumentation) backend.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RpcRequestHandle {
     id: String,
 }
@@ -13,7 +13,7 @@ impl RpcRequestHandle {
 }
 
 /// No-op RPC response handle for the disabled backend.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RpcResponseHandle;
 
 impl RpcResponseHandle {
@@ -38,10 +38,7 @@ pub fn rpc_request(method: impl Into<String>, args_json: impl Into<String>) -> R
     )
 }
 
-pub fn rpc_request_with_body(
-    _name: impl Into<String>,
-    _body: RequestEntity,
-) -> RpcRequestHandle {
+pub fn rpc_request_with_body(_name: impl Into<String>, _body: RequestEntity) -> RpcRequestHandle {
     RpcRequestHandle { id: String::new() }
 }
 
@@ -67,7 +64,10 @@ pub fn rpc_response_with_body(
     RpcResponseHandle
 }
 
-pub fn rpc_response_for(method: impl Into<String>, request: &RpcRequestHandle) -> RpcResponseHandle {
+pub fn rpc_response_for(
+    method: impl Into<String>,
+    request: &RpcRequestHandle,
+) -> RpcResponseHandle {
     let method = method.into();
     let (service_name, method_name) = split_method_parts(method.as_str());
     let service_name = String::from(service_name);

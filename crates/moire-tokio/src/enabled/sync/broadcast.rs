@@ -1,9 +1,10 @@
 // r[impl api.broadcast]
 
 use moire_runtime::{
-    new_event, record_event, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
+    AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle, new_event, record_event,
 };
 use moire_types::{BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EventKind, EventTarget};
+use std::fmt;
 use tokio::sync::broadcast;
 
 /// Instrumented version of [`tokio::sync::broadcast::Sender`].
@@ -136,5 +137,17 @@ pub fn channel<T: Clone>(name: impl Into<String>, capacity: usize) -> (Sender<T>
 impl<T: Clone> AsEntityRef for Sender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
+    }
+}
+
+impl<T> fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T> fmt::Debug for Receiver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }

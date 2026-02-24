@@ -1,8 +1,9 @@
 // r[impl api.once-cell]
 use moire_types::{OnceCellEntity, OnceCellState};
+use std::fmt;
 use std::future::Future;
 
-use moire_runtime::{instrument_operation_on, EntityHandle};
+use moire_runtime::{EntityHandle, instrument_operation_on};
 
 /// Instrumented version of [`tokio::sync::OnceCell`].
 pub struct OnceCell<T> {
@@ -108,5 +109,11 @@ impl<T> OnceCell<T> {
             };
         });
         result
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for OnceCell<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }

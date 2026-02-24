@@ -1,3 +1,4 @@
+use std::fmt;
 use std::future::Future;
 
 /// Pass-through `tokio::sync::OnceCell` wrapper, accepting a name parameter for API parity.
@@ -37,5 +38,11 @@ impl<T> OnceCell<T> {
             tokio::sync::SetError::AlreadyInitializedError(v) => v,
             tokio::sync::SetError::InitializingError(v) => v,
         })
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for OnceCell<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }

@@ -1,6 +1,7 @@
 // r[impl api.semaphore]
 use moire_types::{EdgeKind, SemaphoreEntity};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -262,6 +263,24 @@ impl Semaphore {
 impl AsEntityRef for Semaphore {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
+    }
+}
+
+impl fmt::Debug for Semaphore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl fmt::Debug for SemaphorePermit<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl fmt::Debug for OwnedSemaphorePermit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }
 

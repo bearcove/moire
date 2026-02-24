@@ -14,6 +14,7 @@
 //! | [`timeout`] | `tokio::time::timeout` |
 //! | [`interval`] | `tokio::time::interval` |
 //! | [`Interval`] | `tokio::time::Interval` |
+use std::fmt;
 use std::future::Future;
 use std::time::Duration;
 
@@ -43,6 +44,12 @@ impl Interval {
             .tick()
             .named("time.interval.tick")
             .on(self.handle.entity_ref())
+    }
+}
+
+impl fmt::Debug for Interval {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }
 

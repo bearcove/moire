@@ -6,6 +6,7 @@ use moire_runtime::{
     EntityHandle, WeakEntityHandle, instrument_operation_on, new_event, record_event,
 };
 use moire_types::{EdgeKind, EventKind, EventTarget, OneshotRxEntity, OneshotTxEntity};
+use std::fmt;
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -129,4 +130,16 @@ pub fn channel<T>(name: impl Into<String>) -> (Sender<T>, Receiver<T>) {
             _tx_handle: tx_handle.downgrade(),
         },
     )
+}
+
+impl<T: fmt::Debug> fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Receiver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
 }

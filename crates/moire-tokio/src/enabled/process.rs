@@ -18,6 +18,7 @@
 //! ```
 use moire_types::CommandEntity;
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
@@ -295,5 +296,21 @@ impl Child {
     /// Takes the child's stderr handle.
     pub fn take_stderr(&mut self) -> Option<tokio::process::ChildStderr> {
         self.inner_mut().stderr.take()
+    }
+}
+
+impl fmt::Debug for Command {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Command")
+            .field("program", &self.program)
+            .field("args", &self.args)
+            .field("env", &self.env)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Child {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Child").field("id", &self.id()).finish()
     }
 }

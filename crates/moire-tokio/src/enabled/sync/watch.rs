@@ -1,10 +1,11 @@
 // r[impl api.watch]
 
 use moire_runtime::{
-    instrument_operation_on, new_event, record_event, AsEntityRef, EntityHandle, EntityRef,
-    WeakEntityHandle,
+    AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle, instrument_operation_on, new_event,
+    record_event,
 };
 use moire_types::{EdgeKind, EventKind, EventTarget, WatchRxEntity, WatchTxEntity};
+use std::fmt;
 use tokio::sync::watch;
 
 /// Instrumented version of [`tokio::sync::watch::Sender`].
@@ -166,5 +167,17 @@ pub fn channel<T: Clone>(name: impl Into<String>, initial: T) -> (Sender<T>, Rec
 impl<T: Clone> AsEntityRef for Sender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Receiver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }

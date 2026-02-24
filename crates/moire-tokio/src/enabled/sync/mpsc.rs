@@ -1,11 +1,13 @@
 // r[impl api.mpsc]
 
 use moire_runtime::{
-    instrument_operation_on, new_event, record_event, AsEntityRef, EntityHandle, EntityRef,
-    WeakEntityHandle,
+    AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle, instrument_operation_on, new_event,
+    record_event,
 };
 use moire_types::{EdgeKind, EventKind, EventTarget, MpscRxEntity, MpscTxEntity};
+use std::fmt;
 use tokio::sync::mpsc;
+pub use tokio::sync::mpsc::error;
 
 /// Instrumented version of [`tokio::sync::mpsc::Sender`].
 ///
@@ -37,6 +39,14 @@ pub struct UnboundedReceiver<T> {
     inner: tokio::sync::mpsc::UnboundedReceiver<T>,
     handle: EntityHandle<moire_types::MpscRx>,
     tx_handle: WeakEntityHandle<moire_types::MpscTx>,
+}
+
+/// Instrumented version of [`tokio::sync::mpsc::OwnedPermit`].
+///
+/// Tracks send activity emitted through reserved owned capacity.
+pub struct OwnedPermit<T> {
+    inner: tokio::sync::mpsc::OwnedPermit<T>,
+    handle: EntityHandle<moire_types::MpscTx>,
 }
 
 impl<T> Clone for Sender<T> {
@@ -95,6 +105,72 @@ impl<T> Sender<T> {
         );
         record_event(event);
         result
+    }
+
+    /// Reserves capacity and returns an owned permit, matching [`tokio::sync::mpsc::Sender::reserve_owned`].
+    pub async fn reserve_owned(self) -> Result<OwnedPermit<T>, mpsc::error::SendError<()>> {
+        let Self { inner, handle } = self;
+        let permit = instrument_operation_on(&handle, inner.reserve_owned()).await?;
+        Ok(OwnedPermit {
+            inner: permit,
+            handle,
+        })
+    }
+
+    /// Reserves capacity without waiting, matching [`tokio::sync::mpsc::Sender::try_reserve_owned`].
+    pub fn try_reserve_owned(self) -> Result<OwnedPermit<T>, mpsc::error::TrySendError<Self>> {
+        let Self { inner, handle } = self;
+        match inner.try_reserve_owned() {
+            Ok(permit) => Ok(OwnedPermit {
+                inner: permit,
+                handle,
+            }),
+            Err(mpsc::error::TrySendError::Full(inner)) => {
+                Err(mpsc::error::TrySendError::Full(Self { inner, handle }))
+            }
+            Err(mpsc::error::TrySendError::Closed(inner)) => {
+                Err(mpsc::error::TrySendError::Closed(Self { inner, handle }))
+            }
+        }
+    }
+}
+
+impl<T> OwnedPermit<T> {
+    /// Sends a value using reserved capacity, matching [`tokio::sync::mpsc::OwnedPermit::send`].
+    pub fn send(self, value: T) -> Sender<T> {
+        let sender = self.inner.send(value);
+        let _ = self
+            .handle
+            .mutate(|body| body.queue_len = body.queue_len.saturating_add(1));
+        let event = new_event(
+            EventTarget::Entity(self.handle.id().clone()),
+            EventKind::ChannelSent,
+        );
+        record_event(event);
+
+        Sender {
+            inner: sender,
+            handle: self.handle,
+        }
+    }
+
+    /// Releases reserved capacity without sending, matching [`tokio::sync::mpsc::OwnedPermit::release`].
+    pub fn release(self) -> Sender<T> {
+        let sender = self.inner.release();
+        Sender {
+            inner: sender,
+            handle: self.handle,
+        }
+    }
+
+    /// Returns whether two permits belong to the same channel.
+    pub fn same_channel(&self, other: &Self) -> bool {
+        self.inner.same_channel(&other.inner)
+    }
+
+    /// Returns whether this permit belongs to the same channel as the given sender.
+    pub fn same_channel_as_sender(&self, sender: &Sender<T>) -> bool {
+        self.inner.same_channel_as_sender(&sender.inner)
     }
 }
 
@@ -258,5 +334,35 @@ impl<T> AsEntityRef for Sender<T> {
 impl<T> AsEntityRef for UnboundedSender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
+    }
+}
+
+impl<T> fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T> fmt::Debug for Receiver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T> fmt::Debug for UnboundedSender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T> fmt::Debug for UnboundedReceiver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T> fmt::Debug for OwnedPermit<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }

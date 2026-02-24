@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::fmt;
 use std::future::Future;
 use std::io;
 use std::ops::{Deref, DerefMut};
@@ -186,5 +187,17 @@ impl Deref for Child {
 impl DerefMut for Child {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl fmt::Debug for Command {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Command").finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for Child {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Child").field("id", &self.id()).finish()
     }
 }

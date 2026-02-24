@@ -1,4 +1,6 @@
-pub use tokio::sync::mpsc::{error, Receiver, Sender, UnboundedReceiver, UnboundedSender};
+pub use tokio::sync::mpsc::{
+    OwnedPermit, Receiver, Sender, UnboundedReceiver, UnboundedSender, error,
+};
 
 pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     tokio::sync::mpsc::channel(capacity)

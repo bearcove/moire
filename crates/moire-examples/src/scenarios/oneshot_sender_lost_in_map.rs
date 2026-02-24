@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use moire::sync::Mutex;
+use moire::sync::SyncMutex;
 use moire::sync::mpsc::channel;
 use moire::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use moire::task::FutureExt as _;
 
 type RequestId = u64;
 type ResponsePayload = String;
-type PendingMap = Arc<Mutex<HashMap<RequestId, OneshotSender<ResponsePayload>>>>;
+type PendingMap = Arc<SyncMutex<HashMap<RequestId, OneshotSender<ResponsePayload>>>>;
 
 fn storage_key_for_request(request_id: RequestId) -> RequestId {
     request_id + 1
@@ -20,8 +20,10 @@ fn lookup_key_for_response(response_id: RequestId) -> RequestId {
 }
 
 pub async fn run() -> Result<(), String> {
-    let pending_by_request_id: PendingMap =
-        Arc::new(Mutex::new("demo.pending_oneshot_senders", HashMap::new()));
+    let pending_by_request_id: PendingMap = Arc::new(SyncMutex::new(
+        "demo.pending_oneshot_senders",
+        HashMap::new(),
+    ));
     let (response_bus_tx, mut response_bus_rx) = channel("demo.response_bus", 4);
 
     let pending_for_request = Arc::clone(&pending_by_request_id);

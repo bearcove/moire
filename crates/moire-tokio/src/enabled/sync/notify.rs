@@ -1,8 +1,9 @@
 // r[impl api.notify]
 use moire_types::NotifyEntity;
+use std::fmt;
 use std::sync::Arc;
 
-use moire_runtime::{instrument_operation_on, EntityHandle};
+use moire_runtime::{EntityHandle, instrument_operation_on};
 
 /// Instrumented version of [`tokio::sync::Notify`].
 #[derive(Clone)]
@@ -41,5 +42,11 @@ impl Notify {
     /// Notifies all waiters, matching [`tokio::sync::Notify::notify_waiters`].
     pub fn notify_waiters(&self) {
         self.inner.notify_waiters();
+    }
+}
+
+impl fmt::Debug for Notify {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }
