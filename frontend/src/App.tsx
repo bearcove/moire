@@ -10,6 +10,7 @@ import {
   applySymbolicationUpdateToSnapshot,
   collapseEdgesThroughHiddenNodes,
   convertSnapshot,
+  extractEvents,
   extractScopes,
   filterLoners,
   getConnectedSubgraph,
@@ -18,6 +19,7 @@ import {
   type BacktraceIndex,
   type EntityDef,
   type EdgeDef,
+  type EventDef,
   type ScopeDef,
 } from "./snapshot";
 import type { SubgraphScopeMode } from "./graph/elkAdapter";
@@ -39,6 +41,7 @@ import {
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ScopeTablePanel } from "./components/scopes/ScopeTablePanel";
 import { EntityTablePanel } from "./components/entities/EntityTablePanel";
+import { EventTablePanel } from "./components/events/EventTablePanel";
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
 import { formatProcessLabel } from "./processLabel";
@@ -75,6 +78,7 @@ export type SnapshotState =
       entities: EntityDef[];
       edges: EdgeDef[];
       scopes: ScopeDef[];
+      events: EventDef[];
       backtracesById: BacktraceIndex;
     }
   | { phase: "error"; message: string };
@@ -141,7 +145,7 @@ const INSPECTOR_MARGIN = 12;
 // ── App ────────────────────────────────────────────────────────
 
 export function App() {
-  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities">("graph");
+  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities" | "events">("graph");
   const [selectedScopeKind, setSelectedScopeKind] = useState<string | null>(null);
   const [selectedScope, setSelectedScope] = useState<ScopeDef | null>(null);
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
@@ -542,6 +546,7 @@ export function App() {
         phase: "ready",
         ...converted,
         scopes: extractScopes(snapshot),
+        events: extractEvents(snapshot),
         backtracesById: buildBacktraceIndex(snapshot),
       });
       const totalFrames = snapshot.frames.length;
@@ -570,6 +575,7 @@ export function App() {
               phase: "ready",
               ...nextConverted,
               scopes: extractScopes(next),
+              events: extractEvents(next),
               backtracesById: buildBacktraceIndex(next),
             });
             const nextResolved = next.frames.filter((record) =>
@@ -655,6 +661,7 @@ export function App() {
                 phase: "ready",
                 ...converted,
                 scopes: extractScopes(frame),
+                events: extractEvents(frame),
                 backtracesById: buildBacktraceIndex(frame),
               });
             }
@@ -704,6 +711,7 @@ export function App() {
           phase: "ready",
           ...converted,
           scopes: extractScopes(lastFrame),
+          events: extractEvents(lastFrame),
           backtracesById: buildBacktraceIndex(lastFrame),
         });
 
@@ -806,6 +814,7 @@ export function App() {
             phase: "ready",
             ...converted,
             scopes: extractScopes(lastFrame),
+            events: extractEvents(lastFrame),
             backtracesById: buildBacktraceIndex(lastFrame),
           });
 
@@ -897,6 +906,7 @@ export function App() {
             entities: frameData.entities,
             edges: frameData.edges,
             scopes: [],
+            events: [],
             backtracesById: new Map(),
           });
         }
@@ -985,6 +995,7 @@ export function App() {
           entities: frameData.entities,
           edges: frameData.edges,
           scopes: [],
+          events: [],
           backtracesById: new Map(),
         });
       }
@@ -1094,6 +1105,7 @@ export function App() {
               phase: "ready",
               ...converted,
               scopes: extractScopes(existingSnapshot),
+              events: extractEvents(existingSnapshot),
               backtracesById: buildBacktraceIndex(existingSnapshot),
             });
             const totalFrames = existingSnapshot.frames.length;
@@ -1125,6 +1137,7 @@ export function App() {
                     phase: "ready",
                     ...nextConverted,
                     scopes: extractScopes(next),
+                    events: extractEvents(next),
                     backtracesById: buildBacktraceIndex(next),
                   });
                   const nextResolved = next.frames.filter((record) =>
@@ -1433,6 +1446,18 @@ export function App() {
                   setLeftPaneTab("entities");
                   setSelection(null);
                   setFocusedEntityFilter(null);
+                }}
+              />
+            ) : leftPaneTab === "events" ? (
+              <EventTablePanel
+                eventDefs={snap.phase === "ready" ? snap.events : []}
+                onSelectEntity={(entityId) => {
+                  setSelection({ kind: "entity", id: entityId });
+                  if (!inspectorOpen) {
+                    setInspectorPosition(null);
+                    setInspectorOpen(true);
+                  }
+                  setLeftPaneTab("graph");
                 }}
               />
             ) : (

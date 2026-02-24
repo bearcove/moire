@@ -1,8 +1,9 @@
 use facet::Facet;
 use moire_trace_types::BacktraceId;
 use moire_types::{
-    Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PTime, PullChangesResponse, Scope,
-    ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId, TaskScopeBody,
+    Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, EventTarget, PTime,
+    PullChangesResponse, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
+    TaskScopeBody,
 };
 use std::collections::{BTreeMap, VecDeque, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
@@ -41,6 +42,8 @@ pub(crate) struct RuntimeDb {
     pub(super) events: VecDeque<Event>,
     changes: VecDeque<InternalStampedChange>,
     max_events: usize,
+    /// Reference counts for entity IDs referenced by events in the ring buffer.
+    event_entity_refs: BTreeMap<EntityId, usize>,
 }
 
 impl RuntimeDb {
@@ -57,6 +60,7 @@ impl RuntimeDb {
             events: VecDeque::with_capacity(max_events.min(256)),
             changes: VecDeque::new(),
             max_events,
+            event_entity_refs: BTreeMap::new(),
         }
     }
 
@@ -249,7 +253,9 @@ impl RuntimeDb {
             let Some(entity) = self.entities.get_mut(id) else {
                 return false;
             };
-
+            if entity.removed_at.is_some() {
+                return false;
+            }
             if entity.name == name {
                 return false;
             }
@@ -275,6 +281,9 @@ impl RuntimeDb {
             let Some(entity) = self.entities.get_mut(id) else {
                 return false;
             };
+            if entity.removed_at.is_some() {
+                return false;
+            }
             let before = Self::body_fingerprint(&entity.body);
             mutate(&mut entity.body);
             let after = Self::body_fingerprint(&entity.body);
@@ -291,9 +300,19 @@ impl RuntimeDb {
     }
 
     pub(crate) fn remove_entity(&mut self, id: &EntityId) {
-        if self.entities.remove(id).is_none() {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return;
+        };
+        // Idempotent: skip if already marked dead.
+        if entity.removed_at.is_some() {
             return;
         }
+        entity.removed_at = Some(PTime::now());
+
+        // Emit UpsertEntity with removed_at set so clients see the death.
+        let entity_json = facet_json::to_vec(entity).ok();
+
+        // Still remove edges and scope links immediately (graph structure).
         let mut links_to_remove = Vec::new();
         for entity_scope in self.entity_scope_links.keys() {
             if &entity_scope.0 == id {
@@ -321,9 +340,21 @@ impl RuntimeDb {
         for (src, dst, kind) in removed_edges {
             self.push_change(InternalChange::RemoveEdge { src, dst, kind });
         }
-        self.push_change(InternalChange::RemoveEntity {
-            id: EntityId::new(id.as_str()),
-        });
+
+        if let Some(entity_json) = entity_json {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+
+        // If no events reference this entity, sweep immediately.
+        if !self.event_entity_refs.contains_key(id) {
+            self.entities.remove(id);
+            self.push_change(InternalChange::RemoveEntity {
+                id: EntityId::new(id.as_str()),
+            });
+        }
     }
 
     pub(crate) fn remove_scope(&mut self, id: &ScopeId) {
@@ -390,6 +421,18 @@ impl RuntimeDb {
         kind: EdgeKind,
         backtrace: BacktraceId,
     ) {
+        // Skip if either endpoint is dead.
+        if self
+            .entities
+            .get(src)
+            .is_some_and(|e| e.removed_at.is_some())
+            || self
+                .entities
+                .get(dst)
+                .is_some_and(|e| e.removed_at.is_some())
+        {
+            return;
+        }
         if let Some(process_scope_id) = current_process_scope_id() {
             if self.entities.contains_key(src) {
                 self.link_entity_to_scope(src, &process_scope_id);
@@ -440,13 +483,48 @@ impl RuntimeDb {
     }
 
     pub(crate) fn record_event(&mut self, event: Event) {
+        // Increment ref count for entity-targeted events.
+        if let EventTarget::Entity(ref id) = event.target {
+            *self
+                .event_entity_refs
+                .entry(EntityId::new(id.as_str()))
+                .or_insert(0) += 1;
+        }
         let event_json = facet_json::to_vec(&event).ok();
         self.events.push_back(event);
+        // Evict old events and decrement ref counts.
         while self.events.len() > self.max_events {
-            self.events.pop_front();
+            if let Some(evicted) = self.events.pop_front() {
+                if let EventTarget::Entity(ref id) = evicted.target {
+                    let entity_id = EntityId::new(id.as_str());
+                    if let Some(count) = self.event_entity_refs.get_mut(&entity_id) {
+                        *count -= 1;
+                        if *count == 0 {
+                            self.event_entity_refs.remove(&entity_id);
+                            // If entity is dead and no longer referenced, sweep it.
+                            self.sweep_dead_entity(&entity_id);
+                        }
+                    }
+                }
+            }
         }
         if let Some(event_json) = event_json {
             self.push_change(InternalChange::AppendEvent { event_json });
+        }
+    }
+
+    /// Remove a dead entity from the map and emit a `RemoveEntity` change.
+    /// Only acts if the entity exists and has `removed_at` set.
+    fn sweep_dead_entity(&mut self, id: &EntityId) {
+        let should_sweep = self
+            .entities
+            .get(id)
+            .is_some_and(|e| e.removed_at.is_some());
+        if should_sweep {
+            self.entities.remove(id);
+            self.push_change(InternalChange::RemoveEntity {
+                id: EntityId::new(id.as_str()),
+            });
         }
     }
 

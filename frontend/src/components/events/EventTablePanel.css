@@ -1,4 +1,4 @@
-.entity-table-panel {
+.event-table-panel {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -6,7 +6,7 @@
     background: var(--bg-surface);
 }
 
-.entity-table-toolbar {
+.event-table-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -20,68 +20,53 @@
     flex-shrink: 0;
 }
 
-.entity-table-stats {
+.event-table-stats {
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
 }
 
-.entity-table-toolbar-controls {
+.event-table-toolbar-controls {
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.entity-table-search {
+.event-table-search {
     min-width: 260px;
 }
 
-.entity-table-body {
+.event-table-body {
     flex: 1;
     min-height: 0;
     overflow: auto;
     padding: 8px;
 }
 
-.entity-table-process,
-.entity-table-mono {
+.event-table-mono {
     font-family: var(--font-mono);
 }
 
-.entity-table-kind {
+.event-table-target {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-}
-
-.entity-table-entity-cell {
-    display: flex;
-    flex-direction: column;
     min-width: 0;
 }
 
-.entity-table-name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.entity-table-subtle {
+.event-table-kind-pill {
+    font-size: var(--font-size-sm);
     color: var(--text-muted);
-    font-size: var(--font-size-sm);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.entity-table-scope-filter {
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-    color: var(--text-secondary);
     font-family: var(--font-mono);
 }
 
-.entity-table-removed {
+.event-table-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.event-table-removed {
     opacity: 0.5;
     text-decoration: line-through;
 }

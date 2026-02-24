@@ -311,6 +311,11 @@ export interface Entity {
    */
   birth: PTime;
   /**
+   * When this entity was logically removed (deferred removal).
+   * Present means the entity is dead but kept alive for event references.
+   */
+  removed_at?: PTime;
+  /**
    * Backtrace when this edge was created
    */
   backtrace: BacktraceId;

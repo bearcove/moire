@@ -40,8 +40,8 @@ export function AppHeader({
   fileInputRef,
   onImportFile,
 }: {
-  leftPaneTab: "graph" | "scopes" | "entities";
-  onLeftPaneTabChange: (tab: "graph" | "scopes" | "entities") => void;
+  leftPaneTab: "graph" | "scopes" | "entities" | "events";
+  onLeftPaneTabChange: (tab: "graph" | "scopes" | "entities" | "events") => void;
   snap: SnapshotState;
   snapshotProcessCount: number;
   symbolicationProgress: { resolved: number; pending: number; total: number } | null;
@@ -76,7 +76,7 @@ export function AppHeader({
       <SegmentedGroup
         aria-label="Primary page"
         value={leftPaneTab}
-        onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes" | "entities")}
+        onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes" | "entities" | "events")}
         options={[
           { value: "graph", label: "Graph" },
           {
@@ -84,6 +84,7 @@ export function AppHeader({
             label: <span className="app-header-tab-label">Scopes</span>,
           },
           { value: "entities", label: "Entities" },
+          { value: "events", label: "Events" },
         ]}
       />
       {connCount > 0 && (

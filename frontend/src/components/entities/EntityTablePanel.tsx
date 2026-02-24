@@ -112,7 +112,9 @@ export function EntityTablePanel({
       sortable: true,
       width: "1.2fr",
       render: (row) => (
-        <span className="entity-table-process">{formatProcessLabel(row.processName, row.processPid)}</span>
+        <span className={row.removedAt != null ? "entity-table-process entity-table-removed" : "entity-table-process"}>
+          {formatProcessLabel(row.processName, row.processPid)}
+        </span>
       ),
     },
     {
@@ -123,7 +125,7 @@ export function EntityTablePanel({
       render: (row) => {
         const canonicalKind = canonicalNodeKind(row.kind);
         return (
-          <span className="entity-table-kind">
+          <span className={row.removedAt != null ? "entity-table-kind entity-table-removed" : "entity-table-kind"}>
             {kindIcon(canonicalKind, 12)}
             <span className="entity-table-mono">{kindDisplayName(canonicalKind)}</span>
           </span>
@@ -136,7 +138,7 @@ export function EntityTablePanel({
       sortable: true,
       width: "1.6fr",
       render: (row) => (
-        <div className="entity-table-entity-cell">
+        <div className={row.removedAt != null ? "entity-table-entity-cell entity-table-removed" : "entity-table-entity-cell"}>
           <span className="entity-table-name">{row.name}</span>
           <span className="entity-table-subtle">bt:{row.backtraceId} · {row.source.path}:{row.source.line}</span>
         </div>

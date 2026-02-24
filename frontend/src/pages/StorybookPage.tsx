@@ -128,7 +128,7 @@ export function useStorybookState() {
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
   const [hiddenCrates, setHiddenCrates] = useState<Set<string>>(new Set());
-  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities">("graph");
+  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities" | "events">("graph");
   const [showLoners, setShowLoners] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
@@ -580,6 +580,7 @@ export function useStorybookState() {
       entities: [],
       edges: [],
       scopes: [],
+      events: [],
       backtracesById: new Map(),
     }),
     [],

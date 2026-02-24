@@ -2,6 +2,7 @@ import type {
   BacktraceFrameResolved,
   EdgeKind,
   EntityBody,
+  EventKind,
   SnapshotFrameRecord,
   SnapshotBacktraceFrame,
   SnapshotCutResponse,
@@ -61,6 +62,8 @@ export type EntityDef = {
   status: { label: string; tone: Tone };
   stat?: string;
   statTone?: Tone;
+  /** Process-relative time when this entity was logically removed (dead). */
+  removedAt?: number;
   /** Present when this is a merged TX/RX channel pair node. */
   channelPair?: { tx: EntityDef; rx: EntityDef };
   /** Present when this is a merged request/response RPC pair node. */
@@ -706,6 +709,7 @@ export function convertSnapshot(
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,
+        removedAt: e.removed_at,
         meta: {},
         inCycle: false,
         status: deriveStatus(e.body),
@@ -759,6 +763,99 @@ export function convertSnapshot(
   }
 
   return { entities: mergedEntities, edges: coalescedEdges };
+}
+
+// ── Event extraction ───────────────────────────────────────────
+
+export type EventDef = {
+  id: string;
+  processId: string;
+  atPtime: number;
+  atApproxUnixMs: number;
+  kind: EventKind;
+  targetId: string;
+  targetKind: "entity" | "scope";
+  targetName: string;
+  targetEntityKind?: string;
+  targetRemoved: boolean;
+  backtraceId: number;
+  source: RenderSource;
+};
+
+const EVENT_KIND_DISPLAY: Record<EventKind, string> = {
+  state_changed: "State Changed",
+  channel_sent: "Channel Sent",
+  channel_received: "Channel Received",
+};
+
+export function eventKindDisplayName(kind: EventKind): string {
+  return EVENT_KIND_DISPLAY[kind] ?? kind;
+}
+
+export function extractEvents(snapshot: SnapshotCutResponse): EventDef[] {
+  const backtraces = buildBacktraceIndex(snapshot);
+  const result: EventDef[] = [];
+
+  for (const proc of snapshot.processes) {
+    const { process_id, ptime_now_ms } = proc;
+    const processIdStr = String(process_id);
+    const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
+
+    // Build entity/scope lookup maps for this process.
+    const entityMap = new Map<string, { name: string; kind: string; removedAt?: number }>();
+    for (const e of proc.snapshot.entities) {
+      entityMap.set(e.id, { name: e.name, kind: bodyToKind(e.body), removedAt: e.removed_at });
+    }
+    const scopeMap = new Map<string, string>();
+    for (const s of proc.snapshot.scopes) {
+      scopeMap.set(s.id, s.name);
+    }
+
+    for (const event of proc.snapshot.events) {
+      const backtraceId = requireBacktraceId(event, `event ${event.id}`, String(process_id));
+      const resolved = resolveBacktraceDisplay(backtraces, backtraceId, `event ${event.id}`);
+
+      let targetId: string;
+      let targetKind: "entity" | "scope";
+      let targetName: string;
+      let targetEntityKind: string | undefined;
+      let targetRemoved = false;
+
+      if ("entity" in event.target) {
+        targetId = event.target.entity;
+        targetKind = "entity";
+        const info = entityMap.get(targetId);
+        targetName = info?.name ?? targetId;
+        targetEntityKind = info?.kind;
+        targetRemoved = info?.removedAt != null;
+      } else {
+        targetId = event.target.scope;
+        targetKind = "scope";
+        targetName = scopeMap.get(targetId) ?? targetId;
+      }
+
+      result.push({
+        id: `${processIdStr}:${event.id}`,
+        processId: processIdStr,
+        atPtime: event.at,
+        atApproxUnixMs: anchorUnixMs + event.at,
+        kind: event.kind,
+        targetId,
+        targetKind,
+        targetName,
+        targetEntityKind,
+        targetRemoved,
+        backtraceId,
+        source: resolved.source,
+      });
+    }
+  }
+
+  // Newest first.
+  result.sort((a, b) => b.atApproxUnixMs - a.atApproxUnixMs);
+  // Cap at 1024 events.
+  if (result.length > 1024) result.length = 1024;
+  return result;
 }
 
 // f[impl filter.control.focus]

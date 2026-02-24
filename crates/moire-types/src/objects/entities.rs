@@ -1,6 +1,6 @@
 use facet::Facet;
 
-use crate::{next_entity_id, BacktraceId, EntityId, Json, PTime};
+use crate::{BacktraceId, EntityId, Json, PTime, next_entity_id};
 
 // r[impl model.entity.fields]
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
@@ -11,6 +11,11 @@ pub struct Entity {
 
     /// When we first started tracking this entity
     pub birth: PTime,
+
+    /// When this entity was logically removed (deferred removal).
+    /// Present means the entity is dead but kept alive for event references.
+    #[facet(skip_unless_truthy)]
+    pub removed_at: Option<PTime>,
 
     /// Backtrace when this edge was created
     pub backtrace: BacktraceId,
@@ -28,6 +33,7 @@ impl Entity {
         Entity {
             id: next_entity_id(),
             birth: PTime::now(),
+            removed_at: None,
             backtrace,
             name: name.into(),
             body,
