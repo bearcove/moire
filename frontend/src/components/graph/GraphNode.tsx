@@ -108,12 +108,14 @@ export function FrameLine({
             <div
               key={entry.lineNum}
               className={`graph-node-frame-block__line${isTarget ? " graph-node-frame-block__line--target" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = zedHref(frame.source_file, entry.lineNum);
-              }}
             >
-              <span className="graph-node-frame-block__gutter">{entry.lineNum}</span>
+              <span
+                className="graph-node-frame-block__gutter"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.location.href = zedHref(frame.source_file, entry.lineNum);
+                }}
+              >{entry.lineNum}</span>
               {/* eslint-disable-next-line react/no-danger */}
               <span
                 className="graph-node-frame-block__text"
@@ -202,7 +204,10 @@ export function GraphNode({
     if (prevExpanded === expanded) return;
     prevExpandedRef.current = expanded;
 
-    const fromHeight = Math.max(0, lastFramesShellHeightRef.current);
+    const fromHeight = Math.max(
+      0,
+      lastFramesShellHeightRef.current || el.getBoundingClientRect().height,
+    );
     const toHeight = Math.max(0, el.scrollHeight);
     if (Math.abs(fromHeight - toHeight) < 0.5) return;
 
@@ -211,16 +216,16 @@ export function GraphNode({
       shellTransitionRafRef.current = null;
     }
 
-    el.style.maxHeight = `${fromHeight}px`;
+    el.style.height = `${fromHeight}px`;
     void el.offsetHeight;
     shellTransitionRafRef.current = window.requestAnimationFrame(() => {
-      el.style.maxHeight = `${toHeight}px`;
+      el.style.height = `${toHeight}px`;
       shellTransitionRafRef.current = null;
     });
 
     const onTransitionEnd = (event: TransitionEvent) => {
-      if (event.propertyName !== "max-height") return;
-      el.style.maxHeight = "";
+      if (event.propertyName !== "height") return;
+      el.style.height = "auto";
       lastFramesShellHeightRef.current = el.getBoundingClientRect().height;
       el.removeEventListener("transitionend", onTransitionEnd);
     };

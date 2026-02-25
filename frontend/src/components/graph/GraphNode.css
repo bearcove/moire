@@ -132,11 +132,7 @@
 .graph-node-frames-shell {
     width: 100%;
     overflow: hidden;
-    transition: max-height 180ms ease-out;
-}
-
-.graph-node--expanded .graph-node-frames-shell {
-    max-height: 40em;
+    transition: height 180ms ease-out;
 }
 
 .graph-node-frame-icon {
@@ -209,6 +205,10 @@
     z-index: 1;
 }
 
+.graph-node-frame-section + .graph-node-frame-section > .graph-node-frame-sep {
+    border-top: 1px solid var(--border-subtle);
+}
+
 .graph-node-frame-section > .graph-node-frame {
     padding: var(--graph-node-padding);
 }
@@ -256,16 +256,14 @@
     padding: 0;
     background: none;
     white-space: pre;
+    overflow-x: auto;
+    overflow-y: clip;
+    overscroll-behavior-x: contain;
 }
 
 .graph-node-frame-block__line {
     display: flex;
     flex-direction: row;
-    cursor: pointer;
-}
-
-.graph-node-frame-block__line:hover {
-    background: light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.04));
 }
 
 .graph-node-frame-block__line--target {
@@ -274,14 +272,34 @@
 
 .graph-node-frame-block__gutter {
     flex-shrink: 0;
+    position: sticky;
+    left: 0;
     width: 5ch;
     text-align: right;
     padding-right: 1ch;
     color: var(--text-tertiary);
     user-select: none;
+    background: var(--graph-card-bg);
+    cursor: pointer;
 
     border-right: 2px solid var(--accent);
     margin-right: 0.8em;
+}
+
+.graph-node-frame-block__gutter:hover {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.graph-node-frame-block__line:first-child > .graph-node-frame-block__gutter,
+.graph-node-frame-block__line:first-child > .graph-node-frame-block__text {
+    padding-top: 6px;
+}
+
+.graph-node-frame-block__line:last-child > .graph-node-frame-block__gutter,
+.graph-node-frame-block__line:last-child > .graph-node-frame-block__text {
+    padding-bottom: 6px;
 }
 
 .graph-node-frame-block__text {
