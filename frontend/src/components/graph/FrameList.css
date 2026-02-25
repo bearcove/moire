@@ -32,36 +32,3 @@
     flex-shrink: 0;
 }
 
-.frame-list-pin-btn {
-    appearance: none;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    background: transparent;
-    color: var(--text-tertiary);
-    font-family: var(--font-ui);
-    font-size: var(--font-size-xs);
-    padding: 1px 7px;
-    cursor: pointer;
-    user-select: none;
-    line-height: 1.4;
-    width: 5.5em;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-}
-
-.frame-list-pin-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.frame-list-pin-btn--pinned {
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.frame-list-pin-btn--pinned:hover {
-    border-color: var(--border-default);
-    color: var(--text-secondary);
-}

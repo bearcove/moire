@@ -16,8 +16,8 @@ import {
   ContextMenuSeparator,
 } from "../../ui/primitives/ContextMenu";
 
-// Node interaction states: unselected → selected → expanded → pinned
-export type NodeExpandState = "collapsed" | "expanded" | "pinned";
+// Node interaction states: absent = collapsed, "expanded" = selected+expanded (triggers re-layout)
+export type NodeExpandState = "expanded";
 
 export function GraphViewport({
   entityDefs,
@@ -36,7 +36,7 @@ export function GraphViewport({
   onAppendFilterToken,
   ghostNodeIds,
   ghostEdgeIds,
-  onPinnedNodesChange,
+  onExpandedNodesChange,
 }: {
   entityDefs: EntityDef[];
   snapPhase: "idle" | "cutting" | "loading" | "ready" | "error";
@@ -54,7 +54,7 @@ export function GraphViewport({
   onAppendFilterToken: (token: string) => void;
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
-  onPinnedNodesChange?: (pinnedIds: Set<string>) => void;
+  onExpandedNodesChange?: (expandedIds: Set<string>) => void;
 }) {
   const effectiveGhostNodeIds = useMemo(() => {
     return ghostNodeIds;
@@ -77,15 +77,16 @@ export function GraphViewport({
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
   const isEmpty = entityDefs.length === 0;
   const closeNodeContextMenu = useCallback(() => setNodeContextMenu(null), []);
-  // Per-node expand state: absent = collapsed, "expanded" = visual overlay, "pinned" = relayouted
+  // Per-node expand state: absent = collapsed, "expanded" = selected+expanded (triggers re-layout)
   const [nodeExpandStates, setNodeExpandStates] = useState<Map<string, NodeExpandState>>(new Map());
-  const pinnedNodeIds = useMemo(() => {
-    const s = new Set<string>();
-    for (const [id, state] of nodeExpandStates) {
-      if (state === "pinned") s.add(id);
-    }
-    return s;
-  }, [nodeExpandStates]);
+
+  const collapseAll = useCallback(() => {
+    setNodeExpandStates((prev) => {
+      if (prev.size === 0) return prev;
+      onExpandedNodesChange?.(new Set());
+      return new Map();
+    });
+  }, [onExpandedNodesChange]);
 
   useEffect(() => {
     setHasFitted(false);
@@ -96,17 +97,12 @@ export function GraphViewport({
       if (e.key !== "Escape") return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      setNodeExpandStates((prev) => {
-        const next = new Map<string, NodeExpandState>();
-        for (const [id, state] of prev) {
-          if (state === "pinned") next.set(id, "pinned");
-        }
-        return next.size === prev.size ? prev : next;
-      });
+      collapseAll();
+      onSelect(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [collapseAll, onSelect]);
 
   return (
     <div className="graph-flow" ref={graphFlowRef}>
@@ -232,13 +228,7 @@ export function GraphViewport({
         onBackgroundClick={() => {
           closeNodeContextMenu();
           // Clear non-pinned expand states on background click
-          setNodeExpandStates((prev) => {
-            const next = new Map<string, NodeExpandState>();
-            for (const [id, state] of prev) {
-              if (state === "pinned") next.set(id, "pinned");
-            }
-            return next.size === prev.size ? prev : next;
-          });
+          collapseAll();
           onSelect(null);
         }}
       >
@@ -265,42 +255,13 @@ export function GraphViewport({
               nodes={nodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
-              onNodePin={(id) => {
-                setNodeExpandStates((prev) => {
-                  const next = new Map(prev);
-                  next.set(id, "pinned");
-                  return next;
-                });
-                onPinnedNodesChange?.(new Set([...pinnedNodeIds, id]));
-              }}
-              onNodeUnpin={(id) => {
-                setNodeExpandStates((prev) => {
-                  const next = new Map(prev);
-                  next.delete(id);
-                  return next;
-                });
-                const nextPinned = new Set(pinnedNodeIds);
-                nextPinned.delete(id);
-                onPinnedNodesChange?.(nextPinned);
-              }}
               onNodeHover={(id) => {
                 if (id) {
-                  // If any node is expanded (non-pinned), hover on other nodes is blocked.
-                  const hasExpanded = [...nodeExpandStates.values()].some((s) => s === "expanded");
-                  if (hasExpanded && !nodeExpandStates.has(id)) return;
-
-                  // Hover selects the node (clear non-pinned expand from other nodes)
-                  setNodeExpandStates((prev) => {
-                    const next = new Map<string, NodeExpandState>();
-                    for (const [nid, state] of prev) {
-                      if (state === "pinned") next.set(nid, state);
-                      else if (nid === id) next.set(nid, state);
-                    }
-                    return next;
-                  });
+                  // If a node is already expanded, hover on other nodes is blocked.
+                  if (nodeExpandStates.size > 0 && !nodeExpandStates.has(id)) return;
                   onSelect({ kind: "entity", id });
                 } else {
-                  // Mouse left all nodes: deselect unless something is expanded/pinned
+                  // Mouse left all nodes: deselect unless a node is expanded
                   const selectedId = selection?.kind === "entity" ? selection.id : null;
                   if (selectedId && !nodeExpandStates.has(selectedId)) {
                     onSelect(null);
@@ -309,17 +270,15 @@ export function GraphViewport({
               }}
               onNodeClick={(id) => {
                 closeNodeContextMenu();
-                const currentState = nodeExpandStates.get(id);
-
-                if (!currentState || currentState === "collapsed") {
-                  // Click: expand (visual overlay)
-                  setNodeExpandStates((prev) => {
-                    const next = new Map(prev);
-                    next.set(id, "expanded");
-                    return next;
-                  });
-                }
-                // expanded → pinned is now handled by the Pin button, not by clicking again
+                // Expand the clicked node; collapse any previously expanded node
+                setNodeExpandStates((prev) => {
+                  if (prev.size === 1 && prev.has(id)) return prev;
+                  const next = new Map<string, NodeExpandState>();
+                  next.set(id, "expanded");
+                  return next;
+                });
+                onSelect({ kind: "entity", id });
+                onExpandedNodesChange?.(new Set([id]));
               }}
               onNodeContextMenu={(id, clientX, clientY) => {
                 const graphFlow = graphFlowRef.current;
@@ -377,28 +336,48 @@ function NodeExpandPanner({
   nodes: GeometryNode[];
   nodeExpandStates: Map<string, NodeExpandState>;
 }) {
-  const { panTo, viewportHeight, camera } = useCameraContext();
+  const { panTo, setCamera, viewportHeight, camera } = useCameraContext();
   const prevStatesRef = useRef<Map<string, NodeExpandState>>(new Map());
+  // Camera position saved just before first node expansion; restored on full collapse
+  const savedCameraRef = useRef<typeof camera | null>(null);
 
   useEffect(() => {
     const prev = prevStatesRef.current;
-    for (const [id, state] of nodeExpandStates) {
-      if (state === "expanded" && prev.get(id) !== "expanded") {
-        const node = nodes.find((n) => n.id === id);
-        if (node) {
-          const { x, y, width } = node.worldRect;
-          // Position the node top ~20% from the top of the viewport so the
-          // expanded card (which can be up to 35em tall) has room below.
-          // camera.y = worldY puts worldY at viewport center (50%).
-          // We want node top at 20%, so shift camera.y down by 30% of viewport in world units.
-          const offsetY = (viewportHeight * 0.3) / camera.zoom;
-          panTo(x + width / 2, y + offsetY);
+    const wasEmpty = prev.size === 0;
+    const isEmpty = nodeExpandStates.size === 0;
+
+    if (isEmpty && !wasEmpty) {
+      // All nodes collapsed — pan back to the saved camera position
+      if (savedCameraRef.current) {
+        const { x, y } = savedCameraRef.current;
+        panTo(x, y);
+        savedCameraRef.current = null;
+      }
+    } else if (!isEmpty) {
+      // Find the newly expanded node (wasn't expanded before)
+      for (const [id] of nodeExpandStates) {
+        if (!prev.has(id)) {
+          // Save camera before first expansion
+          if (wasEmpty) {
+            savedCameraRef.current = camera;
+          }
+          const node = nodes.find((n) => n.id === id);
+          if (node) {
+            const { x, y, width } = node.worldRect;
+            // Position the node top ~20% from the top of the viewport so the
+            // expanded card (which can be up to 35em tall) has room below.
+            // camera.y = worldY puts worldY at viewport center (50%).
+            // We want node top at 20%, so shift camera.y down by 30% of viewport in world units.
+            const offsetY = (viewportHeight * 0.3) / camera.zoom;
+            panTo(x + width / 2, y + offsetY);
+          }
+          break;
         }
-        break;
       }
     }
+
     prevStatesRef.current = new Map(nodeExpandStates);
-  }, [nodeExpandStates, nodes, panTo, viewportHeight, camera.zoom]);
+  }, [nodeExpandStates, nodes, panTo, setCamera, viewportHeight, camera]);
 
   return null;
 }

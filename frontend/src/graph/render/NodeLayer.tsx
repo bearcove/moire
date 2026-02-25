@@ -21,8 +21,6 @@ export interface NodeLayerProps {
   nodes: GeometryNode[];
   nodeExpandStates?: Map<string, NodeExpandState>;
   onNodeClick?: (id: string) => void;
-  onNodePin?: (id: string) => void;
-  onNodeUnpin?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
   ghostNodeIds?: Set<string>;
@@ -51,17 +49,17 @@ export async function measureGraphLayout(
   subgraphScopeMode: SubgraphScopeMode = "none",
   labelBy?: GraphFilterLabelMode,
   showSource?: boolean,
-  pinnedNodeIds?: Set<string>,
+  expandedNodeIds?: Set<string>,
 ): Promise<GraphMeasureResult> {
   // Pre-fetch source data so the sync caches are warm before flushSync.
   // Futures always show source in collapsed view; other kinds only when showSource is on.
   {
     const fetches: Promise<unknown>[] = [];
     for (const def of defs) {
-      const isPinned = pinnedNodeIds?.has(def.id) ?? false;
+      const isExpanded = expandedNodeIds?.has(def.id) ?? false;
       const needsSource = showSource || canonicalNodeKind(def.kind) === "future";
-      if (!needsSource && !isPinned) continue;
-      const frames = isPinned ? def.frames : def.frames.slice(0, collapsedFrameCount(def.kind));
+      if (!needsSource && !isExpanded) continue;
+      const frames = isExpanded ? def.frames : def.frames.slice(0, collapsedFrameCount(def.kind));
       for (const frame of frames) {
         if (frame.frame_id != null) {
           fetches.push(cachedFetchSourcePreview(frame.frame_id).catch(() => {}));
@@ -95,15 +93,14 @@ export async function measureGraphLayout(
     const root = createRoot(el);
 
     const sublabel = labelBy ? computeNodeSublabel(def, labelBy) : undefined;
-    const isPinned = pinnedNodeIds?.has(def.id) ?? false;
+    const isExpanded = expandedNodeIds?.has(def.id) ?? false;
     // During measurement, useSourceLine hooks won't fire (sync render),
     // so frame lines show fn·file:line fallback text — same height as final.
     flushSync(() =>
       root.render(
         <GraphNode
           data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
-          expanded={isPinned}
-          pinned={isPinned}
+          expanded={isExpanded}
         />,
       ),
     );
@@ -146,8 +143,6 @@ export function NodeLayer({
   nodes,
   nodeExpandStates,
   onNodeClick,
-  onNodePin,
-  onNodeUnpin,
   onNodeContextMenu,
   onNodeHover,
   ghostNodeIds,
@@ -167,16 +162,11 @@ export function NodeLayer({
       {ordered.map((node) => {
         const { x, y, width, height } = node.worldRect;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
-        const expandState = nodeExpandStates?.get(node.id);
-        const isPinned = expandState === "pinned";
-        const isExpanded = expandState === "expanded" || isPinned;
+        const isExpanded = nodeExpandStates?.get(node.id) === "expanded";
         const cardContent = (
           <GraphNode
             data={{ ...(node.data as GraphNodeData), ghost: isGhost }}
             expanded={isExpanded}
-            pinned={isPinned}
-            onPin={onNodePin ? (e) => { e.stopPropagation(); onNodePin(node.id); } : undefined}
-            onUnpin={onNodeUnpin ? (e) => { e.stopPropagation(); onNodeUnpin(node.id); } : undefined}
           />
         );
 

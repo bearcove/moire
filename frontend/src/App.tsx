@@ -150,8 +150,7 @@ export function App() {
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
   const [selection, setSelection] = useState<GraphSelection>(null);
-  const [pinnedNodeIds, setPinnedNodeIds] = useState<Set<string>>(new Set());
-  const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
+const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process source:on");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
@@ -1286,8 +1285,6 @@ export function App() {
                 onFocusConnected={setFocusedEntityFilter}
                 onAppendFilterToken={appendFilterTokenCallback}
                 floatingFilterBar
-                pinnedNodeIds={pinnedNodeIds}
-                onPinnedNodesChange={setPinnedNodeIds}
               />
             ) : leftPaneTab === "scopes" ? (
               <ScopeTablePanel
