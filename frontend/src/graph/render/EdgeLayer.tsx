@@ -92,8 +92,18 @@ export function EdgeLayer({
               neighbor: targetNeighbor,
               isSource: false,
             });
-            if (resolvedSourceAnchor) polyline[0] = resolvedSourceAnchor;
-            if (resolvedTargetAnchor) polyline[polyline.length - 1] = resolvedTargetAnchor;
+            if (resolvedSourceAnchor) {
+              polyline[0] = resolvedSourceAnchor.point;
+              alignNeighborWithFace(polyline[0], polyline[1], resolvedSourceAnchor.face);
+            }
+            if (resolvedTargetAnchor) {
+              polyline[polyline.length - 1] = resolvedTargetAnchor.point;
+              alignNeighborWithFace(
+                polyline[polyline.length - 1],
+                polyline[polyline.length - 2],
+                resolvedTargetAnchor.face,
+              );
+            }
           }
           const edgeStyle = edge.data?.style ?? {};
           const stroke = isSelected
@@ -206,6 +216,7 @@ export function EdgeLayer({
 }
 
 type PortFace = "north" | "south" | "east" | "west";
+type ResolvedEndpointAnchor = { point: Point; face: PortFace };
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -236,6 +247,27 @@ function ensureTerminalSegmentLength(polyline: Point[], minLength: number): Poin
     y: tip.y + (dy / len) * minLength,
   };
   return out;
+}
+
+function alignNeighborWithFace(anchor: Point, neighbor: Point, face: PortFace): void {
+  const MIN_STUB = 0.5;
+  if (face === "north") {
+    neighbor.x = anchor.x;
+    if (anchor.y - neighbor.y < MIN_STUB) neighbor.y = anchor.y - MIN_STUB;
+    return;
+  }
+  if (face === "south") {
+    neighbor.x = anchor.x;
+    if (neighbor.y - anchor.y < MIN_STUB) neighbor.y = anchor.y + MIN_STUB;
+    return;
+  }
+  if (face === "west") {
+    neighbor.y = anchor.y;
+    if (anchor.x - neighbor.x < MIN_STUB) neighbor.x = anchor.x - MIN_STUB;
+    return;
+  }
+  neighbor.y = anchor.y;
+  if (neighbor.x - anchor.x < MIN_STUB) neighbor.x = anchor.x + MIN_STUB;
 }
 
 function inferFaceFromPortRef(portRef: string | undefined, isSource: boolean): PortFace | null {
@@ -297,11 +329,20 @@ function resolveEdgeEndpointAnchor({
   portAnchor: Point | undefined;
   neighbor: Point;
   isSource: boolean;
-}): Point | undefined {
-  if (!nodeRect) return portAnchor;
+}): ResolvedEndpointAnchor | undefined {
+  if (!nodeRect) {
+    if (!portAnchor) return undefined;
+    return {
+      point: portAnchor,
+      face: inferFaceFromPortRef(portRef, isSource) ?? "south",
+    };
+  }
   const face =
     (portAnchor ? closestRectFace(nodeRect, portAnchor) : null) ??
     inferFaceFromPortRef(portRef, isSource) ??
     inferFaceFromNeighbor(nodeRect, neighbor, isSource);
-  return anchorPointForFace(nodeRect, face, portAnchor ?? neighbor);
+  return {
+    point: anchorPointForFace(nodeRect, face, portAnchor ?? neighbor),
+    face,
+  };
 }

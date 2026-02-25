@@ -10,7 +10,7 @@ import { assignScopeColorRgbByKey } from "./scopeColors";
 import type { FrameRenderResult } from "../../recording/unionGraph";
 import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
-import { computeNodeSublabel } from "./graphNodeData";
+import { computeNodeSublabel, graphNodeDataFromEntity } from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import { cachedFetchSourcePreview } from "../../api/sourceCache";
 import "./GraphPanel.css";
@@ -251,11 +251,12 @@ export function GraphPanel({
       const scopeKey = entity ? scopeKeyForEntity(entity, scopeColorMode) : undefined;
       const scopeRgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
       const sublabel = entity && labelByMode ? computeNodeSublabel(entity, labelByMode) : undefined;
+      const liveNodeData = entity ? graphNodeDataFromEntity(entity) : n.data;
 
       return {
         ...n,
         data: {
-          ...n.data,
+          ...liveNodeData,
           scopeRgbLight: scopeRgb?.light,
           scopeRgbDark: scopeRgb?.dark,
           sublabel,
