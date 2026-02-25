@@ -202,6 +202,7 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
   const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
   const effectiveLabelBy = graphTextFilters.labelBy;
   const focusedEntityId = graphTextFilters.focusedNodeId ?? null;
+  const expandedEntityId = graphTextFilters.expandedNodeId ?? null;
 
   const setFocusedEntityFilter = useCallback((entityId: string | null) => {
     const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
@@ -209,6 +210,15 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
       return !key.toLowerCase().startsWith("focus:");
     });
     if (entityId) tokens.push(`focus:${quoteFilterValue(entityId)}`);
+    setGraphFilterText(tokens.join(" "));
+  }, [graphFilterText, setGraphFilterText]);
+
+  const setExpandedEntityFilter = useCallback((entityId: string | null) => {
+    const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
+      const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
+      return !key.toLowerCase().startsWith("expand:");
+    });
+    if (entityId) tokens.push(`expand:${quoteFilterValue(entityId)}`);
     setGraphFilterText(tokens.join(" "));
   }, [graphFilterText, setGraphFilterText]);
   const applyBaseFilters = useCallback(
@@ -1275,6 +1285,8 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
                   setFocusedEntityFilter(null);
                   setSelection(null);
                 }}
+                expandedEntityId={expandedEntityId}
+                onExpandedEntityChange={setExpandedEntityFilter}
                 waitingForProcesses={waitingForProcesses}
                 crateItems={crateItems}
                 processItems={processItems}

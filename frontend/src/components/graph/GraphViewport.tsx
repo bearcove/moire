@@ -36,7 +36,8 @@ export function GraphViewport({
   onAppendFilterToken,
   ghostNodeIds,
   ghostEdgeIds,
-  onExpandedNodesChange,
+  expandedNodeId,
+  onExpandedNodeChange,
   onExpandedNodeMeasured,
 }: {
   entityDefs: EntityDef[];
@@ -55,7 +56,8 @@ export function GraphViewport({
   onAppendFilterToken: (token: string) => void;
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
-  onExpandedNodesChange?: (expandedIds: Set<string>) => void;
+  expandedNodeId?: string | null;
+  onExpandedNodeChange?: (id: string | null) => void;
   onExpandedNodeMeasured?: (id: string, width: number, height: number) => void;
 }) {
   const effectiveGhostNodeIds = useMemo(() => {
@@ -79,16 +81,16 @@ export function GraphViewport({
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
   const isEmpty = entityDefs.length === 0;
   const closeNodeContextMenu = useCallback(() => setNodeContextMenu(null), []);
-  // Per-node expand state: absent = collapsed, "expanded" = selected+expanded (triggers re-layout)
-  const [nodeExpandStates, setNodeExpandStates] = useState<Map<string, NodeExpandState>>(new Map());
+  // Per-node expand state derived from the expandedNodeId prop (controlled by filter text).
+  const nodeExpandStates = useMemo(() => {
+    const m = new Map<string, NodeExpandState>();
+    if (expandedNodeId) m.set(expandedNodeId, "expanded");
+    return m;
+  }, [expandedNodeId]);
 
   const collapseAll = useCallback(() => {
-    setNodeExpandStates((prev) => {
-      if (prev.size === 0) return prev;
-      onExpandedNodesChange?.(new Set());
-      return new Map();
-    });
-  }, [onExpandedNodesChange]);
+    onExpandedNodeChange?.(null);
+  }, [onExpandedNodeChange]);
 
   useEffect(() => {
     setHasFitted(false);
@@ -273,15 +275,8 @@ export function GraphViewport({
               }}
               onNodeClick={(id) => {
                 closeNodeContextMenu();
-                // Expand the clicked node; collapse any previously expanded node
-                setNodeExpandStates((prev) => {
-                  if (prev.size === 1 && prev.has(id)) return prev;
-                  const next = new Map<string, NodeExpandState>();
-                  next.set(id, "expanded");
-                  return next;
-                });
+                onExpandedNodeChange?.(expandedNodeId === id ? null : id);
                 onSelect({ kind: "entity", id });
-                onExpandedNodesChange?.(new Set([id]));
               }}
               onNodeContextMenu={(id, clientX, clientY) => {
                 const graphFlow = graphFlowRef.current;

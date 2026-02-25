@@ -1,7 +1,7 @@
 .scope-group {
     width: 100%;
     height: 100%;
-    border-radius: 8px;
+    border-radius: var(--radius-container);
     corner-shape: squircle;
     border: var(--graph-border-width) solid var(--border-subtle);
     background: var(--bg-base);

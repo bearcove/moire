@@ -94,9 +94,6 @@
 }
 
 .graph-filter-input {
-    --_r: 10px;
-    --_p: 8px;
-
     width: 100%;
     height: 44px;
     display: flex;
@@ -107,19 +104,17 @@
     overflow-y: hidden;
     row-gap: 0;
     gap: 6px;
-    border: none;
-    border-radius: var(--_r);
+    border: var(--graph-border-width) solid var(--border-subtle);
+    border-radius: var(--radius-container);
     corner-shape: squircle;
     background: var(--bg-base);
-    padding: 1px var(--_p);
+    padding: 1px 8px;
     box-sizing: border-box;
-    box-shadow: inset 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.35));
 }
 
 .graph-filter-input:focus-within {
-    box-shadow:
-        inset 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.35)),
-        0 0 0 2px var(--focus-ring);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
 }
 
 .graph-filter-fragment-input {
@@ -142,7 +137,7 @@
     color: var(--text-secondary);
     background: var(--bg-elevated);
     border: none;
-    border-radius: calc(var(--_r, 10px) - var(--_p, 6px));
+    border-radius: var(--radius-control);
     corner-shape: squircle;
     padding: 1px 7px;
     pointer-events: none;
@@ -155,7 +150,7 @@
     align-items: stretch;
     gap: 0;
     border: none;
-    border-radius: calc(var(--_r, 10px) - var(--_p, 6px));
+    border-radius: var(--radius-control);
     corner-shape: squircle;
     font-size: var(--font-size-sm);
     font-family: var(--font-mono);
@@ -163,19 +158,7 @@
     color: var(--text-primary);
     flex-shrink: 0;
     max-width: 100%;
-
-    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
-    box-shadow:
-        0 1px 2px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
-            ),
-        0 2px 4px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
-            );
+    box-shadow: var(--shadow-elevation-sm);
 }
 
 .graph-filter-chip__label {

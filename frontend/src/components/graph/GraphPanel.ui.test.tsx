@@ -35,6 +35,8 @@ function Harness({ initialFilter }: { initialFilter: string }) {
       onSelect={() => {}}
       focusedEntityId={null}
       onExitFocus={() => {}}
+      expandedEntityId={null}
+      onExpandedEntityChange={() => {}}
       waitingForProcesses={false}
       crateItems={[
         { id: "crate-a", label: "crate-a", meta: 1 },

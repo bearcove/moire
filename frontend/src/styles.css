@@ -72,6 +72,43 @@
     --shadow-strong: rgba(0, 0, 0, 0.45);
     --shadow-popover: 0 14px 30px var(--shadow-strong);
 
+    /* Shared radius for container/track elements (filter inputs, scope groups) */
+    --radius-container: 8px;
+
+    /* Shared elevation shadow base — tinted with theme bg for visual warmth */
+    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
+
+    /* sm: chips, segmented selected options */
+    --shadow-elevation-sm:
+        0 1px 2px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
+            ),
+        0 2px 4px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
+            );
+
+    /* md: node cards in graph (higher elevation, 3 layers) */
+    --shadow-elevation-md:
+        0 1px 2px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
+            ),
+        0 3px 6px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
+            ),
+        0 6px 12px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 8%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 16%, transparent)
+            );
+
     --edge-stroke-default: light-dark(var(--border-default), var(--border-subtle));
     --edge-stroke-muted: var(--border-subtle);
 

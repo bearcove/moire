@@ -24,6 +24,7 @@ export type GraphFilterParseResult = {
   includeModules: Set<string>;
   excludeModules: Set<string>;
   focusedNodeId?: string;
+  expandedNodeId?: string;
   showLoners?: boolean;
   colorBy?: GraphFilterMode;
   groupBy?: GraphFilterMode;
@@ -159,6 +160,7 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
   let labelBy: GraphFilterLabelMode | undefined;
   let showLoners: boolean | undefined;
   let focusedNodeId: string | undefined;
+  let expandedNodeId: string | undefined;
 
   for (const raw of tokens) {
     const colon = raw.indexOf(":");
@@ -231,6 +233,11 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         focusedNodeId = value;
         valid = true;
       }
+    } else if (keyLower === "expand") {
+      if (!isPlaceholderValue) {
+        expandedNodeId = value;
+        valid = true;
+      }
     }
 
     parsed.push({ raw, key, value: valueRaw, valid });
@@ -251,6 +258,7 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     includeModules,
     excludeModules,
     focusedNodeId,
+    expandedNodeId,
     showLoners,
     colorBy,
     groupBy,
@@ -528,6 +536,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { token: "+", description: "Include only filter", applyToken: "+" },
       { token: "-", description: "Exclude everything matching this filter", applyToken: "-" },
       { token: "focus:<id>", description: "Focus connected subgraph from one node", applyToken: "focus:" },
+      { token: "expand:<id>", description: "Expand a node to show its full frame list", applyToken: "expand:" },
       { token: "loners:on", description: "Show unconnected nodes" },
       { token: "loners:off", description: "Hide unconnected nodes" },
       { token: "colorBy:process", description: "Color nodes by process" },
@@ -575,6 +584,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "loners:on", label: "Show unconnected nodes" },
       { key: "loners:off", label: "Hide unconnected nodes" },
       { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
+      { key: "expand:<id>", label: "Expand a node to show its full frame list", applyToken: "expand:" },
       { key: "colorBy:process", label: "Color nodes by process" },
       { key: "colorBy:crate", label: "Color nodes by crate" },
       { key: "groupBy:process", label: "Group by process subgraphs" },
@@ -703,6 +713,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
         { key: "labelBy:process", label: "Show process name on each card" },
         { key: "labelBy:location", label: "Show source location on each card" },
         { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
+        { key: "expand:<id>", label: "Expand a node to show its full frame list", applyToken: "expand:" },
       ];
   for (const entry of sortedMatches(fallbackKeys, signed ? unsignedLower : lowerFragment, (v) => `${v.key} ${v.label}`)) {
     uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);

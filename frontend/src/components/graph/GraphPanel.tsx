@@ -37,6 +37,8 @@ export function GraphPanel({
   onSelect,
   focusedEntityId,
   onExitFocus,
+  expandedEntityId,
+  onExpandedEntityChange,
   waitingForProcesses,
   crateItems,
   processItems,
@@ -64,6 +66,8 @@ export function GraphPanel({
   onSelect: (sel: GraphSelection) => void;
   focusedEntityId: string | null;
   onExitFocus: () => void;
+  expandedEntityId: string | null;
+  onExpandedEntityChange: (id: string | null) => void;
   waitingForProcesses: boolean;
   crateItems: FilterMenuItem[];
   processItems: FilterMenuItem[];
@@ -85,7 +89,10 @@ export function GraphPanel({
   floatingFilterBar?: boolean;
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
+  const expandedNodeIds = useMemo(
+    () => (expandedEntityId ? new Set([expandedEntityId]) : new Set<string>()),
+    [expandedEntityId],
+  );
   // Optimistic size override for the expanding node, applied while ELK re-layout is in flight.
   const [pendingExpandOverride, setPendingExpandOverride] = useState<{
     id: string;
@@ -250,9 +257,10 @@ export function GraphPanel({
         onAppendFilterToken={onAppendFilterToken}
         ghostNodeIds={unionFrameLayout?.ghostNodeIds}
         ghostEdgeIds={unionFrameLayout?.ghostEdgeIds}
-        onExpandedNodesChange={(ids) => {
-          if (ids.size === 0) setPendingExpandOverride(null);
-          setExpandedNodeIds(ids);
+        expandedNodeId={expandedEntityId}
+        onExpandedNodeChange={(id) => {
+          if (!id) setPendingExpandOverride(null);
+          onExpandedEntityChange(id);
         }}
         onExpandedNodeMeasured={handleExpandedNodeMeasured}
       />

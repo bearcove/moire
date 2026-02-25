@@ -14,25 +14,7 @@
 
     transition: all 0.1s ease-in-out;
     --graph-code-card-width: 600px;
-
-    /* Layered elevation shadow — tinted with bg hue (Josh Comeau technique) */
-    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
-    box-shadow:
-        0 1px 2px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
-            ),
-        0 3px 6px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
-            ),
-        0 6px 12px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 8%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 16%, transparent)
-            );
+    box-shadow: var(--shadow-elevation-md);
 }
 
 /*.graph-card--scope {
@@ -89,7 +71,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    font-size: var(--font-size-xs);
+    font-size: var(--font-size-sm);
     font-weight: 400;
     min-width: 0;
 }

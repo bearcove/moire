@@ -35,19 +35,7 @@
     background: var(--bg-elevated);
     color: var(--text-primary);
     border-color: transparent;
-
-    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
-    box-shadow:
-        0 1px 2px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
-            ),
-        0 2px 4px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
-            );
+    box-shadow: var(--shadow-elevation-sm);
 }
 
 .ui-segmented-option[data-focus-visible] {
