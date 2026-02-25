@@ -32,7 +32,7 @@
     z-index: 1;
     background: var(--bg-elevated);
     color: var(--text-primary);
-    border-color: var(--border-subtle);
+    border-color: transparent;
 
     --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
     box-shadow:

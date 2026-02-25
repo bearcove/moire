@@ -6,24 +6,34 @@
     padding: 0 8px;
     height: var(--control-height);
     border-radius: var(--radius-control);
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-surface);
+    border: none;
+    background: var(--bg-elevated);
     color: var(--text-primary);
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
-    transition:
-        background-color 120ms ease,
-        border-color 120ms ease;
+    transition: background-color 120ms ease;
+
+    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
+    box-shadow:
+        0 1px 2px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
+            ),
+        0 2px 4px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
+            );
 }
 
 .ui-action-button:hover:not(.ui-action-button--primary):not(.ui-action-button--ghost) {
-    background: color-mix(in srgb, white 4%, var(--bg-surface));
-    border-color: var(--border-subtle);
+    background: color-mix(in oklab, var(--theme-fg) 6%, var(--bg-elevated));
 }
 
 .ui-action-button:active:not(.ui-action-button--primary):not(.ui-action-button--ghost) {
-    background: color-mix(in srgb, white 8%, var(--bg-surface));
+    background: color-mix(in oklab, var(--theme-fg) 10%, var(--bg-elevated));
 }
 
 .ui-action-button:focus-visible {
@@ -31,7 +41,6 @@
     box-shadow:
         0 0 0 1px var(--accent),
         0 0 0 3px var(--focus-ring);
-    border-color: var(--accent);
 }
 
 .ui-action-button[data-disabled] {
@@ -42,27 +51,25 @@
 .ui-action-button--primary {
     background: var(--accent);
     color: var(--accent-fg);
-    border-color: transparent;
+    box-shadow: none;
 }
 
 .ui-action-button--primary:hover {
-    background: var(--accent);
-    border-color: transparent;
+    background: var(--accent-hover);
 }
 
 .ui-action-button--primary:active {
-    background: var(--accent);
+    background: var(--accent-active);
 }
 
 .ui-action-button--ghost {
     background: transparent;
-    border-color: transparent;
     color: var(--text-secondary);
+    box-shadow: none;
 }
 
 .ui-action-button--ghost:hover {
-    background: color-mix(in srgb, white 4%, var(--bg-surface));
-    border-color: var(--border-subtle);
+    background: color-mix(in oklab, var(--theme-fg) 6%, var(--bg-elevated));
 }
 
 .ui-action-button--sm {

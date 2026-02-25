@@ -37,6 +37,7 @@ export function GraphViewport({
   ghostNodeIds,
   ghostEdgeIds,
   onExpandedNodesChange,
+  onExpandedNodeMeasured,
 }: {
   entityDefs: EntityDef[];
   snapPhase: "idle" | "cutting" | "loading" | "ready" | "error";
@@ -55,6 +56,7 @@ export function GraphViewport({
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
   onExpandedNodesChange?: (expandedIds: Set<string>) => void;
+  onExpandedNodeMeasured?: (id: string, width: number, height: number) => void;
 }) {
   const effectiveGhostNodeIds = useMemo(() => {
     return ghostNodeIds;
@@ -255,6 +257,7 @@ export function GraphViewport({
               nodes={nodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
+              onExpandedNodeMeasured={onExpandedNodeMeasured}
               onNodeHover={(id) => {
                 if (id) {
                   // If a node is already expanded, hover on other nodes is blocked.
