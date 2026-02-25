@@ -10,6 +10,7 @@ import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, GeometryGroup, GeometryNode } from "../../graph/geometry";
+import { interpolateGraph, type InterpolatedGraph } from "../../graph/transition";
 import {
   ContextMenu,
   ContextMenuItem,
@@ -18,6 +19,19 @@ import {
 
 // Node interaction states: absent = collapsed, "expanding" = loading in progress, "expanded" = fully expanded
 export type NodeExpandState = "expanding" | "expanded";
+
+type GraphTransitionState = {
+  startedAtMs: number;
+  durationMs: number;
+  fromGeometry: GraphGeometry;
+  toGeometry: GraphGeometry;
+  fromNodes: GeometryNode[];
+  toNodes: GeometryNode[];
+  fromGroups: GeometryGroup[];
+  toGroups: GeometryGroup[];
+};
+
+const GRAPH_TRANSITION_DURATION_MS = 220;
 
 export function GraphViewport({
   entityDefs,
@@ -70,7 +84,107 @@ export function GraphViewport({
     return ghostEdgeIds;
   }, [ghostEdgeIds]);
 
-  const portAnchors = geometry?.portAnchors ?? new Map();
+  const [interpolatedGraph, setInterpolatedGraph] = useState<InterpolatedGraph | null>(() =>
+    geometry ? { geometry, nodes, groups } : null,
+  );
+  const interpolatedGraphRef = useRef<InterpolatedGraph | null>(interpolatedGraph);
+  const transitionRef = useRef<GraphTransitionState | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    interpolatedGraphRef.current = interpolatedGraph;
+  }, [interpolatedGraph]);
+
+  useEffect(() => {
+    if (!geometry) {
+      transitionRef.current = null;
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      setInterpolatedGraph(null);
+      return;
+    }
+
+    const current = interpolatedGraphRef.current;
+    if (!current) {
+      setInterpolatedGraph({ geometry, nodes, groups });
+      return;
+    }
+
+    transitionRef.current = {
+      startedAtMs: performance.now(),
+      durationMs: GRAPH_TRANSITION_DURATION_MS,
+      fromGeometry: current.geometry,
+      toGeometry: geometry,
+      fromNodes: current.nodes,
+      toNodes: nodes,
+      fromGroups: current.groups,
+      toGroups: groups,
+    };
+
+    const tick = () => {
+      const transition = transitionRef.current;
+      if (!transition) {
+        rafRef.current = null;
+        return;
+      }
+
+      const elapsedMs = performance.now() - transition.startedAtMs;
+      const t = Math.max(0, Math.min(1, elapsedMs / transition.durationMs));
+
+      if (t >= 1) {
+        setInterpolatedGraph({
+          geometry: transition.toGeometry,
+          nodes: transition.toNodes,
+          groups: transition.toGroups,
+        });
+        transitionRef.current = null;
+        rafRef.current = null;
+        return;
+      }
+
+      try {
+        setInterpolatedGraph(
+          interpolateGraph(
+            transition.fromGeometry,
+            transition.toGeometry,
+            transition.fromNodes,
+            transition.toNodes,
+            transition.fromGroups,
+            transition.toGroups,
+            t,
+          ),
+        );
+      } catch (error) {
+        console.error(error);
+        setInterpolatedGraph({
+          geometry: transition.toGeometry,
+          nodes: transition.toNodes,
+          groups: transition.toGroups,
+        });
+        transitionRef.current = null;
+        rafRef.current = null;
+        return;
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+  }, [geometry, nodes, groups]);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  const renderedGeometry = interpolatedGraph?.geometry ?? geometry;
+  const renderedNodes = interpolatedGraph?.nodes ?? nodes;
+  const renderedGroups = interpolatedGraph?.groups ?? groups;
+  const portAnchors = renderedGeometry?.portAnchors ?? new Map();
   const [hasFitted, setHasFitted] = useState(false);
   const graphFlowRef = useRef<HTMLDivElement | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = useState<{
@@ -232,7 +346,7 @@ export function GraphViewport({
           );
         })()}
       <GraphCanvas
-        geometry={geometry}
+        geometry={renderedGeometry}
         onBackgroundClick={() => {
           closeNodeContextMenu();
           // Clear non-pinned expand states on background click
@@ -246,11 +360,11 @@ export function GraphViewport({
           suppressAutoFit={unionModeSuppressAutoFit && hasFitted}
         />
         <NodeExpandPanner nodes={nodes} nodeExpandStates={nodeExpandStates} />
-        {geometry && (
+        {renderedGeometry && (
           <>
-            <GroupLayer groups={groups} />
+            <GroupLayer groups={renderedGroups} />
             <EdgeLayer
-              edges={geometry.edges}
+              edges={renderedGeometry.edges}
               selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
               ghostEdgeIds={effectiveGhostEdgeIds}
               portAnchors={portAnchors}
@@ -260,7 +374,7 @@ export function GraphViewport({
               }}
             />
             <NodeLayer
-              nodes={nodes}
+              nodes={renderedNodes}
               prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}

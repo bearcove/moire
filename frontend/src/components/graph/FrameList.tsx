@@ -46,7 +46,7 @@ export function FrameList({
 
   return (
     <>
-      <div className={hasSystemFrames ? "graph-node-frames-scroll" : undefined}>
+      <div className="graph-node-frames-scroll">
         <div className="graph-node-frames">
           {effectiveFrames.map((frame) => (
             <FrameLine
