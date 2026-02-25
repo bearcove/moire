@@ -173,6 +173,10 @@
     width: 100%;
 }
 
+.graph-node-loading-shell--source {
+    width: var(--graph-code-card-width);
+}
+
 .graph-node-frame--text {
     color: var(--text-secondary);
 }

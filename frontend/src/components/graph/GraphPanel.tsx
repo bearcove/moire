@@ -132,10 +132,7 @@ export function GraphPanel({
   const expandedKey = [...expandedNodeIds].sort().join(",");
   const layoutInputsKey = useMemo(() => {
     const entityKey = entityDefs
-      .map(
-        (entity) =>
-          `${entity.id}:${entity.name}:${entity.kind}:${entity.framesLoading ? 1 : 0}:${entity.frames.length}:${entity.allFrames.length}:${entity.topFrame?.frame_id ?? ""}`,
-      )
+      .map((entity) => `${entity.id}:${entity.name}:${entity.kind}`)
       .join("|");
     const edgeKey = edgeDefs.map((edge) => `${edge.id}:${edge.source}->${edge.target}`).join("|");
     return `${entityKey}::${edgeKey}::${subgraphScopeMode}::${labelByMode ?? ""}::${showSource ? "1" : "0"}::${expandedKey}`;

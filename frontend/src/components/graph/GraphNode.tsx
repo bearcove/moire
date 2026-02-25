@@ -158,6 +158,7 @@ export function GraphNode({
 
   const effectiveFrames =
     data.skipEntryFrames > 0 ? data.frames.slice(data.skipEntryFrames) : data.frames;
+  const collapsedFrameSlotCount = collapsedFrameCount(data.kind);
   const visibleFrames = expanded
     ? effectiveFrames
     : pickCollapsedFrames(data.kind, effectiveFrames);
@@ -259,7 +260,7 @@ export function GraphNode({
       } as React.CSSProperties)
     : undefined;
 
-  const isLoading = expanding || collapsedSourceLoading || data.framesLoading;
+  const isLoading = expanding || collapsedSourceLoading;
 
   return (
     <div
@@ -320,6 +321,7 @@ export function GraphNode({
           data={data}
           expanded={expanded}
           collapsedShowSource={collapsedShowSource}
+          collapsedFrameSlotCount={collapsedFrameSlotCount}
           collapsedFrames={visibleFrames}
         />
       </div>

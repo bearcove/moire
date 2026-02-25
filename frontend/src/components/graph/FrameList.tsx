@@ -7,6 +7,7 @@ type FrameListProps = {
   data: GraphNodeData;
   expanded: boolean;
   collapsedShowSource: boolean;
+  collapsedFrameSlotCount: number;
   /** Frames to show in collapsed mode (pre-sliced by caller). */
   collapsedFrames: GraphFrameData[];
 };
@@ -15,6 +16,7 @@ export function FrameList({
   data,
   expanded,
   collapsedShowSource,
+  collapsedFrameSlotCount,
   collapsedFrames,
 }: FrameListProps) {
   const [showSystem, setShowSystem] = useState(false);
@@ -26,8 +28,12 @@ export function FrameList({
 
   if (!expanded) {
     if (collapsedFrames.length === 0) {
-      if (data.framesLoading) {
-        return <div className="graph-node-loading-shell">{loadingPlaceholder}</div>;
+      if (data.framesLoading && collapsedShowSource && collapsedFrameSlotCount > 0) {
+        return (
+          <div className="graph-node-loading-shell graph-node-loading-shell--source">
+            {loadingPlaceholder}
+          </div>
+        );
       }
       return null;
     }
@@ -54,7 +60,15 @@ export function FrameList({
   return (
     <>
       <div className="graph-node-frames-scroll">
-        <div className={hasFrames ? "graph-node-frames" : "graph-node-loading-shell"}>
+        <div
+          className={
+            hasFrames
+              ? "graph-node-frames"
+              : data.showSource
+                ? "graph-node-loading-shell graph-node-loading-shell--source"
+                : "graph-node-loading-shell"
+          }
+        >
           {hasFrames
             ? effectiveFrames.map((frame) => (
                 <FrameLine
