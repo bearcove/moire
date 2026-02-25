@@ -145,7 +145,7 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
   );
 }
 
-export function GraphNode({ data, expanded = false }: { data: GraphNodeData; expanded?: boolean }) {
+export function GraphNode({ data, expanded = false, pinned = false }: { data: GraphNodeData; expanded?: boolean; pinned?: boolean }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
@@ -167,6 +167,7 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
         "graph-card",
         "graph-node",
         expanded && "graph-node--expanded",
+        pinned && "graph-node--pinned",
         data.inCycle && "graph-node--cycle",
         data.statTone === "crit" && "graph-card--stat-crit",
         data.statTone === "warn" && "graph-card--stat-warn",

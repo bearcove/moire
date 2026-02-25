@@ -4,7 +4,11 @@ import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
 import { GraphNode, collapsedFrameCount } from "../../components/graph/GraphNode";
-import { graphNodeDataFromEntity, computeNodeSublabel, type GraphNodeData } from "../../components/graph/graphNodeData";
+import {
+  graphNodeDataFromEntity,
+  computeNodeSublabel,
+  type GraphNodeData,
+} from "../../components/graph/graphNodeData";
 import { canonicalNodeKind } from "../../nodeKindSpec";
 import { scopeKindIcon } from "../../scopeKindSpec";
 import type { GraphFilterLabelMode } from "../../graphFilter";
@@ -92,12 +96,15 @@ export async function measureGraphLayout(
     const isPinned = pinnedNodeIds?.has(def.id) ?? false;
     // During measurement, useSourceLine hooks won't fire (sync render),
     // so frame lines show fn·file:line fallback text — same height as final.
-    flushSync(() => root.render(
-      <GraphNode
-        data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
-        expanded={isPinned}
-      />
-    ));
+    flushSync(() =>
+      root.render(
+        <GraphNode
+          data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
+          expanded={isPinned}
+          pinned={isPinned}
+        />,
+      ),
+    );
     sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
     root.unmount();
   }
@@ -114,9 +121,7 @@ export async function measureGraphLayout(
         <div className="scope-group" style={{ width: 320 }}>
           <div className="scope-group-header">
             <span className="scope-group-label">
-              <span className="scope-group-icon">
-                {scopeKindIcon(subgraphScopeMode, 12)}
-              </span>
+              <span className="scope-group-icon">{scopeKindIcon(subgraphScopeMode, 12)}</span>
               <span>{sampleLabel}</span>
             </span>
           </div>
@@ -143,17 +148,14 @@ export function NodeLayer({
   onNodeHover,
   ghostNodeIds,
 }: NodeLayerProps) {
-
   if (nodes.length === 0) return null;
 
   // Render expanded/pinned nodes last so they paint on top (SVG has no z-index).
   const expandedId = nodeExpandStates
-    ? [...nodeExpandStates].find(([, s]) => s === "expanded")?.[0] ?? null
+    ? ([...nodeExpandStates].find(([, s]) => s === "expanded")?.[0] ?? null)
     : null;
   const ordered = expandedId
-    ? [...nodes].sort((a, b) =>
-        a.id === expandedId ? 1 : b.id === expandedId ? -1 : 0,
-      )
+    ? [...nodes].sort((a, b) => (a.id === expandedId ? 1 : b.id === expandedId ? -1 : 0))
     : nodes;
 
   return (
@@ -162,11 +164,13 @@ export function NodeLayer({
         const { x, y, width, height } = node.worldRect;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
         const expandState = nodeExpandStates?.get(node.id);
-        const isExpanded = expandState === "expanded" || expandState === "pinned";
+        const isPinned = expandState === "pinned";
+        const isExpanded = expandState === "expanded" || isPinned;
         const cardContent = (
           <GraphNode
             data={{ ...(node.data as GraphNodeData), ghost: isGhost }}
             expanded={isExpanded}
+            pinned={isPinned}
           />
         );
 

@@ -39,12 +39,10 @@ export function GroupLayer({ groups }: GroupLayerProps) {
                     } as React.CSSProperties)
                   : undefined
               }
-              >
+            >
               <div className="scope-group-header">
                 <span className="scope-group-label">
-                  <span className="scope-group-icon">
-                    {scopeKindIcon(group.scopeKind, 12)}
-                  </span>
+                  <span className="scope-group-icon">{scopeKindIcon(group.scopeKind, 12)}</span>
                   <span>{group.label}</span>
                 </span>
               </div>

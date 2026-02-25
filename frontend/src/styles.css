@@ -50,7 +50,7 @@
 
     --border-default: color-mix(in oklab, var(--theme-fg) 80%, var(--theme-bg));
     --border-subtle: color-mix(in oklab, var(--theme-fg) 25%, var(--theme-bg));
-    --border-edge:   color-mix(in oklab, var(--theme-fg) 10%, var(--theme-bg));
+    --border-edge: color-mix(in oklab, var(--theme-fg) 10%, var(--theme-bg));
 
     --text-primary: var(--theme-fg);
     --text-secondary: light-dark(#3a3a3a, #e0e0e0);
@@ -87,7 +87,8 @@ input {
     font-family: var(--font-ui);
 }
 
-* {
+*,
+foreignObject * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;

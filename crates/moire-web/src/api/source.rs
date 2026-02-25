@@ -117,6 +117,42 @@ fn arborium_language(path: &str) -> Option<&'static str> {
     }
 }
 
+static RUSTC_SYSROOT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+fn rustc_sysroot() -> Option<&'static str> {
+    RUSTC_SYSROOT
+        .get_or_init(|| {
+            let out = std::process::Command::new("rustc")
+                .arg("--print")
+                .arg("sysroot")
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            Some(String::from_utf8(out.stdout).ok()?.trim().to_owned())
+        })
+        .as_deref()
+}
+
+/// Remaps `/rustc/{hash}/...` paths to the rust-src component under the active sysroot.
+fn resolve_source_path(path: &str) -> std::borrow::Cow<'_, str> {
+    // Pattern: /rustc/<40-hex-chars>/rest
+    if let Some(after_rustc) = path.strip_prefix("/rustc/") {
+        if let Some(slash) = after_rustc.find('/') {
+            let hash = &after_rustc[..slash];
+            if hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+                let rest = &after_rustc[slash + 1..];
+                if let Some(sysroot) = rustc_sysroot() {
+                    let remapped = format!("{sysroot}/lib/rustlib/src/rust/{rest}");
+                    return std::borrow::Cow::Owned(remapped);
+                }
+            }
+        }
+    }
+    std::borrow::Cow::Borrowed(path)
+}
+
 fn html_escape(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -170,8 +206,10 @@ fn lookup_source_in_db(
 
     let target_col = row.source_col.and_then(|col| u32::try_from(col).ok());
 
-    let content = std::fs::read_to_string(&source_file_path)
-        .map_err(|error| format!("read source file {source_file_path}: {error}"))?;
+    let resolved_path = resolve_source_path(&source_file_path);
+
+    let content = std::fs::read_to_string(resolved_path.as_ref())
+        .map_err(|error| format!("read source file {resolved_path}: {error}"))?;
 
     let total_lines = u32::try_from(content.lines().count()).unwrap_or(u32::MAX);
 
