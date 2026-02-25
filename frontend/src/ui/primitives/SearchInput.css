@@ -31,6 +31,7 @@
     width: 22px;
     height: 22px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     border: none;
     background: transparent;
     color: var(--text-secondary);
@@ -48,6 +49,7 @@
 .ui-search-results {
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-surface);
     padding: 2px;
 }
@@ -59,6 +61,7 @@
     overflow: auto;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-surface);
     box-shadow: 0 14px 30px var(--shadow-strong);
     z-index: 40;
@@ -105,6 +108,7 @@
 .ui-search-result-item {
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-surface);
     text-align: left;
     padding: 3px 6px;

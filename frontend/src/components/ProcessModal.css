@@ -11,6 +11,7 @@
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     width: min(760px, calc(100vw - 48px));
     max-height: 80vh;
     display: flex;

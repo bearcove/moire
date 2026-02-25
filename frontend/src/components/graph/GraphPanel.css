@@ -94,6 +94,9 @@
 }
 
 .graph-filter-input {
+    --_r: 10px;
+    --_p: 8px;
+
     width: 100%;
     height: 44px;
     display: flex;
@@ -105,16 +108,17 @@
     row-gap: 0;
     gap: 6px;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--_r);
+    corner-shape: squircle;
     background: var(--bg-base);
-    padding: 1px 6px;
+    padding: 1px var(--_p);
     box-sizing: border-box;
-    box-shadow: inset 0 1px 3px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.35));
+    box-shadow: inset 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.35));
 }
 
 .graph-filter-input:focus-within {
     box-shadow:
-        inset 0 1px 3px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.35)),
+        inset 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.35)),
         0 0 0 2px var(--focus-ring);
 }
 
@@ -138,7 +142,8 @@
     color: var(--text-secondary);
     background: var(--bg-elevated);
     border: none;
-    border-radius: var(--radius-control);
+    border-radius: calc(var(--_r, 10px) - var(--_p, 6px));
+    corner-shape: squircle;
     padding: 1px 7px;
     pointer-events: none;
     flex-shrink: 0;
@@ -150,7 +155,8 @@
     align-items: stretch;
     gap: 0;
     border: none;
-    border-radius: var(--radius-control);
+    border-radius: calc(var(--_r, 10px) - var(--_p, 6px));
+    corner-shape: squircle;
     font-size: var(--font-size-sm);
     font-family: var(--font-mono);
     background: var(--bg-elevated);
@@ -179,6 +185,7 @@
     background: transparent;
     border: none;
     border-radius: calc(var(--radius-control) - 1px) 0 0 calc(var(--radius-control) - 1px);
+    corner-shape: squircle;
     color: var(--accent);
     font: inherit;
     cursor: pointer;
@@ -194,6 +201,7 @@
     border: none;
     border: none;
     border-radius: 0 calc(var(--radius-control) - 1px) calc(var(--radius-control) - 1px) 0;
+    corner-shape: squircle;
     color: var(--text-tertiary);
     font: inherit;
     line-height: 1;
@@ -232,6 +240,7 @@
     overflow-x: hidden;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);

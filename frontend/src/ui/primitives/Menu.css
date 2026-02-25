@@ -24,6 +24,7 @@
     min-width: 180px;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: color-mix(in srgb, var(--bg-elevated) 54%, var(--bg-base));
     box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow-strong) 72%, transparent);
     padding: 0;
@@ -49,6 +50,7 @@
     width: 100%;
     box-sizing: border-box;
     border-radius: 0;
+    corner-shape: squircle;
     background: transparent;
     color: var(--text-primary);
     text-align: left;

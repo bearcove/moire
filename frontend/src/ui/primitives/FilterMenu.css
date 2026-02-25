@@ -22,12 +22,14 @@
     font-weight: 600;
     padding: 0 4px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .ui-filter-popover {
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: color-mix(in srgb, var(--bg-elevated) 54%, var(--bg-base));
     box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow-strong) 75%, transparent);
     padding: 0;
@@ -41,6 +43,7 @@
 
 .ui-filter-setting-row {
     border-radius: 0;
+    corner-shape: squircle;
     padding: 6px 10px;
     margin: 0;
 }
@@ -75,6 +78,7 @@
 
 .ui-filter-item {
     border-radius: 0;
+    corner-shape: squircle;
     background: transparent;
 }
 
@@ -110,6 +114,7 @@
     width: 12px;
     height: 12px;
     border-radius: 3px;
+    corner-shape: squircle;
     border: 1px solid var(--border-default);
     display: inline-block;
 }

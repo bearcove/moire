@@ -7,6 +7,7 @@
 .ui-section-body {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-surface);
     padding: 10px;
 }
@@ -58,4 +59,5 @@
 .ui-section-stack > .ui-key-value-row {
     padding: 3px 6px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
 }

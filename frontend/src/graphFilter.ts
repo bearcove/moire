@@ -25,7 +25,6 @@ export type GraphFilterParseResult = {
   excludeModules: Set<string>;
   focusedNodeId?: string;
   showLoners?: boolean;
-  showSource?: boolean;
   colorBy?: GraphFilterMode;
   groupBy?: GraphFilterMode;
   labelBy?: GraphFilterLabelMode;
@@ -159,7 +158,6 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
   let groupBy: GraphFilterMode | undefined;
   let labelBy: GraphFilterLabelMode | undefined;
   let showLoners: boolean | undefined;
-  let showSource: boolean | undefined;
   let focusedNodeId: string | undefined;
 
   for (const raw of tokens) {
@@ -211,14 +209,6 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         showLoners = false;
         valid = true;
       }
-    } else if (keyLower === "source") {
-      if (value === "on") {
-        showSource = true;
-        valid = true;
-      } else if (value === "off") {
-        showSource = false;
-        valid = true;
-      }
     } else if (keyLower === "colorby") {
       if (value === "process" || value === "crate") {
         colorBy = value;
@@ -262,7 +252,6 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     excludeModules,
     focusedNodeId,
     showLoners,
-    showSource,
     colorBy,
     groupBy,
     labelBy,
@@ -541,8 +530,6 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { token: "focus:<id>", description: "Focus connected subgraph from one node", applyToken: "focus:" },
       { token: "loners:on", description: "Show unconnected nodes" },
       { token: "loners:off", description: "Hide unconnected nodes" },
-      { token: "source:on", description: "Show source code on cards" },
-      { token: "source:off", description: "Hide source code on cards" },
       { token: "colorBy:process", description: "Color nodes by process" },
       { token: "colorBy:crate", description: "Color nodes by crate" },
       { token: "groupBy:process", description: "Group by process subgraphs" },
@@ -587,8 +574,6 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "-module:<path>", label: "Exclude matching module paths", applyToken: "-module:" },
       { key: "loners:on", label: "Show unconnected nodes" },
       { key: "loners:off", label: "Hide unconnected nodes" },
-      { key: "source:on", label: "Show source code on cards" },
-      { key: "source:off", label: "Hide source code on cards" },
       { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
       { key: "colorBy:process", label: "Color nodes by process" },
       { key: "colorBy:crate", label: "Color nodes by crate" },
@@ -710,8 +695,6 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     : [
         { key: "loners:on", label: "Show unconnected nodes" },
         { key: "loners:off", label: "Hide unconnected nodes" },
-        { key: "source:on", label: "Show source code on cards" },
-        { key: "source:off", label: "Hide source code on cards" },
         { key: "colorBy:process", label: "Color nodes by process" },
         { key: "colorBy:crate", label: "Color nodes by crate" },
         { key: "groupBy:process", label: "Group by process subgraphs" },

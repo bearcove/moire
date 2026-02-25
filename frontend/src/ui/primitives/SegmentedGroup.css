@@ -6,6 +6,7 @@
     gap: 2px;
     background: var(--bg-base);
     border-radius: calc(var(--radius-control) + 2px);
+    corner-shape: squircle;
     padding: 2px;
 }
 
@@ -16,6 +17,7 @@
     padding: 0 8px;
     height: calc(var(--control-height) - 4px);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;

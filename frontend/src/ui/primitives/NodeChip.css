@@ -8,6 +8,7 @@
     padding: 0 8px;
     height: var(--control-height-sm);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     border: 1px solid var(--border-default);
     background: var(--bg-elevated);
     font-size: var(--font-size-sm);

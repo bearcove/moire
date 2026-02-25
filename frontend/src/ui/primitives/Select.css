@@ -7,6 +7,7 @@
     padding: 0 8px;
     min-width: 140px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     border: 1px solid var(--border-default);
     background: var(--bg-surface);
     color: inherit;
@@ -34,6 +35,7 @@
     min-width: var(--trigger-width);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: color-mix(in srgb, var(--bg-elevated) 54%, var(--bg-base));
     box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow-strong) 72%, transparent);
     padding: 3px;
@@ -49,6 +51,7 @@
 
 .ui-select-item {
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     color: inherit;
     font-size: var(--font-size-sm);
     padding: 4px 8px;

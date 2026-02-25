@@ -3,6 +3,7 @@
     --graph-card-border-color: transparent;
     --graph-card-border-width: var(--graph-border-width);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     font-family: var(--font-ui);
     white-space: nowrap;
     background: var(--graph-card-bg);
@@ -321,6 +322,7 @@
     line-height: 1.3;
     height: 1lh;
     border-radius: 3px;
+    corner-shape: squircle;
     background: linear-gradient(
         90deg,
         var(--border-subtle) 25%,

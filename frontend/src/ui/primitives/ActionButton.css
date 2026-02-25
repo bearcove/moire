@@ -6,6 +6,7 @@
     padding: 0 8px;
     height: var(--control-height);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     border: none;
     background: var(--bg-elevated);
     color: var(--text-primary);

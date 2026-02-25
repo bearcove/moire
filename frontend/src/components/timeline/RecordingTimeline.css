@@ -73,6 +73,7 @@
     height: var(--control-height-sm);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
@@ -110,6 +111,7 @@
     padding: 2px 4px;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-surface);
     color: var(--text-secondary);
     cursor: pointer;

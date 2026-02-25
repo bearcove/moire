@@ -5,6 +5,7 @@
     color: var(--text-secondary);
     padding: 1px 6px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-elevated);
     display: inline-flex;
     align-items: center;
@@ -65,6 +66,7 @@
     min-width: 28px;
     text-align: center;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     padding: 1px 8px;
     border: 1px solid var(--border-subtle);
     font-size: var(--font-size-sm);
@@ -81,6 +83,7 @@
     font-weight: 600;
     padding: 0 4px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
 }
 
 .waiter-badge--active {

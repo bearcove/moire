@@ -6,6 +6,7 @@
     flex-direction: column;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-elevated);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow-strong) 72%, transparent);
     overflow: hidden;
@@ -19,6 +20,7 @@
     text-align: left;
     padding: 4px 8px;
     border-radius: 0;
+    corner-shape: squircle;
     font-size: var(--font-size-sm);
     cursor: pointer;
     display: flex;

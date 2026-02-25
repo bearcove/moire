@@ -1,6 +1,7 @@
 .ui-table {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-surface);
 }
 

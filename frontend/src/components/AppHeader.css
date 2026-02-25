@@ -38,6 +38,7 @@
     font-weight: 600;
     padding: 2px 8px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--bg-elevated);
     color: var(--text-secondary);
 }
@@ -85,6 +86,7 @@
     font-weight: 700;
     padding: 2px 8px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     border: none;
     cursor: pointer;
     font-family: var(--font-ui);
@@ -110,6 +112,7 @@
     width: 6px;
     height: 6px;
     border-radius: var(--radius-control);
+    corner-shape: squircle;
     background: var(--status-danger);
     flex-shrink: 0;
     animation: pulse-danger 1.5s ease-in-out infinite;

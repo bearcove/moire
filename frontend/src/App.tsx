@@ -154,7 +154,7 @@ export function App() {
 const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const DEFAULT_FILTER = "colorBy:crate groupBy:process source:on";
+  const DEFAULT_FILTER = "colorBy:crate groupBy:process";
   const graphFilterText = searchParams.get("filter") ?? DEFAULT_FILTER;
   const setGraphFilterText = useCallback((next: string) => {
     setSearchParams((prev) => {
@@ -198,7 +198,6 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
   const effectiveHiddenProcesses = graphTextFilters.excludeProcesses;
   const effectiveHiddenKinds = graphTextFilters.excludeKinds;
   const effectiveShowLoners = graphTextFilters.showLoners ?? true;
-  const effectiveShowSource = graphTextFilters.showSource ?? false;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
   const effectiveLabelBy = graphTextFilters.labelBy;
@@ -1284,7 +1283,7 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
                 scopeColorMode={effectiveScopeColorMode}
                 subgraphScopeMode={effectiveSubgraphScopeMode}
                 labelByMode={effectiveLabelBy}
-                showSource={effectiveShowSource}
+                showSource={true}
                 scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
                 onClearScopeFilter={() => setScopeEntityFilter(null)}
                 unionFrameLayout={unionFrameLayout}
