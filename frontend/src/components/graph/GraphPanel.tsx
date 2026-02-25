@@ -12,6 +12,7 @@ import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
 import { computeNodeSublabel } from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
+import { cachedFetchSourcePreview } from "../../api/sourceCache";
 import "./GraphPanel.css";
 
 export type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
@@ -24,6 +25,27 @@ function scopeKeyForEntity(entity: EntityDef, scopeColorMode: ScopeColorMode): s
   if (scopeColorMode === "process") return entity.processId;
   if (scopeColorMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
   return undefined;
+}
+
+async function preloadExpandedSourcePreviews(
+  defs: EntityDef[],
+  expandedNodeIds: Set<string>,
+  showSource?: boolean,
+): Promise<void> {
+  if (!showSource) return;
+  if (expandedNodeIds.size === 0) return;
+
+  const frameIds = new Set<number>();
+  for (const def of defs) {
+    if (!expandedNodeIds.has(def.id)) continue;
+    const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
+    for (const frame of def.frames.slice(skipEntryFrames)) {
+      if (frame.frame_id != null) frameIds.add(frame.frame_id);
+    }
+  }
+  if (frameIds.size === 0) return;
+
+  await Promise.all([...frameIds].map((frameId) => cachedFetchSourcePreview(frameId)));
 }
 
 export function GraphPanel({
@@ -112,8 +134,19 @@ export function GraphPanel({
     // Mark the newly-requested node as "expanding" so the UI shows a spinner immediately.
     setExpandingNodeId(runExpandedEntityId);
 
-    void measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode, showSource, expandedNodeIds)
+    void preloadExpandedSourcePreviews(entityDefs, expandedNodeIds, showSource)
+      .then(() => {
+        if (cancelled || layoutRunIdRef.current !== runId) return null;
+        return measureGraphLayout(
+          entityDefs,
+          subgraphScopeMode,
+          labelByMode,
+          showSource,
+          expandedNodeIds,
+        );
+      })
       .then((measurements) => {
+        if (!measurements) return null;
         if (cancelled || layoutRunIdRef.current !== runId) return null;
         return layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
