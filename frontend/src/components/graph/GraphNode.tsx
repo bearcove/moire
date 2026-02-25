@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { kindIcon } from "../../nodeKindSpec";
 import {
@@ -30,7 +30,6 @@ function formatFileLocation(f: GraphFrameData): string {
 }
 
 function shortFnName(fn_name: string): string {
-  // Strip crate:: prefix and keep the last 2 segments
   const parts = fn_name.split("::");
   if (parts.length <= 2) return fn_name;
   return parts.slice(-2).join("::");
@@ -44,56 +43,47 @@ function stopPropagation(e: React.MouseEvent) {
   e.stopPropagation();
 }
 
-export function FrameLineCollapsed({
+export function FrameSep({ frame }: { frame: GraphFrameData }) {
+  const location = formatFileLocation(frame);
+  return (
+    <div className="graph-node-frame-sep">
+      {langIcon(frame.source_file, 16, "graph-node-frame-sep__icon")}
+      <span className="graph-node-frame-sep__name">{shortFnName(frame.function_name)}</span>
+      <a
+        className="graph-node-frame-sep__loc"
+        href={zedHref(frame.source_file, frame.line)}
+        onClick={stopPropagation}
+      >
+        {location}
+      </a>
+    </div>
+  );
+}
+
+export function FrameLine({
   frame,
+  expanded,
   showSource,
 }: {
   frame: GraphFrameData;
+  expanded: boolean;
   showSource?: boolean;
 }) {
-  const sourceHtml =
-    showSource && frame.frame_id != null ? getSourceLineSync(frame.frame_id) : undefined;
-  const location = formatFileLocation(frame);
+  const codeBlock = (() => {
+    if (!showSource || frame.frame_id == null) return null;
 
-  const content = (() => {
-    if (sourceHtml) {
+    if (!expanded) {
+      const lineHtml = getSourceLineSync(frame.frame_id);
+      if (!lineHtml) return null;
       return (
         <pre
           className="graph-node-frame arborium-hl"
-          dangerouslySetInnerHTML={{ __html: sourceHtml }}
+          dangerouslySetInnerHTML={{ __html: lineHtml }}
         />
       );
     }
-    return (
-      <pre className="graph-node-frame graph-node-frame--text">
-        <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
-        <span className="graph-node-frame-dot">&middot;</span>
-        <a
-          className="graph-node-frame-loc"
-          href={zedHref(frame.source_file, frame.line)}
-          onClick={stopPropagation}
-        >
-          {location}
-        </a>
-      </pre>
-    );
-  })();
 
-  return <div className="graph-node-frame-row graph-node-frame-row__collapsed">{content}</div>;
-}
-
-export function FrameLineExpanded({
-  frame,
-  showSource,
-}: {
-  frame: GraphFrameData;
-  showSource?: boolean;
-}) {
-  const preview =
-    showSource && frame.frame_id != null ? getSourcePreviewSync(frame.frame_id) : undefined;
-  const location = formatFileLocation(frame);
-
-  const codeBlock = (() => {
+    const preview = getSourcePreviewSync(frame.frame_id);
     if (!preview) return null;
     const useCtx = preview.context_html != null && preview.context_range != null;
     const rawLines = splitHighlightedHtml(useCtx ? preview.context_html! : preview.html);
@@ -138,17 +128,7 @@ export function FrameLineExpanded({
 
   return (
     <div className="graph-node-frame-section">
-      <div className="graph-node-frame-sep">
-        {langIcon(frame.source_file, 16, "graph-node-frame-sep__icon")}
-        <span className="graph-node-frame-sep__name">{shortFnName(frame.function_name)}</span>
-        <a
-          className="graph-node-frame-sep__loc"
-          href={zedHref(frame.source_file, frame.line)}
-          onClick={stopPropagation}
-        >
-          {location}
-        </a>
-      </div>
+      <FrameSep frame={frame} />
       {codeBlock}
     </div>
   );
@@ -184,8 +164,11 @@ export function GraphNode({
       .map((frame) => frame.frame_id)
       .filter((frameId): frameId is number => frameId != null);
   }, [expanded, collapsedShowSource, visibleFrames]);
-  const collapsedSourceFrameIdsKey = collapsedSourceFrameIds.join(",");
   const [collapsedSourceLoading, setCollapsedSourceLoading] = useState(false);
+  const framesShellRef = useRef<HTMLDivElement | null>(null);
+  const lastFramesShellHeightRef = useRef(0);
+  const prevExpandedRef = useRef(expanded);
+  const shellTransitionRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (collapsedSourceFrameIds.length === 0) {
@@ -210,17 +193,64 @@ export function GraphNode({
     return () => {
       cancelled = true;
     };
-  }, [collapsedSourceFrameIdsKey]);
-  const collapsedFramesMaxHeight = isFuture ? "2.2em" : "0px";
-  const cardStyle = {
-    "--graph-node-collapsed-frames-max-height": collapsedFramesMaxHeight,
-    ...(showScopeColor
-      ? {
-          "--scope-rgb-light": data.scopeRgbLight,
-          "--scope-rgb-dark": data.scopeRgbDark,
-        }
-      : {}),
-  } as React.CSSProperties;
+  }, [collapsedSourceFrameIds]);
+
+  useLayoutEffect(() => {
+    const el = framesShellRef.current;
+    if (!el) return;
+    const prevExpanded = prevExpandedRef.current;
+    if (prevExpanded === expanded) return;
+    prevExpandedRef.current = expanded;
+
+    const fromHeight = Math.max(0, lastFramesShellHeightRef.current);
+    const toHeight = Math.max(0, el.scrollHeight);
+    if (Math.abs(fromHeight - toHeight) < 0.5) return;
+
+    if (shellTransitionRafRef.current != null) {
+      cancelAnimationFrame(shellTransitionRafRef.current);
+      shellTransitionRafRef.current = null;
+    }
+
+    el.style.maxHeight = `${fromHeight}px`;
+    void el.offsetHeight;
+    shellTransitionRafRef.current = window.requestAnimationFrame(() => {
+      el.style.maxHeight = `${toHeight}px`;
+      shellTransitionRafRef.current = null;
+    });
+
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== "max-height") return;
+      el.style.maxHeight = "";
+      lastFramesShellHeightRef.current = el.getBoundingClientRect().height;
+      el.removeEventListener("transitionend", onTransitionEnd);
+    };
+
+    el.addEventListener("transitionend", onTransitionEnd);
+    return () => {
+      el.removeEventListener("transitionend", onTransitionEnd);
+    };
+  }, [expanded]);
+
+  useLayoutEffect(() => {
+    const el = framesShellRef.current;
+    if (!el) return;
+    lastFramesShellHeightRef.current = el.getBoundingClientRect().height;
+  });
+
+  useEffect(() => {
+    return () => {
+      if (shellTransitionRafRef.current != null) {
+        cancelAnimationFrame(shellTransitionRafRef.current);
+      }
+    };
+  }, []);
+
+  const cardStyle = showScopeColor
+    ? ({
+        "--scope-rgb-light": data.scopeRgbLight,
+        "--scope-rgb-dark": data.scopeRgbDark,
+      } as React.CSSProperties)
+    : undefined;
 
   const isLoading = expanding || collapsedSourceLoading;
 
@@ -278,11 +308,10 @@ export function GraphNode({
           {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
         </>
       )}
-      <div className="graph-node-frames-shell">
+      <div ref={framesShellRef} className="graph-node-frames-shell">
         <FrameList
           data={data}
           expanded={expanded}
-          isFuture={isFuture}
           collapsedShowSource={collapsedShowSource}
           collapsedFrames={visibleFrames}
         />

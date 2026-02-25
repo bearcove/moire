@@ -7,6 +7,7 @@
     gap: 8px;
     padding: 4px 0 2px;
     border-top: 1px solid var(--border-subtle);
+    padding: var(--graph-node-padding);
 }
 
 .frame-list-system-toggle {
@@ -31,4 +32,3 @@
     cursor: pointer;
     flex-shrink: 0;
 }
-

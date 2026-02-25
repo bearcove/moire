@@ -83,6 +83,7 @@ export async function measureGraphLayout(
   }
 
   const container = document.createElement("div");
+  container.className = "nl-measure-root";
   container.style.cssText =
     "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
   document.body.appendChild(container);
@@ -107,7 +108,14 @@ export async function measureGraphLayout(
             />,
           ),
         );
-        sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
+        const width = el.offsetWidth;
+        const height = el.offsetHeight;
+        if (width <= 0 || height <= 0) {
+          throw new Error(
+            `[graph-measure] invalid node size for ${def.id} (${def.kind}): ${width}x${height}`,
+          );
+        }
+        sizes.set(def.id, { width, height });
       } finally {
         root.unmount();
         container.removeChild(el);

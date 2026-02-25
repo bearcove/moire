@@ -2,7 +2,8 @@
     --graph-card-bg: var(--bg-elevated);
     --graph-card-border-color: transparent;
     --graph-card-border-width: var(--graph-border-width);
-    --graph-node-padding: 6px;
+    --graph-node-padding: 8px;
+
     border-radius: var(--radius-control);
     corner-shape: squircle;
     font-family: var(--font-ui);
@@ -13,7 +14,6 @@
     position: relative;
     overscroll-behavior: none;
 
-    transition: all 0.1s ease-in-out;
     --graph-code-card-width: 600px;
     box-shadow: var(--shadow-elevation-md);
 }
@@ -73,7 +73,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
     font-weight: 400;
     min-width: 0;
 }
@@ -132,20 +132,11 @@
 .graph-node-frames-shell {
     width: 100%;
     overflow: hidden;
-    max-height: var(--graph-node-collapsed-frames-max-height, 0px);
     transition: max-height 180ms ease-out;
 }
 
 .graph-node--expanded .graph-node-frames-shell {
     max-height: 40em;
-}
-
-.graph-node-frame-row {
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 4px;
-    padding: var(--graph-node-padding);
 }
 
 .graph-node-frame-icon {
@@ -206,26 +197,19 @@
     flex-direction: row;
     align-items: center;
     gap: 5px;
+    padding: var(--graph-node-padding);
+}
+
+.graph-node--expanded .graph-node-frame-sep {
     margin: 2px 0;
     position: sticky;
     top: -4px;
     background: var(--graph-card-bg);
     z-index: 1;
-    padding: var(--graph-node-padding);
 }
 
-.graph-node-frame-section:not(:first-child) .graph-node-frame-sep {
-    padding-top: 0.6em;
-    margin-top: 0.6em;
-}
-
-.graph-node-frame-section:not(:first-child) .graph-node-frame-sep::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -6px;
-    right: -6px;
-    border-top: 1px solid var(--border-subtle);
+.graph-node-frame-section > .graph-node-frame {
+    padding: 0 var(--graph-node-padding) var(--graph-node-padding);
 }
 
 .graph-node-frame-sep__icon {
@@ -240,7 +224,7 @@
 .graph-node-frame-sep__name {
     flex: 1;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -250,7 +234,7 @@
 .graph-node-frame-sep__loc {
     flex-shrink: 0;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     color: var(--text-tertiary);
     text-decoration: none;
     white-space: nowrap;
@@ -267,7 +251,7 @@
 .graph-node-frame-block {
     width: 100%;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     line-height: 1.4;
     margin: 0;
     padding: 0;

@@ -118,6 +118,8 @@ export function GraphPanel({
   const layoutRef = useRef<GraphGeometry | null>(null);
   const layoutRunIdRef = useRef(0);
   const lastLaidOutExpandedIdRef = useRef<string | null>(null);
+  const lastLayoutInputsKeyRef = useRef<string>("");
+  const activeLayoutRunRef = useRef<{ runId: number; key: string } | null>(null);
   layoutRef.current = layout;
   const expandedNodeIds = useMemo(
     () => (expandedEntityId ? new Set([expandedEntityId]) : new Set<string>()),
@@ -128,6 +130,13 @@ export function GraphPanel({
 
   // Serialize expanded set for stable dependency tracking
   const expandedKey = [...expandedNodeIds].sort().join(",");
+  const layoutInputsKey = useMemo(() => {
+    const entityKey = entityDefs
+      .map((entity) => `${entity.id}:${entity.name}:${entity.kind}`)
+      .join("|");
+    const edgeKey = edgeDefs.map((edge) => `${edge.id}:${edge.source}->${edge.target}`).join("|");
+    return `${entityKey}::${edgeKey}::${subgraphScopeMode}::${labelByMode ?? ""}::${showSource ? "1" : "0"}::${expandedKey}`;
+  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, showSource, expandedKey]);
 
   useEffect(() => {
     if (unionFrameLayout) {
@@ -135,8 +144,14 @@ export function GraphPanel({
       return;
     }
     if (entityDefs.length === 0) return;
+    if (layoutInputsKey === lastLayoutInputsKeyRef.current) return;
+    if (activeLayoutRunRef.current?.key === layoutInputsKey) return;
     let cancelled = false;
     const runId = ++layoutRunIdRef.current;
+    activeLayoutRunRef.current = { runId, key: layoutInputsKey };
+    const clearActiveRun = () => {
+      if (activeLayoutRunRef.current?.runId === runId) activeLayoutRunRef.current = null;
+    };
     const runExpandedEntityId = expandedEntityId;
     const shouldEnterExpanding =
       runExpandedEntityId != null && runExpandedEntityId !== lastLaidOutExpandedIdRef.current;
@@ -164,16 +179,27 @@ export function GraphPanel({
       .then((geo) => {
         if (!geo) return;
         if (cancelled || layoutRunIdRef.current !== runId) return;
+        const invalidNode = geo.nodes.find(
+          (node) => node.worldRect.width <= 0 || node.worldRect.height <= 0,
+        );
+        if (invalidNode) {
+          throw new Error(
+            `[graph-layout] refusing geometry with invalid node size ${invalidNode.id}: ${invalidNode.worldRect.width}x${invalidNode.worldRect.height}`,
+          );
+        }
         // Save current layout as prev for FLIP animation before updating
         setPrevLayout(layoutRef.current);
         setLayout(geo);
+        lastLayoutInputsKeyRef.current = layoutInputsKey;
         lastLaidOutExpandedIdRef.current = runExpandedEntityId;
+        clearActiveRun();
         if (shouldEnterExpanding) {
           setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
         }
       })
       .catch((error) => {
         if (cancelled || layoutRunIdRef.current !== runId) return;
+        clearActiveRun();
         if (shouldEnterExpanding) {
           setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
         }
@@ -182,6 +208,7 @@ export function GraphPanel({
 
     return () => {
       cancelled = true;
+      clearActiveRun();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- expandedKey is the serialized form of expandedNodeIds
   }, [
@@ -192,6 +219,7 @@ export function GraphPanel({
     unionFrameLayout,
     showSource,
     expandedKey,
+    layoutInputsKey,
   ]);
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;

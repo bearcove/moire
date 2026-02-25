@@ -1,12 +1,11 @@
 import React, { useState } from "react";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
-import { FrameLineCollapsed, FrameLineExpanded } from "./GraphNode";
+import { FrameLine } from "./GraphNode";
 import "./FrameList.css";
 
 type FrameListProps = {
   data: GraphNodeData;
   expanded: boolean;
-  isFuture: boolean;
   collapsedShowSource: boolean;
   /** Frames to show in collapsed mode (pre-sliced by caller). */
   collapsedFrames: GraphFrameData[];
@@ -15,7 +14,6 @@ type FrameListProps = {
 export function FrameList({
   data,
   expanded,
-  isFuture,
   collapsedShowSource,
   collapsedFrames,
 }: FrameListProps) {
@@ -30,7 +28,12 @@ export function FrameList({
     return (
       <div className="graph-node-frames">
         {collapsedFrames.map((frame) => (
-          <FrameLineCollapsed key={frame.frame_id} frame={frame} showSource={collapsedShowSource} />
+          <FrameLine
+            key={frame.frame_id}
+            frame={frame}
+            expanded={false}
+            showSource={collapsedShowSource}
+          />
         ))}
       </div>
     );
@@ -46,7 +49,12 @@ export function FrameList({
       <div className={hasSystemFrames ? "graph-node-frames-scroll" : undefined}>
         <div className="graph-node-frames">
           {effectiveFrames.map((frame) => (
-            <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
+            <FrameLine
+              key={frame.frame_id}
+              frame={frame}
+              expanded={true}
+              showSource={data.showSource}
+            />
           ))}
         </div>
       </div>

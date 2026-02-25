@@ -350,11 +350,6 @@ function NodeExpandPanner({
   const PAN_SYNC_DELAY_MS = 90;
 
   useEffect(() => {
-    if (panDelayTimerRef.current != null) {
-      clearTimeout(panDelayTimerRef.current);
-      panDelayTimerRef.current = null;
-    }
-
     const prev = prevStatesRef.current;
     const wasEmpty = prev.size === 0;
     const isEmpty = nodeExpandStates.size === 0;
@@ -380,6 +375,10 @@ function NodeExpandPanner({
     }
 
     if (isEmpty && !wasEmpty) {
+      if (panDelayTimerRef.current != null) {
+        clearTimeout(panDelayTimerRef.current);
+        panDelayTimerRef.current = null;
+      }
       // All nodes collapsed — restore only if we auto-panned and user never moved manually.
       if (canRestoreRef.current && didAutoPanRef.current && savedCameraRef.current) {
         animateCameraTo(savedCameraRef.current);
@@ -401,6 +400,9 @@ function NodeExpandPanner({
           if (node) {
             const { x, y, width } = node.worldRect;
             // Delay pan slightly so camera motion lines up with the card's height reveal.
+            if (panDelayTimerRef.current != null) {
+              clearTimeout(panDelayTimerRef.current);
+            }
             panDelayTimerRef.current = window.setTimeout(() => {
               // Keep the node top around 20% viewport height so there is room for expanded content.
               const offsetY = (viewportHeight * 0.3) / camera.zoom;

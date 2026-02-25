@@ -105,7 +105,8 @@ export async function layoutGraph(
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
   const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.top},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
 
-  const edgeSourceRef = (edge: EdgeDef) => edge.sourcePort ?? defaultOutPortId(edge.source, edge.id);
+  const edgeSourceRef = (edge: EdgeDef) =>
+    edge.sourcePort ?? defaultOutPortId(edge.source, edge.id);
   const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target, edge.id);
 
   // How far outside the node boundary ELK places port positions.
@@ -120,15 +121,27 @@ export async function layoutGraph(
     if (entity.channelPair) {
       const mergedId = entity.id;
       return [
-        { id: `${mergedId}:tx`, layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
-        { id: `${mergedId}:rx`, layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
+        {
+          id: `${mergedId}:tx`,
+          layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+        },
+        {
+          id: `${mergedId}:rx`,
+          layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+        },
       ];
     }
     if (entity.rpcPair) {
       const mergedId = entity.id;
       return [
-        { id: `${mergedId}:req`, layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
-        { id: `${mergedId}:resp`, layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET } },
+        {
+          id: `${mergedId}:req`,
+          layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+        },
+        {
+          id: `${mergedId}:resp`,
+          layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+        },
       ];
     }
     // Default: one port per connecting edge so ELK spreads them along the side
@@ -153,8 +166,10 @@ export async function layoutGraph(
 
   const requireNodeSize = (entityId: string): { width: number; height: number } => {
     const size = nodeSizes.get(entityId);
-    if (size) return size;
-    const message = `[elk] missing measured node size for entity ${entityId}`;
+    if (size && size.width > 0 && size.height > 0) return size;
+    const message = size
+      ? `[elk] invalid measured node size for entity ${entityId}: ${size.width}x${size.height}`
+      : `[elk] missing measured node size for entity ${entityId}`;
     if (typeof window !== "undefined" && typeof window.alert === "function") {
       window.alert(message);
     }

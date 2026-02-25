@@ -4,3 +4,10 @@
     cursor: pointer;
     pointer-events: all;
 }
+
+.nl-measure-root .graph-card,
+.nl-measure-root .graph-node-frames-shell,
+.nl-measure-root .graph-node-frame-skeleton {
+    transition: none !important;
+    animation: none !important;
+}
