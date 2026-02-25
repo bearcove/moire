@@ -128,7 +128,7 @@
 .graph-node-frames-scroll {
     max-height: 25em;
     overflow-y: auto;
-    overscroll-behavior: contain;
+    overscroll-behavior: none;
 }
 
 /* ── Frame lines ── */
@@ -209,9 +209,10 @@
     flex-direction: row;
     align-items: center;
     gap: 5px;
-    padding: 6px 0;
+    padding: 4px 0;
+    margin: 2px 0;
     position: sticky;
-    top: -6px;
+    top: -4px;
     background: var(--graph-card-bg);
     z-index: 1;
 }
