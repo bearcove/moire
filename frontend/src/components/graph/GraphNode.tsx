@@ -115,7 +115,9 @@ export function FrameLine({
                   e.stopPropagation();
                   window.location.href = zedHref(frame.source_file, entry.lineNum);
                 }}
-              >{entry.lineNum}</span>
+              >
+                {entry.lineNum}
+              </span>
               {/* eslint-disable-next-line react/no-danger */}
               <span
                 className="graph-node-frame-block__text"
@@ -257,7 +259,7 @@ export function GraphNode({
       } as React.CSSProperties)
     : undefined;
 
-  const isLoading = expanding || collapsedSourceLoading;
+  const isLoading = expanding || collapsedSourceLoading || data.framesLoading;
 
   return (
     <div

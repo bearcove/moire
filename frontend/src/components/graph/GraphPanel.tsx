@@ -132,7 +132,10 @@ export function GraphPanel({
   const expandedKey = [...expandedNodeIds].sort().join(",");
   const layoutInputsKey = useMemo(() => {
     const entityKey = entityDefs
-      .map((entity) => `${entity.id}:${entity.name}:${entity.kind}`)
+      .map(
+        (entity) =>
+          `${entity.id}:${entity.name}:${entity.kind}:${entity.framesLoading ? 1 : 0}:${entity.frames.length}:${entity.allFrames.length}:${entity.topFrame?.frame_id ?? ""}`,
+      )
       .join("|");
     const edgeKey = edgeDefs.map((edge) => `${edge.id}:${edge.source}->${edge.target}`).join("|");
     return `${entityKey}::${edgeKey}::${subgraphScopeMode}::${labelByMode ?? ""}::${showSource ? "1" : "0"}::${expandedKey}`;
@@ -179,9 +182,17 @@ export function GraphPanel({
       .then((geo) => {
         if (!geo) return;
         if (cancelled || layoutRunIdRef.current !== runId) return;
-        const invalidNode = geo.nodes.find(
-          (node) => node.worldRect.width <= 0 || node.worldRect.height <= 0,
-        );
+        const invalidNode = geo.nodes.find((node) => {
+          const { width, height, x, y } = node.worldRect;
+          return (
+            !Number.isFinite(x) ||
+            !Number.isFinite(y) ||
+            !Number.isFinite(width) ||
+            !Number.isFinite(height) ||
+            width <= 0 ||
+            height <= 0
+          );
+        });
         if (invalidNode) {
           throw new Error(
             `[graph-layout] refusing geometry with invalid node size ${invalidNode.id}: ${invalidNode.worldRect.width}x${invalidNode.worldRect.height}`,

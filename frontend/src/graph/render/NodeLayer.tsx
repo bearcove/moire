@@ -111,7 +111,7 @@ export async function measureGraphLayout(
         );
         const width = el.offsetWidth;
         const height = el.offsetHeight;
-        if (width <= 0 || height <= 0) {
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
           throw new Error(
             `[graph-measure] invalid node size for ${def.id} (${def.kind}): ${width}x${height}`,
           );

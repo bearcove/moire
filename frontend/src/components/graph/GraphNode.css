@@ -158,6 +158,21 @@
     background: none;
 }
 
+.graph-node-frame-loading-placeholder {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    padding: 6px var(--graph-node-padding);
+    border-bottom: 1px solid var(--border-subtle);
+    min-height: 1.3lh;
+    display: flex;
+    align-items: center;
+}
+
+.graph-node-loading-shell {
+    width: 100%;
+}
+
 .graph-node-frame--text {
     color: var(--text-secondary);
 }
@@ -199,10 +214,9 @@
     font-size: var(--font-size-xxs);
 }
 
-
 .graph-node--expanded .graph-node-frame-sep {
     position: sticky;
-    top: 0;
+    top: -2px;
     z-index: 1;
 }
 

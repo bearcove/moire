@@ -43,6 +43,25 @@ function lerpRect(a: Rect, b: Rect, t: number): Rect {
   };
 }
 
+function assertValidRect(rect: Rect, context: string): void {
+  const { x, y, width, height } = rect;
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  ) {
+    throw new Error(
+      `[graph-transition] ${context} has non-finite rect ${JSON.stringify({ x, y, width, height })}`,
+    );
+  }
+  if (width <= 0 || height <= 0) {
+    throw new Error(
+      `[graph-transition] ${context} has non-positive rect ${JSON.stringify({ x, y, width, height })}`,
+    );
+  }
+}
+
 function dist(a: Point, b: Point): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -147,12 +166,16 @@ export function interpolateGraph(
     const fromNode = fromNodeById.get(id);
     const toNode = toNodeById.get(id);
     if (fromNode && toNode) {
+      assertValidRect(fromNode.worldRect, `from node ${id}`);
+      assertValidRect(toNode.worldRect, `to node ${id}`);
       nodes.push({ ...toNode, worldRect: lerpRect(fromNode.worldRect, toNode.worldRect, t) });
       nodeOpacityById.set(id, 1);
     } else if (toNode) {
+      assertValidRect(toNode.worldRect, `to node ${id}`);
       nodes.push(toNode);
       nodeOpacityById.set(id, t);
     } else if (fromNode) {
+      assertValidRect(fromNode.worldRect, `from node ${id}`);
       nodes.push(fromNode);
       nodeOpacityById.set(id, 1 - t);
     }
@@ -167,12 +190,16 @@ export function interpolateGraph(
     const fromGroup = fromGroupById.get(id);
     const toGroup = toGroupById.get(id);
     if (fromGroup && toGroup) {
+      assertValidRect(fromGroup.worldRect, `from group ${id}`);
+      assertValidRect(toGroup.worldRect, `to group ${id}`);
       groups.push({ ...toGroup, worldRect: lerpRect(fromGroup.worldRect, toGroup.worldRect, t) });
       groupOpacityById.set(id, 1);
     } else if (toGroup) {
+      assertValidRect(toGroup.worldRect, `to group ${id}`);
       groups.push(toGroup);
       groupOpacityById.set(id, t);
     } else if (fromGroup) {
+      assertValidRect(fromGroup.worldRect, `from group ${id}`);
       groups.push(fromGroup);
       groupOpacityById.set(id, 1 - t);
     }
