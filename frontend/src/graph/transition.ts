@@ -11,12 +11,19 @@ export type InterpolatedGraph = {
   geometry: GraphGeometry;
   nodes: GeometryNode[];
   groups: GeometryGroup[];
+  nodeOpacityById: Map<string, number>;
+  groupOpacityById: Map<string, number>;
+  edgeOpacityById: Map<string, number>;
 };
 
 const EDGE_SAMPLE_POINTS = 24;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 export function easeOutCubic(t: number): number {
@@ -68,7 +75,8 @@ function pointAtDistance(points: Point[], distanceAlong: number): Point {
 }
 
 function resamplePolyline(points: Point[], sampleCount: number): Point[] {
-  if (sampleCount < 2) throw new Error(`[graph-transition] sampleCount must be >= 2, got ${sampleCount}`);
+  if (sampleCount < 2)
+    throw new Error(`[graph-transition] sampleCount must be >= 2, got ${sampleCount}`);
   if (points.length < 2) return points;
   const length = polylineLength(points);
   if (length <= 0) return points;
@@ -128,42 +136,86 @@ export function interpolateGraph(
   toGroups: GeometryGroup[],
   rawT: number,
 ): InterpolatedGraph {
-  const t = easeOutCubic(Math.max(0, Math.min(1, rawT)));
+  const t = easeOutCubic(clamp01(rawT));
 
   const fromNodeById = new Map(fromNodes.map((n) => [n.id, n]));
-  const nodes = toNodes.map((toNode) => {
-    const fromNode = fromNodeById.get(toNode.id);
-    if (!fromNode) return toNode;
-    return {
-      ...toNode,
-      worldRect: lerpRect(fromNode.worldRect, toNode.worldRect, t),
-    };
-  });
+  const toNodeById = new Map(toNodes.map((n) => [n.id, n]));
+  const nodeIds = new Set<string>([...fromNodeById.keys(), ...toNodeById.keys()]);
+  const nodeOpacityById = new Map<string, number>();
+  const nodes: GeometryNode[] = [];
+  for (const id of nodeIds) {
+    const fromNode = fromNodeById.get(id);
+    const toNode = toNodeById.get(id);
+    if (fromNode && toNode) {
+      nodes.push({ ...toNode, worldRect: lerpRect(fromNode.worldRect, toNode.worldRect, t) });
+      nodeOpacityById.set(id, 1);
+    } else if (toNode) {
+      nodes.push(toNode);
+      nodeOpacityById.set(id, t);
+    } else if (fromNode) {
+      nodes.push(fromNode);
+      nodeOpacityById.set(id, 1 - t);
+    }
+  }
 
   const fromGroupById = new Map(fromGroups.map((g) => [g.id, g]));
-  const groups = toGroups.map((toGroup) => {
-    const fromGroup = fromGroupById.get(toGroup.id);
-    if (!fromGroup) return toGroup;
-    return {
-      ...toGroup,
-      worldRect: lerpRect(fromGroup.worldRect, toGroup.worldRect, t),
-    };
-  });
+  const toGroupById = new Map(toGroups.map((g) => [g.id, g]));
+  const groupIds = new Set<string>([...fromGroupById.keys(), ...toGroupById.keys()]);
+  const groupOpacityById = new Map<string, number>();
+  const groups: GeometryGroup[] = [];
+  for (const id of groupIds) {
+    const fromGroup = fromGroupById.get(id);
+    const toGroup = toGroupById.get(id);
+    if (fromGroup && toGroup) {
+      groups.push({ ...toGroup, worldRect: lerpRect(fromGroup.worldRect, toGroup.worldRect, t) });
+      groupOpacityById.set(id, 1);
+    } else if (toGroup) {
+      groups.push(toGroup);
+      groupOpacityById.set(id, t);
+    } else if (fromGroup) {
+      groups.push(fromGroup);
+      groupOpacityById.set(id, 1 - t);
+    }
+  }
 
   const fromEdgeById = new Map(fromGeometry.edges.map((e) => [e.id, e]));
-  const edges: GeometryEdge[] = toGeometry.edges.map((toEdge) => {
-    const fromEdge = fromEdgeById.get(toEdge.id);
-    if (!fromEdge) return toEdge;
-    return {
-      ...toEdge,
-      polyline: interpolatePolyline(fromEdge.polyline, toEdge.polyline, t),
-    };
-  });
+  const toEdgeById = new Map(toGeometry.edges.map((e) => [e.id, e]));
+  const edgeIds = new Set<string>([...fromEdgeById.keys(), ...toEdgeById.keys()]);
+  const edgeOpacityById = new Map<string, number>();
+  const edges: GeometryEdge[] = [];
+  for (const id of edgeIds) {
+    const fromEdge = fromEdgeById.get(id);
+    const toEdge = toEdgeById.get(id);
+    if (fromEdge && toEdge) {
+      edges.push({
+        ...toEdge,
+        polyline: interpolatePolyline(fromEdge.polyline, toEdge.polyline, t),
+      });
+      edgeOpacityById.set(id, 1);
+    } else if (toEdge) {
+      edges.push(toEdge);
+      edgeOpacityById.set(id, t);
+    } else if (fromEdge) {
+      edges.push(fromEdge);
+      edgeOpacityById.set(id, 1 - t);
+    }
+  }
 
   const portAnchors = new Map<string, Point>();
-  for (const [id, toAnchor] of toGeometry.portAnchors) {
+  const portAnchorIds = new Set<string>([
+    ...fromGeometry.portAnchors.keys(),
+    ...toGeometry.portAnchors.keys(),
+  ]);
+  for (const id of portAnchorIds) {
     const fromAnchor = fromGeometry.portAnchors.get(id);
-    portAnchors.set(id, fromAnchor ? lerpPoint(fromAnchor, toAnchor, t) : toAnchor);
+    const toAnchor = toGeometry.portAnchors.get(id);
+    if (fromAnchor && toAnchor) {
+      portAnchors.set(id, lerpPoint(fromAnchor, toAnchor, t));
+    } else if (toAnchor) {
+      portAnchors.set(id, toAnchor);
+    } else if (fromAnchor) {
+      portAnchors.set(id, fromAnchor);
+    }
   }
 
   const geometry: GraphGeometry = {
@@ -174,5 +226,5 @@ export function interpolateGraph(
     portAnchors,
   };
 
-  return { geometry, nodes, groups };
+  return { geometry, nodes, groups, nodeOpacityById, groupOpacityById, edgeOpacityById };
 }

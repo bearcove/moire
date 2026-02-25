@@ -11,6 +11,7 @@ export interface EdgeLayerProps {
   onEdgeClick?: (id: string) => void;
   onEdgeHover?: (id: string | null) => void;
   ghostEdgeIds?: Set<string>;
+  edgeOpacityById?: Map<string, number>;
   portAnchors?: Map<string, Point>;
 }
 
@@ -21,6 +22,7 @@ export function EdgeLayer({
   onEdgeClick,
   onEdgeHover,
   ghostEdgeIds,
+  edgeOpacityById,
   portAnchors,
 }: EdgeLayerProps) {
   const { markerUrl } = useCameraContext();
@@ -31,6 +33,7 @@ export function EdgeLayer({
 
         const isSelected = selectedEdgeId === edge.id;
         const isGhost = ghostEdgeIds?.has(edge.id) ?? false;
+        const transitionOpacity = edgeOpacityById?.get(edge.id) ?? 1;
         const sourcePortRef = edge.data?.sourcePortRef as string | undefined;
         const targetPortRef = edge.data?.targetPortRef as string | undefined;
         const sourceAnchor = sourcePortRef ? portAnchors?.get(sourcePortRef) : undefined;
@@ -75,11 +78,7 @@ export function EdgeLayer({
               strokeLinecap: "round",
             };
 
-        const edgeClass = [
-          "edge",
-          isSelected ? "edge--selected" : "",
-          isGhost ? "edge--ghost" : "",
-        ]
+        const edgeClass = ["edge", isSelected ? "edge--selected" : "", isGhost ? "edge--ghost" : ""]
           .filter(Boolean)
           .join(" ");
 
@@ -87,7 +86,11 @@ export function EdgeLayer({
           <g
             key={edge.id}
             className={edgeClass}
-            style={isGhost ? { opacity: 0.2, pointerEvents: "none" } : undefined}
+            style={
+              isGhost
+                ? { opacity: 0.2 * transitionOpacity, pointerEvents: "none" }
+                : { opacity: transitionOpacity }
+            }
           >
             {/* Wide invisible hit area */}
             <path
@@ -136,7 +139,6 @@ export function EdgeLayer({
               style={visibleStyle}
               markerEnd={markerEnd}
             />
-
           </g>
         );
       })}

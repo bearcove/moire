@@ -33,6 +33,21 @@ type GraphTransitionState = {
 
 const GRAPH_TRANSITION_DURATION_MS = 220;
 
+function makeStableInterpolatedGraph(
+  geometry: GraphGeometry,
+  nodes: GeometryNode[],
+  groups: GeometryGroup[],
+): InterpolatedGraph {
+  return {
+    geometry,
+    nodes,
+    groups,
+    nodeOpacityById: new Map(nodes.map((node) => [node.id, 1])),
+    groupOpacityById: new Map(groups.map((group) => [group.id, 1])),
+    edgeOpacityById: new Map(geometry.edges.map((edge) => [edge.id, 1])),
+  };
+}
+
 export function GraphViewport({
   entityDefs,
   snapPhase,
@@ -85,7 +100,7 @@ export function GraphViewport({
   }, [ghostEdgeIds]);
 
   const [interpolatedGraph, setInterpolatedGraph] = useState<InterpolatedGraph | null>(() =>
-    geometry ? { geometry, nodes, groups } : null,
+    geometry ? makeStableInterpolatedGraph(geometry, nodes, groups) : null,
   );
   const interpolatedGraphRef = useRef<InterpolatedGraph | null>(interpolatedGraph);
   const transitionRef = useRef<GraphTransitionState | null>(null);
@@ -108,7 +123,7 @@ export function GraphViewport({
 
     const current = interpolatedGraphRef.current;
     if (!current) {
-      setInterpolatedGraph({ geometry, nodes, groups });
+      setInterpolatedGraph(makeStableInterpolatedGraph(geometry, nodes, groups));
       return;
     }
 
@@ -134,11 +149,13 @@ export function GraphViewport({
       const t = Math.max(0, Math.min(1, elapsedMs / transition.durationMs));
 
       if (t >= 1) {
-        setInterpolatedGraph({
-          geometry: transition.toGeometry,
-          nodes: transition.toNodes,
-          groups: transition.toGroups,
-        });
+        setInterpolatedGraph(
+          makeStableInterpolatedGraph(
+            transition.toGeometry,
+            transition.toNodes,
+            transition.toGroups,
+          ),
+        );
         transitionRef.current = null;
         rafRef.current = null;
         return;
@@ -158,11 +175,13 @@ export function GraphViewport({
         );
       } catch (error) {
         console.error(error);
-        setInterpolatedGraph({
-          geometry: transition.toGeometry,
-          nodes: transition.toNodes,
-          groups: transition.toGroups,
-        });
+        setInterpolatedGraph(
+          makeStableInterpolatedGraph(
+            transition.toGeometry,
+            transition.toNodes,
+            transition.toGroups,
+          ),
+        );
         transitionRef.current = null;
         rafRef.current = null;
         return;
@@ -184,6 +203,9 @@ export function GraphViewport({
   const renderedGeometry = interpolatedGraph?.geometry ?? geometry;
   const renderedNodes = interpolatedGraph?.nodes ?? nodes;
   const renderedGroups = interpolatedGraph?.groups ?? groups;
+  const renderedNodeOpacityById = interpolatedGraph?.nodeOpacityById;
+  const renderedGroupOpacityById = interpolatedGraph?.groupOpacityById;
+  const renderedEdgeOpacityById = interpolatedGraph?.edgeOpacityById;
   const portAnchors = renderedGeometry?.portAnchors ?? new Map();
   const [hasFitted, setHasFitted] = useState(false);
   const graphFlowRef = useRef<HTMLDivElement | null>(null);
@@ -366,11 +388,12 @@ export function GraphViewport({
         />
         {renderedGeometry && (
           <>
-            <GroupLayer groups={renderedGroups} />
+            <GroupLayer groups={renderedGroups} groupOpacityById={renderedGroupOpacityById} />
             <EdgeLayer
               edges={renderedGeometry.edges}
               selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
               ghostEdgeIds={effectiveGhostEdgeIds}
+              edgeOpacityById={renderedEdgeOpacityById}
               portAnchors={portAnchors}
               onEdgeClick={(id) => {
                 closeNodeContextMenu();
@@ -382,6 +405,7 @@ export function GraphViewport({
               prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
+              nodeOpacityById={renderedNodeOpacityById}
               onNodeHover={(id) => {
                 if (id) {
                   // If a node is already expanded, hover on other nodes is blocked.

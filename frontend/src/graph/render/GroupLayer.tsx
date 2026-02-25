@@ -5,9 +5,10 @@ import { scopeKindIcon } from "../../scopeKindSpec";
 
 interface GroupLayerProps {
   groups: GeometryGroup[];
+  groupOpacityById?: Map<string, number>;
 }
 
-export function GroupLayer({ groups }: GroupLayerProps) {
+export function GroupLayer({ groups, groupOpacityById }: GroupLayerProps) {
   if (groups.length === 0) return null;
 
   return (
@@ -16,6 +17,7 @@ export function GroupLayer({ groups }: GroupLayerProps) {
         const { x, y, width, height } = group.worldRect;
         const scopeRgbLight = group.data?.scopeRgbLight as string | undefined;
         const scopeRgbDark = group.data?.scopeRgbDark as string | undefined;
+        const opacity = groupOpacityById?.get(group.id) ?? 1;
 
         return (
           <foreignObject
@@ -24,7 +26,7 @@ export function GroupLayer({ groups }: GroupLayerProps) {
             y={y}
             width={width}
             height={height}
-            style={{ pointerEvents: "none" }}
+            style={{ pointerEvents: "none", opacity }}
           >
             {/* xmlns required for HTML content inside SVG foreignObject */}
             <div

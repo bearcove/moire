@@ -21,6 +21,7 @@ export interface NodeLayerProps {
   nodes: GeometryNode[];
   prevNodes?: GeometryNode[];
   nodeExpandStates?: Map<string, NodeExpandState>;
+  nodeOpacityById?: Map<string, number>;
   onNodeClick?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
@@ -164,6 +165,7 @@ export function NodeLayer({
   nodes,
   prevNodes: _prevNodes,
   nodeExpandStates,
+  nodeOpacityById,
   onNodeClick,
   onNodeContextMenu,
   onNodeHover,
@@ -186,6 +188,7 @@ export function NodeLayer({
       {ordered.map((node) => {
         const { x, y, width, height } = node.worldRect;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
+        const transitionOpacity = nodeOpacityById?.get(node.id) ?? 1;
         const expandState = nodeExpandStates?.get(node.id);
         const isExpanded = expandState === "expanded";
         const isExpanding = expandState === "expanding";
@@ -205,7 +208,11 @@ export function NodeLayer({
             width={width}
             height={height}
             data-pan-block="true"
-            style={{ overflow: "visible" }}
+            style={{
+              overflow: "visible",
+              opacity: transitionOpacity,
+              pointerEvents: transitionOpacity < 0.99 ? "none" : undefined,
+            }}
             onClick={() => onNodeClick?.(node.id)}
             onContextMenu={(event) => {
               event.preventDefault();
