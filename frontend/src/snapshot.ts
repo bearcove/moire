@@ -219,15 +219,15 @@ function resolveBacktraceDisplay(
     };
   }
 
-  // Collect all non-system resolved frames.
   const frames: RenderTopFrame[] = [];
   for (let i = 0; i < record.frames.length; i++) {
     const f = record.frames[i];
     if (!isResolvedFrame(f)) continue;
     const krate = crateFromFunctionName(f.resolved.function_name);
     if (SYSTEM_CRATES.has(krate)) continue;
+    const fn_name = f.resolved.function_name;
     frames.push({
-      function_name: f.resolved.function_name,
+      function_name: fn_name,
       crate_name: krate,
       module_path: f.resolved.module_path,
       source_file: f.resolved.source_file,

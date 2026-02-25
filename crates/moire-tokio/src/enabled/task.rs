@@ -56,7 +56,7 @@ where
     T: Send + 'static,
     F: Future<Output = T> + Send + 'static,
 {
-    let handle = EntityHandle::new("task.spawn", FutureEntity {});
+    let handle = EntityHandle::new("task.spawn", FutureEntity::default());
     let future_handle = handle.clone();
     let fut = FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
         let _task_scope = register_current_task_scope("spawn");
@@ -71,7 +71,7 @@ where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
 {
-    let handle = EntityHandle::new("task.spawn_blocking", FutureEntity {});
+    let handle = EntityHandle::new("task.spawn_blocking", FutureEntity::default());
     let inner = tokio::task::spawn_blocking(move || {
         let _task_scope = register_current_task_scope("spawn_blocking");
         f()

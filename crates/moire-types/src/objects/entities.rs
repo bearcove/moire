@@ -81,8 +81,14 @@ crate::define_entity_body! {
     }
 }
 
-#[derive(Facet)]
-pub struct FutureEntity {}
+#[derive(Facet, Default)]
+pub struct FutureEntity {
+    /// Number of frames to skip from the top of the backtrace when displaying this future.
+    /// Set to 1 by `#[moire::instrument]` so the instrumented function itself is hidden
+    /// and the callsite is shown instead.
+    #[facet(skip_unless_truthy)]
+    pub skip_entry_frames: Option<u8>,
+}
 
 #[derive(Facet)]
 pub struct LockEntity {

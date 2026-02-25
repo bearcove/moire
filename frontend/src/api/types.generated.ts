@@ -625,7 +625,14 @@ export interface LockEntity {
 
 export type LockKind = "mutex" | "rw_lock" | "other";
 
-export type FutureEntity = object;
+export interface FutureEntity {
+  /**
+   * Number of frames to skip from the top of the backtrace when displaying this future.
+   * Set to 1 by `#[moire::instrument]` so the instrumented function itself is hidden
+   * and the callsite is shown instead.
+   */
+  skip_entry_frames?: number;
+}
 
 export interface SqlResponse {
   columns: string[];

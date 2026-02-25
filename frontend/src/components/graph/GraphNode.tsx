@@ -143,7 +143,8 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
   const collapsedShowSource = data.showSource || isFuture;
   const showHeader = !isFuture;
 
-  const visibleFrames = expanded ? data.frames : pickCollapsedFrames(data.kind, data.frames);
+  const pickedFrames = expanded ? data.frames : pickCollapsedFrames(data.kind, data.frames);
+  const visibleFrames = data.skipEntryFrames > 0 ? pickedFrames.slice(data.skipEntryFrames) : pickedFrames;
 
   return (
     <div

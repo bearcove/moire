@@ -26,6 +26,8 @@ export type GraphNodeData = {
   entityCrate?: string;
   /** Whether to show source lines (controlled by the graph panel's showSource toggle). */
   showSource?: boolean;
+  /** Number of entry frames to skip when rendering (from FutureEntity.skip_entry_frames). */
+  skipEntryFrames: number;
 };
 
 function frameDataFromRenderTopFrame(f: RenderTopFrame): GraphFrameData {
@@ -39,18 +41,19 @@ function frameDataFromRenderTopFrame(f: RenderTopFrame): GraphFrameData {
 
 export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
   const frames = def.frames.map(frameDataFromRenderTopFrame);
+  const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
   if (def.channelPair) {
     return {
       kind: "channel_pair",
       label: def.name,
       inCycle: def.inCycle,
-
       status: def.status,
       ageMs: def.ageMs,
       stat: def.stat,
       statTone: def.statTone,
       frames,
       entityCrate: def.krate,
+      skipEntryFrames,
     };
   }
   if (def.rpcPair) {
@@ -65,13 +68,13 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       kind: "rpc_pair",
       label: def.name,
       inCycle: def.inCycle,
-
       status: def.status,
       ageMs: def.rpcPair.resp.ageMs,
       stat: `RESP ${respStatusKey}`,
       statTone: respTone,
       frames,
       entityCrate: def.krate,
+      skipEntryFrames,
     };
   }
   return {
@@ -84,6 +87,7 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     statTone: def.statTone,
     frames,
     entityCrate: def.krate,
+    skipEntryFrames,
   };
 }
 

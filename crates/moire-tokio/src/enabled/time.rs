@@ -25,7 +25,7 @@ use super::task::FutureExt as _;
 
 /// Instrumented equivalent of [`tokio::time::sleep`].
 pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
-    let handle = EntityHandle::new("time.sleep", FutureEntity {});
+    let handle = EntityHandle::new("time.sleep", FutureEntity::default());
     tokio::time::sleep(duration)
         .named("time.sleep")
         .on(handle.entity_ref())
@@ -57,7 +57,7 @@ impl fmt::Debug for Interval {
 pub fn interval(period: Duration) -> Interval {
     Interval {
         inner: tokio::time::interval(period),
-        handle: EntityHandle::new("time.interval", FutureEntity {}),
+        handle: EntityHandle::new("time.interval", FutureEntity::default()),
     }
 }
 

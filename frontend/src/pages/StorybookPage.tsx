@@ -336,12 +336,12 @@ export function StorybookPage({
                   kind: "future",
                   label: "roam.call.await_response",
                   inCycle: false,
-
                   status: { label: "polling", tone: "neutral" },
                   ageMs: 688,
                   stat: "N+1ms",
                   statTone: "warn",
                   frames: [],
+                  skipEntryFrames: 0,
                 }}
               />
               <GraphNode
@@ -349,12 +349,12 @@ export function StorybookPage({
                   kind: "channel_pair",
                   label: "roam_driver",
                   inCycle: false,
-
                   status: { label: "open", tone: "ok" },
                   ageMs: 739,
                   stat: "0/256",
                   statTone: "ok",
                   frames: [],
+                  skipEntryFrames: 0,
                 }}
               />
               <GraphNode
@@ -362,12 +362,12 @@ export function StorybookPage({
                   kind: "rpc_pair",
                   label: "roam.call.await_response",
                   inCycle: false,
-
                   status: { label: "pending", tone: "warn" },
                   ageMs: 721,
                   stat: "RESP pending",
                   statTone: "warn",
                   frames: [],
+                  skipEntryFrames: 0,
                 }}
               />
             </div>

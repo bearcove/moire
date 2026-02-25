@@ -7,20 +7,35 @@ use std::future::Future;
 #[cfg(feature = "diagnostics")]
 #[doc(hidden)]
 pub mod __internal {
-    use std::future::IntoFuture;
+    use std::future::{Future, IntoFuture};
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
 
-    pub type InstrumentedFuture<F> = F;
+    pub struct InstrumentedFuture<F>(F);
+
+    impl<F: Future> Future for InstrumentedFuture<F> {
+        type Output = F::Output;
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0) }.poll(cx)
+        }
+    }
+
+    impl<F> InstrumentedFuture<F> {
+        pub fn skip_entry_frames(self, _n: u8) -> Self {
+            self
+        }
+    }
 
     pub fn instrument_future<F, O, M>(
         _name: impl Into<String>,
         fut: F,
         _on: Option<O>,
         _meta: Option<M>,
-    ) -> F::IntoFuture
+    ) -> InstrumentedFuture<F::IntoFuture>
     where
         F: IntoFuture,
     {
-        fut.into_future()
+        InstrumentedFuture(fut.into_future())
     }
 }
 

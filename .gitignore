@@ -1,3 +1,4 @@
+.handoffs
 *.sqlite*
 .tracey/
 target

@@ -139,6 +139,12 @@ impl<F> InstrumentedFuture<F> {
         }
     }
 
+    /// Sets how many entry frames to skip when displaying this future in the dashboard.
+    pub fn skip_entry_frames(self, n: u8) -> Self {
+        self.future_handle.mutate(|f| f.skip_entry_frames = Some(n));
+        self
+    }
+
     /// Sets the entity this future is waiting on, for dashboard edge display.
     pub fn on(mut self, target: EntityRef) -> Self {
         self.waits_on = Some(FutureEdgeRelation::new(
@@ -270,7 +276,7 @@ pub fn instrument_future<F>(
 where
     F: IntoFuture,
 {
-    let handle = EntityHandle::new(name, FutureEntity {});
+    let handle = EntityHandle::new(name, FutureEntity::default());
     instrument_future_with_handle(handle, fut, on, None)
 }
 

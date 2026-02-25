@@ -22,14 +22,14 @@ where
     pub fn new() -> Self {
         Self {
             inner: tokio::task::JoinSet::new(),
-            handle: EntityHandle::new("joinset", FutureEntity {}),
+            handle: EntityHandle::new("joinset", FutureEntity::default()),
         }
     }
 
     /// Creates a named instrumented join set.
     pub fn named(name: impl Into<String>) -> Self {
         let name = name.into();
-        let handle = EntityHandle::new(format!("joinset.{name}"), FutureEntity {});
+        let handle = EntityHandle::new(format!("joinset.{name}"), FutureEntity::default());
         Self {
             inner: tokio::task::JoinSet::new(),
             handle,
@@ -42,7 +42,7 @@ where
         F: Future<Output = T> + Send + 'static,
     {
         let joinset_handle = self.handle.clone();
-        let task_handle = EntityHandle::new("joinset.task", FutureEntity {});
+        let task_handle = EntityHandle::new("joinset.task", FutureEntity::default());
         self.inner.spawn(
             FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
                 let _task_scope = register_current_task_scope("joinset.spawn");
@@ -77,7 +77,7 @@ where
         &mut self,
     ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
         let handle = self.handle.clone();
-        let fut_handle = EntityHandle::new("joinset.join_next", FutureEntity {});
+        let fut_handle = EntityHandle::new("joinset.join_next", FutureEntity::default());
         let fut = self.inner.join_next();
         instrument_future_with_handle(fut_handle, fut, Some(handle.entity_ref()), None)
     }
