@@ -12,6 +12,8 @@ function normalizeWheelDeltaY(e: WheelEvent): number {
   return e.deltaY;
 }
 
+const PAN_DURATION_MS = 300;
+
 export function useCameraController(
   svgRef: RefObject<SVGSVGElement | null>,
   bounds: Rect | null,
@@ -19,6 +21,7 @@ export function useCameraController(
   camera: Camera;
   setCamera: (c: Camera) => void;
   fitView: () => void;
+  panTo: (worldX: number, worldY: number) => void;
   handlers: {
     onWheel: (e: WheelEvent) => void;
     onPointerDown: (e: PointerEvent) => void;
@@ -29,6 +32,9 @@ export function useCameraController(
   };
 } {
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
+  const cameraRef = useRef<Camera>(camera);
+  cameraRef.current = camera;
+  const animFrameRef = useRef<number>(0);
 
   const panState = useRef<{
     active: boolean;
@@ -145,10 +151,39 @@ export function useCameraController(
     panState.current.active = false;
   }, []);
 
+  const panTo = useCallback(
+    (worldX: number, worldY: number) => {
+      cancelAnimationFrame(animFrameRef.current);
+      const startX = cameraRef.current.x;
+      const startY = cameraRef.current.y;
+      const dx = worldX - startX;
+      const dy = worldY - startY;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      const startTime = performance.now();
+      const tick = () => {
+        const elapsed = performance.now() - startTime;
+        const t = Math.min(1, elapsed / PAN_DURATION_MS);
+        // ease-out cubic
+        const ease = 1 - (1 - t) ** 3;
+        setCamera((prev) => ({
+          ...prev,
+          x: startX + dx * ease,
+          y: startY + dy * ease,
+        }));
+        if (t < 1) {
+          animFrameRef.current = requestAnimationFrame(tick);
+        }
+      };
+      animFrameRef.current = requestAnimationFrame(tick);
+    },
+    [], // stable — reads from cameraRef
+  );
+
   return {
     camera,
     setCamera,
     fitView,
+    panTo,
     handlers: {
       onWheel,
       onPointerDown,

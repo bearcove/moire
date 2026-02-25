@@ -181,6 +181,7 @@ export function GraphViewport({
           onFitted={() => setHasFitted(true)}
           suppressAutoFit={unionModeSuppressAutoFit && hasFitted}
         />
+        <NodeExpandPanner nodes={nodes} nodeExpandStates={nodeExpandStates} />
         {geometry && (
           <>
             <GroupLayer groups={groups} />
@@ -297,6 +298,39 @@ const GRAPH_EMPTY_MESSAGES: Record<"idle" | "cutting" | "loading" | "ready" | "e
   ready: "No entities in snapshot",
   error: "Snapshot failed",
 };
+
+function NodeExpandPanner({
+  nodes,
+  nodeExpandStates,
+}: {
+  nodes: GeometryNode[];
+  nodeExpandStates: Map<string, NodeExpandState>;
+}) {
+  const { panTo, viewportHeight, camera } = useCameraContext();
+  const prevStatesRef = useRef<Map<string, NodeExpandState>>(new Map());
+
+  useEffect(() => {
+    const prev = prevStatesRef.current;
+    for (const [id, state] of nodeExpandStates) {
+      if (state === "expanded" && prev.get(id) !== "expanded") {
+        const node = nodes.find((n) => n.id === id);
+        if (node) {
+          const { x, y, width } = node.worldRect;
+          // Position the node top ~20% from the top of the viewport so the
+          // expanded card (which can be up to 35em tall) has room below.
+          // camera.y = worldY puts worldY at viewport center (50%).
+          // We want node top at 20%, so shift camera.y down by 30% of viewport in world units.
+          const offsetY = (viewportHeight * 0.3) / camera.zoom;
+          panTo(x + width / 2, y + offsetY);
+        }
+        break;
+      }
+    }
+    prevStatesRef.current = new Map(nodeExpandStates);
+  }, [nodeExpandStates, nodes, panTo, viewportHeight, camera.zoom]);
+
+  return null;
+}
 
 function GraphAutoFit({
   geometryKey,

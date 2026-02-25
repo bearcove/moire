@@ -8,6 +8,7 @@ interface CameraContextValue {
   camera: Camera;
   setCamera: (c: Camera) => void;
   fitView: () => void;
+  panTo: (worldX: number, worldY: number) => void;
   clientToGraph: (clientX: number, clientY: number) => { x: number; y: number } | null;
   viewportWidth: number;
   viewportHeight: number;
@@ -62,7 +63,7 @@ export function GraphCanvas({
     return () => observer.disconnect();
   }, []);
 
-  const { camera, setCamera, fitView, handlers } = useCameraController(
+  const { camera, setCamera, fitView, panTo, handlers } = useCameraController(
     svgRef,
     geometry?.bounds ?? null,
   );
@@ -138,12 +139,13 @@ export function GraphCanvas({
       camera,
       setCamera,
       fitView,
+      panTo,
       clientToGraph,
       viewportWidth: viewportSize.width,
       viewportHeight: viewportSize.height,
       markerUrl,
     }),
-    [camera, setCamera, fitView, clientToGraph, viewportSize.width, viewportSize.height, markerUrl],
+    [camera, setCamera, fitView, panTo, clientToGraph, viewportSize.width, viewportSize.height, markerUrl],
   );
 
   return (
