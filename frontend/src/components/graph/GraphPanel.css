@@ -106,7 +106,7 @@
     gap: 6px;
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    background: var(--bg-elevated);
+    background: var(--bg-base);
     padding: 1px 6px;
     box-sizing: border-box;
 }
@@ -146,25 +146,38 @@
 .graph-filter-chip {
     display: inline-flex;
     align-items: stretch;
-    gap: 1px;
-    border: 1px solid transparent;
+    gap: 0;
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     font-size: var(--font-size-sm);
     font-family: var(--font-mono);
     background: var(--bg-elevated);
-    color: var(--accent-fg);
+    color: var(--text-primary);
     flex-shrink: 0;
     max-width: 100%;
+
+    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
+    box-shadow:
+        0 1px 2px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
+            ),
+        0 2px 4px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
+            );
 }
 
 .graph-filter-chip__label {
     display: flex;
     align-items: center;
     padding: 4px 8px;
-    background: var(--accent);
+    background: transparent;
     border: none;
     border-radius: calc(var(--radius-control) - 1px) 0 0 calc(var(--radius-control) - 1px);
-    color: inherit;
+    color: var(--accent);
     font: inherit;
     cursor: pointer;
     white-space: normal;
@@ -175,28 +188,35 @@
     display: flex;
     align-items: center;
     padding: 3px 6px;
-    background: var(--accent);
+    background: transparent;
     border: none;
+    border-left: 1px solid var(--border-subtle);
     border-radius: 0 calc(var(--radius-control) - 1px) calc(var(--radius-control) - 1px) 0;
-    color: inherit;
+    color: var(--text-tertiary);
     font: inherit;
     line-height: 1;
     cursor: pointer;
     flex-shrink: 0;
 }
 
+.graph-filter-chip__x:hover {
+    color: var(--status-danger);
+}
+
 .graph-filter-chip--valid {
-    border-color: transparent;
+    border-color: var(--border-subtle);
 }
 
 .graph-filter-chip--invalid {
-    border-color: color-mix(in srgb, var(--status-danger) 65%, var(--border-default));
-    color: color-mix(in srgb, var(--status-danger) 92%, var(--text-primary));
+    border-color: color-mix(in srgb, var(--status-danger) 65%, var(--border-subtle));
 }
 
-.graph-filter-chip--invalid .graph-filter-chip__label,
+.graph-filter-chip--invalid .graph-filter-chip__label {
+    color: var(--status-danger);
+}
+
 .graph-filter-chip--invalid .graph-filter-chip__x {
-    background: color-mix(in srgb, var(--status-danger) 25%, var(--bg-elevated));
+    color: color-mix(in srgb, var(--status-danger) 70%, var(--text-tertiary));
 }
 
 .graph-filter-suggestions {

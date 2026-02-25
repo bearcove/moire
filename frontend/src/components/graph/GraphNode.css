@@ -218,7 +218,8 @@
 }
 
 .graph-node-frame-section:not(:first-child) .graph-node-frame-sep {
-    border-top: 1px solid var(--border-edge);
+    /*border-top: 1px solid var(--border-edge);*/
+    margin-top: 1.2em;
 }
 
 .graph-node-frame-sep__icon {

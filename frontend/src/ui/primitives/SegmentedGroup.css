@@ -3,50 +3,56 @@
 .ui-segmented-group {
     display: inline-flex;
     align-items: center;
-    gap: 0;
+    gap: 2px;
+    background: var(--bg-base);
+    border-radius: calc(var(--radius-control) + 2px);
+    padding: 2px;
 }
 
 .ui-segmented-option {
-    border: 1px solid var(--border-default);
-    background: var(--bg-surface);
-    color: var(--text-primary);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
     padding: 0 8px;
-    height: var(--control-height);
-    border-radius: 0;
+    height: calc(var(--control-height) - 4px);
+    border-radius: var(--radius-control);
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-}
-
-.ui-segmented-option:first-child {
-    border-top-left-radius: var(--radius-control);
-    border-bottom-left-radius: var(--radius-control);
-}
-
-.ui-segmented-option:last-child {
-    border-top-right-radius: var(--radius-control);
-    border-bottom-right-radius: var(--radius-control);
-}
-
-.ui-segmented-option + .ui-segmented-option {
-    margin-left: -1px;
+    transition:
+        background 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease;
 }
 
 .ui-segmented-option--selected {
     position: relative;
     z-index: 1;
-    background: var(--accent);
-    color: var(--accent-fg);
-    border-color: var(--accent);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border-subtle);
+
+    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
+    box-shadow:
+        0 1px 2px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
+            ),
+        0 2px 4px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
+            );
 }
 
 .ui-segmented-option[data-focus-visible] {
     outline: none;
     z-index: 2;
     box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: var(--border-default);
+    border-color: var(--accent);
 }
 
 .ui-segmented-option--selected[data-focus-visible] {

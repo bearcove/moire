@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import "./App.css";
 import type { FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { apiClient } from "./api";
@@ -152,7 +153,20 @@ export function App() {
   const [selection, setSelection] = useState<GraphSelection>(null);
 const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
-  const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process source:on");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const DEFAULT_FILTER = "colorBy:crate groupBy:process source:on";
+  const graphFilterText = searchParams.get("filter") ?? DEFAULT_FILTER;
+  const setGraphFilterText = useCallback((next: string) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next === DEFAULT_FILTER) {
+        p.delete("filter");
+      } else {
+        p.set("filter", next);
+      }
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [symbolicationProgress, setSymbolicationProgress] = useState<{
     resolved: number;
@@ -191,15 +205,13 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
   const focusedEntityId = graphTextFilters.focusedNodeId ?? null;
 
   const setFocusedEntityFilter = useCallback((entityId: string | null) => {
-    setGraphFilterText((prev) => {
-      const tokens = tokenizeFilterQuery(prev).filter((token) => {
-        const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
-        return !key.toLowerCase().startsWith("focus:");
-      });
-      if (entityId) tokens.push(`focus:${quoteFilterValue(entityId)}`);
-      return tokens.join(" ");
+    const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
+      const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
+      return !key.toLowerCase().startsWith("focus:");
     });
-  }, []);
+    if (entityId) tokens.push(`focus:${quoteFilterValue(entityId)}`);
+    setGraphFilterText(tokens.join(" "));
+  }, [graphFilterText, setGraphFilterText]);
   const applyBaseFilters = useCallback(
     (ignore: "crate" | "process" | "kind" | "module" | null) => {
       let entities = allEntities.filter(
@@ -272,18 +284,16 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
   );
 
   const hideNodeViaTextFilter = useCallback((entityId: string) => {
-    setGraphFilterText((prev) => appendFilterToken(prev, `-node:${quoteFilterValue(entityId)}`));
-  }, []);
+    setGraphFilterText(appendFilterToken(graphFilterText, `-node:${quoteFilterValue(entityId)}`));
+  }, [graphFilterText, setGraphFilterText]);
 
   const hideLocationViaTextFilter = useCallback((location: string) => {
-    setGraphFilterText((prev) =>
-      appendFilterToken(prev, `-location:${quoteFilterValue(location)}`),
-    );
-  }, []);
+    setGraphFilterText(appendFilterToken(graphFilterText, `-location:${quoteFilterValue(location)}`));
+  }, [graphFilterText, setGraphFilterText]);
 
   const appendFilterTokenCallback = useCallback((token: string) => {
-    setGraphFilterText((prev) => appendFilterToken(prev, token));
-  }, []);
+    setGraphFilterText(appendFilterToken(graphFilterText, token));
+  }, [graphFilterText, setGraphFilterText]);
 
   const crateItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
