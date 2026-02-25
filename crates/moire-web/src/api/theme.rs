@@ -11,7 +11,16 @@ use std::fmt::Write;
 fn theme_to_css_vars(theme: &Theme) -> String {
     let mut css = String::new();
 
-    // Build tag -> style map for parent fallback
+    // Build name -> style index map for alias + parent lookups
+    let mut name_to_idx: HashMap<&str, usize> = HashMap::new();
+    for (i, def) in HIGHLIGHTS.iter().enumerate() {
+        name_to_idx.insert(def.name, i);
+        for alias in def.aliases {
+            name_to_idx.entry(alias).or_insert(i);
+        }
+    }
+
+    // Build tag -> style for parent fallback
     let mut tag_to_style: HashMap<&str, &Style> = HashMap::new();
     for (i, def) in HIGHLIGHTS.iter().enumerate() {
         if !def.tag.is_empty() && !theme.styles[i].is_empty() {
@@ -25,8 +34,16 @@ fn theme_to_css_vars(theme: &Theme) -> String {
             continue;
         }
 
+        // Try own index, then aliases, then parent tag
         let style = if !theme.styles[i].is_empty() {
             &theme.styles[i]
+        } else if let Some(s) = def.aliases.iter().find_map(|a| {
+            name_to_idx.get(a).and_then(|&j| {
+                let s = &theme.styles[j];
+                if !s.is_empty() { Some(s) } else { None }
+            })
+        }) {
+            s
         } else if !def.parent_tag.is_empty() {
             match tag_to_style.get(def.parent_tag) {
                 Some(s) => s,
