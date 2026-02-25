@@ -123,6 +123,22 @@ function interpolatePolyline(from: Point[], to: Point[], t: number): Point[] {
   return out;
 }
 
+function orderedUnionIds(primaryIds: string[], secondaryIds: string[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const id of primaryIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(id);
+  }
+  for (const id of secondaryIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(id);
+  }
+  return ordered;
+}
+
 function boundsForNodesAndGroups(nodes: GeometryNode[], groups: GeometryGroup[]): Rect {
   let minX = Infinity;
   let minY = Infinity;
@@ -159,7 +175,10 @@ export function interpolateGraph(
 
   const fromNodeById = new Map(fromNodes.map((n) => [n.id, n]));
   const toNodeById = new Map(toNodes.map((n) => [n.id, n]));
-  const nodeIds = new Set<string>([...fromNodeById.keys(), ...toNodeById.keys()]);
+  const nodeIds = orderedUnionIds(
+    toNodes.map((n) => n.id),
+    fromNodes.map((n) => n.id),
+  );
   const nodeOpacityById = new Map<string, number>();
   const nodes: GeometryNode[] = [];
   for (const id of nodeIds) {
@@ -183,7 +202,10 @@ export function interpolateGraph(
 
   const fromGroupById = new Map(fromGroups.map((g) => [g.id, g]));
   const toGroupById = new Map(toGroups.map((g) => [g.id, g]));
-  const groupIds = new Set<string>([...fromGroupById.keys(), ...toGroupById.keys()]);
+  const groupIds = orderedUnionIds(
+    toGroups.map((g) => g.id),
+    fromGroups.map((g) => g.id),
+  );
   const groupOpacityById = new Map<string, number>();
   const groups: GeometryGroup[] = [];
   for (const id of groupIds) {
@@ -207,7 +229,10 @@ export function interpolateGraph(
 
   const fromEdgeById = new Map(fromGeometry.edges.map((e) => [e.id, e]));
   const toEdgeById = new Map(toGeometry.edges.map((e) => [e.id, e]));
-  const edgeIds = new Set<string>([...fromEdgeById.keys(), ...toEdgeById.keys()]);
+  const edgeIds = orderedUnionIds(
+    toGeometry.edges.map((e) => e.id),
+    fromGeometry.edges.map((e) => e.id),
+  );
   const edgeOpacityById = new Map<string, number>();
   const edges: GeometryEdge[] = [];
   for (const id of edgeIds) {

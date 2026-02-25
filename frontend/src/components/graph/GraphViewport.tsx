@@ -33,6 +33,88 @@ type GraphTransitionState = {
 
 const GRAPH_TRANSITION_DURATION_MS = 220;
 
+function nearlyEqual(a: number, b: number, epsilon = 0.01): boolean {
+  return Math.abs(a - b) <= epsilon;
+}
+
+function sameRect(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    nearlyEqual(a.x, b.x) &&
+    nearlyEqual(a.y, b.y) &&
+    nearlyEqual(a.width, b.width) &&
+    nearlyEqual(a.height, b.height)
+  );
+}
+
+function sameNodeRects(a: GeometryNode[], b: GeometryNode[]): boolean {
+  if (a.length !== b.length) return false;
+  const byId = new Map(a.map((node) => [node.id, node.worldRect]));
+  for (const node of b) {
+    const rect = byId.get(node.id);
+    if (!rect) return false;
+    if (!sameRect(rect, node.worldRect)) return false;
+  }
+  return true;
+}
+
+function sameGroupRects(a: GeometryGroup[], b: GeometryGroup[]): boolean {
+  if (a.length !== b.length) return false;
+  const byId = new Map(a.map((group) => [group.id, group.worldRect]));
+  for (const group of b) {
+    const rect = byId.get(group.id);
+    if (!rect) return false;
+    if (!sameRect(rect, group.worldRect)) return false;
+  }
+  return true;
+}
+
+function sameEdgePolylines(a: GraphGeometry["edges"], b: GraphGeometry["edges"]): boolean {
+  if (a.length !== b.length) return false;
+  const byId = new Map(a.map((edge) => [edge.id, edge.polyline]));
+  for (const edge of b) {
+    const polyline = byId.get(edge.id);
+    if (!polyline) return false;
+    if (polyline.length !== edge.polyline.length) return false;
+    for (let i = 0; i < polyline.length; i++) {
+      if (!nearlyEqual(polyline[i].x, edge.polyline[i].x)) return false;
+      if (!nearlyEqual(polyline[i].y, edge.polyline[i].y)) return false;
+    }
+  }
+  return true;
+}
+
+function samePortAnchors(
+  a: GraphGeometry["portAnchors"],
+  b: GraphGeometry["portAnchors"],
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, anchor] of b) {
+    const other = a.get(id);
+    if (!other) return false;
+    if (!nearlyEqual(anchor.x, other.x) || !nearlyEqual(anchor.y, other.y)) return false;
+  }
+  return true;
+}
+
+function sameRenderableGeometry(
+  aGeometry: GraphGeometry,
+  bGeometry: GraphGeometry,
+  aNodes: GeometryNode[],
+  bNodes: GeometryNode[],
+  aGroups: GeometryGroup[],
+  bGroups: GeometryGroup[],
+): boolean {
+  return (
+    sameNodeRects(aNodes, bNodes) &&
+    sameGroupRects(aGroups, bGroups) &&
+    sameEdgePolylines(aGeometry.edges, bGeometry.edges) &&
+    samePortAnchors(aGeometry.portAnchors, bGeometry.portAnchors)
+  );
+}
+
 function makeStableInterpolatedGraph(
   geometry: GraphGeometry,
   nodes: GeometryNode[],
@@ -123,6 +205,43 @@ export function GraphViewport({
 
     const current = interpolatedGraphRef.current;
     if (!current) {
+      setInterpolatedGraph(makeStableInterpolatedGraph(geometry, nodes, groups));
+      return;
+    }
+
+    const activeTransition = transitionRef.current;
+    if (
+      activeTransition &&
+      sameRenderableGeometry(
+        activeTransition.toGeometry,
+        geometry,
+        activeTransition.toNodes,
+        nodes,
+        activeTransition.toGroups,
+        groups,
+      )
+    ) {
+      activeTransition.toGeometry = geometry;
+      activeTransition.toNodes = nodes;
+      activeTransition.toGroups = groups;
+      return;
+    }
+
+    if (
+      sameRenderableGeometry(
+        current.geometry,
+        geometry,
+        current.nodes,
+        nodes,
+        current.groups,
+        groups,
+      )
+    ) {
+      transitionRef.current = null;
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       setInterpolatedGraph(makeStableInterpolatedGraph(geometry, nodes, groups));
       return;
     }
