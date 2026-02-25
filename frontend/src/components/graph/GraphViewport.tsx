@@ -265,6 +265,24 @@ export function GraphViewport({
               nodes={nodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
+              onNodePin={(id) => {
+                setNodeExpandStates((prev) => {
+                  const next = new Map(prev);
+                  next.set(id, "pinned");
+                  return next;
+                });
+                onPinnedNodesChange?.(new Set([...pinnedNodeIds, id]));
+              }}
+              onNodeUnpin={(id) => {
+                setNodeExpandStates((prev) => {
+                  const next = new Map(prev);
+                  next.delete(id);
+                  return next;
+                });
+                const nextPinned = new Set(pinnedNodeIds);
+                nextPinned.delete(id);
+                onPinnedNodesChange?.(nextPinned);
+              }}
               onNodeHover={(id) => {
                 if (id) {
                   // If any node is expanded (non-pinned), hover on other nodes is blocked.
@@ -294,31 +312,14 @@ export function GraphViewport({
                 const currentState = nodeExpandStates.get(id);
 
                 if (!currentState || currentState === "collapsed") {
-                  // Click 1: expand (visual overlay)
+                  // Click: expand (visual overlay)
                   setNodeExpandStates((prev) => {
                     const next = new Map(prev);
                     next.set(id, "expanded");
                     return next;
                   });
-                } else if (currentState === "expanded") {
-                  // Click 2: pin (triggers relayout)
-                  setNodeExpandStates((prev) => {
-                    const next = new Map(prev);
-                    next.set(id, "pinned");
-                    return next;
-                  });
-                  onPinnedNodesChange?.(new Set([...pinnedNodeIds, id]));
-                } else if (currentState === "pinned") {
-                  // Click on pinned node: unpin (triggers relayout)
-                  setNodeExpandStates((prev) => {
-                    const next = new Map(prev);
-                    next.delete(id);
-                    return next;
-                  });
-                  const nextPinned = new Set(pinnedNodeIds);
-                  nextPinned.delete(id);
-                  onPinnedNodesChange?.(nextPinned);
                 }
+                // expanded → pinned is now handled by the Pin button, not by clicking again
               }}
               onNodeContextMenu={(id, clientX, clientY) => {
                 const graphFlow = graphFlowRef.current;

@@ -13,6 +13,25 @@
 
     transition: all 0.1s ease-in-out;
     --graph-code-card-width: 600px;
+
+    /* Layered elevation shadow — tinted with bg hue (Josh Comeau technique) */
+    --_shadow-base: color-mix(in oklch, var(--theme-bg) 20%, black);
+    box-shadow:
+        0 1px 2px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 9%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
+            ),
+        0 2px 5px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 6%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
+            ),
+        0 5px 14px
+            light-dark(
+                color-mix(in srgb, var(--_shadow-base) 4%, transparent),
+                color-mix(in srgb, var(--_shadow-base) 16%, transparent)
+            );
 }
 
 /*.graph-card--scope {
@@ -98,14 +117,18 @@
 
 .graph-node--expanded {
     z-index: 10;
-    max-height: 20em;
-    overflow-y: auto;
 
     .graph-node-frame {
         overflow: initial;
         text-overflow: initial;
         white-space: pre-wrap;
     }
+}
+
+.graph-node-frames-scroll {
+    max-height: 25em;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 /* ── Frame lines ── */
@@ -186,12 +209,15 @@
     flex-direction: row;
     align-items: center;
     gap: 5px;
-    padding: 12px 0 8px;
+    padding: 6px 0;
+    position: sticky;
+    top: -6px;
+    background: var(--graph-card-bg);
+    z-index: 1;
 }
 
-.graph-node-frame-section:first-child .graph-node-frame-sep {
-    border-top: none;
-    padding-top: 0;
+.graph-node-frame-section:not(:first-child) .graph-node-frame-sep {
+    border-top: 1px solid var(--border-edge);
 }
 
 .graph-node-frame-sep__icon {
@@ -258,7 +284,7 @@
     color: var(--text-tertiary);
     user-select: none;
 
-    border-right: 3px solid var(--accent);
+    border-right: 2px solid var(--accent);
     margin-right: 0.8em;
 }
 

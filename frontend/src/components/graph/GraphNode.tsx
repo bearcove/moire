@@ -152,10 +152,14 @@ export function GraphNode({
   data,
   expanded = false,
   pinned = false,
+  onPin,
+  onUnpin,
 }: {
   data: GraphNodeData;
   expanded?: boolean;
   pinned?: boolean;
+  onPin?: (e: React.MouseEvent) => void;
+  onUnpin?: (e: React.MouseEvent) => void;
 }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
@@ -235,9 +239,12 @@ export function GraphNode({
       <FrameList
         data={data}
         expanded={expanded}
+        pinned={pinned}
         isFuture={isFuture}
         collapsedShowSource={collapsedShowSource}
         collapsedFrames={visibleFrames}
+        onPin={expanded && !pinned ? onPin : undefined}
+        onUnpin={pinned ? onUnpin : undefined}
       />
     </div>
   );

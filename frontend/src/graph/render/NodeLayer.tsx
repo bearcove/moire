@@ -21,6 +21,8 @@ export interface NodeLayerProps {
   nodes: GeometryNode[];
   nodeExpandStates?: Map<string, NodeExpandState>;
   onNodeClick?: (id: string) => void;
+  onNodePin?: (id: string) => void;
+  onNodeUnpin?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
   ghostNodeIds?: Set<string>;
@@ -144,6 +146,8 @@ export function NodeLayer({
   nodes,
   nodeExpandStates,
   onNodeClick,
+  onNodePin,
+  onNodeUnpin,
   onNodeContextMenu,
   onNodeHover,
   ghostNodeIds,
@@ -171,6 +175,8 @@ export function NodeLayer({
             data={{ ...(node.data as GraphNodeData), ghost: isGhost }}
             expanded={isExpanded}
             pinned={isPinned}
+            onPin={onNodePin ? (e) => { e.stopPropagation(); onNodePin(node.id); } : undefined}
+            onUnpin={onNodeUnpin ? (e) => { e.stopPropagation(); onNodeUnpin(node.id); } : undefined}
           />
         );
 
