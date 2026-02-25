@@ -17,8 +17,8 @@ interface CameraContextValue {
   camera: Camera;
   setCamera: (c: Camera) => void;
   fitView: () => void;
-  panTo: (worldX: number, worldY: number) => void;
-  animateCameraTo: (target: Camera) => void;
+  panTo: (worldX: number, worldY: number, durationMs?: number) => void;
+  animateCameraTo: (target: Camera, durationMs?: number) => void;
   getManualInteractionVersion: () => number;
   clientToGraph: (clientX: number, clientY: number) => { x: number; y: number } | null;
   viewportWidth: number;

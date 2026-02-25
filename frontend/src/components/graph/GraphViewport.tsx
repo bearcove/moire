@@ -359,7 +359,11 @@ export function GraphViewport({
           onFitted={() => setHasFitted(true)}
           suppressAutoFit={unionModeSuppressAutoFit && hasFitted}
         />
-        <NodeExpandPanner nodes={nodes} nodeExpandStates={nodeExpandStates} />
+        <NodeExpandPanner
+          nodes={nodes}
+          nodeExpandStates={nodeExpandStates}
+          transitionDurationMs={GRAPH_TRANSITION_DURATION_MS}
+        />
         {renderedGeometry && (
           <>
             <GroupLayer groups={renderedGroups} />
@@ -448,20 +452,20 @@ const GRAPH_EMPTY_MESSAGES: Record<"idle" | "cutting" | "loading" | "ready" | "e
 function NodeExpandPanner({
   nodes,
   nodeExpandStates,
+  transitionDurationMs,
 }: {
   nodes: GeometryNode[];
   nodeExpandStates: Map<string, NodeExpandState>;
+  transitionDurationMs: number;
 }) {
   const { panTo, animateCameraTo, getManualInteractionVersion, viewportHeight, camera } =
     useCameraContext();
   const prevStatesRef = useRef<Map<string, NodeExpandState>>(new Map());
-  const panDelayTimerRef = useRef<number | null>(null);
   // Camera position saved when expansion starts; restored on collapse unless user manually moved.
   const savedCameraRef = useRef<typeof camera | null>(null);
   const savedManualVersionRef = useRef<number | null>(null);
   const canRestoreRef = useRef(false);
   const didAutoPanRef = useRef(false);
-  const PAN_SYNC_DELAY_MS = 90;
 
   useEffect(() => {
     const prev = prevStatesRef.current;
@@ -489,13 +493,9 @@ function NodeExpandPanner({
     }
 
     if (isEmpty && !wasEmpty) {
-      if (panDelayTimerRef.current != null) {
-        clearTimeout(panDelayTimerRef.current);
-        panDelayTimerRef.current = null;
-      }
       // All nodes collapsed — restore only if we auto-panned and user never moved manually.
       if (canRestoreRef.current && didAutoPanRef.current && savedCameraRef.current) {
-        animateCameraTo(savedCameraRef.current);
+        animateCameraTo(savedCameraRef.current, transitionDurationMs);
       }
       savedCameraRef.current = null;
       savedManualVersionRef.current = null;
@@ -513,17 +513,10 @@ function NodeExpandPanner({
           const node = nodes.find((n) => n.id === id);
           if (node) {
             const { x, y, width } = node.worldRect;
-            // Delay pan slightly so camera motion lines up with the card's height reveal.
-            if (panDelayTimerRef.current != null) {
-              clearTimeout(panDelayTimerRef.current);
-            }
-            panDelayTimerRef.current = window.setTimeout(() => {
-              // Keep the node top around 20% viewport height so there is room for expanded content.
-              const offsetY = (viewportHeight * 0.3) / camera.zoom;
-              panTo(x + width / 2, y + offsetY);
-              didAutoPanRef.current = true;
-              panDelayTimerRef.current = null;
-            }, PAN_SYNC_DELAY_MS);
+            // Keep the node top around 20% viewport height so there is room for expanded content.
+            const offsetY = (viewportHeight * 0.3) / camera.zoom;
+            panTo(x + width / 2, y + offsetY, transitionDurationMs);
+            didAutoPanRef.current = true;
           }
         }
       }
@@ -538,15 +531,8 @@ function NodeExpandPanner({
     getManualInteractionVersion,
     viewportHeight,
     camera,
+    transitionDurationMs,
   ]);
-
-  useEffect(() => {
-    return () => {
-      if (panDelayTimerRef.current != null) {
-        clearTimeout(panDelayTimerRef.current);
-      }
-    };
-  }, []);
 
   return null;
 }

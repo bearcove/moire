@@ -21,8 +21,8 @@ export function useCameraController(
   camera: Camera;
   setCamera: (c: Camera) => void;
   fitView: () => void;
-  panTo: (worldX: number, worldY: number) => void;
-  animateCameraTo: (target: Camera) => void;
+  panTo: (worldX: number, worldY: number, durationMs?: number) => void;
+  animateCameraTo: (target: Camera, durationMs?: number) => void;
   getManualInteractionVersion: () => number;
   handlers: {
     onWheel: (e: WheelEvent) => void;
@@ -59,7 +59,7 @@ export function useCameraController(
     setCamera(fitBounds(bounds, width, height, 40));
   }, [bounds, getViewportSize]);
 
-  const animateCameraTo = useCallback((target: Camera) => {
+  const animateCameraTo = useCallback((target: Camera, durationMs: number = PAN_DURATION_MS) => {
     cancelAnimationFrame(animFrameRef.current);
     const start = cameraRef.current;
     const dx = target.x - start.x;
@@ -69,7 +69,7 @@ export function useCameraController(
     const startTime = performance.now();
     const tick = () => {
       const elapsed = performance.now() - startTime;
-      const t = Math.min(1, elapsed / PAN_DURATION_MS);
+      const t = durationMs <= 0 ? 1 : Math.min(1, elapsed / durationMs);
       // ease-out cubic
       const ease = 1 - (1 - t) ** 3;
       setCamera({
@@ -191,12 +191,15 @@ export function useCameraController(
   }, []);
 
   const panTo = useCallback(
-    (worldX: number, worldY: number) => {
-      animateCameraTo({
-        ...cameraRef.current,
-        x: worldX,
-        y: worldY,
-      });
+    (worldX: number, worldY: number, durationMs?: number) => {
+      animateCameraTo(
+        {
+          ...cameraRef.current,
+          x: worldX,
+          y: worldY,
+        },
+        durationMs,
+      );
     },
     [animateCameraTo],
   );
