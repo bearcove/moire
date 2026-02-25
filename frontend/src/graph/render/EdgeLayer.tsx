@@ -105,7 +105,7 @@ export function EdgeLayer({
           // Shorten the path end so the stroke terminates at the arrowhead base,
           // not the tip. Combined with refX=0 on the marker, the tip lands exactly
           // at the original target anchor (node border) with no bleed-through.
-          const visPolyline = polyline.map((p) => ({ ...p }));
+          const visPolyline = ensureTerminalSegmentLength(polyline, 0.5);
           if (visPolyline.length >= 2) {
             const tip = visPolyline[visPolyline.length - 1];
             const prev = visPolyline[visPolyline.length - 2];
@@ -209,6 +209,33 @@ type PortFace = "north" | "south" | "east" | "west";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function pointDistance(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function ensureTerminalSegmentLength(polyline: Point[], minLength: number): Point[] {
+  if (polyline.length < 2) return polyline;
+  const out = polyline.map((point) => ({ ...point }));
+  const tip = out[out.length - 1];
+  let prevIndex = out.length - 2;
+  while (prevIndex >= 0 && pointDistance(out[prevIndex], tip) < minLength) {
+    prevIndex -= 1;
+  }
+  if (prevIndex < 0) return out;
+
+  const pivot = out[prevIndex];
+  const dx = pivot.x - tip.x;
+  const dy = pivot.y - tip.y;
+  const len = Math.hypot(dx, dy);
+  if (len <= 0) return out;
+
+  out[out.length - 2] = {
+    x: tip.x + (dx / len) * minLength,
+    y: tip.y + (dy / len) * minLength,
+  };
+  return out;
 }
 
 function inferFaceFromPortRef(portRef: string | undefined, isSource: boolean): PortFace | null {
