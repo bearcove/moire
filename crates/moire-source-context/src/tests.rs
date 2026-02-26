@@ -20,12 +20,21 @@ fn run_fixture(path: &Path, contents: &str) -> Result<(), Box<dyn std::error::Er
     let lang = path.extension().and_then(|e| e.to_str()).unwrap_or("rust");
 
     // Find the 👉 marker to determine target line; strip it from source.
+    // If 👉 appears alone on a line, that line is dropped and the target is
+    // the following line. If 👉 prefixes content, the marker is stripped in place.
     let mut target_line: Option<u32> = None;
     let mut clean_lines: Vec<&str> = Vec::new();
-    for (i, line) in contents.lines().enumerate() {
-        if let Some(rest) = line.strip_prefix("👉") {
-            target_line = Some((i + 1) as u32);
-            clean_lines.push(rest.strip_prefix(' ').unwrap_or(rest));
+    for line in contents.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("👉") {
+            let rest = rest.strip_prefix(' ').unwrap_or(rest);
+            if rest.is_empty() {
+                // Marker on its own line — target is the next line (after drop)
+                target_line = Some((clean_lines.len() + 1) as u32);
+                // drop this line entirely
+            } else {
+                target_line = Some((clean_lines.len() + 1) as u32);
+                clean_lines.push(rest);
+            }
         } else {
             clean_lines.push(line);
         }
@@ -72,7 +81,7 @@ fn run_fixture(path: &Path, contents: &str) -> Result<(), Box<dyn std::error::Er
 }
 
 datatest_mini::harness! {
-    { test = run_fixture, root = "tests/fixtures", pattern = r"^[^/]+\.(rs|js)$" },
+    { test = run_fixture, root = "src/tests", pattern = r"^[^/]+\.(rs|js)$" },
 }
 
 /// Dump tree-sitter node structure for a parsed statement. Call from any
