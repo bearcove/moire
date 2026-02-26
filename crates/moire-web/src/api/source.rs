@@ -200,7 +200,7 @@ fn html_escape(s: &str) -> String {
     result
 }
 
-fn lookup_source_in_db(
+pub(crate) fn lookup_source_in_db(
     db: &Db,
     frame_id: FrameId,
     module_identity: String,

@@ -27,7 +27,8 @@
       "Bash(pnpm exec vitest:*)",
       "Bash(npm run build:*)",
       "Bash(./node_modules/.bin/tsc:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "mcp__moire__moire_snapshot"
     ]
   }
 }

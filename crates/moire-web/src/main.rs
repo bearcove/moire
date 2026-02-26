@@ -4,6 +4,7 @@ use facet::Facet;
 use figue as args;
 use moire_web::app::{AppState, DevProxyState, build_router};
 use moire_web::db::{Db, init_sqlite, load_next_connection_id};
+use moire_web::mcp::run_mcp_server;
 use moire_web::proxy::{DEFAULT_VITE_ADDR, start_vite_dev_server};
 use moire_web::tcp::run_tcp_acceptor;
 use tokio::net::TcpListener;
@@ -82,6 +83,8 @@ async fn run() -> Result<(), String> {
     let tcp_addr = std::env::var("MOIRE_LISTEN").unwrap_or_else(|_| "127.0.0.1:9119".into());
     // r[impl config.web.http-listen]
     let http_addr = std::env::var("MOIRE_HTTP").unwrap_or_else(|_| "127.0.0.1:9130".into());
+    // r[impl config.web.mcp-listen]
+    let mcp_addr = std::env::var("MOIRE_MCP").unwrap_or_else(|_| "127.0.0.1:9131".into());
     // r[impl config.web.vite-addr]
     let vite_addr = std::env::var("MOIRE_VITE_ADDR").unwrap_or_else(|_| DEFAULT_VITE_ADDR.into());
     // r[impl config.web.db-path]
@@ -120,9 +123,14 @@ async fn run() -> Result<(), String> {
     } else {
         info!(%http_addr, "moire-web HTTP API ready");
     }
+    let mcp_listener = TcpListener::bind(&mcp_addr)
+        .await
+        .map_err(|e| format!("failed to bind MCP on {mcp_addr}: {e}"))?;
+    info!(%mcp_addr, "moire-web MCP listener ready");
     print_startup_hints(
         &http_addr,
         &tcp_addr,
+        &mcp_addr,
         if cli.dev { Some(&vite_addr) } else { None },
     );
 
@@ -134,6 +142,11 @@ async fn run() -> Result<(), String> {
         result = axum::serve(http_listener, app) => {
             if let Err(e) = result {
                 error!(%e, "HTTP server error");
+            }
+        }
+        result = run_mcp_server(mcp_listener, state.clone()) => {
+            if let Err(e) = result {
+                error!(%e, "MCP server error");
             }
         }
     }
@@ -157,7 +170,7 @@ fn parse_cli() -> Result<Cli, String> {
     Ok(cli.value)
 }
 
-fn print_startup_hints(http_addr: &str, tcp_addr: &str, vite_addr: Option<&str>) {
+fn print_startup_hints(http_addr: &str, tcp_addr: &str, mcp_addr: &str, vite_addr: Option<&str>) {
     let mode = if vite_addr.is_some() {
         "dev proxy"
     } else {
@@ -174,6 +187,7 @@ fn print_startup_hints(http_addr: &str, tcp_addr: &str, vite_addr: Option<&str>)
     println!("  moire-web ready ({mode})");
     println!();
     println!("  \x1b[32mOpen in browser: http://{http_addr}\x1b[0m");
+    println!("  MCP endpoint: \x1b[32mhttp://{mcp_addr}/mcp\x1b[0m");
     println!();
     println!("  Connect apps with:");
     println!("    \x1b[32mMOIRE_DASHBOARD={tcp_addr}\x1b[0m <your-binary>");

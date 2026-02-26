@@ -1,6 +1,7 @@
 pub mod api;
 pub mod app;
 pub mod db;
+pub mod mcp;
 pub mod proxy;
 pub mod recording;
 pub mod snapshot;

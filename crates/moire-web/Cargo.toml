@@ -11,6 +11,7 @@ rustdoc-args = ["--html-in-header", "arborium-header.html"]
 
 [dependencies]
 axum.workspace = true
+async-trait = "0.1"
 facet.workspace = true
 facet-json.workspace = true
 facet-typescript.workspace = true
@@ -28,6 +29,14 @@ tracing-subscriber.workspace = true
 ureq.workspace = true
 addr2line.workspace = true
 arborium.workspace = true
+rust-mcp-sdk = { version = "0.8", default-features = false, features = [
+  "server",
+  "macros",
+  "hyper-server",
+  "streamable-http",
+] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 object = "0.36"
 ur-taking-me-with-you.workspace = true
 arborium-theme = "2"
