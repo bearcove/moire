@@ -259,11 +259,11 @@ The shortest mental model:
 3. each process replies with `CutAck { cut_id, cursor }`
 4. frontend polls `GET /api/cuts/{cut_id}` until `pending_connections == 0`
 
-This is exactly what `moire-cli cut` does as one command.
+This is exactly what `moire cut` does as one command.
 
 ## Canonical query packs
 
-To reduce hand-written SQL in clients and agents, backend exposes these via `POST /api/query` and `moire-cli query --name ...` consumes that endpoint:
+To reduce hand-written SQL in clients and agents, backend exposes these via `POST /api/query` and `moire query --name ...` consumes that endpoint:
 
 1. `blockers`
 2. `blocked-senders`
