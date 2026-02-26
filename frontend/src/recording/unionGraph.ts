@@ -10,8 +10,9 @@ import {
   type EntityDef,
   type EdgeDef,
 } from "../snapshot";
-import { measureGraphLayout } from "../graph/render/NodeLayer";
-import { layoutGraph } from "../graph/elkAdapter";
+import { measureGraphLayout, type MeasuredGraphNode } from "../graph/render/NodeLayer";
+import { edgeEventNodeId, edgeEventNodeLabel, layoutGraph } from "../graph/elkAdapter";
+import { graphNodeDataFromEdgeEvent } from "../components/graph/graphNodeData";
 import type { GraphGeometry, GeometryNode, GeometryEdge } from "../graph/geometry";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -102,9 +103,25 @@ export async function buildUnionLayout(
 
   const unionEntities = Array.from(unionEntitiesById.values());
   const unionEdges = Array.from(unionEdgesById.values());
+  const measuredEdgeEventNodes: MeasuredGraphNode[] = [];
+  for (const edge of unionEdges) {
+    const label = edgeEventNodeLabel(edge.kind);
+    if (!label) continue;
+    measuredEdgeEventNodes.push({
+      id: edgeEventNodeId(edge.id),
+      data: graphNodeDataFromEdgeEvent(edge, label),
+    });
+  }
 
   // Measure and layout the full union graph.
-  const measurements = await measureGraphLayout(unionEntities, groupMode);
+  const measurements = await measureGraphLayout(
+    unionEntities,
+    groupMode,
+    undefined,
+    undefined,
+    undefined,
+    measuredEdgeEventNodes,
+  );
   const geometry = await layoutGraph(unionEntities, unionEdges, measurements.nodeSizes, groupMode, {
     subgraphHeaderHeight: measurements.subgraphHeaderHeight,
   });
@@ -131,7 +148,8 @@ export function nearestProcessedFrame(frameIndex: number, processedFrameIndices:
     if (processedFrameIndices[mid] < frameIndex) lo = mid + 1;
     else hi = mid;
   }
-  if (lo === processedFrameIndices.length) return processedFrameIndices[processedFrameIndices.length - 1];
+  if (lo === processedFrameIndices.length)
+    return processedFrameIndices[processedFrameIndices.length - 1];
   if (lo === 0) return processedFrameIndices[0];
   const lower = processedFrameIndices[lo - 1];
   const upper = processedFrameIndices[lo];
@@ -283,30 +301,37 @@ export function renderFrameFromUnion(
 ): FrameRenderResult {
   const snappedIndex = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
   const frameData = unionLayout.frameCache.get(snappedIndex);
-  const emptyGeometry: GraphGeometry = { nodes: [], groups: [], edges: [], bounds: { x: 0, y: 0, width: 0, height: 0 }, portAnchors: new Map() };
-  if (!frameData) return { geometry: emptyGeometry, ghostNodeIds: new Set(), ghostEdgeIds: new Set() };
+  const emptyGeometry: GraphGeometry = {
+    nodes: [],
+    groups: [],
+    edges: [],
+    bounds: { x: 0, y: 0, width: 0, height: 0 },
+    portAnchors: new Map(),
+  };
+  if (!frameData)
+    return { geometry: emptyGeometry, ghostNodeIds: new Set(), ghostEdgeIds: new Set() };
 
   // Apply krate/process filters.
-  let filteredEntities = frameData.entities.filter(
-    (e) => {
-      const eCrate = e.topFrame?.crate_name ?? "~no-crate";
-      const eLocation = e.topFrame
-        ? (e.topFrame.line != null ? `${e.topFrame.source_file}:${e.topFrame.line}` : e.topFrame.source_file)
-        : "";
-      return (
-        (includeKrates.size === 0 || includeKrates.has(eCrate)) &&
-        (includeProcesses.size === 0 || includeProcesses.has(e.processId)) &&
-        (includeKinds.size === 0 || includeKinds.has(canonicalNodeKind(e.kind))) &&
-        (includeNodeIds.size === 0 || includeNodeIds.has(e.id)) &&
-        (includeLocations.size === 0 || includeLocations.has(eLocation)) &&
-        (hiddenKrates.size === 0 || !hiddenKrates.has(eCrate)) &&
-        (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
-        (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))) &&
-        !excludeNodeIds.has(e.id) &&
-        !excludeLocations.has(eLocation)
-      );
-    },
-  );
+  let filteredEntities = frameData.entities.filter((e) => {
+    const eCrate = e.topFrame?.crate_name ?? "~no-crate";
+    const eLocation = e.topFrame
+      ? e.topFrame.line != null
+        ? `${e.topFrame.source_file}:${e.topFrame.line}`
+        : e.topFrame.source_file
+      : "";
+    return (
+      (includeKrates.size === 0 || includeKrates.has(eCrate)) &&
+      (includeProcesses.size === 0 || includeProcesses.has(e.processId)) &&
+      (includeKinds.size === 0 || includeKinds.has(canonicalNodeKind(e.kind))) &&
+      (includeNodeIds.size === 0 || includeNodeIds.has(e.id)) &&
+      (includeLocations.size === 0 || includeLocations.has(eLocation)) &&
+      (hiddenKrates.size === 0 || !hiddenKrates.has(eCrate)) &&
+      (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
+      (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))) &&
+      !excludeNodeIds.has(e.id) &&
+      !excludeLocations.has(eLocation)
+    );
+  });
   let filteredEdges = frameData.edges;
   const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));
   filteredEdges = collapseEdgesThroughHiddenNodes(filteredEdges, filteredEntityIds);
@@ -405,16 +430,20 @@ export function renderFrameFromUnion(
   }
 
   // Recompute bounds for the filtered set
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const node of nodes) {
     minX = Math.min(minX, node.worldRect.x);
     minY = Math.min(minY, node.worldRect.y);
     maxX = Math.max(maxX, node.worldRect.x + node.worldRect.width);
     maxY = Math.max(maxY, node.worldRect.y + node.worldRect.height);
   }
-  const bounds = minX === Infinity
-    ? { x: 0, y: 0, width: 0, height: 0 }
-    : { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  const bounds =
+    minX === Infinity
+      ? { x: 0, y: 0, width: 0, height: 0 }
+      : { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 
   // Keep groups from the union geometry (they always show).
   const geometry: GraphGeometry = {

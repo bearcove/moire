@@ -225,11 +225,11 @@ export function GraphNode({
   expanding?: boolean;
   activeFrameIndex?: number;
 }) {
-  const showScopeColor =
-    data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined;
+  const showScopeColor = data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined;
 
   const canonical = canonicalNodeKind(data.kind);
   const isFutureKind = canonical === "future" || canonical === "futures";
+  const isEdgeEventKind = canonical === "edge_event";
   const isFramelessHeaderKind = FRAMELESS_HEADER_KINDS.has(canonical);
   // Futures always show source; other kinds only when explicitly toggled
   const collapsedShowSource = data.showSource || isFramelessHeaderKind;
@@ -371,11 +371,31 @@ export function GraphNode({
     showHeader &&
     (futureTopPreview?.enclosing_fn || futureTopStatement);
 
+  if (isEdgeEventKind && !expanded) {
+    return (
+      <div
+        className={[
+          "graph-card",
+          "graph-node",
+          "graph-node--edge-event-chip",
+          expanding && "graph-node--expanding",
+          isLoading && "graph-node--loading",
+          data.ghost && "graph-card--ghost",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <div className="graph-node-edge-event-chip__label">{data.label}</div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={[
         "graph-card",
         "graph-node",
+        isEdgeEventKind && "graph-node--edge-event",
         expanded && "graph-node--expanded",
         showCollapsedFutureBacktrace && "graph-node--collapsed-backtrace",
         expanding && "graph-node--expanding",

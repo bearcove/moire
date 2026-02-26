@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { FilterMenuItem } from "../../ui/primitives/FilterMenu";
 import type { EntityDef, EdgeDef } from "../../snapshot";
-import { layoutGraph, type SubgraphScopeMode } from "../../graph/elkAdapter";
-import { measureGraphLayout } from "../../graph/render/NodeLayer";
+import {
+  edgeEventNodeId,
+  edgeEventNodeLabel,
+  layoutGraph,
+  type SubgraphScopeMode,
+} from "../../graph/elkAdapter";
+import { measureGraphLayout, type MeasuredGraphNode } from "../../graph/render/NodeLayer";
 import type { GraphGeometry } from "../../graph/geometry";
 import { formatEntityPrimaryLabel, formatEntitySearchText } from "../../entityPresentation";
 import type { ScopeColorPair } from "./scopeColors";
@@ -10,7 +15,11 @@ import { assignScopeColorRgbByKey } from "./scopeColors";
 import type { FrameRenderResult } from "../../recording/unionGraph";
 import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
-import { computeNodeSublabel, graphNodeDataFromEntity } from "./graphNodeData";
+import {
+  computeNodeSublabel,
+  graphNodeDataFromEdgeEvent,
+  graphNodeDataFromEntity,
+} from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import { cachedFetchSourcePreviews } from "../../api/sourceCache";
 import { graphLog } from "../../debug";
@@ -26,12 +35,14 @@ function scopeKeyForEntity(entity: EntityDef, scopeColorMode: ScopeColorMode): s
   if (scopeColorMode === "process") return entity.processId;
   if (scopeColorMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
   if (scopeColorMode === "task") return entity.taskScopeKey ?? `${entity.processId}:~no-task`;
-  if (scopeColorMode === "cycle") return entity.sccIndex != null ? String(entity.sccIndex) : undefined;
+  if (scopeColorMode === "cycle")
+    return entity.sccIndex != null ? String(entity.sccIndex) : undefined;
   return undefined;
 }
 
 function collectExpandedFrameIds(
   defs: EntityDef[],
+  edges: EdgeDef[],
   expandedNodeIds: Set<string>,
   showSource?: boolean,
 ): Set<number> {
@@ -44,15 +55,23 @@ function collectExpandedFrameIds(
       if (frame.frame_id != null) frameIds.add(frame.frame_id);
     }
   }
+  for (const edge of edges) {
+    const nodeId = edgeEventNodeId(edge.id);
+    if (!expandedNodeIds.has(nodeId)) continue;
+    for (const frame of edge.frames ?? []) {
+      if (frame.frame_id != null) frameIds.add(frame.frame_id);
+    }
+  }
   return frameIds;
 }
 
 async function preloadExpandedSourcePreviews(
   defs: EntityDef[],
+  edges: EdgeDef[],
   expandedNodeIds: Set<string>,
   showSource?: boolean,
 ): Promise<void> {
-  const frameIds = collectExpandedFrameIds(defs, expandedNodeIds, showSource);
+  const frameIds = collectExpandedFrameIds(defs, edges, expandedNodeIds, showSource);
   if (frameIds.size === 0) return;
   await cachedFetchSourcePreviews([...frameIds]);
 }
@@ -152,6 +171,19 @@ export function GraphPanel({
     () => (expandedEntityId ? new Set([expandedEntityId]) : new Set<string>()),
     [expandedEntityId],
   );
+  const measuredEdgeEventNodes = useMemo<MeasuredGraphNode[]>(() => {
+    const byId = new Map<string, MeasuredGraphNode>();
+    for (const edge of edgeDefs) {
+      const label = edgeEventNodeLabel(edge.kind);
+      if (!label) continue;
+      const id = edgeEventNodeId(edge.id);
+      byId.set(id, {
+        id,
+        data: graphNodeDataFromEdgeEvent(edge, label),
+      });
+    }
+    return Array.from(byId.values());
+  }, [edgeDefs]);
   // Transient: the node that is currently loading (fetching source + running ELK).
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
 
@@ -191,7 +223,7 @@ export function GraphPanel({
     // Mark the newly-requested node as "expanding" so the UI shows a spinner immediately.
     if (shouldEnterExpanding) setExpandingNodeId(runExpandedEntityId);
 
-    void preloadExpandedSourcePreviews(entityDefs, expandedNodeIds, showSource)
+    void preloadExpandedSourcePreviews(entityDefs, edgeDefs, expandedNodeIds, showSource)
       .then(() => {
         if (cancelled || layoutRunIdRef.current !== runId) return null;
         graphLog("[layout] run=%d expanded source preload complete", runId);
@@ -201,6 +233,7 @@ export function GraphPanel({
           labelByMode,
           showSource,
           expandedNodeIds,
+          measuredEdgeEventNodes,
         );
       })
       .then((measurements) => {
@@ -280,6 +313,7 @@ export function GraphPanel({
     showSource,
     expandedKey,
     layoutInputsKey,
+    measuredEdgeEventNodes,
   ]);
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
@@ -304,6 +338,9 @@ export function GraphPanel({
       const scopeRgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
       const sublabel = entity && labelByMode ? computeNodeSublabel(entity, labelByMode) : undefined;
       const liveNodeData = entity ? graphNodeDataFromEntity(entity) : n.data;
+      const nodeShowSource = entity
+        ? showSource
+        : ((liveNodeData as { showSource?: boolean }).showSource ?? showSource);
 
       return {
         ...n,
@@ -312,7 +349,7 @@ export function GraphPanel({
           scopeRgbLight: scopeRgb?.light,
           scopeRgbDark: scopeRgb?.dark,
           sublabel,
-          showSource,
+          showSource: nodeShowSource,
         },
       };
     });

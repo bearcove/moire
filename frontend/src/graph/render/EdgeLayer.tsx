@@ -30,7 +30,8 @@ export function EdgeLayer({
   const markerSizes = useMemo(() => {
     const sizes = new Set<number>();
     for (const edge of edges) {
-      sizes.add((edge.data?.markerSize as number | undefined) ?? 8);
+      const size = (edge.data?.markerSize as number | undefined) ?? 8;
+      if (size > 0) sizes.add(size);
     }
     return [...sizes].sort((a, b) => a - b);
   }, [edges]);
@@ -76,7 +77,7 @@ export function EdgeLayer({
             ? "var(--accent)"
             : (edgeStyle.stroke ?? "var(--edge-stroke-muted)");
           const markerSize = (edge.data?.markerSize as number | undefined) ?? 8;
-          const markerEnd = `url(#${markerBaseId}-${markerSize})`;
+          const markerEnd = markerSize > 0 ? `url(#${markerBaseId}-${markerSize})` : undefined;
 
           // Shorten the path end so the stroke terminates at the arrowhead base,
           // not the tip. Combined with refX=0 on the marker, the tip lands exactly

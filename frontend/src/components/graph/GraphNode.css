@@ -30,7 +30,7 @@
         light-dark(rgb(var(--scope-rgb-light) / 0.95), rgb(var(--scope-rgb-dark) / 0.9));
 }
 
-.graph-card--stat-crit {
+/*.graph-card--stat-crit {
     --graph-card-border-color: var(--status-danger);
     --graph-card-tone-shadow: inset 0 0 0 1px
         color-mix(in srgb, var(--status-danger) 65%, transparent);
@@ -42,7 +42,7 @@
     --graph-card-tone-shadow: inset 0 0 0 1px
         color-mix(in srgb, var(--status-warning) 60%, transparent);
     border-left-width: var(--card-border-width-danger);
-}
+}*/
 
 .graph-card--ghost {
     opacity: 0.48;
@@ -63,6 +63,32 @@
 
 .graph-node:not(.graph-node--expanded) {
     max-width: min(92vw, var(--graph-node-collapsed-max-width));
+}
+
+.graph-node--edge-event-chip {
+    border: 1px solid color-mix(in srgb, var(--border-edge) 78%, transparent);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    box-shadow: var(--shadow-elevation-sm);
+    padding: 4px 8px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 14rem;
+}
+
+.graph-node-edge-event-chip__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    color: color-mix(in srgb, var(--text-primary) 92%, var(--accent));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ── Header: icon centered on top, main row below ── */

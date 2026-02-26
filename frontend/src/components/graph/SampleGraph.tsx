@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { EntityDef, EdgeDef } from "../../snapshot";
-import { layoutGraph } from "../../graph/elkAdapter";
-import { measureGraphLayout } from "../../graph/render/NodeLayer";
+import { edgeEventNodeId, edgeEventNodeLabel, layoutGraph } from "../../graph/elkAdapter";
+import { measureGraphLayout, type MeasuredGraphNode } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, GeometryNode } from "../../graph/geometry";
 import type { ScopeColorPair } from "./scopeColors";
 import { assignScopeColorRgbByKey } from "./scopeColors";
 import { GraphViewport } from "./GraphViewport";
 import type { GraphSelection } from "./GraphPanel";
+import { graphNodeDataFromEdgeEvent } from "./graphNodeData";
 
 export type { GraphSelection };
 
@@ -23,10 +24,29 @@ export function SampleGraph({
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
+  const measuredEdgeEventNodes = useMemo<MeasuredGraphNode[]>(() => {
+    const out: MeasuredGraphNode[] = [];
+    for (const edge of edgeDefs) {
+      const label = edgeEventNodeLabel(edge.kind);
+      if (!label) continue;
+      out.push({
+        id: edgeEventNodeId(edge.id),
+        data: graphNodeDataFromEdgeEvent(edge, label),
+      });
+    }
+    return out;
+  }, [edgeDefs]);
 
   useEffect(() => {
     if (entityDefs.length === 0) return;
-    measureGraphLayout(entityDefs, subgraphScopeMode)
+    measureGraphLayout(
+      entityDefs,
+      subgraphScopeMode,
+      undefined,
+      undefined,
+      undefined,
+      measuredEdgeEventNodes,
+    )
       .then((measurements) =>
         layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
@@ -34,7 +54,7 @@ export function SampleGraph({
       )
       .then(setLayout)
       .catch(console.error);
-  }, [entityDefs, edgeDefs, subgraphScopeMode]);
+  }, [entityDefs, edgeDefs, measuredEdgeEventNodes, subgraphScopeMode]);
 
   const entityById = useMemo(() => new Map(entityDefs.map((e) => [e.id, e])), [entityDefs]);
 

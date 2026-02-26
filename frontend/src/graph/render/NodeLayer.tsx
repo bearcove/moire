@@ -30,11 +30,16 @@ export interface NodeLayerProps {
   ghostNodeIds?: Set<string>;
 }
 
-type SubgraphScopeMode = "none" | "process" | "crate" | "task";
+type SubgraphScopeMode = "none" | "process" | "crate" | "task" | "cycle";
 
 export type GraphMeasureResult = {
   nodeSizes: Map<string, { width: number; height: number }>;
   subgraphHeaderHeight: number;
+};
+
+export type MeasuredGraphNode = {
+  id: string;
+  data: GraphNodeData;
 };
 
 // ── Measurement ───────────────────────────────────────────────
@@ -54,6 +59,7 @@ export async function measureGraphLayout(
   labelBy?: GraphFilterLabelMode,
   showSource?: boolean,
   expandedNodeIds?: Set<string>,
+  extraNodes: MeasuredGraphNode[] = [],
 ): Promise<GraphMeasureResult> {
   // Pre-fetch source data for collapsed nodes that need it (futures, showSource).
   // Expanded nodes are measured from DOM output and do not block on full source previews.
@@ -137,6 +143,34 @@ export async function measureGraphLayout(
           );
         }
         sizes.set(def.id, { width, height });
+      } finally {
+        root.unmount();
+        container.removeChild(el);
+      }
+    }
+
+    for (const extra of extraNodes) {
+      const isExpanded = expandedNodeIds?.has(extra.id) ?? false;
+      const el = document.createElement("div");
+      container.appendChild(el);
+      const root = createRoot(el);
+      try {
+        flushSync(() =>
+          root.render(
+            <GraphNode
+              data={{ ...extra.data, showSource: extra.data.showSource ?? showSource }}
+              expanded={isExpanded}
+            />,
+          ),
+        );
+        const width = el.offsetWidth;
+        const height = el.offsetHeight;
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+          throw new Error(
+            `[graph-measure] invalid extra node size for ${extra.id}: ${width}x${height}`,
+          );
+        }
+        sizes.set(extra.id, { width, height });
       } finally {
         root.unmount();
         container.removeChild(el);
@@ -240,6 +274,7 @@ export function NodeLayer({
             }}
             onClick={() => onNodeClick?.(node.id)}
             onContextMenu={(event) => {
+              if ((node.data as GraphNodeData).kind === "edge_event") return;
               event.preventDefault();
               event.stopPropagation();
               onNodeContextMenu?.(node.id, event.clientX, event.clientY);

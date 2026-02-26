@@ -9,7 +9,6 @@ import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
 import type { Camera as CameraState } from "../../graph/canvas/camera";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
-import { EdgeEventLayer } from "../../graph/render/EdgeEventLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, GeometryGroup, GeometryNode } from "../../graph/geometry";
 import { interpolateGraph, type InterpolatedGraph } from "../../graph/transition";
@@ -465,11 +464,14 @@ export function GraphViewport({
       if (!expandedNodeId) return;
 
       if (e.key === "j" || e.key === "k") {
-        const entity = entityById.get(expandedNodeId);
-        if (!entity) return;
+        const expandedNode = renderedNodes.find((node) => node.id === expandedNodeId);
+        const nodeData = expandedNode?.data as
+          | { frames?: unknown[]; skipEntryFrames?: number }
+          | undefined;
+        const frames = Array.isArray(nodeData?.frames) ? nodeData.frames : [];
         const skipEntryFrames =
-          "future" in entity.body ? (entity.body.future.skip_entry_frames ?? 0) : 0;
-        const frameCount = entity.frames.slice(skipEntryFrames).length;
+          typeof nodeData?.skipEntryFrames === "number" ? nodeData.skipEntryFrames : 0;
+        const frameCount = Math.max(0, frames.length - skipEntryFrames);
         if (frameCount === 0) return;
         e.preventDefault();
         setActiveExpandedFrameIndex((prev) => {
@@ -496,7 +498,7 @@ export function GraphViewport({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [entityById, expandedNodeId, onExpandedNodeChange, onSelect, renderedGeometry]);
+  }, [expandedNodeId, onExpandedNodeChange, onSelect, renderedGeometry, renderedNodes]);
 
   return (
     <div className="graph-flow" ref={graphFlowRef}>
@@ -696,18 +698,6 @@ export function GraphViewport({
                 const x = Math.max(8, Math.min(clientX - rect.left, Math.max(8, rect.width - 8)));
                 const y = Math.max(8, Math.min(clientY - rect.top, Math.max(8, rect.height - 8)));
                 setNodeContextMenu({ nodeId: id, x, y });
-              }}
-            />
-            <EdgeEventLayer
-              edges={renderedGeometry.edges}
-              selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
-              onEdgeClick={(id) => {
-                closeNodeContextMenu();
-                if (selection?.kind === "edge" && selection.id === id) {
-                  onSelect(null);
-                } else {
-                  onSelect({ kind: "edge", id });
-                }
               }}
             />
           </>

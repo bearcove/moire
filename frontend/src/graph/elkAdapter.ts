@@ -1,20 +1,24 @@
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import type { EntityDef, EdgeDef } from "../snapshot";
-import { graphNodeDataFromEntity } from "../components/graph/graphNodeData";
+import {
+  graphNodeDataFromEntity,
+  graphNodeDataFromEdgeEvent,
+} from "../components/graph/graphNodeData";
 import { formatProcessLabel } from "../processLabel";
 import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } from "./geometry";
 
 // ── ELK layout ────────────────────────────────────────────────
 
 const elk = new ELK({ workerUrl: elkWorkerUrl });
+const nodeSpacingBetweenLayers = 20;
 
 const elkOptions = {
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",
   "elk.spacing.nodeNode": "36",
   "elk.spacing.edgeNode": "20",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "56",
+  "elk.layered.spacing.nodeNodeBetweenLayers": String(nodeSpacingBetweenLayers),
   "elk.padding": "[top=24,left=24,bottom=24,right=24]",
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
@@ -34,6 +38,11 @@ const scopeGroupLabelPadX = 10;
 const scopeGroupLabelIconWidth = 12;
 const scopeGroupLabelIconGap = 6;
 const scopeGroupLabelCharWidth = 8.5;
+const edgeEventNodePrefix = "edge-event:";
+const edgeEventNodeMinWidth = 72;
+const edgeEventNodePadX = 8;
+const edgeEventNodeCharWidth = 7.4;
+const edgeEventNodeHeight = 24;
 
 const defaultInPortId = (entityId: string, edgeId: string) => `${entityId}:in:${edgeId}`;
 const defaultOutPortId = (entityId: string, edgeId: string) => `${entityId}:out:${edgeId}`;
@@ -79,7 +88,7 @@ export function edgeTooltip(edge: EdgeDef, sourceName: string, targetName: strin
   }
 }
 
-function edgeEventLabel(kind: EdgeDef["kind"]): string | null {
+export function edgeEventNodeLabel(kind: EdgeDef["kind"]): string | null {
   switch (kind) {
     case "waiting_on":
       return "waits on";
@@ -92,6 +101,10 @@ function edgeEventLabel(kind: EdgeDef["kind"]): string | null {
   }
 }
 
+export function edgeEventNodeId(edgeId: string): string {
+  return `${edgeEventNodePrefix}${edgeId}`;
+}
+
 export function edgeMarkerSize(_edge: EdgeDef): number {
   return 10;
 }
@@ -102,6 +115,24 @@ export type SubgraphScopeMode = "none" | "process" | "crate" | "task" | "cycle";
 
 export type LayoutGraphOptions = {
   subgraphHeaderHeight?: number;
+};
+
+type EdgeEventNodeMeta = {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  sourceEdge: EdgeDef;
+};
+
+type RoutedEdgeDef = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  sourceRef: string;
+  targetRef: string;
+  sourceEdge: EdgeDef;
+  markerSize: number;
 };
 
 function canonicalScopeGroupLabel(
@@ -134,6 +165,13 @@ function estimateScopeGroupLabelWidth(label: string): number {
         scopeGroupLabelIconGap +
         label.length * scopeGroupLabelCharWidth,
     ),
+  );
+}
+
+function estimateEdgeEventNodeWidth(label: string): number {
+  return Math.max(
+    edgeEventNodeMinWidth,
+    Math.ceil(edgeEventNodePadX * 2 + Math.max(0, label.length) * edgeEventNodeCharWidth),
   );
 }
 
@@ -200,7 +238,8 @@ export async function layoutGraph(
     if (subgraphScopeMode === "process") return entity.processId;
     if (subgraphScopeMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
     if (subgraphScopeMode === "task") return entity.taskScopeKey ?? `${entity.processId}:~no-task`;
-    if (subgraphScopeMode === "cycle") return entity.sccIndex != null ? String(entity.sccIndex) : null;
+    if (subgraphScopeMode === "cycle")
+      return entity.sccIndex != null ? String(entity.sccIndex) : null;
     return null;
   };
 
@@ -215,6 +254,56 @@ export async function layoutGraph(
   const edgeSourceRef = (edge: EdgeDef) =>
     edge.sourcePort ?? defaultOutPortId(edge.source, edge.id);
   const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target, edge.id);
+
+  const edgeEventNodeById = new Map<string, EdgeEventNodeMeta>();
+  const routedEdgeDefs: RoutedEdgeDef[] = [];
+  for (const edge of validEdges) {
+    const eventLabel = edgeEventNodeLabel(edge.kind);
+    if (!eventLabel) {
+      routedEdgeDefs.push({
+        id: edge.id,
+        sourceId: edge.source,
+        targetId: edge.target,
+        sourceRef: edgeSourceRef(edge),
+        targetRef: edgeTargetRef(edge),
+        sourceEdge: edge,
+        markerSize: edgeMarkerSize(edge),
+      });
+      continue;
+    }
+
+    const eventNodeId = edgeEventNodeId(edge.id);
+    if (!edgeEventNodeById.has(eventNodeId)) {
+      edgeEventNodeById.set(eventNodeId, {
+        id: eventNodeId,
+        label: eventLabel,
+        width: estimateEdgeEventNodeWidth(eventLabel),
+        height: edgeEventNodeHeight,
+        sourceEdge: edge,
+      });
+    }
+
+    routedEdgeDefs.push(
+      {
+        id: `${edge.id}:a`,
+        sourceId: edge.source,
+        targetId: eventNodeId,
+        sourceRef: edgeSourceRef(edge),
+        targetRef: `${eventNodeId}:in`,
+        sourceEdge: edge,
+        markerSize: 0,
+      },
+      {
+        id: `${edge.id}:b`,
+        sourceId: eventNodeId,
+        targetId: edge.target,
+        sourceRef: `${eventNodeId}:out`,
+        targetRef: edgeTargetRef(edge),
+        sourceEdge: edge,
+        markerSize: edgeMarkerSize(edge),
+      },
+    );
+  }
 
   // How far outside the node boundary ELK places port positions.
   // This creates a short perpendicular stub before any bend, keeping arrowheads
@@ -283,6 +372,28 @@ export async function layoutGraph(
     };
   };
 
+  const elkNodeForEdgeEvent = (node: EdgeEventNodeMeta) => {
+    const measured = nodeSizes.get(node.id);
+    const width = measured && measured.width > 0 ? measured.width : node.width;
+    const height = measured && measured.height > 0 ? measured.height : node.height;
+    return {
+      id: node.id,
+      width,
+      height,
+      layoutOptions: nodeLayoutOptions,
+      ports: [
+        {
+          id: `${node.id}:in`,
+          layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+        },
+        {
+          id: `${node.id}:out`,
+          layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
+        },
+      ],
+    };
+  };
+
   type ScopeGroupMeta = {
     id: string;
     scopeKind: string;
@@ -292,8 +403,12 @@ export async function layoutGraph(
   const scopeGroupById = new Map<string, ScopeGroupMeta>();
 
   const groupedChildren = (() => {
+    const eventNodes = Array.from(edgeEventNodeById.values())
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(elkNodeForEdgeEvent);
+
     if (!hasSubgraphs) {
-      return entityDefs.map(elkNodeForEntity);
+      return [...entityDefs.map(elkNodeForEntity), ...eventNodes];
     }
 
     const grouped = new Map<string, EntityDef[]>();
@@ -337,7 +452,7 @@ export async function layoutGraph(
         };
       });
 
-    return [...groupNodes, ...ungrouped.map(elkNodeForEntity)];
+    return [...groupNodes, ...ungrouped.map(elkNodeForEntity), ...eventNodes];
   })();
 
   const result = await elk.layout({
@@ -349,10 +464,10 @@ export async function layoutGraph(
       "org.eclipse.elk.json.edgeCoords": "ROOT",
     },
     children: groupedChildren,
-    edges: validEdges.map((e) => ({
+    edges: routedEdgeDefs.map((e) => ({
       id: e.id,
-      sources: [edgeSourceRef(e)],
-      targets: [edgeTargetRef(e)],
+      sources: [e.sourceRef],
+      targets: [e.targetRef],
     })),
   });
 
@@ -397,6 +512,13 @@ export async function layoutGraph(
     kind: "graphNode",
     data: graphNodeDataFromEntity(def),
   });
+
+  const eventNodeDataById = new Map(
+    Array.from(edgeEventNodeById.values()).map((meta) => [
+      meta.id,
+      graphNodeDataFromEdgeEvent(meta.sourceEdge, meta.label),
+    ]),
+  );
 
   const walkChildren = (children: any[] | undefined) => {
     for (const child of children ?? []) {
@@ -476,7 +598,36 @@ export async function layoutGraph(
       }
 
       const entity = entityById.get(child.id);
-      if (!entity) continue;
+      if (!entity) {
+        const eventNodeData = eventNodeDataById.get(String(child.id));
+        if (!eventNodeData) continue;
+        const nodeWidth = child.width ?? edgeEventNodeMinWidth;
+        const nodeHeight = child.height ?? edgeEventNodeHeight;
+        geoNodes.push({
+          id: String(child.id),
+          kind: "graphNode",
+          worldRect: { x: absX, y: absY, width: nodeWidth, height: nodeHeight },
+          data: eventNodeData,
+        });
+        for (const port of child.ports ?? []) {
+          const portId = String(port.id);
+          const portAbsX = port.x ?? 0;
+          const portAbsY = port.y ?? 0;
+          const dNorth = Math.abs(portAbsY - absY);
+          const dSouth = Math.abs(portAbsY - (absY + nodeHeight));
+          const dWest = Math.abs(portAbsX - absX);
+          const dEast = Math.abs(portAbsX - (absX + nodeWidth));
+          const minD = Math.min(dNorth, dSouth, dWest, dEast);
+          let snappedX = portAbsX;
+          let snappedY = portAbsY;
+          if (minD === dNorth) snappedY = absY;
+          else if (minD === dSouth) snappedY = absY + nodeHeight;
+          else if (minD === dWest) snappedX = absX;
+          else snappedX = absX + nodeWidth;
+          portAnchorMap.set(portId, { x: snappedX, y: snappedY });
+        }
+        continue;
+      }
 
       const size = requireNodeSize(entity.id);
       const { kind, data } = makeNodeData(entity);
@@ -581,23 +732,22 @@ export async function layoutGraph(
   };
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
-  const geoEdges: GeometryEdge[] = validEdges.map((def) => {
-    const records = edgeLayoutsById.get(def.id);
+
+  const polylineForRoutedEdge = (edge: RoutedEdgeDef): Point[] => {
+    const records = edgeLayoutsById.get(edge.id);
     if (!records || records.length === 0) {
-      throw new Error(`[elk] edge ${def.id}: no routed sections returned by ELK`);
+      throw new Error(`[elk] edge ${edge.id}: no routed sections returned by ELK`);
     }
-    const expectedSourceRef = edgeSourceRef(def);
-    const expectedTargetRef = edgeTargetRef(def);
     const edgeRecords = records.filter((record) => {
       const sourceMatch =
-        record.sources.includes(expectedSourceRef) || record.sources.includes(def.source);
+        record.sources.includes(edge.sourceRef) || record.sources.includes(edge.sourceId);
       const targetMatch =
-        record.targets.includes(expectedTargetRef) || record.targets.includes(def.target);
+        record.targets.includes(edge.targetRef) || record.targets.includes(edge.targetId);
       return sourceMatch && targetMatch;
     });
     if (edgeRecords.length === 0) {
       throw new Error(
-        `[elk] edge ${def.id}: no matching ELK records for ${def.source} -> ${def.target}`,
+        `[elk] edge ${edge.id}: no matching ELK records for ${edge.sourceId} -> ${edge.targetId}`,
       );
     }
 
@@ -656,7 +806,7 @@ export async function layoutGraph(
         [...existing.outgoing].sort().join("|") === [...fragment.outgoing].sort().join("|");
       if (!samePoints || !sameIncoming || !sameOutgoing) {
         throw new Error(
-          `[elk] edge ${def.id}: conflicting records for section ${fragment.sectionId}`,
+          `[elk] edge ${edge.id}: conflicting records for section ${fragment.sectionId}`,
         );
       }
     }
@@ -665,13 +815,13 @@ export async function layoutGraph(
     if (byId.size === 0) {
       if (unnamed.length !== 1) {
         throw new Error(
-          `[elk] edge ${def.id}: expected exactly one unnamed section, got ${unnamed.length}`,
+          `[elk] edge ${edge.id}: expected exactly one unnamed section, got ${unnamed.length}`,
         );
       }
       points = [...unnamed[0].points];
     } else {
       if (unnamed.length > 0) {
-        throw new Error(`[elk] edge ${def.id}: mixed named and unnamed sections`);
+        throw new Error(`[elk] edge ${edge.id}: mixed named and unnamed sections`);
       }
       const incomingCount = new Map<string, number>();
       for (const id of byId.keys()) incomingCount.set(id, 0);
@@ -684,7 +834,7 @@ export async function layoutGraph(
 
       const roots = Array.from(byId.keys()).filter((id) => (incomingCount.get(id) ?? 0) === 0);
       if (roots.length !== 1) {
-        throw new Error(`[elk] edge ${def.id}: expected one root section, got ${roots.length}`);
+        throw new Error(`[elk] edge ${edge.id}: expected one root section, got ${roots.length}`);
       }
 
       const orderedIds: string[] = [];
@@ -692,7 +842,7 @@ export async function layoutGraph(
       let currentId: string | null = roots[0];
       while (currentId) {
         if (visited.has(currentId)) {
-          throw new Error(`[elk] edge ${def.id}: cycle in section chain at ${currentId}`);
+          throw new Error(`[elk] edge ${edge.id}: cycle in section chain at ${currentId}`);
         }
         visited.add(currentId);
         orderedIds.push(currentId);
@@ -700,47 +850,51 @@ export async function layoutGraph(
         if (!current) break;
         const next = current.outgoing.filter((id) => byId.has(id)).sort();
         if (next.length > 1) {
-          throw new Error(`[elk] edge ${def.id}: branching section chain at ${currentId}`);
+          throw new Error(`[elk] edge ${edge.id}: branching section chain at ${currentId}`);
         }
         currentId = next.length === 1 ? next[0] : null;
       }
 
       if (visited.size !== byId.size) {
         throw new Error(
-          `[elk] edge ${def.id}: disconnected section graph (${visited.size}/${byId.size})`,
+          `[elk] edge ${edge.id}: disconnected section graph (${visited.size}/${byId.size})`,
         );
       }
 
       for (const id of orderedIds) {
         const section = byId.get(id);
         if (!section) continue;
-        points = appendSectionStrict(def.id, points, section.points);
+        points = appendSectionStrict(edge.id, points, section.points);
       }
     }
 
-    const srcName = entityNameMap.get(def.source) ?? def.source;
-    const dstName = entityNameMap.get(def.target) ?? def.target;
-    const markerSize = edgeMarkerSize(def);
+    return points;
+  };
+
+  const geoEdges: GeometryEdge[] = routedEdgeDefs.map((routed) => {
+    const points = polylineForRoutedEdge(routed);
+    const sourceEdge = routed.sourceEdge;
+    const srcName = entityNameMap.get(sourceEdge.source) ?? sourceEdge.source;
+    const dstName = entityNameMap.get(sourceEdge.target) ?? sourceEdge.target;
 
     const edge: GeometryEdge = {
-      id: def.id,
-      sourceId: def.source,
-      targetId: def.target,
+      id: routed.id,
+      sourceId: routed.sourceId,
+      targetId: routed.targetId,
       polyline: points,
-      kind: def.kind,
+      kind: sourceEdge.kind,
       data: {
-        style: edgeStyle(def),
-        tooltip: edgeTooltip(def, srcName, dstName),
-        sourcePortRef: expectedSourceRef,
-        targetPortRef: expectedTargetRef,
-        markerSize,
-        eventLabel: edgeEventLabel(def.kind),
-        backtraceId: def.backtraceId,
-        sourceFrame: def.sourceFrame,
-        topFrame: def.topFrame,
-        frames: def.frames,
-        allFrames: def.allFrames,
-        framesLoading: def.framesLoading,
+        style: edgeStyle(sourceEdge),
+        tooltip: edgeTooltip(sourceEdge, srcName, dstName),
+        sourcePortRef: routed.sourceRef,
+        targetPortRef: routed.targetRef,
+        markerSize: routed.markerSize,
+        backtraceId: sourceEdge.backtraceId,
+        sourceFrame: sourceEdge.sourceFrame,
+        topFrame: sourceEdge.topFrame,
+        frames: sourceEdge.frames,
+        allFrames: sourceEdge.allFrames,
+        framesLoading: sourceEdge.framesLoading,
       },
     };
     return edge;

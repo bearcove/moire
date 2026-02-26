@@ -295,6 +295,12 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     category: "channel",
     icon: iconFactory(Pipe),
   },
+  edge_event: {
+    canonical: "edge_event",
+    displayName: "Edge Event",
+    category: "meta",
+    icon: iconFactory(Bell),
+  },
   oneshot_pair: {
     canonical: "oneshot_pair",
     displayName: "Oneshot",

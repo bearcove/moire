@@ -1,4 +1,4 @@
-import { type EntityDef, type RenderTopFrame, type Tone } from "../../snapshot";
+import { type EntityDef, type EdgeDef, type RenderTopFrame, type Tone } from "../../snapshot";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 
 export type GraphFrameData = {
@@ -43,9 +43,13 @@ function frameDataFromRenderTopFrame(f: RenderTopFrame): GraphFrameData {
   };
 }
 
+function frameDataFromRenderTopFrames(frames: RenderTopFrame[] | undefined): GraphFrameData[] {
+  return (frames ?? []).map(frameDataFromRenderTopFrame);
+}
+
 export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
-  const frames = def.frames.map(frameDataFromRenderTopFrame);
-  const allFrames = def.allFrames.map(frameDataFromRenderTopFrame);
+  const frames = frameDataFromRenderTopFrames(def.frames);
+  const allFrames = frameDataFromRenderTopFrames(def.allFrames);
   const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
   const hasResolvedFrames = frames.length > 0 || allFrames.length > 0;
   const framesLoading = def.framesLoading && !hasResolvedFrames;
@@ -110,6 +114,24 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     framesLoading,
     entityCrate: def.krate,
     skipEntryFrames,
+  };
+}
+
+export function graphNodeDataFromEdgeEvent(edge: EdgeDef, label: string): GraphNodeData {
+  const frames = frameDataFromRenderTopFrames(edge.frames);
+  const allFrames = frameDataFromRenderTopFrames(edge.allFrames);
+  const hasResolvedFrames = frames.length > 0 || allFrames.length > 0;
+  const framesLoading = edge.framesLoading === true && !hasResolvedFrames;
+
+  return {
+    kind: "edge_event",
+    label,
+    inCycle: false,
+    frames,
+    allFrames,
+    framesLoading,
+    showSource: true,
+    skipEntryFrames: 0,
   };
 }
 
