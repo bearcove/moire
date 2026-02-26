@@ -639,7 +639,9 @@ impl MoireMcpHandler {
             .load_source_for_nodes(&snapshot, nodes.values())
             .await?;
 
-        let sccs = strongly_connected_components(adjacency.keys().cloned().collect(), &adjacency);
+        let mut scc_input = adjacency.keys().cloned().collect::<Vec<_>>();
+        scc_input.sort();
+        let sccs = strongly_connected_components(scc_input, &adjacency);
         let mut candidates = Vec::new();
         for (idx, scc) in sccs.into_iter().enumerate() {
             if scc.len() <= 1 {
@@ -769,6 +771,16 @@ impl MoireMcpHandler {
                 });
             }
         }
+        incoming.sort_by(|a, b| {
+            a.src_entity_id
+                .cmp(&b.src_entity_id)
+                .then_with(|| a.dst_entity_id.cmp(&b.dst_entity_id))
+        });
+        outgoing.sort_by(|a, b| {
+            a.src_entity_id
+                .cmp(&b.src_entity_id)
+                .then_with(|| a.dst_entity_id.cmp(&b.dst_entity_id))
+        });
 
         let scope_ids = located
             .0
@@ -843,6 +855,12 @@ impl MoireMcpHandler {
         {
             return Err(format!("unknown or non-channel entity_id `{wanted}`"));
         }
+        channels.sort_by(|a, b| {
+            a.process_id
+                .cmp(&b.process_id)
+                .then_with(|| a.name.cmp(&b.name))
+                .then_with(|| a.entity_id.cmp(&b.entity_id))
+        });
 
         to_pretty_json(&McpChannelStateResponse {
             snapshot_id: snapshot.snapshot_id,
@@ -908,6 +926,12 @@ impl MoireMcpHandler {
         {
             return Err(format!("unknown or non-task entity_id `{wanted}`"));
         }
+        tasks.sort_by(|a, b| {
+            a.process_id
+                .cmp(&b.process_id)
+                .then_with(|| a.name.cmp(&b.name))
+                .then_with(|| a.entity_id.cmp(&b.entity_id))
+        });
 
         to_pretty_json(&McpTaskStateResponse {
             snapshot_id: snapshot.snapshot_id,
