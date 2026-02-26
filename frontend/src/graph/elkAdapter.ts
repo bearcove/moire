@@ -11,8 +11,8 @@ import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } 
 // ── ELK layout ────────────────────────────────────────────────
 
 const nodeSpacingBetweenLayers = 6;
-const edgeNodeSpacing = 6;
-const edgeSegmentSpacing = 12;
+const edgeNodeSpacing = 14;
+const edgeSegmentSpacing = 28;
 const eventEdgeDirectionPriority = 10;
 const eventEdgeShortnessPriority = 10;
 const eventEdgeStraightnessPriority = 10;
