@@ -34,7 +34,6 @@
     inset: 0;
     z-index: 2;
     transform-origin: 0 0;
-    will-change: transform;
 }
 
 .graph-layer {

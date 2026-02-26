@@ -128,7 +128,9 @@ export async function measureGraphLayout(
             />,
           ),
         );
-        const { width, height } = el.getBoundingClientRect();
+        const rect = el.getBoundingClientRect();
+        const width = Math.ceil(rect.width);
+        const height = Math.ceil(rect.height);
         graphLog(
           "[measure] node=%s expanded=%s size=%dx%d frames=%d allFrames=%d framesLoading=%s showSource=%s",
           def.id,
@@ -167,7 +169,9 @@ export async function measureGraphLayout(
             />,
           ),
         );
-        const { width, height } = el.getBoundingClientRect();
+        const { width: rawW, height: rawH } = el.getBoundingClientRect();
+        const width = Math.ceil(rawW);
+        const height = Math.ceil(rawH);
         if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
           throw new Error(
             `[graph-measure] invalid extra node size for ${extra.id}: ${width}x${height}`,
