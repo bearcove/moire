@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# async fn do_work()
+# async do_work()
 # scope 4..7
 
    4  |     let c = step_two().await;

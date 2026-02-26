@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# fn many()
+# many()
 # scope 6..6
 
    6  |     let e = 5;

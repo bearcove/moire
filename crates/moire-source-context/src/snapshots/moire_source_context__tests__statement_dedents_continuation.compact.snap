@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# fn run()
+# run()
 # scope 2..6
 
    2 >|     spawn(async move {

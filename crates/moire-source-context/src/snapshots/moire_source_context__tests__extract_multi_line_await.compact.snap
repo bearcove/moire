@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# async fn do_work()
+# async do_work()
 # scope 2..4
 
    2  |     let handle = session

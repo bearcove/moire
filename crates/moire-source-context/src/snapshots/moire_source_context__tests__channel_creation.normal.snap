@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# fn setup()
+# setup()
 # scope 2..3
 
    2 >|     let (tx_a, rx_b) = mpsc::channel("memory_link.a→b", buffer);

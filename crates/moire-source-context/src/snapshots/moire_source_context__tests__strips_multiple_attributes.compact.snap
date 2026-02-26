@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# async fn recv(&mut self) -> Result<Option<Msg>>
+# async recv(&mut self) -> Result<Option<Msg>>
 # scope 4..4
 
    4  |     self.rx.recv().await

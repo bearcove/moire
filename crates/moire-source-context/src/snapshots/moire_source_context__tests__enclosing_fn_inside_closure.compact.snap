@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# fn run()
+# run()
 # scope 3..5
 
    3  |     v.iter().for_each(|x| {

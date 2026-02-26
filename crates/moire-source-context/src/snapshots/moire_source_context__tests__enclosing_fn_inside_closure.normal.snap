@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# fn run()
+# run()
 # scope 2..5
 
    2  |     let v: Vec<u32> = vec![1, 2, 3];

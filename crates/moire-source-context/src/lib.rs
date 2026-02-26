@@ -591,16 +591,22 @@ pub fn extract_enclosing_fn(
         }
     }?;
 
-    let signature = extract_function_signature_text(content, &fn_node)?;
+    let (modifiers, sig_without_modifiers) = extract_function_signature_text(content, &fn_node)?;
     let mut qualifiers = collect_module_qualifiers(&fn_node, bytes);
     if let Some(impl_type) = find_enclosing_impl_type_name(&fn_node, bytes) {
         qualifiers.push(impl_type);
     }
 
-    if qualifiers.is_empty() {
-        Some(signature)
+    let qualified = if qualifiers.is_empty() {
+        sig_without_modifiers
     } else {
-        Some(format!("{}::{}", qualifiers.join("::"), signature))
+        format!("{}::{}", qualifiers.join("::"), sig_without_modifiers)
+    };
+
+    if modifiers.is_empty() {
+        Some(qualified)
+    } else {
+        Some(format!("{modifiers} {qualified}"))
     }
 }
 
@@ -608,21 +614,24 @@ fn collapse_ws_inline(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Returns `(modifiers, sig_without_modifiers)`.
+/// `modifiers` is e.g. `"async"` or `"async unsafe"` or `""`.
+/// `sig_without_modifiers` is e.g. `"push(&mut self, value)"`.
 fn extract_function_signature_text(
     content: &str,
     fn_node: &tree_sitter::Node<'_>,
-) -> Option<String> {
+) -> Option<(String, String)> {
     let bytes = content.as_bytes();
 
-    // Qualifiers before the fn keyword (async, const, unsafe, extern).
+    // Function modifiers before the fn keyword (async, const, unsafe, extern).
     // Tree-sitter groups them under a "function_modifiers" node.
-    let mut qualifiers: Vec<&str> = Vec::new();
+    let mut modifiers = String::new();
     for i in 0..fn_node.child_count() {
         let child = fn_node.child(i)?;
         match child.kind() {
             "attribute_item" | "visibility_modifier" => continue,
             "function_modifiers" => {
-                qualifiers.push(child.utf8_text(bytes).ok()?);
+                modifiers = child.utf8_text(bytes).ok()?.to_string();
             }
             "fn" => break,
             _ => {}
@@ -631,43 +640,50 @@ fn extract_function_signature_text(
 
     let name = fn_node.child_by_field_name("name")?.utf8_text(bytes).ok()?;
 
-    // Parameters: show self as-is, for others show only the pattern (name), not the type.
     let params_node = fn_node.child_by_field_name("parameters")?;
-    let mut params: Vec<String> = Vec::new();
+
+    // Collect params in two forms: full (name: type) and slim (name only).
+    let mut params_full: Vec<String> = Vec::new();
+    let mut params_slim: Vec<String> = Vec::new();
     for i in 0..params_node.child_count() {
         let child = params_node.child(i)?;
         match child.kind() {
             "parameter" => {
-                // pattern field is the name; omit the type
+                let full = collapse_ws_inline(child.utf8_text(bytes).ok()?);
+                params_full.push(full);
                 if let Some(pat) = child.child_by_field_name("pattern") {
-                    params.push(pat.utf8_text(bytes).ok()?.to_string());
+                    params_slim.push(pat.utf8_text(bytes).ok()?.to_string());
                 }
             }
             "self_parameter" | "shorthand_self" => {
-                // &self, &mut self, self, mut self
-                params.push(collapse_ws_inline(child.utf8_text(bytes).ok()?));
+                let self_text = collapse_ws_inline(child.utf8_text(bytes).ok()?);
+                params_full.push(self_text.clone());
+                params_slim.push(self_text);
             }
             _ => {}
         }
     }
 
     // Return type (optional)
-    let return_type = fn_node.child_by_field_name("return_type").and_then(|rt| {
-        let text = collapse_ws_inline(rt.utf8_text(bytes).ok()?);
-        Some(format!(" -> {text}"))
-    });
+    let ret = fn_node
+        .child_by_field_name("return_type")
+        .and_then(|rt| rt.utf8_text(bytes).ok().map(collapse_ws_inline))
+        .map(|t| format!(" -> {t}"))
+        .unwrap_or_default();
 
-    let qualifiers_prefix = if qualifiers.is_empty() {
-        String::new()
+    // Use full params if short enough, otherwise fall back to names only.
+    // The length budget is checked against the full qualified form, but we only
+    // have the local sig here — use a generous threshold.
+    const MAX_LEN: usize = 80;
+    let params_str = params_full.join(", ");
+    let candidate = format!("{name}({params_str}){ret}");
+    let sig = if candidate.len() <= MAX_LEN {
+        candidate
     } else {
-        format!("{} ", qualifiers.join(" "))
+        format!("{name}({}){ret}", params_slim.join(", "))
     };
 
-    let ret = return_type.as_deref().unwrap_or("");
-    Some(format!(
-        "{qualifiers_prefix}fn {name}({}){ret}",
-        params.join(", "),
-    ))
+    Some((modifiers, sig))
 }
 
 fn find_enclosing_impl_type_name(fn_node: &tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
