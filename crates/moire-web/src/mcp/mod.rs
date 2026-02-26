@@ -517,6 +517,13 @@ struct WaitEdgeRuntime {
     edge_frame_ids: Vec<FrameId>,
 }
 
+type WaitGraph = (
+    HashMap<String, WaitNode>,
+    Vec<WaitEdgeRuntime>,
+    HashMap<String, Vec<String>>,
+    HashMap<String, usize>,
+);
+
 #[derive(Clone)]
 struct MoireMcpHandler {
     state: AppState,
@@ -1698,18 +1705,7 @@ Call moire_backtrace first to list frame_ids for a backtrace."
         Ok(snapshot)
     }
 
-    fn build_wait_graph(
-        &self,
-        snapshot: &SnapshotCutResponse,
-    ) -> Result<
-        (
-            HashMap<String, WaitNode>,
-            Vec<WaitEdgeRuntime>,
-            HashMap<String, Vec<String>>,
-            HashMap<String, usize>,
-        ),
-        String,
-    > {
+    fn build_wait_graph(&self, snapshot: &SnapshotCutResponse) -> Result<WaitGraph, String> {
         let backtrace_index = backtrace_index(snapshot);
         let frame_catalog = frame_catalog(snapshot);
 
@@ -2649,10 +2645,9 @@ fn source_body_for_render(source: &McpSourceContext) -> (u32, String) {
     if let (Some(compact_scope_text), Some(range)) = (
         source.compact_scope_text.as_ref(),
         source.compact_scope_range.as_ref(),
-    ) {
-        if compact_target_line_visible(compact_scope_text, range, source.target_line) {
-            return (range.start, compact_scope_text.clone());
-        }
+    ) && compact_target_line_visible(compact_scope_text, range, source.target_line)
+    {
+        return (range.start, compact_scope_text.clone());
     }
     if let Some(statement_text) = source.statement_text.as_ref()
         && !statement_text.trim().is_empty()
@@ -2856,9 +2851,7 @@ fn crate_from_function_name(function_name: &str) -> Option<&str> {
 
     let rest = &trimmed[index..];
     let mut chars = rest.char_indices();
-    let Some((_, first)) = chars.next() else {
-        return None;
-    };
+    let (_, first) = chars.next()?;
     if !(first == '_' || first.is_ascii_alphabetic()) {
         return None;
     }
@@ -2874,9 +2867,10 @@ fn crate_from_function_name(function_name: &str) -> Option<&str> {
 }
 
 fn is_system_crate(krate: &str) -> bool {
-    SYSTEM_CRATES.iter().any(|known| *known == krate)
+    SYSTEM_CRATES.contains(&krate)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_chain(
     chain_num: usize,
     path: &[String],
@@ -3216,82 +3210,6 @@ fn strongly_connected_components(
     state.components
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn strongly_connected_components_finds_cycle_cluster() {
-        let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
-        adjacency.insert(String::from("a"), vec![String::from("b")]);
-        adjacency.insert(String::from("b"), vec![String::from("c")]);
-        adjacency.insert(String::from("c"), vec![String::from("a")]);
-        adjacency.insert(String::from("d"), vec![String::from("e")]);
-        adjacency.insert(String::from("e"), vec![]);
-        let keys = vec![
-            String::from("a"),
-            String::from("b"),
-            String::from("c"),
-            String::from("d"),
-            String::from("e"),
-        ];
-
-        let mut components = strongly_connected_components(keys, &adjacency);
-        components.iter_mut().for_each(|c| c.sort());
-        components.sort_by_key(|c| c.first().cloned().unwrap_or_default());
-
-        assert_eq!(components.len(), 3);
-        assert_eq!(
-            components[0],
-            vec![String::from("a"), String::from("b"), String::from("c")]
-        );
-        assert_eq!(components[1], vec![String::from("d")]);
-        assert_eq!(components[2], vec![String::from("e")]);
-    }
-
-    #[test]
-    fn external_wake_source_kind_classification_is_strict() {
-        assert!(node_has_external_wake_source("mpsc_rx"));
-        assert!(node_has_external_wake_source("net_read"));
-        assert!(!node_has_external_wake_source("future"));
-        assert!(!node_has_external_wake_source("mpsc_tx"));
-    }
-
-    #[test]
-    fn crate_parser_handles_trait_impl_style_names() {
-        assert_eq!(
-            crate_from_function_name("<alloc::vec::Vec<u8> as core::fmt::Debug>::fmt"),
-            Some("alloc")
-        );
-        assert_eq!(
-            crate_from_function_name("tokio::runtime::context::enter"),
-            Some("tokio")
-        );
-    }
-
-    #[test]
-    fn source_snippet_renders_line_prefixed_text() {
-        let rendered = render_source_snippet(&McpSourceContext {
-            format: String::from("text/plain"),
-            frame_id: 42,
-            source_file: String::from("/tmp/example.rs"),
-            target_line: 15,
-            target_col: Some(9),
-            total_lines: 200,
-            statement_text: None,
-            enclosing_fn_text: None,
-            compact_scope_text: Some(String::from(
-                "fn demo() {\n\n    let x = 1;\n    do_work(x).await?;\n\n}",
-            )),
-            compact_scope_range: Some(McpLineRange { start: 12, end: 17 }),
-        });
-        assert!(rendered.contains("in /tmp/example.rs"));
-        assert!(rendered.contains("   12 | fn demo() {"));
-        assert!(rendered.contains(">   15 |     do_work(x).await?;"));
-        assert!(!rendered.contains("\n\n\n"));
-    }
-}
-
 fn required_non_empty_string(
     args: &JsonMap<String, JsonValue>,
     field: &str,
@@ -3446,4 +3364,80 @@ async fn handle_streamable_http_delete(
 fn convert_response(response: axum::http::Response<GenericBody>) -> Response {
     let (parts, body) = response.into_parts();
     Response::from_parts(parts, axum::body::Body::new(body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strongly_connected_components_finds_cycle_cluster() {
+        let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+        adjacency.insert(String::from("a"), vec![String::from("b")]);
+        adjacency.insert(String::from("b"), vec![String::from("c")]);
+        adjacency.insert(String::from("c"), vec![String::from("a")]);
+        adjacency.insert(String::from("d"), vec![String::from("e")]);
+        adjacency.insert(String::from("e"), vec![]);
+        let keys = vec![
+            String::from("a"),
+            String::from("b"),
+            String::from("c"),
+            String::from("d"),
+            String::from("e"),
+        ];
+
+        let mut components = strongly_connected_components(keys, &adjacency);
+        components.iter_mut().for_each(|c| c.sort());
+        components.sort_by_key(|c| c.first().cloned().unwrap_or_default());
+
+        assert_eq!(components.len(), 3);
+        assert_eq!(
+            components[0],
+            vec![String::from("a"), String::from("b"), String::from("c")]
+        );
+        assert_eq!(components[1], vec![String::from("d")]);
+        assert_eq!(components[2], vec![String::from("e")]);
+    }
+
+    #[test]
+    fn external_wake_source_kind_classification_is_strict() {
+        assert!(node_has_external_wake_source("mpsc_rx"));
+        assert!(node_has_external_wake_source("net_read"));
+        assert!(!node_has_external_wake_source("future"));
+        assert!(!node_has_external_wake_source("mpsc_tx"));
+    }
+
+    #[test]
+    fn crate_parser_handles_trait_impl_style_names() {
+        assert_eq!(
+            crate_from_function_name("<alloc::vec::Vec<u8> as core::fmt::Debug>::fmt"),
+            Some("alloc")
+        );
+        assert_eq!(
+            crate_from_function_name("tokio::runtime::context::enter"),
+            Some("tokio")
+        );
+    }
+
+    #[test]
+    fn source_snippet_renders_line_prefixed_text() {
+        let rendered = render_source_snippet(&McpSourceContext {
+            format: String::from("text/plain"),
+            frame_id: 42,
+            source_file: String::from("/tmp/example.rs"),
+            target_line: 15,
+            target_col: Some(9),
+            total_lines: 200,
+            statement_text: None,
+            enclosing_fn_text: None,
+            compact_scope_text: Some(String::from(
+                "fn demo() {\n\n    let x = 1;\n    do_work(x).await?;\n\n}",
+            )),
+            compact_scope_range: Some(McpLineRange { start: 12, end: 17 }),
+        });
+        assert!(rendered.contains("in /tmp/example.rs"));
+        assert!(rendered.contains("   12 | fn demo() {"));
+        assert!(rendered.contains(">   15 |     do_work(x).await?;"));
+        assert!(!rendered.contains("\n\n\n"));
+    }
 }
