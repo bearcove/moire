@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use facet::Facet;
 use figue as args;
+use moire_types::{CutStatusResponse, QueryRequest, SqlRequest, TriggerCutResponse};
 use moire_web::app::{AppState, DevProxyState, build_router};
 use moire_web::db::{Db, init_sqlite, load_next_connection_id};
 use moire_web::mcp::run_mcp_server;
@@ -12,16 +14,60 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 
 #[derive(Facet, Debug)]
-struct Cli {
+struct ServerCli {
     #[facet(flatten)]
     builtins: args::FigueBuiltins,
     #[facet(args::named, default)]
     dev: bool,
 }
 
+#[derive(Facet, Debug)]
+struct ClientCli {
+    #[facet(flatten)]
+    builtins: args::FigueBuiltins,
+    #[facet(args::subcommand)]
+    command: ClientCommand,
+}
+
+#[derive(Facet, Debug)]
+#[repr(u8)]
+enum ClientCommand {
+    Cut {
+        #[facet(args::named, default)]
+        url: Option<String>,
+        #[facet(args::named, default)]
+        poll_ms: Option<u64>,
+        #[facet(args::named, default)]
+        timeout_ms: Option<u64>,
+    },
+    Sql {
+        #[facet(args::named, default)]
+        url: Option<String>,
+        #[facet(args::named)]
+        query: String,
+    },
+    Query {
+        #[facet(args::named, default)]
+        url: Option<String>,
+        #[facet(args::named)]
+        name: String,
+        #[facet(args::named, default)]
+        limit: Option<u32>,
+    },
+    Snapshot {
+        #[facet(args::named, default)]
+        url: Option<String>,
+    },
+}
+
 const REAPER_PIPE_FD_ENV: &str = "MOIRE_REAPER_PIPE_FD";
 const REAPER_PGID_ENV: &str = "MOIRE_REAPER_PGID";
 const FRONTEND_DIST_ENV: &str = "MOIRE_FRONTEND_DIST";
+
+const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9130";
+const DEFAULT_POLL_MS: u64 = 100;
+const DEFAULT_TIMEOUT_MS: u64 = 5_000;
+const DEFAULT_QUERY_LIMIT: u32 = 50;
 
 fn main() {
     // Reaper mode: watch the pipe, kill the process group when it closes.
@@ -38,17 +84,34 @@ fn main() {
         return;
     }
 
+    let cli_args: Vec<String> = std::env::args().skip(1).collect();
+    if cli_args
+        .first()
+        .map(String::as_str)
+        .is_some_and(is_client_command)
+    {
+        if let Err(err) = run_client() {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     ur_taking_me_with_you::die_with_parent();
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("failed to build tokio runtime")
         .block_on(async {
-            if let Err(err) = run().await {
+            if let Err(err) = run_server().await {
                 eprintln!("{err}");
                 std::process::exit(1);
             }
         });
+}
+
+fn is_client_command(value: &str) -> bool {
+    matches!(value, "cut" | "sql" | "query" | "snapshot")
 }
 
 #[cfg(unix)]
@@ -71,8 +134,8 @@ fn reaper_main(pipe_fd: libc::c_int, pgid: libc::pid_t) {
     }
 }
 
-async fn run() -> Result<(), String> {
-    let cli = parse_cli()?;
+async fn run_server() -> Result<(), String> {
+    let cli = parse_server_cli()?;
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -166,12 +229,12 @@ async fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn parse_cli() -> Result<Cli, String> {
-    let figue_config = args::builder::<Cli>()
+fn parse_server_cli() -> Result<ServerCli, String> {
+    let figue_config = args::builder::<ServerCli>()
         .map_err(|e| format!("failed to build CLI schema: {e}"))?
         .cli(|cli| cli.strict())
         .help(|h| {
-            h.program_name("moire-web")
+            h.program_name("moire")
                 .description("SQLite-backed moire ingest + API server")
                 .version(option_env!("CARGO_PKG_VERSION").unwrap_or("dev"))
         })
@@ -181,6 +244,158 @@ fn parse_cli() -> Result<Cli, String> {
         .into_result()
         .map_err(|e| e.to_string())?;
     Ok(cli.value)
+}
+
+fn run_client() -> Result<(), String> {
+    let cli = parse_client_cli()?;
+    match cli.command {
+        ClientCommand::Cut {
+            url,
+            poll_ms,
+            timeout_ms,
+        } => run_cut(url, poll_ms, timeout_ms),
+        ClientCommand::Sql { url, query } => run_sql(url, query),
+        ClientCommand::Query { url, name, limit } => run_query_pack(url, name, limit),
+        ClientCommand::Snapshot { url } => run_snapshot(url),
+    }
+}
+
+fn parse_client_cli() -> Result<ClientCli, String> {
+    let figue_config = args::builder::<ClientCli>()
+        .map_err(|e| format!("failed to build CLI schema: {e}"))?
+        .cli(|cli| cli.strict())
+        .help(|h| {
+            h.program_name("moire")
+                .description("CLI for moire-web cuts and graph queries")
+                .version(option_env!("CARGO_PKG_VERSION").unwrap_or("dev"))
+        })
+        .build();
+    let cli = args::Driver::new(figue_config)
+        .run()
+        .into_result()
+        .map_err(|e| e.to_string())?;
+    Ok(cli.value)
+}
+
+fn run_cut(
+    url: Option<String>,
+    poll_ms: Option<u64>,
+    timeout_ms: Option<u64>,
+) -> Result<(), String> {
+    let base_url = url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let poll_ms = poll_ms.unwrap_or(DEFAULT_POLL_MS);
+    let timeout_ms = timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
+
+    let trigger_url = format!("{}/api/cuts", base_url.trim_end_matches('/'));
+    let trigger_body = http_post_json(&trigger_url, "{}")?;
+    let trigger: TriggerCutResponse = facet_json::from_str(&trigger_body)
+        .map_err(|e| format!("decode cut trigger response: {e}"))?;
+
+    let status_url = format!(
+        "{}/api/cuts/{}",
+        base_url.trim_end_matches('/'),
+        trigger.cut_id
+    );
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    loop {
+        let status_body = http_get_text(&status_url)?;
+        let status: CutStatusResponse = facet_json::from_str(&status_body)
+            .map_err(|e| format!("decode cut status response: {e}"))?;
+        if status.pending_connections == 0 {
+            println!(
+                "{}",
+                facet_json::to_string_pretty(&status)
+                    .map_err(|e| format!("encode cut status: {e}"))?
+            );
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "cut {} timed out after {}ms (pending_connections={})",
+                status.cut_id, timeout_ms, status.pending_connections
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(poll_ms));
+    }
+}
+
+fn run_sql(url: Option<String>, query: String) -> Result<(), String> {
+    let base_url = url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+
+    let req = SqlRequest { sql: query };
+    let body = facet_json::to_string(&req).map_err(|e| format!("encode sql request: {e}"))?;
+    let url = format!("{}/api/sql", base_url.trim_end_matches('/'));
+    let response = http_post_json(&url, &body)?;
+    let pretty = facet_json::to_string_pretty(
+        &facet_json::from_str::<facet_value::Value>(&response)
+            .map_err(|e| format!("decode sql response as json: {e}"))?,
+    )
+    .map_err(|e| format!("pretty sql response: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn run_query_pack(url: Option<String>, name: String, limit: Option<u32>) -> Result<(), String> {
+    let base_url = url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT);
+    let req = QueryRequest {
+        name,
+        limit: Some(limit),
+    };
+    let body = facet_json::to_string(&req).map_err(|e| format!("encode query request: {e}"))?;
+    let url = format!("{}/api/query", base_url.trim_end_matches('/'));
+    let response = http_post_json(&url, &body)?;
+    let pretty = facet_json::to_string_pretty(
+        &facet_json::from_str::<facet_value::Value>(&response)
+            .map_err(|e| format!("decode query response as json: {e}"))?,
+    )
+    .map_err(|e| format!("pretty query response: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn run_snapshot(url: Option<String>) -> Result<(), String> {
+    let base_url = url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let base_url = base_url.trim_end_matches('/');
+    let current_url = format!("{base_url}/api/snapshot/current");
+
+    let response = match ureq::get(&current_url).call() {
+        Ok(response) => response
+            .into_string()
+            .map_err(|e| format!("read GET response body: {e}"))?,
+        Err(ureq::Error::Status(404, _)) => {
+            let snapshot_url = format!("{base_url}/api/snapshot");
+            http_post_json(&snapshot_url, "{}")?
+        }
+        Err(e) => return Err(format!("GET {current_url}: {e}")),
+    };
+
+    let pretty = facet_json::to_string_pretty(
+        &facet_json::from_str::<facet_value::Value>(&response)
+            .map_err(|e| format!("decode snapshot response as json: {e}"))?,
+    )
+    .map_err(|e| format!("pretty snapshot response: {e}"))?;
+    println!("{pretty}");
+    Ok(())
+}
+
+fn http_get_text(url: &str) -> Result<String, String> {
+    let response = ureq::get(url)
+        .call()
+        .map_err(|e| format!("GET {url}: {e}"))?;
+    response
+        .into_string()
+        .map_err(|e| format!("read GET response body: {e}"))
+}
+
+fn http_post_json(url: &str, body: &str) -> Result<String, String> {
+    let response = ureq::post(url)
+        .set("content-type", "application/json")
+        .send_string(body)
+        .map_err(|e| format!("POST {url}: {e}"))?;
+    response
+        .into_string()
+        .map_err(|e| format!("read POST response body: {e}"))
 }
 
 fn print_startup_hints(

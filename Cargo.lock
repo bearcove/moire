@@ -1812,18 +1812,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moire-cli"
-version = "0.1.0"
-dependencies = [
- "facet",
- "facet-json",
- "facet-value",
- "figue",
- "moire-types",
- "ureq",
-]
-
-[[package]]
 name = "moire-examples"
 version = "0.1.0"
 dependencies = [

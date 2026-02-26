@@ -14,7 +14,7 @@
     background: var(--graph-card-bg);
     outline: 1px solid var(--graph-card-border-color);
 
-    box-shadow: var(--graph-card-tone-shadow);
+    box-shadow: var(--shadow-elevation-md);
     color: var(--text-primary);
     position: relative;
     overscroll-behavior: none;
@@ -65,10 +65,7 @@
 }
 
 .graph-node--edge-event-chip {
-    border: 1px solid color-mix(in srgb, var(--border-edge) 78%, transparent);
-    border-radius: 999px;
     background: var(--bg-elevated);
-    box-shadow: var(--shadow-elevation-sm);
     padding: 4px 8px;
     min-height: 24px;
     display: inline-flex;
@@ -79,8 +76,8 @@
 
 .graph-node-edge-event-chip__label {
     font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 700;
+    font-size: var(--font-size-xxxs);
+    font-weight: 400;
     line-height: 1;
     letter-spacing: 0.02em;
     text-transform: lowercase;
@@ -442,18 +439,21 @@
 }
 
 .graph-node-frame-block__line--target {
+    background: light-dark(
+        color-mix(in srgb, var(--accent) 10%, transparent),
+        color-mix(in srgb, var(--accent) 13%, transparent)
+    );
+}
+
+.graph-node-frame-block__line--target > .graph-node-frame-block__gutter {
+    background: light-dark(
+        color-mix(in srgb, var(--accent) 10%, var(--graph-card-bg)),
+        color-mix(in srgb, var(--accent) 13%, var(--graph-card-bg))
+    );
 }
 
 .graph-node-frame-block__line--target > .graph-node-frame-block__text {
-    background:
-        linear-gradient(
-            90deg,
-            color-mix(in srgb, var(--accent) 14%, transparent) 0%,
-            color-mix(in srgb, var(--accent) 6%, transparent) 50%,
-            transparent 100%
-        ),
-        light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.09));
-    filter: saturate(1.1) brightness(1.05);
+    background: none;
 }
 
 .graph-node-frame-block__gutter {

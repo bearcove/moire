@@ -8,7 +8,6 @@ members = [
   "crates/moire-tokio",
   "crates/moire-wasm",
   "crates/moire-runtime",
-  "crates/moire-cli",
   "crates/moire-web",
   "crates/moire-types",
   "crates/moire-trace-types",
