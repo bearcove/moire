@@ -29,6 +29,15 @@ struct SymbolicationCacheParams {
     rel_pc: RelPc,
 }
 
+pub(crate) struct SourceTextLocation {
+    pub source_file: String,
+    pub target_line: u32,
+    pub target_col: Option<u32>,
+    pub total_lines: u32,
+    pub content: String,
+    pub language: Option<&'static str>,
+}
+
 // r[impl api.source.preview]
 pub async fn api_source_preview(
     State(state): State<AppState>,
@@ -148,7 +157,7 @@ fn parse_query_u64(query: &str, key: &str) -> Option<u64> {
     })
 }
 
-fn arborium_language(path: &str) -> Option<&'static str> {
+pub(crate) fn arborium_language(path: &str) -> Option<&'static str> {
     let ext = path.rsplit('.').next()?;
     match ext {
         "rs" => Some("rust"),
@@ -200,12 +209,11 @@ fn html_escape(s: &str) -> String {
     result
 }
 
-pub(crate) fn lookup_source_in_db(
+pub(crate) fn lookup_source_text_location_in_db(
     db: &Db,
-    frame_id: FrameId,
     module_identity: String,
     rel_pc: RelPc,
-) -> Result<Option<SourcePreviewResponse>, String> {
+) -> Result<Option<SourceTextLocation>, String> {
     let conn = db.open()?;
 
     let rows = conn
@@ -238,15 +246,40 @@ pub(crate) fn lookup_source_in_db(
     };
 
     let target_col = row.source_col.and_then(|col| u32::try_from(col).ok());
-
     let resolved_path = resolve_source_path(&source_file_path);
-
     let content = std::fs::read_to_string(resolved_path.as_ref())
         .map_err(|error| format!("read source file {resolved_path}: {error}"))?;
-
     let total_lines = u32::try_from(content.lines().count()).unwrap_or(u32::MAX);
+    let language = arborium_language(&source_file_path);
 
-    let lang = arborium_language(&source_file_path);
+    Ok(Some(SourceTextLocation {
+        source_file: resolved_path.into_owned(),
+        target_line,
+        target_col,
+        total_lines,
+        content,
+        language,
+    }))
+}
+
+pub(crate) fn lookup_source_in_db(
+    db: &Db,
+    frame_id: FrameId,
+    module_identity: String,
+    rel_pc: RelPc,
+) -> Result<Option<SourcePreviewResponse>, String> {
+    let Some(location) = lookup_source_text_location_in_db(db, module_identity, rel_pc)? else {
+        return Ok(None);
+    };
+
+    let SourceTextLocation {
+        source_file,
+        target_line,
+        target_col,
+        total_lines,
+        content,
+        language: lang,
+    } = location;
 
     // Full file highlight
     let html = match lang {
@@ -313,7 +346,7 @@ pub(crate) fn lookup_source_in_db(
 
     Ok(Some(SourcePreviewResponse {
         frame_id,
-        source_file: resolved_path.into_owned(),
+        source_file,
         target_line,
         target_col,
         total_lines,

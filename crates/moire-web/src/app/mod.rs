@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
 
 use axum::Router;
@@ -46,6 +46,8 @@ pub struct ServerState {
     pub pending_snapshots: HashMap<i64, SnapshotPending>,
     pub snapshot_streams: HashMap<i64, SnapshotStreamState>,
     pub last_snapshot_json: Option<String>,
+    pub snapshot_history_ids: VecDeque<i64>,
+    pub snapshot_history_json: BTreeMap<i64, String>,
     pub recording: Option<RecordingState>,
 }
 
@@ -86,6 +88,8 @@ impl ServerState {
             pending_snapshots: HashMap::new(),
             snapshot_streams: HashMap::new(),
             last_snapshot_json: None,
+            snapshot_history_ids: VecDeque::new(),
+            snapshot_history_json: BTreeMap::new(),
             recording: None,
         }
     }
@@ -138,10 +142,24 @@ pub async fn health() -> &'static str {
 }
 
 pub async fn remember_snapshot(state: &AppState, snapshot: &SnapshotCutResponse) {
+    const SNAPSHOT_HISTORY_LIMIT: usize = 64;
+
     let Ok(json) = facet_json::to_string(snapshot) else {
         tracing::warn!("failed to serialize snapshot for cache");
         return;
     };
     let mut guard = state.inner.lock().await;
-    guard.last_snapshot_json = Some(json);
+    guard.last_snapshot_json = Some(json.clone());
+    guard
+        .snapshot_history_json
+        .insert(snapshot.snapshot_id, json);
+    if !guard.snapshot_history_ids.contains(&snapshot.snapshot_id) {
+        guard.snapshot_history_ids.push_back(snapshot.snapshot_id);
+    }
+    while guard.snapshot_history_ids.len() > SNAPSHOT_HISTORY_LIMIT {
+        let Some(oldest) = guard.snapshot_history_ids.pop_front() else {
+            break;
+        };
+        guard.snapshot_history_json.remove(&oldest);
+    }
 }
