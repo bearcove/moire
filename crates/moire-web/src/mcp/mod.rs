@@ -711,7 +711,36 @@ impl MoireMcpHandler {
     ) -> Result<String, String> {
         let snapshot = self.load_snapshot(snapshot_id).await?;
         let located = self.find_entity(&snapshot, &entity_id)?;
-        let source = self.load_source_for_entity(&snapshot, located.1).await?;
+        let backtrace_index = backtrace_index(&snapshot);
+
+        let mut frame_ids = BTreeSet::new();
+        if let Some(frame_id) = primary_frame_for_entity(located.1, &backtrace_index) {
+            frame_ids.insert(frame_id.as_u64());
+        }
+        for edge in &located.0.snapshot.edges {
+            if edge.kind != EdgeKind::WaitingOn {
+                continue;
+            }
+            if edge.dst.as_str() == entity_id || edge.src.as_str() == entity_id {
+                if let Some(frame_id) =
+                    primary_frame_for_backtrace_id(edge.backtrace.as_u64(), &backtrace_index)
+                {
+                    frame_ids.insert(frame_id.as_u64());
+                }
+            }
+        }
+        let source_by_frame = if frame_ids.is_empty() {
+            HashMap::new()
+        } else {
+            self.resolve_source_contexts(frame_ids)
+                .await?
+                .0
+                .into_iter()
+                .map(|ctx| (ctx.frame_id, ctx))
+                .collect::<HashMap<_, _>>()
+        };
+        let source = primary_frame_for_entity(located.1, &backtrace_index)
+            .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
 
         let mut incoming = Vec::new();
         let mut outgoing = Vec::new();
@@ -720,17 +749,23 @@ impl MoireMcpHandler {
                 continue;
             }
             if edge.dst.as_str() == entity_id {
+                let wait_site_source =
+                    primary_frame_for_backtrace_id(edge.backtrace.as_u64(), &backtrace_index)
+                        .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
                 incoming.push(McpChainEdge {
                     src_entity_id: edge.src.as_str().to_owned(),
                     dst_entity_id: edge.dst.as_str().to_owned(),
-                    wait_site_source: None,
+                    wait_site_source,
                 });
             }
             if edge.src.as_str() == entity_id {
+                let wait_site_source =
+                    primary_frame_for_backtrace_id(edge.backtrace.as_u64(), &backtrace_index)
+                        .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
                 outgoing.push(McpChainEdge {
                     src_entity_id: edge.src.as_str().to_owned(),
                     dst_entity_id: edge.dst.as_str().to_owned(),
-                    wait_site_source: None,
+                    wait_site_source,
                 });
             }
         }
@@ -1289,22 +1324,6 @@ impl MoireMcpHandler {
             .collect::<HashMap<_, _>>();
         let _ = snapshot;
         Ok(by_frame)
-    }
-
-    async fn load_source_for_entity(
-        &self,
-        snapshot: &SnapshotCutResponse,
-        entity: &Entity,
-    ) -> Result<Option<McpSourceContext>, String> {
-        let backtrace_index = backtrace_index(snapshot);
-        let Some(frame_id) = primary_frame_for_entity(entity, &backtrace_index) else {
-            return Ok(None);
-        };
-
-        let (contexts, _) = self
-            .resolve_source_contexts(std::iter::once(frame_id.as_u64()).collect())
-            .await?;
-        Ok(contexts.into_iter().next())
     }
 
     async fn resolve_source_contexts(
