@@ -28,6 +28,8 @@ export function useCameraController(
   getManualInteractionVersion: () => number;
   /** Returns the camera at the current moment, bypassing React render batching. */
   getCamera: () => Camera;
+  /** Returns current canvas size in CSS pixels. */
+  getViewportSize: () => { width: number; height: number };
   /** Returns the destination of the in-progress animation, or null if the camera is settled. */
   getAnimationDestination: () => Camera | null;
   handlers: {
@@ -42,7 +44,17 @@ export function useCameraController(
   const [camera, setCamera_] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const setCamera = useCallback((c: Camera | ((prev: Camera) => Camera)) => {
     if (typeof c === "function") {
-      setCamera_((prev) => { const next = c(prev); console.log("[camera] setCamera fn", prev, "→", next, new Error().stack?.split("\n")[2]?.trim()); return next; });
+      setCamera_((prev) => {
+        const next = c(prev);
+        console.log(
+          "[camera] setCamera fn",
+          prev,
+          "→",
+          next,
+          new Error().stack?.split("\n")[2]?.trim(),
+        );
+        return next;
+      });
     } else {
       console.log("[camera] setCamera", c, new Error().stack?.split("\n")[2]?.trim());
       setCamera_(c);
@@ -87,7 +99,10 @@ export function useCameraController(
     const dx = target.x - start.x;
     const dy = target.y - start.y;
     const dz = target.zoom - start.zoom;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) { console.log("[camera] animateCameraTo skipped (already at target)"); return; }
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) {
+      console.log("[camera] animateCameraTo skipped (already at target)");
+      return;
+    }
     animationDestinationRef.current = target;
     const startTime = performance.now();
     const tick = () => {
@@ -186,7 +201,10 @@ export function useCameraController(
     manualInteractionVersionRef.current += 1;
     const dx = e.clientX - state.startClientX;
     const dy = e.clientY - state.startClientY;
-    if (!didDragRef.current && (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)) {
+    if (
+      !didDragRef.current &&
+      (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)
+    ) {
       didDragRef.current = true;
     }
     setCamera({
@@ -252,6 +270,7 @@ export function useCameraController(
     animateCameraTo,
     getManualInteractionVersion,
     getCamera,
+    getViewportSize,
     getAnimationDestination,
     handlers: {
       onWheel,

@@ -434,6 +434,27 @@ export function GraphViewport({
     return m;
   }, [expandedNodeId, expandingNodeId]);
 
+  // Keep the focused node anchored to its final ELK rect while the rest of the graph FLIPs.
+  // This avoids camera/position drift from interpolating the very node we pan to.
+  const renderedNodesForDisplay = useMemo(() => {
+    const focusedId =
+      [...nodeExpandStates].find(
+        ([, state]) => state === "expanded" || state === "expanding",
+      )?.[0] ?? null;
+    if (!focusedId) return renderedNodes;
+    const finalFocusedNode = nodes.find((node) => node.id === focusedId);
+    if (!finalFocusedNode) return renderedNodes;
+
+    let changed = false;
+    const pinned = renderedNodes.map((node) => {
+      if (node.id !== focusedId) return node;
+      if (sameRect(node.worldRect, finalFocusedNode.worldRect)) return node;
+      changed = true;
+      return { ...node, worldRect: finalFocusedNode.worldRect };
+    });
+    return changed ? pinned : renderedNodes;
+  }, [nodeExpandStates, nodes, renderedNodes]);
+
   const collapseAll = useCallback(() => {
     onExpandedNodeChange?.(null);
   }, [onExpandedNodeChange]);
@@ -667,7 +688,7 @@ export function GraphViewport({
               renderBodies={false}
             />
             <NodeLayer
-              nodes={renderedNodes}
+              nodes={renderedNodesForDisplay}
               prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
               activeExpandedFrameIndex={activeExpandedFrameIndex}
@@ -742,6 +763,7 @@ function NodeExpandPanner({
     animateCameraTo,
     getManualInteractionVersion,
     getCamera,
+    getViewportSize,
     getAnimationDestination,
     viewportHeight,
   } = useCameraContext();
@@ -751,8 +773,14 @@ function NodeExpandPanner({
   const savedManualVersionRef = useRef<number | null>(null);
   const canRestoreRef = useRef(false);
   const didAutoPanRef = useRef(false);
+  const postPanLogTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (postPanLogTimerRef.current != null) {
+      window.clearTimeout(postPanLogTimerRef.current);
+      postPanLogTimerRef.current = null;
+    }
+
     const prev = prevStatesRef.current;
     const wasEmpty = prev.size === 0;
     const isEmpty = nodeExpandStates.size === 0;
@@ -794,23 +822,91 @@ function NodeExpandPanner({
         const [id] = expandedEntry;
         const prevExpandedId = [...prev].find(([, state]) => state === "expanded")?.[0] ?? null;
         const prevState = prev.get(id);
-        const justFinishedExpand = prevState !== "expanded";
+        const justFinishedExpand = prevState === "expanding";
         const switchedExpandedNode = prevExpandedId !== null && prevExpandedId !== id;
-        if (justFinishedExpand || switchedExpandedNode) {
-          const node = nodes.find((n) => n.id === id);
-          if (node) {
-            const { x, y, width, height } = node.worldRect;
-            const cam = getCamera();
-            const viewportPadding = 16;
-            const maxTopScreenY = viewportHeight - height * cam.zoom - viewportPadding;
-            const desiredTopScreenY = Math.max(
-              viewportPadding,
-              Math.min(viewportHeight * 0.3, maxTopScreenY),
-            );
-            const targetWorldY = y + (viewportHeight / 2 - desiredTopScreenY) / cam.zoom;
-            panTo(x + width / 2, targetWorldY, transitionDurationMs);
-            didAutoPanRef.current = true;
+        const switchedAfterExpand = switchedExpandedNode && prevState === "expanding";
+        if (justFinishedExpand || switchedAfterExpand) {
+          const finalNode = nodes.find((n) => n.id === id);
+          if (!finalNode) {
+            prevStatesRef.current = new Map(nodeExpandStates);
+            return;
           }
+          const { x, y, width, height } = finalNode.worldRect;
+          const cam = getCamera();
+          const liveViewportHeight = getViewportSize().height;
+          const viewportPadding = 16;
+          const maxTopScreenY = liveViewportHeight - height * cam.zoom - viewportPadding;
+          const desiredTopScreenY = Math.max(
+            viewportPadding,
+            Math.min(liveViewportHeight * 0.3, maxTopScreenY),
+          );
+          const targetWorldY = y + (liveViewportHeight / 2 - desiredTopScreenY) / cam.zoom;
+          console.log("[pan:elk]", {
+            id,
+            nodeRect: finalNode.worldRect,
+            cameraStart: cam,
+            viewportHeight,
+            liveViewportHeight,
+            desiredTopScreenY,
+            targetWorld: { x: x + width / 2, y: targetWorldY, zoom: cam.zoom },
+          });
+          panTo(x + width / 2, targetWorldY, transitionDurationMs);
+          postPanLogTimerRef.current = window.setTimeout(() => {
+            const shells = Array.from(
+              document.querySelectorAll<HTMLElement>(`.nl-node-shell[data-node-id="${id}"]`),
+            );
+            const shell = shells[0];
+            const canvas = shell?.closest(".graph-canvas") as HTMLElement | null;
+            if (!shell || !canvas) return;
+            const shellRect = shell.getBoundingClientRect();
+            const canvasRect = canvas.getBoundingClientRect();
+            const world = canvas.querySelector<HTMLElement>(".graph-canvas__world");
+            const allShellTops = shells.map((candidate) => {
+              const candidateCanvas = candidate.closest(".graph-canvas") as HTMLElement | null;
+              const candidateRect = candidate.getBoundingClientRect();
+              const candidateCanvasRect = candidateCanvas?.getBoundingClientRect();
+              return {
+                topInCanvas:
+                  candidateCanvasRect != null ? candidateRect.top - candidateCanvasRect.top : null,
+                topInViewport: candidateRect.top,
+                worldY: candidate.dataset.worldY ?? null,
+              };
+            });
+            const canvases = Array.from(document.querySelectorAll<HTMLElement>(".graph-canvas"));
+            const canvasSummaries = canvases.map((candidate) => {
+              const rect = candidate.getBoundingClientRect();
+              const worldEl = candidate.querySelector<HTMLElement>(".graph-canvas__world");
+              return {
+                top: rect.top,
+                height: rect.height,
+                hasNode: !!candidate.querySelector(`.nl-node-shell[data-node-id="${id}"]`),
+                worldTransform: worldEl ? getComputedStyle(worldEl).transform : null,
+              };
+            });
+            console.log("[pan:post]", {
+              id,
+              shellTopInCanvas: shellRect.top - canvasRect.top,
+              shellTopInViewport: shellRect.top,
+              canvasTopInViewport: canvasRect.top,
+              canvasScrollTop: canvas.scrollTop,
+              canvasScrollLeft: canvas.scrollLeft,
+              shellWorldY: shell.dataset.worldY ?? null,
+              shellComputedTransform: getComputedStyle(shell).transform,
+              shellInlineTransform: shell.style.transform,
+              shellInSelectedWorld: !!world?.contains(shell),
+              shellNearestWorldTransform:
+                (shell.closest(".graph-canvas__world") as HTMLElement | null) != null
+                  ? getComputedStyle(shell.closest(".graph-canvas__world") as HTMLElement).transform
+                  : null,
+              shellsMatched: shells.length,
+              allShellTops,
+              canvasCount: canvases.length,
+              selectedWorldTransform: world ? getComputedStyle(world).transform : null,
+              canvasSummaries,
+              cameraNow: getCamera(),
+            });
+          }, transitionDurationMs + 34);
+          didAutoPanRef.current = true;
         }
       }
     }
@@ -823,10 +919,20 @@ function NodeExpandPanner({
     animateCameraTo,
     getManualInteractionVersion,
     getCamera,
+    getViewportSize,
     getAnimationDestination,
     viewportHeight,
     transitionDurationMs,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (postPanLogTimerRef.current != null) {
+        window.clearTimeout(postPanLogTimerRef.current);
+        postPanLogTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return null;
 }

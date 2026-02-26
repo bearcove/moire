@@ -23,9 +23,12 @@ export function BacktraceDisplay({
   hideLocation,
   activeFrameIndex,
 }: BacktraceDisplayProps) {
+  const SCROLL_ANIMATION_MS = 110;
   const [showSystem, setShowSystem] = useState(false);
   const [sourceVersion, setSourceVersion] = useState(0);
   const framesRootRef = React.useRef<HTMLDivElement | null>(null);
+  const scrollAnimationRafRef = React.useRef<number | null>(null);
+  const prevActiveFrameIndexRef = React.useRef<number | undefined>(activeFrameIndex);
 
   const hasSystemFrames = allFrames.length > frames.length;
   const displayFrames = showSystem ? allFrames : frames;
@@ -53,6 +56,10 @@ export function BacktraceDisplay({
   }, [frameIds, showSource]);
 
   useEffect(() => {
+    if (activeFrameIndex == null) return;
+    const prevActiveFrameIndex = prevActiveFrameIndexRef.current;
+    prevActiveFrameIndexRef.current = activeFrameIndex;
+
     const root = framesRootRef.current;
     if (!root || displayFrames.length === 0) return;
     const sections = root.querySelectorAll<HTMLElement>(".graph-node-frame-section");
@@ -63,10 +70,7 @@ export function BacktraceDisplay({
       ".graph-node-frame-block__line--target",
     );
     const focusElement = targetLine ?? activeSection;
-    if (!scrollContainer) {
-      focusElement.scrollIntoView({ block: "center" });
-      return;
-    }
+    if (!scrollContainer) return;
     const containerRect = scrollContainer.getBoundingClientRect();
     const focusRect = focusElement.getBoundingClientRect();
     const zoomScaleY =
@@ -77,8 +81,50 @@ export function BacktraceDisplay({
     const targetScrollTop =
       scrollContainer.scrollTop + focusCenterFromContainerTop - scrollContainer.clientHeight / 2;
     const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
-    scrollContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, targetScrollTop));
-  }, [displayFrames, normalizedActiveFrameIndex, sourceVersion]);
+    const clampedTarget = Math.max(0, Math.min(maxScrollTop, targetScrollTop));
+    const shouldAnimate =
+      prevActiveFrameIndex != null &&
+      prevActiveFrameIndex !== activeFrameIndex &&
+      import.meta.env.MODE !== "test";
+
+    if (scrollAnimationRafRef.current != null) {
+      cancelAnimationFrame(scrollAnimationRafRef.current);
+      scrollAnimationRafRef.current = null;
+    }
+
+    if (!shouldAnimate) {
+      scrollContainer.scrollTop = clampedTarget;
+      return;
+    }
+
+    const start = scrollContainer.scrollTop;
+    const delta = clampedTarget - start;
+    if (Math.abs(delta) < 1) {
+      scrollContainer.scrollTop = clampedTarget;
+      return;
+    }
+
+    const startedAt = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startedAt) / SCROLL_ANIMATION_MS);
+      const ease = 1 - (1 - t) ** 3;
+      scrollContainer.scrollTop = start + delta * ease;
+      if (t < 1) {
+        scrollAnimationRafRef.current = requestAnimationFrame(tick);
+      } else {
+        scrollAnimationRafRef.current = null;
+      }
+    };
+    scrollAnimationRafRef.current = requestAnimationFrame(tick);
+  }, [activeFrameIndex, displayFrames, normalizedActiveFrameIndex, sourceVersion]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollAnimationRafRef.current != null) {
+        cancelAnimationFrame(scrollAnimationRafRef.current);
+      }
+    };
+  }, []);
 
   if (displayFrames.length === 0) {
     if (!framesLoading) return null;

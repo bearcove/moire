@@ -11,28 +11,30 @@ import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } 
 // ── ELK layout ────────────────────────────────────────────────
 
 const elk = new ELK({ workerUrl: elkWorkerUrl });
-const nodeSpacingBetweenLayers = 20;
+const nodeSpacingBetweenLayers = 12;
+const edgeNodeSpacing = 12;
 
 const elkOptions = {
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",
-  "elk.spacing.nodeNode": "36",
-  "elk.spacing.edgeNode": "20",
+  "elk.spacing.nodeNode": "28",
+  "elk.spacing.edgeNode": String(edgeNodeSpacing),
   "elk.layered.spacing.nodeNodeBetweenLayers": String(nodeSpacingBetweenLayers),
+  "elk.layered.spacing.edgeNodeBetweenLayers": String(edgeNodeSpacing),
   "elk.padding": "[top=24,left=24,bottom=24,right=24]",
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
 
 const subgraphPaddingBase = {
   top: -10,
-  left: 20,
-  bottom: 20,
-  right: 20,
+  left: 10,
+  bottom: 10,
+  right: 10,
 };
 
 // Extra vertical keep-out above grouped content so edge routing is less likely
 // to cross the visual scope header strip.
-const subgraphHeaderKeepoutTop = 18;
+const subgraphHeaderKeepoutTop = 10;
 const scopeGroupLabelMinWidth = 72;
 const scopeGroupLabelPadX = 10;
 const scopeGroupLabelIconWidth = 12;
