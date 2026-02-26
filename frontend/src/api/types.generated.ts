@@ -28,26 +28,15 @@ export interface SourcePreviewResponse {
    */
   html: string;
   /**
-   * Highlighted HTML for the cut scope excerpt (function/impl with cuts).
-   * When present, the frontend should prefer this over windowing into `html`.
+   * Highlighted, collapsed context lines for the cut scope excerpt.
+   * Separators replace elided regions; line numbers are original file line numbers.
    */
-  context_html?: string;
+  context_lines?: SourceContextLine[];
   /**
-   * Highlighted HTML for an aggressively cut scope excerpt.
-   *
-   * Intended for compact/collapsed displays that still render line numbers.
+   * Highlighted, collapsed context lines for the aggressively cut scope excerpt.
+   * Intended for compact/collapsed displays.
    */
-  compact_context_html?: string;
-  /**
-   * 1-based inclusive line range of the scope in the original file.
-   * Line 1 of context_html = line context_range.start in the original.
-   */
-  context_range?: LineRange;
-  /**
-   * 1-based inclusive line range of the compact scope in the original file.
-   * Line 1 of compact_context_html = compact_context_range.start in the original.
-   */
-  compact_context_range?: LineRange;
+  compact_context_lines?: SourceContextLine[];
   /**
    * Highlighted HTML for a compact target-statement snippet.
    *
@@ -68,11 +57,19 @@ export interface SourcePreviewResponse {
 }
 
 /**
- * A 1-based inclusive line range within a source file.
+ * A single entry in a syntax-highlighted source context excerpt.
  */
-export interface LineRange {
-  start: number;
-  end: number;
+export type SourceContextLine =
+  | { line: ContextCodeLine }
+  | { separator: ContextSeparator };
+
+export interface ContextSeparator {
+  indent_cols: number;
+}
+
+export interface ContextCodeLine {
+  line_num: number;
+  html: string;
 }
 
 /**

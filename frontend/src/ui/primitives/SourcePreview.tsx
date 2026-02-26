@@ -1,21 +1,28 @@
 import React from "react";
-import type { SourcePreviewResponse } from "../../api/types.generated";
-import { splitHighlightedHtml, collapseContextLines } from "../../utils/highlightedHtml";
+import type { SourceContextLine, SourcePreviewResponse } from "../../api/types.generated";
+import { splitHighlightedHtml } from "../../utils/highlightedHtml";
 import "./SourcePreview.css";
 
 const CONTEXT_LINES = 4;
 
+type Entry = { lineNum: number; html: string; isSeparator: boolean; separatorIndentCols?: number };
+
+function contextLinesToEntries(lines: SourceContextLine[]): Entry[] {
+  return lines.map((line) => {
+    if ("separator" in line) {
+      return { lineNum: 0, html: "", isSeparator: true, separatorIndentCols: line.separator.indent_cols };
+    }
+    return { lineNum: line.line.line_num, html: line.line.html, isSeparator: false };
+  });
+}
+
 export function SourcePreview({ preview }: { preview: SourcePreviewResponse }) {
   const { target_line } = preview;
 
-  // Prefer context_html (scope excerpt with cuts) when available
-  const useContext = preview.context_html != null && preview.context_range != null;
+  let entries: Entry[];
 
-  let entries: Array<{ lineNum: number; html: string; isSeparator: boolean }>;
-
-  if (useContext) {
-    const ctxLines = splitHighlightedHtml(preview.context_html!);
-    entries = collapseContextLines(ctxLines, preview.context_range!.start);
+  if (preview.context_lines != null) {
+    entries = contextLinesToEntries(preview.context_lines);
   } else {
     // Fallback: window into full file HTML
     const lines = splitHighlightedHtml(preview.html);

@@ -8,9 +8,9 @@ import {
 } from "../../api/sourceCache";
 import {
   splitHighlightedHtml,
-  collapseContextLines,
   dedentHighlightedHtmlLines,
 } from "../../utils/highlightedHtml";
+import type { SourceContextLine } from "../../api/types.generated";
 import { langIcon } from "./langIcon";
 import { canonicalNodeKind } from "../../nodeKindSpec";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
@@ -141,24 +141,36 @@ export function FrameLine({
 
     if (frame.frame_id == null) return fallbackCollapsedLine;
     if (!preview) return fallbackExpandedLine;
-    const contextHtml = useCompactContext
-      ? (preview.compact_context_html ?? preview.context_html)
-      : preview.context_html;
-    const contextRange = useCompactContext
-      ? (preview.compact_context_range ?? preview.context_range)
-      : preview.context_range;
-    const useCtx = contextHtml != null && contextRange != null;
-    const rawLines = splitHighlightedHtml(useCtx ? contextHtml : preview.html);
-    const displayRawLines = useCompactContext ? dedentHighlightedHtmlLines(rawLines) : rawLines;
-    const startLineNum = useCtx ? contextRange.start : 1;
-    const lines = useCtx
-      ? collapseContextLines(displayRawLines, startLineNum)
-      : displayRawLines.map((html, i) => ({
-          lineNum: startLineNum + i,
-          html,
-          isSeparator: false,
-          separatorIndentCols: undefined,
-        }));
+    const contextLines: SourceContextLine[] | undefined = useCompactContext
+      ? (preview.compact_context_lines ?? preview.context_lines)
+      : preview.context_lines;
+
+    type Entry = { lineNum: number; html: string; isSeparator: boolean; separatorIndentCols?: number };
+    let lines: Entry[];
+    if (contextLines != null) {
+      const entries = contextLines.map((line): Entry => {
+        if ("separator" in line) {
+          return { lineNum: 0, html: "", isSeparator: true, separatorIndentCols: line.separator.indent_cols };
+        }
+        return { lineNum: line.line.line_num, html: line.line.html, isSeparator: false };
+      });
+      if (useCompactContext) {
+        const htmlLines = entries.map((e) => (e.isSeparator ? "" : e.html));
+        const dedented = dedentHighlightedHtmlLines(htmlLines);
+        lines = entries.map((e, i) => (e.isSeparator ? e : { ...e, html: dedented[i] }));
+      } else {
+        lines = entries;
+      }
+    } else {
+      const rawLines = splitHighlightedHtml(preview.html);
+      const displayRawLines = useCompactContext ? dedentHighlightedHtmlLines(rawLines) : rawLines;
+      lines = displayRawLines.map((html, i) => ({
+        lineNum: 1 + i,
+        html,
+        isSeparator: false,
+        separatorIndentCols: undefined,
+      }));
+    }
     const hasTargetLine = lines.some(
       (entry) => !entry.isSeparator && entry.lineNum === preview.target_line,
     );

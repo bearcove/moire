@@ -195,6 +195,28 @@ pub struct RecordingImportFrame {
     pub snapshot: facet_value::Value,
 }
 
+/// A single entry in a syntax-highlighted source context excerpt.
+#[derive(Facet, Clone, Debug)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum SourceContextLine {
+    /// A real source line with its original line number and highlighted HTML.
+    Line(ContextCodeLine),
+    /// A ⋯ separator representing one or more elided lines.
+    Separator(ContextSeparator),
+}
+
+#[derive(Facet, Clone, Debug)]
+pub struct ContextCodeLine {
+    pub line_num: u32,
+    pub html: String,
+}
+
+#[derive(Facet, Clone, Debug)]
+pub struct ContextSeparator {
+    pub indent_cols: u32,
+}
+
 /// Response for `GET /api/source/preview`.
 // r[impl api.source.preview]
 #[derive(Facet)]
@@ -208,23 +230,14 @@ pub struct SourcePreviewResponse {
     /// Full arborium-highlighted HTML for the entire file.
     /// The frontend splits this into per-line strings using splitHighlightedHtml.
     pub html: String,
-    /// Highlighted HTML for the cut scope excerpt (function/impl with cuts).
-    /// When present, the frontend should prefer this over windowing into `html`.
+    /// Highlighted, collapsed context lines for the cut scope excerpt.
+    /// Separators replace elided regions; line numbers are original file line numbers.
     #[facet(skip_unless_truthy)]
-    pub context_html: Option<String>,
-    /// Highlighted HTML for an aggressively cut scope excerpt.
-    ///
-    /// Intended for compact/collapsed displays that still render line numbers.
+    pub context_lines: Option<Vec<SourceContextLine>>,
+    /// Highlighted, collapsed context lines for the aggressively cut scope excerpt.
+    /// Intended for compact/collapsed displays.
     #[facet(skip_unless_truthy)]
-    pub compact_context_html: Option<String>,
-    /// 1-based inclusive line range of the scope in the original file.
-    /// Line 1 of context_html = line context_range.start in the original.
-    #[facet(skip_unless_truthy)]
-    pub context_range: Option<LineRange>,
-    /// 1-based inclusive line range of the compact scope in the original file.
-    /// Line 1 of compact_context_html = compact_context_range.start in the original.
-    #[facet(skip_unless_truthy)]
-    pub compact_context_range: Option<LineRange>,
+    pub compact_context_lines: Option<Vec<SourceContextLine>>,
     /// Highlighted HTML for a compact target-statement snippet.
     ///
     /// Preserves statement structure (may include newlines) and aggressively

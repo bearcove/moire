@@ -1,5 +1,8 @@
+use arborium::HtmlFormat;
+use arborium::advanced::{Span, spans_to_html};
 use arborium::tree_sitter;
 use moire_types::LineRange;
+use moire_types::{ContextCodeLine, ContextSeparator, SourceContextLine};
 
 pub struct CutResult {
     /// The scope excerpt with cuts applied. Only contains lines from scope_range.
@@ -852,6 +855,83 @@ fn compact_statement_text(
     }
 
     normalize_statement_lines(lines)
+}
+
+/// Convert a `CutResult` into a `Vec<SourceContextLine>` by highlighting with arborium,
+/// splitting by line, and collapsing `/* ... */` cut markers (and their trailing empty lines)
+/// into separator entries.
+pub fn highlighted_context_lines(
+    cut_result: &CutResult,
+    lang_name: &str,
+) -> Vec<SourceContextLine> {
+    let source = &cut_result.cut_source;
+
+    let spans: Vec<Span> = arborium::Highlighter::new()
+        .highlight_spans(lang_name, source)
+        .unwrap_or_default();
+
+    // Byte offset of the start of each line.
+    let mut line_starts: Vec<usize> = vec![0];
+    for (i, &b) in source.as_bytes().iter().enumerate() {
+        if b == b'\n' {
+            line_starts.push(i + 1);
+        }
+    }
+
+    let format = HtmlFormat::CustomElements;
+    let mut result: Vec<SourceContextLine> = Vec::with_capacity(line_starts.len());
+    let mut skip_empty = false;
+
+    for (line_idx, &line_start) in line_starts.iter().enumerate() {
+        let line_end = line_starts
+            .get(line_idx + 1)
+            .map(|&s| s - 1) // exclude the '\n'
+            .unwrap_or(source.len());
+        let line_text = &source[line_start..line_end];
+        let line_num = cut_result.scope_range.start + line_idx as u32;
+
+        if line_text.trim() == "/* ... */" {
+            let indent_cols = leading_indent_cols(line_text);
+            result.push(SourceContextLine::Separator(ContextSeparator {
+                indent_cols,
+            }));
+            skip_empty = true;
+            continue;
+        }
+
+        if skip_empty && line_text.trim().is_empty() {
+            continue;
+        }
+        skip_empty = false;
+
+        let line_spans: Vec<Span> = spans
+            .iter()
+            .filter(|s| (s.start as usize) < line_end && (s.end as usize) > line_start)
+            .map(|s| Span {
+                start: (s.start as usize).saturating_sub(line_start) as u32,
+                end: ((s.end as usize).min(line_end) - line_start) as u32,
+                capture: s.capture.clone(),
+                pattern_index: s.pattern_index,
+            })
+            .collect();
+
+        let html = spans_to_html(line_text, line_spans, &format);
+        result.push(SourceContextLine::Line(ContextCodeLine { line_num, html }));
+    }
+
+    result
+}
+
+fn leading_indent_cols(text: &str) -> u32 {
+    let mut cols = 0u32;
+    for ch in text.chars() {
+        match ch {
+            ' ' => cols += 1,
+            '\t' => cols += 4,
+            _ => break,
+        }
+    }
+    cols
 }
 
 #[cfg(test)]

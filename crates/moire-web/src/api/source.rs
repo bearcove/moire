@@ -9,6 +9,7 @@ use rusqlite_facet::ConnectionFacetExt;
 
 use crate::api::source_context::{
     cut_source, cut_source_compact, extract_enclosing_fn, extract_target_statement,
+    highlighted_context_lines,
 };
 use crate::app::AppState;
 use crate::db::Db;
@@ -291,37 +292,15 @@ pub(crate) fn lookup_source_in_db(
         None => html_escape(&content),
     };
 
-    // Language-aware context: cut the scope and highlight the excerpt
-    let (context_html, context_range) = match lang {
-        Some(lang_name) => match cut_source(&content, lang_name, target_line, target_col) {
-            Some(cut_result) => {
-                let highlighted = {
-                    let mut hl = arborium::Highlighter::new();
-                    hl.highlight(lang_name, &cut_result.cut_source)
-                        .unwrap_or_else(|_| html_escape(&cut_result.cut_source))
-                };
-                (Some(highlighted), Some(cut_result.scope_range))
-            }
-            None => (None, None),
-        },
-        None => (None, None),
-    };
+    let context_lines = lang.and_then(|lang_name| {
+        let cut_result = cut_source(&content, lang_name, target_line, target_col)?;
+        Some(highlighted_context_lines(&cut_result, lang_name))
+    });
 
-    // More aggressive language-aware context for compact/collapsed displays.
-    let (compact_context_html, compact_context_range) = match lang {
-        Some(lang_name) => match cut_source_compact(&content, lang_name, target_line, target_col) {
-            Some(cut_result) => {
-                let highlighted = {
-                    let mut hl = arborium::Highlighter::new();
-                    hl.highlight(lang_name, &cut_result.cut_source)
-                        .unwrap_or_else(|_| html_escape(&cut_result.cut_source))
-                };
-                (Some(highlighted), Some(cut_result.scope_range))
-            }
-            None => (None, None),
-        },
-        None => (None, None),
-    };
+    let compact_context_lines = lang.and_then(|lang_name| {
+        let cut_result = cut_source_compact(&content, lang_name, target_line, target_col)?;
+        Some(highlighted_context_lines(&cut_result, lang_name))
+    });
 
     // Compact statement snippet for compact display (may be multi-line).
     // Long inner block bodies are elided in source_context extraction.
@@ -351,10 +330,8 @@ pub(crate) fn lookup_source_in_db(
         target_col,
         total_lines,
         html,
-        context_html,
-        compact_context_html,
-        context_range,
-        compact_context_range,
+        context_lines,
+        compact_context_lines,
         context_line,
         enclosing_fn,
     }))
