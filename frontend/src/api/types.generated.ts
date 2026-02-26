@@ -33,12 +33,26 @@ export interface SourcePreviewResponse {
    */
   context_html?: string;
   /**
+   * Highlighted HTML for an aggressively cut scope excerpt.
+   *
+   * Intended for compact/collapsed displays that still render line numbers.
+   */
+  compact_context_html?: string;
+  /**
    * 1-based inclusive line range of the scope in the original file.
    * Line 1 of context_html = line context_range.start in the original.
    */
   context_range?: LineRange;
   /**
-   * Single-line highlighted HTML of the target statement, whitespace-collapsed.
+   * 1-based inclusive line range of the compact scope in the original file.
+   * Line 1 of compact_context_html = compact_context_range.start in the original.
+   */
+  compact_context_range?: LineRange;
+  /**
+   * Highlighted HTML for a compact target-statement snippet.
+   *
+   * Preserves statement structure (may include newlines) and aggressively
+   * elides long inner block bodies as `…`.
    * Used for compact collapsed-frame display.
    */
   context_line?: string;
@@ -47,6 +61,7 @@ export interface SourcePreviewResponse {
    *
    * Includes module path and impl type (when present) plus full function
    * signature (parameters + return type), compacted to one line.
+   * Visibility modifiers (`pub`, `pub(crate)`, etc.) are omitted.
    * Currently only populated for Rust source files.
    */
   enclosing_fn?: string;

@@ -19,12 +19,15 @@
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
-    border-bottom: var(--graph-border-width) solid var(--border-subtle);
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
     font-weight: 400;
     color: var(--text-secondary);
     letter-spacing: 0;
+    position: absolute;
+    top: -1.1em;
+    left: 1em;
+    background: var(--bg-base);
 }
 
 .scope-group-label {

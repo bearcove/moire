@@ -13,6 +13,23 @@ export interface CollapsedLine {
   lineNum: number;
   html: string;
   isSeparator: boolean;
+  separatorIndentCols?: number;
+}
+
+function leadingIndentCols(text: string): number {
+  let cols = 0;
+  for (const ch of text) {
+    if (ch === " ") {
+      cols += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      cols += 4;
+      continue;
+    }
+    break;
+  }
+  return cols;
 }
 
 /**
@@ -20,16 +37,19 @@ export interface CollapsedLine {
  * Input: per-line HTML strings from splitHighlightedHtml applied to context_html.
  * startLineNum: the 1-based line number of the first line in `lines`.
  */
-export function collapseContextLines(
-  lines: string[],
-  startLineNum: number,
-): CollapsedLine[] {
+export function collapseContextLines(lines: string[], startLineNum: number): CollapsedLine[] {
   const result: CollapsedLine[] = [];
   let i = 0;
   while (i < lines.length) {
     const lineNum = startLineNum + i;
     if (isContextCutMarker(lines[i])) {
-      result.push({ lineNum, html: "", isSeparator: true });
+      const plain = stripHtmlTags(lines[i]);
+      result.push({
+        lineNum,
+        html: "",
+        isSeparator: true,
+        separatorIndentCols: leadingIndentCols(plain),
+      });
       i++;
       // Skip following empty lines (part of the same cut region)
       while (i < lines.length && stripHtmlTags(lines[i]).trim() === "") {

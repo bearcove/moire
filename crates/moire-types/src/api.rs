@@ -212,10 +212,19 @@ pub struct SourcePreviewResponse {
     /// When present, the frontend should prefer this over windowing into `html`.
     #[facet(skip_unless_truthy)]
     pub context_html: Option<String>,
+    /// Highlighted HTML for an aggressively cut scope excerpt.
+    ///
+    /// Intended for compact/collapsed displays that still render line numbers.
+    #[facet(skip_unless_truthy)]
+    pub compact_context_html: Option<String>,
     /// 1-based inclusive line range of the scope in the original file.
     /// Line 1 of context_html = line context_range.start in the original.
     #[facet(skip_unless_truthy)]
     pub context_range: Option<LineRange>,
+    /// 1-based inclusive line range of the compact scope in the original file.
+    /// Line 1 of compact_context_html = compact_context_range.start in the original.
+    #[facet(skip_unless_truthy)]
+    pub compact_context_range: Option<LineRange>,
     /// Highlighted HTML for a compact target-statement snippet.
     ///
     /// Preserves statement structure (may include newlines) and aggressively
@@ -227,6 +236,7 @@ pub struct SourcePreviewResponse {
     ///
     /// Includes module path and impl type (when present) plus full function
     /// signature (parameters + return type), compacted to one line.
+    /// Visibility modifiers (`pub`, `pub(crate)`, etc.) are omitted.
     /// Currently only populated for Rust source files.
     #[facet(skip_unless_truthy)]
     pub enclosing_fn: Option<String>,

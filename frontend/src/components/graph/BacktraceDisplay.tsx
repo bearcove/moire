@@ -9,6 +9,8 @@ export type BacktraceDisplayProps = {
   allFrames: GraphFrameData[];
   framesLoading: boolean;
   showSource?: boolean;
+  useCompactContext?: boolean;
+  hideLocation?: boolean;
 };
 
 export function BacktraceDisplay({
@@ -16,6 +18,8 @@ export function BacktraceDisplay({
   allFrames,
   framesLoading,
   showSource,
+  useCompactContext,
+  hideLocation,
 }: BacktraceDisplayProps) {
   const [showSystem, setShowSystem] = useState(false);
   const [, setSourceVersion] = useState(0);
@@ -50,7 +54,9 @@ export function BacktraceDisplay({
             <span className="graph-node-frame-sep__name">symbolicating…</span>
             <span className="graph-node-frame-sep__loc">loading source</span>
           </div>
-          <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">…</pre>
+          <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">
+            …
+          </pre>
         </div>
       </div>
     );
@@ -65,6 +71,8 @@ export function BacktraceDisplay({
             frame={frame}
             expanded={true}
             showSource={showSource}
+            useCompactContext={useCompactContext}
+            hideLocation={hideLocation}
           />
         ))}
       </div>

@@ -7,7 +7,9 @@ use moire_trace_types::{FrameId, RelPc};
 use moire_types::{SourcePreviewBatchRequest, SourcePreviewBatchResponse, SourcePreviewResponse};
 use rusqlite_facet::ConnectionFacetExt;
 
-use crate::api::source_context::{cut_source, extract_enclosing_fn, extract_target_statement};
+use crate::api::source_context::{
+    cut_source, cut_source_compact, extract_enclosing_fn, extract_target_statement,
+};
 use crate::app::AppState;
 use crate::db::Db;
 use crate::snapshot::table::lookup_frame_source_by_raw;
@@ -272,6 +274,22 @@ fn lookup_source_in_db(
         None => (None, None),
     };
 
+    // More aggressive language-aware context for compact/collapsed displays.
+    let (compact_context_html, compact_context_range) = match lang {
+        Some(lang_name) => match cut_source_compact(&content, lang_name, target_line, target_col) {
+            Some(cut_result) => {
+                let highlighted = {
+                    let mut hl = arborium::Highlighter::new();
+                    hl.highlight(lang_name, &cut_result.cut_source)
+                        .unwrap_or_else(|_| html_escape(&cut_result.cut_source))
+                };
+                (Some(highlighted), Some(cut_result.scope_range))
+            }
+            None => (None, None),
+        },
+        None => (None, None),
+    };
+
     // Compact statement snippet for compact display (may be multi-line).
     // Long inner block bodies are elided in source_context extraction.
     let context_line = lang.and_then(|lang_name| {
@@ -301,7 +319,9 @@ fn lookup_source_in_db(
         total_lines,
         html,
         context_html,
+        compact_context_html,
         context_range,
+        compact_context_range,
         context_line,
         enclosing_fn,
     }))

@@ -9,6 +9,7 @@ type FrameListProps = {
   expanded: boolean;
   collapsedShowSource: boolean;
   collapsedFrameSlotCount: number;
+  collapsedUseBacktraceDisplay?: boolean;
   /** Frames to show in collapsed mode (pre-sliced by caller). */
   collapsedFrames: GraphFrameData[];
 };
@@ -18,6 +19,7 @@ export function FrameList({
   expanded,
   collapsedShowSource,
   collapsedFrameSlotCount,
+  collapsedUseBacktraceDisplay,
   collapsedFrames,
 }: FrameListProps) {
   if (!expanded) {
@@ -38,6 +40,20 @@ export function FrameList({
         );
       }
       return null;
+    }
+    if (collapsedUseBacktraceDisplay && collapsedShowSource) {
+      return (
+        <div className="graph-node-frames">
+          <BacktraceDisplay
+            frames={collapsedFrames}
+            allFrames={collapsedFrames}
+            framesLoading={data.framesLoading}
+            showSource={true}
+            useCompactContext={true}
+            hideLocation={true}
+          />
+        </div>
+      );
     }
     return (
       <div className="graph-node-frames">

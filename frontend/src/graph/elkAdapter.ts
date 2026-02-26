@@ -20,9 +20,9 @@ const elkOptions = {
 };
 
 const subgraphPaddingBase = {
-  top: 10,
+  top: -10,
   left: 20,
-  bottom: 10,
+  bottom: 20,
   right: 20,
 };
 

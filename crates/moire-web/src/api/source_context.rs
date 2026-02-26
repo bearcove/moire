@@ -28,8 +28,13 @@ fn body_kind_for_scope(scope_kind: &str) -> &'static str {
     }
 }
 
-/// Number of sibling statements to keep on each side of the target.
+/// Number of sibling statements to keep on each side of the target for
+/// regular (expanded) context rendering.
 const NEIGHBOR_COUNT: usize = 1;
+
+/// Number of sibling statements to keep on each side of the target for
+/// compact/collapsed rendering.
+const COMPACT_NEIGHBOR_COUNT: usize = 0;
 
 /// Given source content, a language name, and a target position, find the
 /// containing scope, classify its children into keep/cut, and return the
@@ -43,6 +48,32 @@ pub fn cut_source(
     lang_name: &str,
     target_line: u32,
     target_col: Option<u32>,
+) -> Option<CutResult> {
+    cut_source_with_neighbor_count(content, lang_name, target_line, target_col, NEIGHBOR_COUNT)
+}
+
+/// Aggressive context cutter for compact/collapsed displays.
+pub fn cut_source_compact(
+    content: &str,
+    lang_name: &str,
+    target_line: u32,
+    target_col: Option<u32>,
+) -> Option<CutResult> {
+    cut_source_with_neighbor_count(
+        content,
+        lang_name,
+        target_line,
+        target_col,
+        COMPACT_NEIGHBOR_COUNT,
+    )
+}
+
+fn cut_source_with_neighbor_count(
+    content: &str,
+    lang_name: &str,
+    target_line: u32,
+    target_col: Option<u32>,
+    neighbor_count: usize,
 ) -> Option<CutResult> {
     let ts_lang = arborium::get_language(lang_name)?;
     let mut parser = tree_sitter::Parser::new();
@@ -84,7 +115,7 @@ pub fn cut_source(
     };
 
     // If few enough children, no cutting needed — just return the scope as-is
-    if body_children.len() <= (NEIGHBOR_COUNT * 2 + 1) {
+    if body_children.len() <= (neighbor_count * 2 + 1) {
         let scope_start = scope.start_position().row as u32 + 1;
         let scope_end = scope.end_position().row as u32 + 1;
         let cut = source_lines[(scope_start - 1) as usize..scope_end as usize].join("\n");
@@ -122,8 +153,8 @@ pub fn cut_source(
         });
 
     // Classify children: keep neighbors around target, cut the rest
-    let keep_start = target_idx.saturating_sub(NEIGHBOR_COUNT);
-    let keep_end = (target_idx + NEIGHBOR_COUNT + 1).min(body_children.len());
+    let keep_start = target_idx.saturating_sub(neighbor_count);
+    let keep_end = (target_idx + neighbor_count + 1).min(body_children.len());
 
     // Build the scope range
     let scope_start_row = scope.start_position().row; // 0-based
@@ -166,7 +197,17 @@ pub fn cut_source(
                 cut_ranges.push((cut_start, cut_end));
             }
         }
+
+        // Compact mode: also elide interiors of kept blocks (e.g. async move bodies)
+        // while preserving outer lines and stable file-based line numbers.
+        if neighbor_count == COMPACT_NEIGHBOR_COUNT {
+            for child in &body_children[keep_start..keep_end] {
+                collect_compact_block_elision_ranges(*child, &mut cut_ranges);
+            }
+        }
     }
+
+    cut_ranges = merge_line_ranges(cut_ranges);
 
     for row_idx in scope_start_row..=scope_end_row {
         let in_cut = cut_ranges
@@ -201,6 +242,25 @@ pub fn cut_source(
             end: scope_end_row as u32 + 1,
         },
     })
+}
+
+fn collect_compact_block_elision_ranges(
+    node: tree_sitter::Node<'_>,
+    ranges: &mut Vec<(usize, usize)>,
+) {
+    if is_block_like_statement_node(node.kind()) {
+        let start_row = node.start_position().row;
+        let end_row = node.end_position().row;
+        if end_row > start_row + 1 {
+            ranges.push((start_row + 1, end_row - 1));
+        }
+    }
+
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_compact_block_elision_ranges(child, ranges);
+        }
+    }
 }
 
 /// Walk up the tree to find the nearest scope node.
@@ -480,6 +540,40 @@ fn collapse_ws_inline(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn strip_leading_visibility(signature: &str) -> &str {
+    let trimmed = signature.trim_start();
+    let Some(rest) = trimmed.strip_prefix("pub") else {
+        return trimmed;
+    };
+
+    if rest.starts_with(char::is_whitespace) {
+        return rest.trim_start();
+    }
+
+    if !rest.starts_with('(') {
+        return trimmed;
+    }
+
+    let mut depth = 0usize;
+    for (idx, ch) in rest.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                if depth == 0 {
+                    return trimmed;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    return rest[idx + 1..].trim_start();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    trimmed
+}
+
 fn extract_function_signature_text(
     content: &str,
     fn_node: &tree_sitter::Node<'_>,
@@ -509,11 +603,12 @@ fn extract_function_signature_text(
         return None;
     }
     let raw = &content[start..end];
-    let signature = collapse_ws_inline(raw);
+    let collapsed = collapse_ws_inline(raw);
+    let signature = strip_leading_visibility(&collapsed);
     if signature.is_empty() {
         return None;
     }
-    Some(signature)
+    Some(signature.to_string())
 }
 
 fn find_enclosing_impl_type_name(fn_node: &tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
@@ -777,6 +872,59 @@ mod tests {
             lines.iter().any(|l| l.contains("let target = 5")),
             "target line should be preserved"
         );
+    }
+
+    #[test]
+    fn compact_cut_source_keeps_only_target_statement_neighbors() {
+        let src = r#"fn example() {
+    let a = 1;
+    let b = 2;
+    let target = 3;
+    let d = 4;
+    let e = 5;
+}"#;
+        let result = cut_source_compact(src, "rust", 4, None).expect("should find scope");
+        let lines: Vec<&str> = result.cut_source.lines().collect();
+        assert!(
+            lines.iter().any(|l| l.contains("let target = 3")),
+            "target line should be preserved"
+        );
+        assert!(
+            lines.iter().filter(|l| l.trim() == "/* ... */").count() >= 2,
+            "compact mode should cut both before and after the target"
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn compact_cut_source_redacts_async_move_body_in_kept_statement() {
+        let src = r#"pub async fn run() -> Result<(), String> {
+    let setup = 1;
+    spawn(async move {
+        println!("line 1");
+        println!("line 2");
+        println!("line 3");
+        println!("line 4");
+        println!("line 5");
+    })
+    .named("bounded_sender");
+    let teardown = 2;
+}"#;
+
+        let result = cut_source_compact(src, "rust", 3, None).expect("should find scope");
+        assert!(
+            result.cut_source.contains("spawn(async move {"),
+            "kept statement header should remain"
+        );
+        assert!(
+            result.cut_source.contains("/* ... */"),
+            "async move body interior should be redacted in compact mode"
+        );
+        assert!(
+            !result.cut_source.contains("println!(\"line 5\")"),
+            "deep closure interior should not be present"
+        );
+        assert_line_count_invariant(src, &result);
     }
 
     #[test]
@@ -1096,7 +1244,7 @@ impl Foo {
     }
 }"#;
         let result = extract_enclosing_fn(src, "rust", 5, None).expect("should find fn");
-        assert_eq!(result, "Foo::pub async fn run(&self)");
+        assert_eq!(result, "Foo::async fn run(&self)");
     }
 
     #[test]
@@ -1172,10 +1320,18 @@ impl<T: Send> Queue<T> {
     }
 }"#;
         let result = extract_enclosing_fn(src, "rust", 4, None).expect("should find fn");
-        assert_eq!(
-            result,
-            "demo::Worker::pub fn run(&self) -> Result<(), String>"
-        );
+        assert_eq!(result, "demo::Worker::fn run(&self) -> Result<(), String>");
+    }
+
+    #[test]
+    fn enclosing_fn_strips_pub_crate_visibility() {
+        let src = r#"impl Worker {
+    pub(crate) async fn run(&self) -> Result<(), String> {
+        do_stuff();
+    }
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 3, None).expect("should find fn");
+        assert_eq!(result, "Worker::async fn run(&self) -> Result<(), String>");
     }
 
     #[test]

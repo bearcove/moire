@@ -140,10 +140,6 @@
     text-overflow: ellipsis;
 }
 
-.graph-node-future-context__in {
-    color: var(--text-tertiary);
-}
-
 .graph-node-future-context__name,
 .graph-node-future-statement {
     color: var(--text-secondary);
@@ -183,6 +179,15 @@
 }
 
 .graph-node--expanded .graph-node-frames {
+    width: 100%;
+    gap: 0;
+}
+
+.graph-node--collapsed-backtrace {
+    max-height: 15em;
+}
+
+.graph-node--collapsed-backtrace .graph-node-frames {
     width: 100%;
     gap: 0;
 }
@@ -336,6 +341,20 @@
     text-underline-offset: 2px;
 }
 
+.graph-node-frame-sep__context {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.graph-node-frame-sep__fill {
+    flex: 1;
+    min-width: 8px;
+}
+
 /* ── Enclosing function context (collapsed future display) ── */
 
 .graph-node-enclosing-fn {
@@ -346,10 +365,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.graph-node-enclosing-fn__in {
-    color: var(--text-tertiary);
 }
 
 .graph-node-enclosing-fn__name {

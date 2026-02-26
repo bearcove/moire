@@ -43,19 +43,40 @@ function stopPropagation(e: React.MouseEvent) {
   e.stopPropagation();
 }
 
-export function FrameSep({ frame }: { frame: GraphFrameData }) {
+export function FrameSep({
+  frame,
+  contextHtml,
+  hideLocation,
+}: {
+  frame: GraphFrameData;
+  contextHtml?: string;
+  hideLocation?: boolean;
+}) {
   const location = formatFileLocation(frame);
   return (
     <div className="graph-node-frame-sep">
       {langIcon(frame.source_file, 12, "graph-node-frame-sep__icon")}
-      <span className="graph-node-frame-sep__name">{shortFnName(frame.function_name)}</span>
-      <a
-        className="graph-node-frame-sep__loc"
-        href={zedHref(frame.source_file, frame.line)}
-        onClick={stopPropagation}
-      >
-        {location}
-      </a>
+      {contextHtml ? (
+        <>
+          {/* eslint-disable-next-line react/no-danger */}
+          <span
+            className="graph-node-frame-sep__context arborium-hl"
+            dangerouslySetInnerHTML={{ __html: contextHtml }}
+          />
+          <span className="graph-node-frame-sep__fill" />
+        </>
+      ) : (
+        <span className="graph-node-frame-sep__name">{shortFnName(frame.function_name)}</span>
+      )}
+      {!hideLocation && (
+        <a
+          className="graph-node-frame-sep__loc"
+          href={zedHref(frame.source_file, frame.line)}
+          onClick={stopPropagation}
+        >
+          {location}
+        </a>
+      )}
     </div>
   );
 }
@@ -64,10 +85,14 @@ export function FrameLine({
   frame,
   expanded,
   showSource,
+  useCompactContext,
+  hideLocation,
 }: {
   frame: GraphFrameData;
   expanded: boolean;
   showSource?: boolean;
+  useCompactContext?: boolean;
+  hideLocation?: boolean;
 }) {
   const fallbackCollapsedLine = (
     <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">
@@ -77,19 +102,18 @@ export function FrameLine({
   const fallbackExpandedLine = (
     <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">…</pre>
   );
+  const preview = frame.frame_id != null ? getSourcePreviewSync(frame.frame_id) : null;
 
   const codeBlock = (() => {
     if (!showSource) return null;
 
     if (!expanded) {
       if (frame.frame_id == null) return fallbackCollapsedLine;
-      const preview = getSourcePreviewSync(frame.frame_id);
       if (!preview) return fallbackExpandedLine;
       const enclosingFn = preview.enclosing_fn;
       if (enclosingFn) {
         return (
           <div className="graph-node-enclosing-fn arborium-hl">
-            <span className="graph-node-enclosing-fn__in">in </span>
             {/* eslint-disable-next-line react/no-danger */}
             <span
               className="graph-node-enclosing-fn__name"
@@ -110,14 +134,24 @@ export function FrameLine({
     }
 
     if (frame.frame_id == null) return fallbackCollapsedLine;
-    const preview = getSourcePreviewSync(frame.frame_id);
     if (!preview) return fallbackExpandedLine;
-    const useCtx = preview.context_html != null && preview.context_range != null;
-    const rawLines = splitHighlightedHtml(useCtx ? preview.context_html! : preview.html);
-    const startLineNum = useCtx ? preview.context_range!.start : 1;
+    const contextHtml = useCompactContext
+      ? (preview.compact_context_html ?? preview.context_html)
+      : preview.context_html;
+    const contextRange = useCompactContext
+      ? (preview.compact_context_range ?? preview.context_range)
+      : preview.context_range;
+    const useCtx = contextHtml != null && contextRange != null;
+    const rawLines = splitHighlightedHtml(useCtx ? contextHtml : preview.html);
+    const startLineNum = useCtx ? contextRange.start : 1;
     const lines = useCtx
       ? collapseContextLines(rawLines, startLineNum)
-      : rawLines.map((html, i) => ({ lineNum: startLineNum + i, html, isSeparator: false }));
+      : rawLines.map((html, i) => ({
+          lineNum: startLineNum + i,
+          html,
+          isSeparator: false,
+          separatorIndentCols: undefined,
+        }));
 
     return (
       <pre className="graph-node-frame-block arborium-hl">
@@ -126,7 +160,16 @@ export function FrameLine({
             return (
               <div key={`sep-${entry.lineNum}`} className="graph-node-frame-block__sep">
                 <span className="graph-node-frame-block__gutter" />
-                <span className="graph-node-frame-block__sep-label">⋯</span>
+                <span
+                  className="graph-node-frame-block__sep-label"
+                  style={
+                    entry.separatorIndentCols != null
+                      ? { paddingLeft: `${entry.separatorIndentCols}ch` }
+                      : undefined
+                  }
+                >
+                  ⋯
+                </span>
               </div>
             );
           }
@@ -159,7 +202,11 @@ export function FrameLine({
 
   return (
     <div className="graph-node-frame-section">
-      <FrameSep frame={frame} />
+      <FrameSep
+        frame={frame}
+        contextHtml={expanded && showSource ? preview?.enclosing_fn : undefined}
+        hideLocation={hideLocation}
+      />
       {codeBlock}
     </div>
   );
@@ -182,7 +229,7 @@ export function GraphNode({
   const isFramelessHeaderKind = FRAMELESS_HEADER_KINDS.has(canonical);
   // Futures always show source; other kinds only when explicitly toggled
   const collapsedShowSource = data.showSource || isFramelessHeaderKind;
-  const showHeader = !isFramelessHeaderKind;
+  const showHeader = data.kind != "future";
 
   const effectiveFrames =
     data.skipEntryFrames > 0 ? data.frames.slice(data.skipEntryFrames) : data.frames;
@@ -190,9 +237,10 @@ export function GraphNode({
   const futureTopPreview = futureTopFrameId != null ? getSourcePreviewSync(futureTopFrameId) : null;
   const futureTopStatement = futureTopFrameId != null ? getSourceLineSync(futureTopFrameId) : null;
   const collapsedFrameSlotCount = collapsedFrameCount(data.kind);
-  const visibleFrames = expanded
-    ? effectiveFrames
+  const collapsedFrames = isFutureKind
+    ? effectiveFrames.slice(0, 1)
     : pickCollapsedFrames(data.kind, effectiveFrames);
+  const visibleFrames = expanded ? effectiveFrames : collapsedFrames;
   const collapsedSourceFrameIds = useMemo(() => {
     if (expanded) return [];
     if (!collapsedShowSource) return [];
@@ -311,8 +359,13 @@ export function GraphNode({
     : undefined;
 
   const isLoading = expanding || collapsedSourceLoading || futureTopSourceLoading;
+  const showCollapsedFutureBacktrace = !expanded && isFutureKind && collapsedShowSource;
   const showFutureSummary =
-    isFutureKind && showHeader && (futureTopPreview?.enclosing_fn || futureTopStatement);
+    !showCollapsedFutureBacktrace &&
+    !expanded &&
+    isFutureKind &&
+    showHeader &&
+    (futureTopPreview?.enclosing_fn || futureTopStatement);
 
   return (
     <div
@@ -320,6 +373,7 @@ export function GraphNode({
         "graph-card",
         "graph-node",
         expanded && "graph-node--expanded",
+        showCollapsedFutureBacktrace && "graph-node--collapsed-backtrace",
         expanding && "graph-node--expanding",
         isLoading && "graph-node--loading",
         data.inCycle && "graph-node--cycle",
@@ -337,8 +391,8 @@ export function GraphNode({
         <>
           {/* Header row: icon + main info + file:line badge */}
           <div className="graph-node-header">
-            <span className="graph-node-icon">{kindIcon(data.kind, 18)}</span>
             <div className="graph-node-main">
+              <span className="graph-node-icon">{kindIcon(data.kind, 18)}</span>
               <span className="graph-node-label">{data.label}</span>
             </div>
             <div className="graph-node-main">
@@ -369,7 +423,6 @@ export function GraphNode({
             <div className="graph-node-future-summary">
               {futureTopPreview?.enclosing_fn && (
                 <div className="graph-node-future-context arborium-hl">
-                  <span className="graph-node-future-context__in">in </span>
                   {/* eslint-disable-next-line react/no-danger */}
                   <span
                     className="graph-node-future-context__name"
@@ -395,7 +448,8 @@ export function GraphNode({
           data={data}
           expanded={expanded}
           collapsedShowSource={collapsedShowSource}
-          collapsedFrameSlotCount={collapsedFrameSlotCount}
+          collapsedFrameSlotCount={isFutureKind ? 1 : collapsedFrameSlotCount}
+          collapsedUseBacktraceDisplay={showCollapsedFutureBacktrace}
           collapsedFrames={visibleFrames}
         />
       </div>
