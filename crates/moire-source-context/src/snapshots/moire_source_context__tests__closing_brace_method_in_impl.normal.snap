@@ -2,5 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# 
-(no result)
+# Foo::fn getter(&self) -> u32
+# scope 11..11
+
+  11 |         self.value

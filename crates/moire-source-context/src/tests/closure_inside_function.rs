@@ -4,7 +4,8 @@ fn outer() {
         let a = 10;
         let b = 20;
         let c = 30;
-👉      let target = 40;
+👉
+        let target = 40;
         let e = 50;
         let f = 60;
         let g = 70;

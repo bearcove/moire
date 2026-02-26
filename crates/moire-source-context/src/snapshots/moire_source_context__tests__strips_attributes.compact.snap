@@ -2,5 +2,10 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# 
-(no result)
+# Session::async fn establish(self) -> Result<(Session<C>, ConnectionHandle), SessionError>
+# scope 4..7
+
+   4 |         let (mut server_session, server_handle) = acceptor(server_conduit)
+   5 |             .establish()
+   6 |             .await
+   7 |             .expect("server");

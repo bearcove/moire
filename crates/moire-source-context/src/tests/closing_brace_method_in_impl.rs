@@ -9,7 +9,8 @@ impl Foo {
 
     fn getter(&self) -> u32 {
         self.value
-👉  }
+👉
+    }
 
     fn method_b(&self) {
         do_x();

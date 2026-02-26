@@ -3,7 +3,8 @@ async fn do_work() {
     let b = step_one().await;
     let c = step_two().await;
     let result = main_work()
-👉      .await;
+👉
+        .await;
     let d = cleanup().await;
     let e = finalize().await;
 }

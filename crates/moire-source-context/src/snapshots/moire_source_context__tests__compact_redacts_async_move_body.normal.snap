@@ -2,5 +2,16 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# 
-(no result)
+# async fn run() -> Result<(), String>
+# scope 2..11
+
+   2 |     let setup = 1;
+   3 |     spawn(async move {
+   4 |         println!("line 1");
+   5 |         println!("line 2");
+   6 |         println!("line 3");
+   7 |         println!("line 4");
+   8 |         println!("line 5");
+   9 |     })
+  10 |     .named("bounded_sender");
+  11 |     let teardown = 2;

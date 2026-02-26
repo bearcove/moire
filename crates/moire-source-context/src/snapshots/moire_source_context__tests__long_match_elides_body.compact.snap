@@ -2,5 +2,9 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# 
-(no result)
+# fn process(y: Option<u32>)
+# scope 2..12
+
+   2 |     let x = match y {
+     | ...
+  12 |     };

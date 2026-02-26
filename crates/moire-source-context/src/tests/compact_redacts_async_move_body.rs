@@ -1,6 +1,7 @@
 pub async fn run() -> Result<(), String> {
     let setup = 1;
-👉  spawn(async move {
+👉
+    spawn(async move {
         println!("line 1");
         println!("line 2");
         println!("line 3");

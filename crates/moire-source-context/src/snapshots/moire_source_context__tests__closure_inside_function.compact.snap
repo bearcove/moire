@@ -2,5 +2,11 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# 
-(no result)
+# fn outer()
+# scope 3..11
+
+   3 |     let closure = || {
+     | ...
+   7 |         let target = 40;
+     | ...
+  11 |     };

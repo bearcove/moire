@@ -3,7 +3,8 @@ fn outer() {
     let b = 2;
     let handler = || {
         single_call()
-👉  };
+👉
+    };
     let c = 3;
     let d = 4;
 }

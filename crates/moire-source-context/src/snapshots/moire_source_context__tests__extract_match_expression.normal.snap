@@ -2,5 +2,16 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# 
-(no result)
+# fn process()
+# scope 2..11
+
+   2 |     let x = 1;
+   3 |     match self.rx.recv().await {
+   4 |         Ok(Some(msg)) => {
+   5 |             let payload = msg.map(|m| m.payload);
+   6 |             handle(payload);
+   7 |         }
+   8 |         Ok(None) => {}
+   9 |         Err(e) => return Err(e),
+  10 |     }
+  11 |     let y = 2;

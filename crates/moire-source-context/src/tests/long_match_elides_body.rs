@@ -1,5 +1,6 @@
 fn process(y: Option<u32>) {
-👉  let x = match y {
+👉
+    let x = match y {
         Some(1) => 1,
         Some(2) => 2,
         Some(3) => 3,

@@ -6,7 +6,8 @@ fn unrelated_a() {
 
 fn short_fn() {
     single_call()
-👉 }
+👉
+}
 
 fn unrelated_b() {
     something();

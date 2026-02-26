@@ -2,5 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# 
-(no result)
+# Foo::fn target_method(&self)
+# scope 8..8
+
+   8 |         println!("target");

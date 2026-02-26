@@ -1,5 +1,6 @@
 fn run() {
-👉  spawn(async move {
+👉
+    spawn(async move {
         println!("hello");
         let _ = idle_rx.recv().await;
     })

@@ -5,7 +5,8 @@ impl Foo {
     fn method_b(&self) {}
     fn method_c(&self) {}
     fn target_method(&self) {
-👉      println!("target");
+👉
+        println!("target");
     }
     fn method_d(&self) {}
     fn method_e(&self) {}

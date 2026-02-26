@@ -1,4 +1,5 @@
-👉 async fn establish_as_acceptor(
+👉
+async fn establish_as_acceptor(
     &mut self,
     settings: ConnectionSettings,
     metadata: Metadata<'_>,

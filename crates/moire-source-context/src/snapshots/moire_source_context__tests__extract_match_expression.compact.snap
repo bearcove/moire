@@ -2,5 +2,9 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# 
-(no result)
+# fn process()
+# scope 3..10
+
+   3 |     match self.rx.recv().await {
+     | ...
+  10 |     }

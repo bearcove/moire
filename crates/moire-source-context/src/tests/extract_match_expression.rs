@@ -1,6 +1,7 @@
 fn process() {
     let x = 1;
-👉  match self.rx.recv().await {
+👉
+    match self.rx.recv().await {
         Ok(Some(msg)) => {
             let payload = msg.map(|m| m.payload);
             handle(payload);

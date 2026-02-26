@@ -17,24 +17,20 @@ fn format_context_lines(lines: &[moire_types::SourceContextLine]) -> String {
 }
 
 fn run_fixture(path: &Path, contents: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let lang = path.extension().and_then(|e| e.to_str()).unwrap_or("rust");
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("rs");
+    let lang = match ext {
+        "rs" => "rust",
+        other => other,
+    };
 
-    // Find the 👉 marker to determine target line; strip it from source.
-    // If 👉 appears alone on a line, that line is dropped and the target is
-    // the following line. If 👉 prefixes content, the marker is stripped in place.
+    // Find the standalone 👉 marker line. It is dropped from the source;
+    // the target line is the line that follows it.
     let mut target_line: Option<u32> = None;
     let mut clean_lines: Vec<&str> = Vec::new();
     for line in contents.lines() {
-        if let Some(rest) = line.trim_start().strip_prefix("👉") {
-            let rest = rest.strip_prefix(' ').unwrap_or(rest);
-            if rest.is_empty() {
-                // Marker on its own line — target is the next line (after drop)
-                target_line = Some((clean_lines.len() + 1) as u32);
-                // drop this line entirely
-            } else {
-                target_line = Some((clean_lines.len() + 1) as u32);
-                clean_lines.push(rest);
-            }
+        if line.trim() == "👉" {
+            target_line = Some((clean_lines.len() + 1) as u32);
+            // drop this marker line entirely
         } else {
             clean_lines.push(line);
         }

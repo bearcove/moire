@@ -2,5 +2,11 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# 
-(no result)
+# fn outer()
+# scope 3..7
+
+   3 |     let b = 2;
+   4 |     let c = vec.iter().map(|x| {
+   5 |         x + 1
+   6 |     });
+   7 |     let d = 3;

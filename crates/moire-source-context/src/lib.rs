@@ -196,7 +196,7 @@ fn cut_source_with_neighbor_count(
     let keep_start = target_idx.saturating_sub(neighbor_count);
     let keep_end = (target_idx + neighbor_count + 1).min(body_children.len());
 
-    if is_function_scope {
+    if is_function_scope && !body_children.is_empty() {
         scope_start_row = body_children[keep_start].start_position().row;
         scope_end_row = body_children[keep_end - 1].end_position().row;
     }

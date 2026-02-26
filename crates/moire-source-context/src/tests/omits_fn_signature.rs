@@ -9,7 +9,8 @@ pub async fn run(
             work().await;
         },
     )
-👉  .named("permit_waiter");
+👉
+    .named("permit_waiter");
     let after = 3;
     Ok(())
 }

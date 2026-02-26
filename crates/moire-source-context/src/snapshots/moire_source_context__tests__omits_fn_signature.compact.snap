@@ -2,5 +2,12 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# 
-(no result)
+# async fn run( session: &mut Session, permit: Permit, ) -> Result<(), String>
+# scope 7..12
+
+   7 |     moire::task::spawn(
+   8 |         async move {
+     | ...
+  10 |         },
+  11 |     )
+  12 |     .named("permit_waiter");
