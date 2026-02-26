@@ -78,6 +78,8 @@ export type EntityDef = {
   birthApproxUnixMs: number;
   meta: Record<string, MetaValue>;
   inCycle: boolean;
+  /** Index of the deadlock SCC this entity belongs to, if any. Distinct clusters get distinct indices. */
+  sccIndex?: number;
   status: { label: string; tone: Tone };
   stat?: string;
   statTone?: Tone;
@@ -504,36 +506,73 @@ export function deriveStatTone(body: EntityBody): Tone | undefined {
 }
 
 // f[impl merge.cycles]
-export function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<string> {
+// Iterative Tarjan's SCC over the wait-for graph (waiting_on + holds edges).
+// Returns a map from entity id to SCC cluster index (1-based).
+// Only nodes that are part of a deadlock (SCC size >= 2) appear in the map.
+export function computeDeadlockSCCs(entities: EntityDef[], edges: EdgeDef[]): Map<string, number> {
   const adj = new Map<string, string[]>();
   for (const e of edges) {
-    if (e.kind !== "waiting_on") continue;
+    if (e.kind !== "waiting_on" && e.kind !== "holds") continue;
     if (!adj.has(e.source)) adj.set(e.source, []);
     adj.get(e.source)!.push(e.target);
   }
 
-  const inCycle = new Set<string>();
-  const color = new Map<string, "gray" | "black">();
+  let counter = 0;
+  const indexMap = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const result = new Map<string, number>();
+  let nextScc = 1;
 
-  function dfs(id: string, stack: string[]) {
-    color.set(id, "gray");
+  type Frame = { id: string; neighbors: string[]; ni: number };
+  const callStack: Frame[] = [];
+
+  const visit = (id: string) => {
+    indexMap.set(id, counter);
+    lowlink.set(id, counter);
+    counter++;
     stack.push(id);
-    for (const neighbor of adj.get(id) ?? []) {
-      if (color.get(neighbor) === "gray") {
-        const start = stack.indexOf(neighbor);
-        for (const n of stack.slice(start)) inCycle.add(n);
-      } else if (!color.has(neighbor)) {
-        dfs(neighbor, stack);
-      }
-    }
-    stack.pop();
-    color.set(id, "black");
-  }
+    onStack.add(id);
+    callStack.push({ id, neighbors: adj.get(id) ?? [], ni: 0 });
+  };
 
   for (const entity of entities) {
-    if (!color.has(entity.id)) dfs(entity.id, []);
+    if (indexMap.has(entity.id)) continue;
+    visit(entity.id);
+    while (callStack.length > 0) {
+      const frame = callStack[callStack.length - 1];
+      if (frame.ni < frame.neighbors.length) {
+        const w = frame.neighbors[frame.ni++];
+        if (!indexMap.has(w)) {
+          visit(w);
+        } else if (onStack.has(w)) {
+          lowlink.set(frame.id, Math.min(lowlink.get(frame.id)!, indexMap.get(w)!));
+        }
+      } else {
+        callStack.pop();
+        if (callStack.length > 0) {
+          const parent = callStack[callStack.length - 1];
+          lowlink.set(parent.id, Math.min(lowlink.get(parent.id)!, lowlink.get(frame.id)!));
+        }
+        if (lowlink.get(frame.id) === indexMap.get(frame.id)) {
+          const scc: string[] = [];
+          let w: string;
+          do {
+            w = stack.pop()!;
+            onStack.delete(w);
+            scc.push(w);
+          } while (w !== frame.id);
+          if (scc.length >= 2) {
+            const idx = nextScc++;
+            for (const id of scc) result.set(id, idx);
+          }
+        }
+      }
+    }
   }
-  return inCycle;
+
+  return result;
 }
 
 const TX_KINDS = new Set(["mpsc_tx", "broadcast_tx", "watch_tx", "oneshot_tx"]);
@@ -922,9 +961,11 @@ export function convertSnapshot(
   );
 
   const coalescedEdges = coalesceContextEdges(mergedEdges);
-  const cycleIds = detectCycleNodes(mergedEntities, coalescedEdges);
+  const sccByEntityId = computeDeadlockSCCs(mergedEntities, coalescedEdges);
   for (const entity of mergedEntities) {
-    entity.inCycle = cycleIds.has(entity.id);
+    const sccIndex = sccByEntityId.get(entity.id);
+    entity.sccIndex = sccIndex;
+    entity.inCycle = sccIndex !== undefined;
   }
 
   return { entities: mergedEntities, edges: coalescedEdges };

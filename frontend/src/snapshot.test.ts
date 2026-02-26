@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { SnapshotCutResponse } from "./api/types.generated";
 import type { EdgeDef } from "./snapshot";
-import { buildBacktraceIndex, collapseEdgesThroughHiddenNodes, convertSnapshot } from "./snapshot";
+import {
+  buildBacktraceIndex,
+  collapseEdgesThroughHiddenNodes,
+  computeDeadlockSCCs,
+  convertSnapshot,
+} from "./snapshot";
 
 function edge(id: string, source: string, target: string): EdgeDef {
   return {
@@ -249,5 +254,85 @@ describe("convertSnapshot task scope selection", () => {
     expect(entity?.taskScopeId).toBe("task-new");
     expect(entity?.taskScopeName).toBe("task.spawn#new");
     expect(entity?.taskScopeKey).toBe("p1:task-new");
+  });
+});
+
+function makeEntity(id: string): import("./snapshot").EntityDef {
+  return {
+    id,
+    processId: "p1",
+    processName: "demo",
+    processPid: 42,
+    name: id,
+    kind: "future",
+    body: { future: {} },
+    backtraceId: 101,
+    source: { path: "src/main.rs", line: 1, krate: "demo" },
+    frames: [],
+    allFrames: [],
+    framesLoading: false,
+    birthPtime: 0,
+    ageMs: 0,
+    birthApproxUnixMs: 0,
+    meta: {},
+    inCycle: false,
+    status: { label: "polling", tone: "neutral" },
+  };
+}
+
+function waitingOn(id: string, source: string, target: string): EdgeDef {
+  return { id, source, target, kind: "waiting_on" };
+}
+
+function holds(id: string, source: string, target: string): EdgeDef {
+  return { id, source, target, kind: "holds" };
+}
+
+describe("computeDeadlockSCCs", () => {
+  it("detects a two-node waiting_on cycle", () => {
+    const entities = [makeEntity("a"), makeEntity("b")];
+    const edges = [waitingOn("ab", "a", "b"), waitingOn("ba", "b", "a")];
+    const sccs = computeDeadlockSCCs(entities, edges);
+    expect(sccs.get("a")).toBe(sccs.get("b"));
+    expect(sccs.get("a")).toBeGreaterThan(0);
+  });
+
+  it("detects a lock-order inversion through holds edges", () => {
+    // a --waiting_on--> l1 --holds--> b --waiting_on--> l2 --holds--> a
+    const entities = ["a", "l1", "b", "l2"].map(makeEntity);
+    const edges = [
+      waitingOn("al1", "a", "l1"),
+      holds("l1b", "l1", "b"),
+      waitingOn("bl2", "b", "l2"),
+      holds("l2a", "l2", "a"),
+    ];
+    const sccs = computeDeadlockSCCs(entities, edges);
+    const idx = sccs.get("a");
+    expect(idx).toBeGreaterThan(0);
+    expect(sccs.get("l1")).toBe(idx);
+    expect(sccs.get("b")).toBe(idx);
+    expect(sccs.get("l2")).toBe(idx);
+  });
+
+  it("assigns distinct indices to independent deadlock clusters", () => {
+    // cluster 1: a <-> b, cluster 2: c <-> d
+    const entities = ["a", "b", "c", "d"].map(makeEntity);
+    const edges = [
+      waitingOn("ab", "a", "b"),
+      waitingOn("ba", "b", "a"),
+      waitingOn("cd", "c", "d"),
+      waitingOn("dc", "d", "c"),
+    ];
+    const sccs = computeDeadlockSCCs(entities, edges);
+    expect(sccs.get("a")).toBe(sccs.get("b"));
+    expect(sccs.get("c")).toBe(sccs.get("d"));
+    expect(sccs.get("a")).not.toBe(sccs.get("c"));
+  });
+
+  it("does not mark singleton nodes or non-cyclic paths", () => {
+    const entities = ["a", "b", "c"].map(makeEntity);
+    const edges = [waitingOn("ab", "a", "b"), waitingOn("bc", "b", "c")];
+    const sccs = computeDeadlockSCCs(entities, edges);
+    expect(sccs.size).toBe(0);
   });
 });

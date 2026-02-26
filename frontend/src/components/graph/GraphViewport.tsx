@@ -70,11 +70,15 @@ function sameNodeRects(a: GeometryNode[], b: GeometryNode[]): boolean {
 
 function sameGroupRects(a: GeometryGroup[], b: GeometryGroup[]): boolean {
   if (a.length !== b.length) return false;
-  const byId = new Map(a.map((group) => [group.id, group.worldRect]));
+  const byId = new Map(a.map((group) => [group.id, group]));
   for (const group of b) {
-    const rect = byId.get(group.id);
-    if (!rect) return false;
-    if (!sameRect(rect, group.worldRect)) return false;
+    const prev = byId.get(group.id);
+    if (!prev) return false;
+    if (!sameRect(prev.worldRect, group.worldRect)) return false;
+    const prevLabelRect = prev.labelRect;
+    const nextLabelRect = group.labelRect;
+    if (!!prevLabelRect !== !!nextLabelRect) return false;
+    if (prevLabelRect && nextLabelRect && !sameRect(prevLabelRect, nextLabelRect)) return false;
   }
   return true;
 }

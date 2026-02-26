@@ -13,6 +13,7 @@ export interface GeometryGroup {
   scopeKind: string; // "process" | "crate"
   label: string;
   worldRect: Rect;
+  labelRect?: Rect;
   members: string[]; // entity node ids
   data: any; // scope color info etc
 }

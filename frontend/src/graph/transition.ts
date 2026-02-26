@@ -214,7 +214,17 @@ export function interpolateGraph(
     if (fromGroup && toGroup) {
       assertValidRect(fromGroup.worldRect, `from group ${id}`);
       assertValidRect(toGroup.worldRect, `to group ${id}`);
-      groups.push({ ...toGroup, worldRect: lerpRect(fromGroup.worldRect, toGroup.worldRect, t) });
+      const fromLabelRect = fromGroup.labelRect;
+      const toLabelRect = toGroup.labelRect;
+      const labelRect =
+        fromLabelRect && toLabelRect
+          ? lerpRect(fromLabelRect, toLabelRect, t)
+          : (toLabelRect ?? fromLabelRect);
+      groups.push({
+        ...toGroup,
+        worldRect: lerpRect(fromGroup.worldRect, toGroup.worldRect, t),
+        labelRect,
+      });
       groupOpacityById.set(id, 1);
     } else if (toGroup) {
       assertValidRect(toGroup.worldRect, `to group ${id}`);

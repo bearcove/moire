@@ -29,6 +29,11 @@ const subgraphPaddingBase = {
 // Extra vertical keep-out above grouped content so edge routing is less likely
 // to cross the visual scope header strip.
 const subgraphHeaderKeepoutTop = 18;
+const scopeGroupLabelMinWidth = 72;
+const scopeGroupLabelPadX = 10;
+const scopeGroupLabelIconWidth = 12;
+const scopeGroupLabelIconGap = 6;
+const scopeGroupLabelCharWidth = 8.5;
 
 const defaultInPortId = (entityId: string, edgeId: string) => `${entityId}:in:${edgeId}`;
 const defaultOutPortId = (entityId: string, edgeId: string) => `${entityId}:out:${edgeId}`;
@@ -99,6 +104,84 @@ export type LayoutGraphOptions = {
   subgraphHeaderHeight?: number;
 };
 
+function canonicalScopeGroupLabel(
+  scopeKind: string,
+  scopeKey: string,
+  members: EntityDef[],
+): string {
+  if (scopeKind === "process" && members.length > 0) {
+    const anchor = members[0];
+    return formatProcessLabel(anchor.processName, anchor.processPid);
+  }
+  if (scopeKind === "task" && members.length > 0) {
+    const named = members.find((entity: EntityDef) => !!entity.taskScopeName);
+    return named?.taskScopeName ?? "(no task scope)";
+  }
+  if (scopeKind === "connection" && members.length > 0) {
+    const named = members.find((entity: EntityDef) => entity.kind === "connection") ?? members[0];
+    return named.name;
+  }
+  return scopeKey === "~no-crate" ? "(no crate)" : scopeKey;
+}
+
+function estimateScopeGroupLabelWidth(label: string): number {
+  return Math.max(
+    scopeGroupLabelMinWidth,
+    Math.ceil(
+      scopeGroupLabelPadX * 2 +
+        scopeGroupLabelIconWidth +
+        scopeGroupLabelIconGap +
+        label.length * scopeGroupLabelCharWidth,
+    ),
+  );
+}
+
+function resolveGroupLabelRect(
+  groupId: string,
+  groupRect: { x: number; y: number; width: number; height: number },
+  labelRectRaw: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  const { x: groupX, y: groupY, width: groupWidth, height: groupHeight } = groupRect;
+  const { x: rawX, y: rawY, width: labelWidth, height: labelHeight } = labelRectRaw;
+
+  const absoluteCandidate = { x: rawX, y: rawY, width: labelWidth, height: labelHeight };
+  const relativeCandidate = {
+    x: groupX + rawX,
+    y: groupY + rawY,
+    width: labelWidth,
+    height: labelHeight,
+  };
+
+  const fitsRelativeBounds =
+    rawX >= -labelWidth * 1.5 &&
+    rawX <= groupWidth + labelWidth * 0.5 &&
+    rawY >= -labelHeight * 3 &&
+    rawY <= groupHeight + labelHeight;
+
+  const fitsAbsoluteBounds =
+    rawX >= groupX - labelWidth * 1.5 &&
+    rawX <= groupX + groupWidth + labelWidth * 0.5 &&
+    rawY >= groupY - labelHeight * 3 &&
+    rawY <= groupY + groupHeight + labelHeight;
+
+  if (fitsRelativeBounds && !fitsAbsoluteBounds) return relativeCandidate;
+  if (fitsAbsoluteBounds && !fitsRelativeBounds) return absoluteCandidate;
+
+  const expectedLeft = groupX + 10;
+  const expectedBottom = groupY;
+  const score = (rect: { x: number; y: number; width: number; height: number }) =>
+    Math.abs(rect.x - expectedLeft) + Math.abs(rect.y + rect.height - expectedBottom);
+
+  const absScore = score(absoluteCandidate);
+  const relScore = score(relativeCandidate);
+  if (!Number.isFinite(absScore) || !Number.isFinite(relScore)) {
+    throw new Error(
+      `[elk] group ${groupId}: non-finite label mode score abs=${absScore} rel=${relScore}`,
+    );
+  }
+  return relScore < absScore ? relativeCandidate : absoluteCandidate;
+}
+
 // ── Layout ────────────────────────────────────────────────────
 
 export async function layoutGraph(
@@ -121,6 +204,7 @@ export async function layoutGraph(
 
   const hasSubgraphs = subgraphScopeMode !== "none";
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
+  const elkScopeLabelHeight = Math.max(measuredHeaderHeight, 16);
   const subgraphContentInsetTop =
     measuredHeaderHeight + subgraphPaddingBase.top + subgraphHeaderKeepoutTop;
   const subgraphContentInsetBottom = subgraphPaddingBase.bottom;
@@ -197,6 +281,14 @@ export async function layoutGraph(
     };
   };
 
+  type ScopeGroupMeta = {
+    id: string;
+    scopeKind: string;
+    scopeKey: string;
+    label: string;
+  };
+  const scopeGroupById = new Map<string, ScopeGroupMeta>();
+
   const groupedChildren = (() => {
     if (!hasSubgraphs) {
       return entityDefs.map(elkNodeForEntity);
@@ -211,13 +303,32 @@ export async function layoutGraph(
 
     return Array.from(grouped.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, members]) => ({
-        id: `scope-group:${subgraphScopeMode}:${key}`,
-        layoutOptions: {
-          "elk.padding": subgraphElkPadding,
-        },
-        children: members.map(elkNodeForEntity),
-      }));
+      .map(([scopeKey, members]) => {
+        const id = `scope-group:${subgraphScopeMode}:${scopeKey}`;
+        const label = canonicalScopeGroupLabel(subgraphScopeMode, scopeKey, members);
+        scopeGroupById.set(id, {
+          id,
+          scopeKind: subgraphScopeMode,
+          scopeKey,
+          label,
+        });
+        return {
+          id,
+          layoutOptions: {
+            "elk.padding": subgraphElkPadding,
+            "elk.nodeLabels.placement": "[H_LEFT, V_TOP, OUTSIDE]",
+          },
+          labels: [
+            {
+              id: `${id}:label`,
+              text: label,
+              width: estimateScopeGroupLabelWidth(label),
+              height: elkScopeLabelHeight,
+            },
+          ],
+          children: members.map(elkNodeForEntity),
+        };
+      });
   })();
 
   const result = await elk.layout({
@@ -273,9 +384,6 @@ export async function layoutGraph(
   const geoGroups: GeometryGroup[] = [];
   const portAnchorMap = new Map<string, Point>();
 
-  // Track absolute positions for each entity node (needed for group member listing)
-  const absoluteNodePos = new Map<string, { x: number; y: number }>();
-
   const makeNodeData = (def: EntityDef): { kind: string; data: any } => ({
     kind: "graphNode",
     data: graphNodeDataFromEntity(def),
@@ -289,45 +397,67 @@ export async function layoutGraph(
 
       if (isGroupNode) {
         const groupId = String(child.id);
-        const firstColon = groupId.indexOf(":");
-        const secondColon = groupId.indexOf(":", firstColon + 1);
-        const scopeKind = secondColon > -1 ? groupId.slice(firstColon + 1, secondColon) : "scope";
-        const rawScopeKey = secondColon > -1 ? groupId.slice(secondColon + 1) : groupId;
+        const scopeMeta = scopeGroupById.get(groupId);
+        if (!scopeMeta) {
+          throw new Error(`[elk] group ${groupId}: missing scope metadata`);
+        }
         const memberIds = (child.children ?? [])
           .filter((c: any) => !String(c.id).startsWith("scope-group:"))
           .map((c: any) => String(c.id));
-        const memberEntities = memberIds
-          .map((id: string) => entityById.get(id))
-          .filter((entity: EntityDef | undefined): entity is EntityDef => !!entity);
-
-        let canonicalLabel = rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey;
-        if (scopeKind === "process" && memberEntities.length > 0) {
-          const anchor = memberEntities[0];
-          canonicalLabel = formatProcessLabel(anchor.processName, anchor.processPid);
-        } else if (scopeKind === "task" && memberEntities.length > 0) {
-          const named = memberEntities.find((entity: EntityDef) => !!entity.taskScopeName);
-          canonicalLabel = named?.taskScopeName ?? "(no task scope)";
-        } else if (scopeKind === "connection" && memberEntities.length > 0) {
-          const named =
-            memberEntities.find((entity: EntityDef) => entity.kind === "connection") ??
-            memberEntities[0];
-          canonicalLabel = named.name;
+        const groupLabel = child.labels?.[0];
+        if (!groupLabel) {
+          throw new Error(`[elk] group ${groupId}: missing ELK label geometry`);
         }
+        const labelX = groupLabel.x;
+        const labelY = groupLabel.y;
+        const labelWidth = groupLabel.width;
+        const labelHeight = groupLabel.height;
+        if (
+          !Number.isFinite(labelX) ||
+          !Number.isFinite(labelY) ||
+          !Number.isFinite(labelWidth) ||
+          !Number.isFinite(labelHeight)
+        ) {
+          throw new Error(
+            `[elk] group ${groupId}: invalid ELK label rect (${labelX},${labelY},${labelWidth},${labelHeight})`,
+          );
+        }
+        const resolvedLabelRect = resolveGroupLabelRect(
+          groupId,
+          {
+            x: absX,
+            y: absY,
+            width: child.width ?? 260,
+            height: child.height ?? 180,
+          },
+          {
+            x: labelX,
+            y: labelY,
+            width: labelWidth,
+            height: labelHeight,
+          },
+        );
 
         geoGroups.push({
           id: groupId,
-          scopeKind,
-          label: canonicalLabel,
+          scopeKind: scopeMeta.scopeKind,
+          label: scopeMeta.label,
           worldRect: {
             x: absX,
             y: absY,
             width: child.width ?? 260,
             height: child.height ?? 180,
           },
+          labelRect: {
+            x: resolvedLabelRect.x,
+            y: resolvedLabelRect.y,
+            width: resolvedLabelRect.width,
+            height: resolvedLabelRect.height,
+          },
           members: memberIds,
           data: {
-            scopeKind,
-            scopeKey: rawScopeKey,
+            scopeKind: scopeMeta.scopeKind,
+            scopeKey: scopeMeta.scopeKey,
             count: memberIds.length,
           },
         });
@@ -338,8 +468,6 @@ export async function layoutGraph(
 
       const entity = entityById.get(child.id);
       if (!entity) continue;
-
-      absoluteNodePos.set(entity.id, { x: absX, y: absY });
 
       const size = requireNodeSize(entity.id);
       const { kind, data } = makeNodeData(entity);
@@ -395,11 +523,19 @@ export async function layoutGraph(
       const tightY = minMemberY - subgraphContentInsetTop;
       const tightHeight =
         maxMemberY - minMemberY + subgraphContentInsetTop + subgraphContentInsetBottom;
+      const oldY = group.worldRect.y;
+      const deltaY = tightY - oldY;
       group.worldRect = {
         ...group.worldRect,
         y: tightY,
         height: tightHeight,
       };
+      if (group.labelRect) {
+        group.labelRect = {
+          ...group.labelRect,
+          y: group.labelRect.y + deltaY,
+        };
+      }
     }
   }
 
