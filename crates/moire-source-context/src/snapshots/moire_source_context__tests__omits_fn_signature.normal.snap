@@ -5,11 +5,11 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # async fn run( session: &mut Session, permit: Permit, ) -> Result<(), String>
 # scope 6..13
 
-   6 |     let before = 2;
-   7 |     moire::task::spawn(
-   8 |         async move {
-   9 |             work().await;
-  10 |         },
-  11 |     )
-  12 |     .named("permit_waiter");
-  13 |     let after = 3;
+   6  |     let before = 2;
+   7  |     moire::task::spawn(
+   8  |         async move {
+   9  |             work().await;
+  10  |         },
+  11  |     )
+  12 >|     .named("permit_waiter");
+  13  |     let after = 3;

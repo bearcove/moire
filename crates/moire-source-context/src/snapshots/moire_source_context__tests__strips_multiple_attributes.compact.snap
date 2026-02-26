@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # async fn recv(&mut self) -> Result<Option<Msg>>
 # scope 4..4
 
-   4 |     self.rx.recv().await
+   4  |     self.rx.recv().await

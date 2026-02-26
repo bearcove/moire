@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # Foo::fn target_method(&self)
 # scope 8..8
 
-   8 |         println!("target");
+   8 >|         println!("target");

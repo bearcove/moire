@@ -5,11 +5,11 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # 
 # scope 1..8
 
-   1 | impl Session {
-   2 |     async fn recv(&mut self) -> Result<Option<SelfRef<Msg<'static>>>, Self::Error> {
-   3 |         let backing = match self
-   4 |             .link_rx
-   5 |             .recv()
-   6 |             .await;
-   7 |     }
-   8 | }
+   1  | impl Session {
+   2 >|     async fn recv(&mut self) -> Result<Option<SelfRef<Msg<'static>>>, Self::Error> {
+   3  |         let backing = match self
+   4  |             .link_rx
+   5  |             .recv()
+   6  |             .await;
+   7  |     }
+   8  | }

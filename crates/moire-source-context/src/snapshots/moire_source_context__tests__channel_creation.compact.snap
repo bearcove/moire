@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn setup()
 # scope 2..2
 
-   2 |     let (tx_a, rx_b) = mpsc::channel("memory_link.a→b", buffer);
+   2 >|     let (tx_a, rx_b) = mpsc::channel("memory_link.a→b", buffer);

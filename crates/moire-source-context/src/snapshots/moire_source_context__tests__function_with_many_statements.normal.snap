@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn example()
 # scope 5..7
 
-   5 |     let d = 4;
-   6 |     let target = 5;
-   7 |     let f = 6;
+   5  |     let d = 4;
+   6 >|     let target = 5;
+   7  |     let f = 6;

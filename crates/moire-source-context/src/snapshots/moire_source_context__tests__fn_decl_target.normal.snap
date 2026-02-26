@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn spawn_worker( task_name: &'static str, mutex: Arc<SyncMutex<()>>, )
 # scope 7..9
 
-   7 |     moire::task::spawn(async move {
-   8 |         let _guard = mutex.lock();
-   9 |     }.named(task_name));
+   7  |     moire::task::spawn(async move {
+   8  |         let _guard = mutex.lock();
+   9  |     }.named(task_name));

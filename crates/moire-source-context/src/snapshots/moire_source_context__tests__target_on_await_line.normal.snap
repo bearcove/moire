@@ -5,7 +5,7 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # async fn do_work()
 # scope 4..7
 
-   4 |     let c = step_two().await;
-   5 |     let result = main_work()
-   6 |         .await;
-   7 |     let d = cleanup().await;
+   4  |     let c = step_two().await;
+   5  |     let result = main_work()
+   6 >|         .await;
+   7  |     let d = cleanup().await;

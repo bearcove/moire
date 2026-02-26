@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn run()
 # scope 3..3
 
-   3 |     spawn(async move { a });
+   3 >|     spawn(async move { a });

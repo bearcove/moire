@@ -5,10 +5,10 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn outer()
 # scope 3..11
 
-   3 |     let closure = || {
-     | ...
-   6 |         let c = 30;
-   7 |         let target = 40;
-   8 |         let e = 50;
-     | ...
-  11 |     };
+   3  |     let closure = || {
+      | ...
+   6  |         let c = 30;
+   7 >|         let target = 40;
+   8  |         let e = 50;
+      | ...
+  11  |     };

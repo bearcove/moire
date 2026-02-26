@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # Foo::fn getter(&self) -> u32
 # scope 11..11
 
-  11 |         self.value
+  11  |         self.value

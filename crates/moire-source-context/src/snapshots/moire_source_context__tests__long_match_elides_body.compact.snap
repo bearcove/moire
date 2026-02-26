@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn process(y: Option<u32>)
 # scope 2..12
 
-   2 |     let x = match y {
-     | ...
-  12 |     };
+   2 >|     let x = match y {
+      | ...
+  12  |     };

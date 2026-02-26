@@ -5,5 +5,5 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn small()
 # scope 2..3
 
-   2 |     let a = 1;
-   3 |     let b = 2;
+   2 >|     let a = 1;
+   3  |     let b = 2;

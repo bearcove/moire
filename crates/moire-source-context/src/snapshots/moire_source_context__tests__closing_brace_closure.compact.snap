@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn outer()
 # scope 4..6
 
-   4 |     let handler = || {
-   5 |         single_call()
-   6 |     };
+   4  |     let handler = || {
+   5  |         single_call()
+   6 >|     };

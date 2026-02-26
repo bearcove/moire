@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # Handler::async fn handle(&mut self, req: Request, ctx: Context)
 # scope 3..3
 
-   3 |         spawn(async move { req });
+   3 >|         spawn(async move { req });

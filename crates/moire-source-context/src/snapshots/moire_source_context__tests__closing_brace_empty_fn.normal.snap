@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn foo()
 # scope 8..8
 
-   8 | }
+   8 >| }

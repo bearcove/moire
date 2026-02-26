@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # Worker::async fn run(&self) -> Result<(), String>
 # scope 3..3
 
-   3 |         do_stuff();
+   3 >|         do_stuff();

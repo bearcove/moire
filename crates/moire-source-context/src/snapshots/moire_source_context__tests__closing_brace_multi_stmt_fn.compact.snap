@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn many()
 # scope 6..6
 
-   6 |     let e = 5;
+   6  |     let e = 5;

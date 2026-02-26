@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # async fn do_work()
 # scope 2..4
 
-   2 |     let handle = session
-   3 |         .establish_as_acceptor(self.root_settings, self.metadata)
-   4 |         .await?;
+   2  |     let handle = session
+   3 >|         .establish_as_acceptor(self.root_settings, self.metadata)
+   4  |         .await?;

@@ -5,9 +5,9 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # async fn run( session: &mut Session, permit: Permit, ) -> Result<(), String>
 # scope 7..12
 
-   7 |     moire::task::spawn(
-   8 |         async move {
-     | ...
-  10 |         },
-  11 |     )
-  12 |     .named("permit_waiter");
+   7  |     moire::task::spawn(
+   8  |         async move {
+      | ...
+  10  |         },
+  11  |     )
+  12 >|     .named("permit_waiter");

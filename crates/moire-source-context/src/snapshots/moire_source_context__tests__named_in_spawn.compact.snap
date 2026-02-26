@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn spawn_lock_order_worker( task_name: &'static str, first_name: &'static str, first: Arc<SyncMutex<()>>, second_name: &'static str, second: Arc<SyncMutex<()>>, ready_barrier: Arc<Barrier>, completed_tx: oneshot::Sender<()>, )
 # scope 12..25
 
-  12 |     moire::task::spawn(async move {
-     | ...
-  25 |     }.named(task_name));
+  12  |     moire::task::spawn(async move {
+      | ...
+  25 >|     }.named(task_name));

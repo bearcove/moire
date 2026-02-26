@@ -5,15 +5,15 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn process(y: Option<u32>)
 # scope 2..13
 
-   2 |     let x = match y {
-   3 |         Some(1) => 1,
-   4 |         Some(2) => 2,
-   5 |         Some(3) => 3,
-   6 |         Some(4) => 4,
-   7 |         Some(5) => 5,
-   8 |         Some(6) => 6,
-   9 |         Some(7) => 7,
-  10 |         Some(8) => 8,
-  11 |         _ => 0,
-  12 |     };
-  13 |     println!("{x}");
+   2 >|     let x = match y {
+   3  |         Some(1) => 1,
+   4  |         Some(2) => 2,
+   5  |         Some(3) => 3,
+   6  |         Some(4) => 4,
+   7  |         Some(5) => 5,
+   8  |         Some(6) => 6,
+   9  |         Some(7) => 7,
+  10  |         Some(8) => 8,
+  11  |         _ => 0,
+  12  |     };
+  13  |     println!("{x}");

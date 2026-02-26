@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn outer()
 # scope 4..6
 
-   4 |     let c = vec.iter().map(|x| {
-     | ...
-   6 |     });
+   4  |     let c = vec.iter().map(|x| {
+      | ...
+   6  |     });

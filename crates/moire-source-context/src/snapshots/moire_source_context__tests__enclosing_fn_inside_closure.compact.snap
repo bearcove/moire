@@ -5,6 +5,6 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn run()
 # scope 3..5
 
-   3 |     v.iter().for_each(|x| {
-     | ...
-   5 |     });
+   3  |     v.iter().for_each(|x| {
+      | ...
+   5  |     });

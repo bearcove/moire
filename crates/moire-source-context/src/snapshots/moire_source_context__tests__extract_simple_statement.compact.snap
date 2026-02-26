@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn foo()
 # scope 2..2
 
-   2 |     let x = 42;
+   2 >|     let x = 42;

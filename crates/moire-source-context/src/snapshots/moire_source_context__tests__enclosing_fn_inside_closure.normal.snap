@@ -5,7 +5,7 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn run()
 # scope 2..5
 
-   2 |     let v: Vec<u32> = vec![1, 2, 3];
-   3 |     v.iter().for_each(|x| {
-   4 |         spawn(async move { *x });
-   5 |     });
+   2  |     let v: Vec<u32> = vec![1, 2, 3];
+   3  |     v.iter().for_each(|x| {
+   4 >|         spawn(async move { *x });
+   5  |     });

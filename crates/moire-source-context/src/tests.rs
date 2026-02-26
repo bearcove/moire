@@ -1,15 +1,16 @@
 use super::*;
 use std::path::Path;
 
-fn format_context_lines(lines: &[moire_types::SourceContextLine]) -> String {
+fn format_context_lines(lines: &[moire_types::SourceContextLine], target_line: u32) -> String {
     let mut out = String::new();
     for line in lines {
         match line {
             moire_types::SourceContextLine::Line(l) => {
-                out.push_str(&format!("{:>4} | {}\n", l.line_num, l.html));
+                let marker = if l.line_num == target_line { ">" } else { " " };
+                out.push_str(&format!("{:>4} {marker}| {}\n", l.line_num, l.html));
             }
             moire_types::SourceContextLine::Separator(_) => {
-                out.push_str("     | ...\n");
+                out.push_str("      | ...\n");
             }
         }
     }
@@ -50,7 +51,7 @@ fn run_fixture(path: &Path, contents: &str) -> Result<(), Box<dyn std::error::Er
             "# scope {}..{}\n\n{}",
             compact.scope_range.start,
             compact.scope_range.end,
-            format_context_lines(&text_context_lines(&compact))
+            format_context_lines(&text_context_lines(&compact), target_line)
         ),
         None => "(no result)".to_string(),
     };
@@ -64,7 +65,7 @@ fn run_fixture(path: &Path, contents: &str) -> Result<(), Box<dyn std::error::Er
             "# scope {}..{}\n\n{}",
             normal.scope_range.start,
             normal.scope_range.end,
-            format_context_lines(&text_context_lines(&normal))
+            format_context_lines(&text_context_lines(&normal), target_line)
         ),
         None => "(no result)".to_string(),
     };

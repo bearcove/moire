@@ -5,8 +5,8 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn run()
 # scope 2..6
 
-   2 |     spawn(async move {
-   3 |         println!("hello");
-   4 |         let _ = idle_rx.recv().await;
-   5 |     })
-   6 |     .named("blocked_receiver");
+   2 >|     spawn(async move {
+   3  |         println!("hello");
+   4  |         let _ = idle_rx.recv().await;
+   5  |     })
+   6  |     .named("blocked_receiver");

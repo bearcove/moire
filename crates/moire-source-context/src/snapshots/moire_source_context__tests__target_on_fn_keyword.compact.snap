@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn do_stuff(x: u32, y: u32) -> bool
 # scope 2..2
 
-   2 |     let z = x + y;
+   2  |     let z = x + y;

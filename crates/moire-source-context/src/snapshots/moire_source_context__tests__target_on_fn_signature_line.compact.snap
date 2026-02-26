@@ -5,8 +5,8 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # 
 # scope 1..8
 
-   1 | impl Session {
-   2 |     async fn recv(&mut self) -> Result<Option<SelfRef<Msg<'static>>>, Self::Error> {
-     | ...
-   7 |     }
-   8 | }
+   1  | impl Session {
+   2 >|     async fn recv(&mut self) -> Result<Option<SelfRef<Msg<'static>>>, Self::Error> {
+      | ...
+   7  |     }
+   8  | }

@@ -5,5 +5,5 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # Foo::async fn run(&self)
 # scope 4..5
 
-   4 |         let a = 1;
-   5 |         spawn(async move { a });
+   4  |         let a = 1;
+   5 >|         spawn(async move { a });

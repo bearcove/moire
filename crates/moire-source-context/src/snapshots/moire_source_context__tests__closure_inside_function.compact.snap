@@ -5,8 +5,8 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # fn outer()
 # scope 3..11
 
-   3 |     let closure = || {
-     | ...
-   7 |         let target = 40;
-     | ...
-  11 |     };
+   3  |     let closure = || {
+      | ...
+   7 >|         let target = 40;
+      | ...
+  11  |     };

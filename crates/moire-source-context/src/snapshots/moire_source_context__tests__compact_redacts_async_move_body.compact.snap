@@ -5,7 +5,7 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # async fn run() -> Result<(), String>
 # scope 3..10
 
-   3 |     spawn(async move {
-     | ...
-   9 |     })
-  10 |     .named("bounded_sender");
+   3 >|     spawn(async move {
+      | ...
+   9  |     })
+  10  |     .named("bounded_sender");

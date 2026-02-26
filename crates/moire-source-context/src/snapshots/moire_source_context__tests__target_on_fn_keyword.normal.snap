@@ -5,5 +5,5 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn do_stuff(x: u32, y: u32) -> bool
 # scope 2..3
 
-   2 |     let z = x + y;
-   3 |     z > 10
+   2  |     let z = x + y;
+   3  |     z > 10

@@ -5,4 +5,4 @@ expression: "format!(\"# {header}\\n{normal_body}\")"
 # fn short_fn()
 # scope 8..8
 
-   8 |     single_call()
+   8  |     single_call()

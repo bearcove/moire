@@ -5,5 +5,5 @@ expression: "format!(\"# {header}\\n{compact_body}\")"
 # async fn do_work()
 # scope 5..6
 
-   5 |     let result = main_work()
-   6 |         .await;
+   5  |     let result = main_work()
+   6 >|         .await;
