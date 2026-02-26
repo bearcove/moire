@@ -653,7 +653,7 @@ export function useStorybookState() {
         id: "e2",
         source: "mutex_a",
         target: "sem_a",
-        kind: "holds" as const,
+        kind: "held_by" as const,
       },
       {
         id: "e3",

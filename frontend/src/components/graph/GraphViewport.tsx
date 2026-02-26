@@ -846,7 +846,7 @@ function GraphAutoFit({
   onFitted: () => void;
   suppressAutoFit: boolean;
 }) {
-  const { fitView } = useCameraContext();
+  const { fitView, getCamera, animateCameraTo } = useCameraContext();
 
   useEffect(() => {
     if (suppressAutoFit) return;
@@ -857,15 +857,19 @@ function GraphAutoFit({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "f" || e.key === "0") {
         fitView();
+      } else if (e.key === "1") {
+        const cam = getCamera();
+        animateCameraTo({ x: cam.x, y: cam.y, zoom: 1 });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fitView]);
+  }, [fitView, getCamera, animateCameraTo]);
 
   return null;
 }

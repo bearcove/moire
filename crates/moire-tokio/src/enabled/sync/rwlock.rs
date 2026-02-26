@@ -115,7 +115,7 @@ impl<T> RwLock<T> {
         if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
             self.handle.link_to(owner, kind);
         }
-        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::Holds));
+        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::HeldBy));
         RwLockReadGuard { inner, holds_edge }
     }
 
@@ -128,7 +128,7 @@ impl<T> RwLock<T> {
         if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
             self.handle.link_to(owner, kind);
         }
-        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::Holds));
+        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::HeldBy));
         RwLockWriteGuard { inner, holds_edge }
     }
 }

@@ -265,7 +265,7 @@ impl Semaphore {
                 entry.count = entry.count.saturating_add(1);
                 return;
             }
-            let edge = self.handle.link_to_owned(holder_ref, EdgeKind::Holds);
+            let edge = self.handle.link_to_owned(holder_ref, EdgeKind::HeldBy);
             holder_counts.insert(
                 holder_ref.clone(),
                 HolderEdge {

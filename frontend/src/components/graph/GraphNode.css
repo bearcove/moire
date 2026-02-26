@@ -428,8 +428,33 @@
     flex-direction: row;
 }
 
+.graph-node-frame-block--has-target .graph-node-frame-block__line > .graph-node-frame-block__text {
+    transition:
+        filter 120ms ease,
+        opacity 120ms ease,
+        background-color 120ms ease;
+}
+
+.graph-node-frame-block--has-target
+    .graph-node-frame-block__line:not(.graph-node-frame-block__line--target)
+    > .graph-node-frame-block__text {
+    filter: saturate(0.9) brightness(0.96);
+    opacity: 0.97;
+}
+
 .graph-node-frame-block__line--target {
-    background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.06));
+}
+
+.graph-node-frame-block__line--target > .graph-node-frame-block__text {
+    background:
+        linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+            color-mix(in srgb, var(--accent) 6%, transparent) 50%,
+            transparent 100%
+        ),
+        light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.09));
+    filter: saturate(1.1) brightness(1.05);
 }
 
 .graph-node-frame-block__gutter {
@@ -443,9 +468,8 @@
     user-select: none;
     background: var(--graph-card-bg);
     cursor: pointer;
-
     border-right: 2px solid var(--accent);
-    margin-right: 0.8em;
+    margin-right: 0;
 }
 
 .graph-node-frame-block__gutter:hover {
@@ -467,6 +491,7 @@
 .graph-node-frame-block__text {
     flex: 1;
     min-width: 0;
+    text-indent: 0.8em;
 }
 
 /* ── Cut separator ── */

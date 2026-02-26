@@ -285,7 +285,7 @@ function waitingOn(id: string, source: string, target: string): EdgeDef {
 }
 
 function holds(id: string, source: string, target: string): EdgeDef {
-  return { id, source, target, kind: "holds" };
+  return { id, source, target, kind: "held_by" };
 }
 
 describe("computeDeadlockSCCs", () => {

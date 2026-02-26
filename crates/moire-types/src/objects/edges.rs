@@ -54,8 +54,8 @@ pub enum EdgeKind {
 
     /// Resource ownership/lease relationship (resource -> current holder).
     ///
-    /// Example: semaphore points to the holder of an acquired permit.
-    Holds,
+    /// Example: semaphore is held_by the holder of an acquired permit.
+    HeldBy,
 }
 
 crate::impl_sqlite_json!(EdgeKind);
@@ -64,5 +64,5 @@ crate::declare_edge_kind_slots!(
     PollsEdgeKindSlot::Polls,
     WaitingOnEdgeKindSlot::WaitingOn,
     PairedWithEdgeKindSlot::PairedWith,
-    HoldsEdgeKindSlot::Holds,
+    HeldByEdgeKindSlot::HeldBy,
 );

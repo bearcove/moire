@@ -154,9 +154,14 @@ export function FrameLine({
           isSeparator: false,
           separatorIndentCols: undefined,
         }));
+    const hasTargetLine = lines.some(
+      (entry) => !entry.isSeparator && entry.lineNum === preview.target_line,
+    );
 
     return (
-      <pre className="graph-node-frame-block arborium-hl">
+      <pre
+        className={`graph-node-frame-block arborium-hl${hasTargetLine ? " graph-node-frame-block--has-target" : ""}`}
+      >
         {lines.map((entry) => {
           if (entry.isSeparator) {
             return (

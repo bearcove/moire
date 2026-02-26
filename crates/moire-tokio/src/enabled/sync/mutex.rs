@@ -104,7 +104,7 @@ impl<T> Mutex<T> {
             self.handle.link_to(owner, kind);
         }
 
-        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::Holds));
+        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::HeldBy));
         let lock_id = self.handle.id().clone();
 
         HELD_MUTEX_STACK.with(|stack| {
@@ -169,7 +169,7 @@ impl<T> SyncMutex<T> {
             self.handle.link_to(owner, kind);
         }
 
-        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::Holds));
+        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::HeldBy));
         let lock_id = self.handle.id().clone();
 
         HELD_MUTEX_STACK.with(|stack| {

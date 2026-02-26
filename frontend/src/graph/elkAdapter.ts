@@ -67,7 +67,7 @@ export function edgeStyle(edge: EdgeDef): EdgeStyle {
       return { stroke, strokeWidth, strokeDasharray: "2 3" };
     case "waiting_on":
       return { stroke, strokeWidth };
-    case "holds":
+    case "held_by":
       return { stroke, strokeWidth, strokeDasharray: "4 4" };
     case "paired_with":
       return { stroke, strokeWidth, strokeDasharray: "6 3" };
@@ -81,7 +81,7 @@ export function edgeTooltip(edge: EdgeDef, sourceName: string, targetName: strin
       return `${sourceName} polls ${targetName} (non-blocking)`;
     case "waiting_on":
       return `${sourceName} is blocked waiting for ${targetName}`;
-    case "holds":
+    case "held_by":
       return `${sourceName} currently grants permits to ${targetName}`;
     case "paired_with":
       return `Paired: ${sourceName} ↔ ${targetName}`;
@@ -94,8 +94,8 @@ export function edgeEventNodeLabel(kind: EdgeDef["kind"]): string | null {
       return "waits on";
     case "polls":
       return "poll";
-    case "holds":
-      return "holds";
+    case "held_by":
+      return "held by";
     case "paired_with":
       return null;
   }

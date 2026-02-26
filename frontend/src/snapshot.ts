@@ -512,7 +512,7 @@ export function deriveStatTone(body: EntityBody): Tone | undefined {
 export function computeDeadlockSCCs(entities: EntityDef[], edges: EdgeDef[]): Map<string, number> {
   const adj = new Map<string, string[]>();
   for (const e of edges) {
-    if (e.kind !== "waiting_on" && e.kind !== "holds") continue;
+    if (e.kind !== "waiting_on" && e.kind !== "held_by") continue;
     if (!adj.has(e.source)) adj.set(e.source, []);
     adj.get(e.source)!.push(e.target);
   }
@@ -925,7 +925,7 @@ export function convertSnapshot(
         framesLoading: resolvedBacktrace.framesLoading,
       });
 
-      if (e.kind === "holds") {
+      if (e.kind === "held_by") {
         const lockEntity = lockEntitiesById.get(e.src);
         if (lockEntity) {
           lockEntity.status = { label: "locked", tone: "warn" };

@@ -52,7 +52,7 @@ export interface SourcePreviewResponse {
    * Highlighted HTML for a compact target-statement snippet.
    *
    * Preserves statement structure (may include newlines) and aggressively
-   * elides long inner block bodies as `…`.
+   * elides long inner block bodies as `/* ... */`.
    * Used for compact collapsed-frame display.
    */
   context_line?: string;
@@ -300,7 +300,9 @@ export interface CustomEventKind {
 
 export type Json = string;
 
-export type EventTarget = { entity: EntityId } | { scope: ScopeId };
+export type EventTarget =
+  | { entity: EntityId }
+  | { scope: ScopeId };
 
 export type ScopeId = string;
 
@@ -332,7 +334,7 @@ export interface Edge {
   kind: EdgeKind;
 }
 
-export type EdgeKind = "polls" | "waiting_on" | "paired_with" | "holds";
+export type EdgeKind = "polls" | "waiting_on" | "paired_with" | "held_by";
 
 /**
  * A scope groups execution context over time (for example process/thread/task/connection).
@@ -497,9 +499,15 @@ export interface ResponseEntity {
   status: ResponseStatus;
 }
 
-export type ResponseStatus = "pending" | { ok: Json } | { error: ResponseError } | "cancelled";
+export type ResponseStatus =
+  | "pending"
+  | { ok: Json }
+  | { error: ResponseError }
+  | "cancelled";
 
-export type ResponseError = { internal: string } | { user_json: Json };
+export type ResponseError =
+  | { internal: string }
+  | { user_json: Json };
 
 /**
  * Correlation token for RPC is the request entity id propagated in metadata.
@@ -565,15 +573,7 @@ export interface FileOpEntity {
   path: string;
 }
 
-export type FileOpKind =
-  | "open"
-  | "read"
-  | "write"
-  | "sync"
-  | "metadata"
-  | "remove"
-  | "rename"
-  | "other";
+export type FileOpKind = "open" | "read" | "write" | "sync" | "metadata" | "remove" | "rename" | "other";
 
 export interface CommandEntity {
   /**
@@ -723,3 +723,4 @@ export interface ConnectionsResponse {
   connected_processes: number;
   processes: ConnectedProcessInfo[];
 }
+

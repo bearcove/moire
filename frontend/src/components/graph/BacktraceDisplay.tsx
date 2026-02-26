@@ -24,7 +24,7 @@ export function BacktraceDisplay({
   activeFrameIndex,
 }: BacktraceDisplayProps) {
   const [showSystem, setShowSystem] = useState(false);
-  const [, setSourceVersion] = useState(0);
+  const [sourceVersion, setSourceVersion] = useState(0);
   const framesRootRef = React.useRef<HTMLDivElement | null>(null);
 
   const hasSystemFrames = allFrames.length > frames.length;
@@ -64,17 +64,21 @@ export function BacktraceDisplay({
     );
     const focusElement = targetLine ?? activeSection;
     if (!scrollContainer) {
-      focusElement.scrollIntoView({ block: "nearest" });
+      focusElement.scrollIntoView({ block: "center" });
       return;
     }
     const containerRect = scrollContainer.getBoundingClientRect();
     const focusRect = focusElement.getBoundingClientRect();
+    const zoomScaleY =
+      scrollContainer.clientHeight > 0 ? containerRect.height / scrollContainer.clientHeight : 1;
+    const normalizedScaleY = Number.isFinite(zoomScaleY) && zoomScaleY > 0 ? zoomScaleY : 1;
+    const focusCenterFromContainerTop =
+      (focusRect.top - containerRect.top + focusRect.height / 2) / normalizedScaleY;
     const targetScrollTop =
-      scrollContainer.scrollTop +
-      (focusRect.top + focusRect.height / 2 - (containerRect.top + containerRect.height / 2));
+      scrollContainer.scrollTop + focusCenterFromContainerTop - scrollContainer.clientHeight / 2;
     const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
     scrollContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, targetScrollTop));
-  }, [displayFrames.length, normalizedActiveFrameIndex]);
+  }, [displayFrames, normalizedActiveFrameIndex, sourceVersion]);
 
   if (displayFrames.length === 0) {
     if (!framesLoading) return null;
