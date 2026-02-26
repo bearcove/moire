@@ -51,7 +51,7 @@ import {
   appendFilterToken,
   parseGraphFilterQuery,
   quoteFilterValue,
-  tokenizeFilterQuery,
+  replaceFilterTokenByKeys,
 } from "./graphFilter";
 
 // ── Debug globals ──────────────────────────────────────────────
@@ -215,24 +215,26 @@ export function App() {
 
   const setFocusedEntityFilter = useCallback(
     (entityId: string | null) => {
-      const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
-        const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
-        return !key.toLowerCase().startsWith("focus:");
-      });
-      if (entityId) tokens.push(`focus:${quoteFilterValue(entityId)}`);
-      setGraphFilterText(tokens.join(" "));
+      setGraphFilterText(
+        replaceFilterTokenByKeys(
+          graphFilterText,
+          ["focus", "subgraph"],
+          entityId ? `focus:${quoteFilterValue(entityId)}` : null,
+        ),
+      );
     },
     [graphFilterText, setGraphFilterText],
   );
 
   const setExpandedEntityFilter = useCallback(
     (entityId: string | null) => {
-      const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
-        const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
-        return !key.toLowerCase().startsWith("expand:");
-      });
-      if (entityId) tokens.push(`expand:${quoteFilterValue(entityId)}`);
-      setGraphFilterText(tokens.join(" "));
+      setGraphFilterText(
+        replaceFilterTokenByKeys(
+          graphFilterText,
+          ["expand"],
+          entityId ? `expand:${quoteFilterValue(entityId)}` : null,
+        ),
+      );
     },
     [graphFilterText, setGraphFilterText],
   );

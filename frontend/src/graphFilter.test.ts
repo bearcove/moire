@@ -4,6 +4,7 @@ import {
   graphFilterEditorStateFromText,
   graphFilterSuggestions,
   parseGraphFilterQuery,
+  replaceFilterTokenByKeys,
   serializeGraphFilterEditorState,
   type GraphFilterEditorAction,
   type GraphFilterEditorState,
@@ -322,5 +323,25 @@ describe("parseGraphFilterQuery include/exclude syntax", () => {
     const out = parseGraphFilterQuery("+module:<path>");
     expect(out.includeModules.size).toBe(0);
     expect(out.tokens[0]?.valid).toBe(false);
+  });
+});
+
+describe("replaceFilterTokenByKeys", () => {
+  it("drops both focus and subgraph tokens when clearing focus", () => {
+    const out = replaceFilterTokenByKeys(
+      'colorBy:crate focus:1/alpha subgraph:"2/beta" +kind:request',
+      ["focus", "subgraph"],
+      null,
+    );
+    expect(out).toBe("colorBy:crate +kind:request");
+  });
+
+  it("replaces existing focus aliases with canonical focus token", () => {
+    const out = replaceFilterTokenByKeys(
+      "loners:off subgraph:1/alpha focus:2/beta",
+      ["focus", "subgraph"],
+      'focus:"3/gamma worker"',
+    );
+    expect(out).toBe('loners:off focus:"3/gamma worker"');
   });
 });

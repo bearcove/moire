@@ -281,6 +281,23 @@ export function appendFilterToken(filterText: string, token: string): string {
   return tokens.length === 0 ? token : `${tokens.join(" ")} ${token}`;
 }
 
+export function replaceFilterTokenByKeys(
+  filterText: string,
+  keys: readonly string[],
+  replacement: string | null,
+): string {
+  const keySet = new Set(keys.map((key) => key.toLowerCase()));
+  const tokens = tokenizeFilterQuery(filterText).filter((token) => {
+    const unsigned = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
+    const colon = unsigned.indexOf(":");
+    if (colon < 1) return true;
+    const key = unsigned.slice(0, colon).toLowerCase();
+    return !keySet.has(key);
+  });
+  if (replacement) tokens.push(replacement);
+  return tokens.join(" ");
+}
+
 function clampIndex(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max));
 }
