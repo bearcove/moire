@@ -13,6 +13,9 @@ import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } 
 const nodeSpacingBetweenLayers = 6;
 const edgeNodeSpacing = 6;
 const edgeSegmentSpacing = 12;
+const eventEdgeDirectionPriority = 10;
+const eventEdgeShortnessPriority = 10;
+const eventEdgeStraightnessPriority = 10;
 
 const builtinElkLayoutAlgorithms = ["box", "fixed", "random"] as const;
 const registeredElkLayoutAlgorithms = [
@@ -143,6 +146,7 @@ function rootElkOptionsFor(algorithm: ElkLayoutAlgorithm): Record<string, string
       "elk.layered.spacing.nodeNodeBetweenLayers": String(nodeSpacingBetweenLayers),
       "elk.layered.spacing.edgeNodeBetweenLayers": String(edgeNodeSpacing),
       "elk.layered.spacing.edgeEdgeBetweenLayers": String(edgeSegmentSpacing),
+      "elk.layered.nodePlacement.favorStraightEdges": "true",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
     };
   }
@@ -155,6 +159,7 @@ function scopeGroupElkOptionsFor(algorithm: ElkLayoutAlgorithm): Record<string, 
       "elk.algorithm": "layered",
       "elk.direction": "DOWN",
       "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.nodePlacement.favorStraightEdges": "true",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
       "elk.layered.spacing.edgeEdgeBetweenLayers": String(edgeSegmentSpacing),
     };
@@ -185,7 +190,8 @@ const edgeEventNodeMinWidth = 72;
 const edgeEventNodePadX = 8;
 const edgeEventNodeCharWidth = 7.4;
 const edgeEventNodeHeight = 24;
-const edgeEventCenterPortSuffix = ":center";
+const edgeEventInPortSuffix = ":in";
+const edgeEventOutPortSuffix = ":out";
 const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 const isNear = (a: Point, b: Point): boolean => distance(a, b) < 1;
 
@@ -245,12 +251,20 @@ export function edgeEventNodeId(edgeId: string): string {
   return `${edgeEventNodePrefix}${edgeId}`;
 }
 
-function edgeEventCenterPortId(nodeId: string): string {
-  return `${nodeId}${edgeEventCenterPortSuffix}`;
+function edgeEventInPortId(nodeId: string): string {
+  return `${nodeId}${edgeEventInPortSuffix}`;
 }
 
-function edgeEventAnchorRef(nodeId: string, algorithm: ElkLayoutAlgorithm): string {
-  return algorithm === "layered" ? edgeEventCenterPortId(nodeId) : nodeId;
+function edgeEventOutPortId(nodeId: string): string {
+  return `${nodeId}${edgeEventOutPortSuffix}`;
+}
+
+function edgeEventInboundRef(nodeId: string, algorithm: ElkLayoutAlgorithm): string {
+  return algorithm === "layered" ? edgeEventInPortId(nodeId) : nodeId;
+}
+
+function edgeEventOutboundRef(nodeId: string, algorithm: ElkLayoutAlgorithm): string {
+  return algorithm === "layered" ? edgeEventOutPortId(nodeId) : nodeId;
 }
 
 export function edgeMarkerSize(_edge: EdgeDef): number {
@@ -456,7 +470,7 @@ export async function layoutGraph(
         sourceId: edge.source,
         targetId: eventNodeId,
         sourceRef: edge.source,
-        targetRef: edgeEventAnchorRef(eventNodeId, elkAlgorithm),
+        targetRef: edgeEventInboundRef(eventNodeId, elkAlgorithm),
         sourceEdge: edge,
         markerSize: 0,
       },
@@ -464,7 +478,7 @@ export async function layoutGraph(
         id: `${edge.id}:b`,
         sourceId: eventNodeId,
         targetId: edge.target,
-        sourceRef: edgeEventAnchorRef(eventNodeId, elkAlgorithm),
+        sourceRef: edgeEventOutboundRef(eventNodeId, elkAlgorithm),
         targetRef: edge.target,
         sourceEdge: edge,
         markerSize: edgeMarkerSize(edge),
@@ -513,9 +527,20 @@ export async function layoutGraph(
       },
       ports: [
         {
-          id: edgeEventCenterPortId(node.id),
+          id: edgeEventInPortId(node.id),
           x: width / 2,
-          y: height / 2,
+          y: 0,
+          layoutOptions: {
+            "elk.port.side": "NORTH",
+          },
+        },
+        {
+          id: edgeEventOutPortId(node.id),
+          x: width / 2,
+          y: height,
+          layoutOptions: {
+            "elk.port.side": "SOUTH",
+          },
         },
       ],
     };
@@ -609,11 +634,24 @@ export async function layoutGraph(
       "org.eclipse.elk.json.edgeCoords": "ROOT",
     },
     children: groupedChildren,
-    edges: routedEdgeDefs.map((e) => ({
-      id: e.id,
-      sources: [e.sourceRef],
-      targets: [e.targetRef],
-    })),
+    edges: routedEdgeDefs.map((e) => {
+      const touchesEventNode =
+        e.sourceId.startsWith(edgeEventNodePrefix) || e.targetId.startsWith(edgeEventNodePrefix);
+      const layoutOptions =
+        elkAlgorithm === "layered" && touchesEventNode
+          ? {
+              "elk.layered.priority.direction": String(eventEdgeDirectionPriority),
+              "elk.layered.priority.shortness": String(eventEdgeShortnessPriority),
+              "elk.layered.priority.straightness": String(eventEdgeStraightnessPriority),
+            }
+          : undefined;
+      return {
+        id: e.id,
+        sources: [e.sourceRef],
+        targets: [e.targetRef],
+        ...(layoutOptions ? { layoutOptions } : {}),
+      };
+    }),
   });
 
   type ElkSectionLike = {
@@ -776,38 +814,51 @@ export async function layoutGraph(
           data: eventNodeData,
         });
         if (elkAlgorithm === "layered") {
-          const centerPortId = edgeEventCenterPortId(eventNodeId);
-          const centerPort = (child.ports ?? []).find(
-            (port: any) => String(port.id) === centerPortId,
-          );
-          if (!centerPort) {
-            throw new Error(`[elk] event node ${eventNodeId}: missing center port ${centerPortId}`);
-          }
-          const rawX = centerPort.x;
-          const rawY = centerPort.y;
-          if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
-            throw new Error(
-              `[elk] event node ${eventNodeId}: invalid center port coordinates (${rawX},${rawY})`,
-            );
+          const inPortId = edgeEventInPortId(eventNodeId);
+          const outPortId = edgeEventOutPortId(eventNodeId);
+          const inPort = (child.ports ?? []).find((port: any) => String(port.id) === inPortId);
+          const outPort = (child.ports ?? []).find((port: any) => String(port.id) === outPortId);
+          if (!inPort)
+            throw new Error(`[elk] event node ${eventNodeId}: missing inbound port ${inPortId}`);
+          if (!outPort) {
+            throw new Error(`[elk] event node ${eventNodeId}: missing outbound port ${outPortId}`);
           }
 
-          const expectedCenter = { x: absX + nodeWidth / 2, y: absY + nodeHeight / 2 };
-          const absoluteCandidate = { x: rawX, y: rawY };
-          const relativeCandidate = { x: absX + rawX, y: absY + rawY };
-          const anchor =
-            distance(absoluteCandidate, expectedCenter) <=
-            distance(relativeCandidate, expectedCenter)
-              ? absoluteCandidate
-              : relativeCandidate;
-          const centerDistance = distance(anchor, expectedCenter);
-          if (centerDistance > 1.5) {
-            throw new Error(
-              `[elk] event node ${eventNodeId}: center port not centered (distance=${centerDistance.toFixed(
-                3,
-              )}, anchor=${anchor.x.toFixed(3)},${anchor.y.toFixed(3)}, expected=${expectedCenter.x.toFixed(3)},${expectedCenter.y.toFixed(3)})`,
-            );
-          }
-          portAnchorMap.set(centerPortId, anchor);
+          const resolvePortAnchor = (
+            rawX: unknown,
+            rawY: unknown,
+            expected: Point,
+            label: string,
+          ): Point => {
+            if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
+              throw new Error(
+                `[elk] event node ${eventNodeId}: invalid ${label} port coordinates (${String(rawX)},${String(rawY)})`,
+              );
+            }
+            const absoluteCandidate = { x: Number(rawX), y: Number(rawY) };
+            const relativeCandidate = { x: absX + Number(rawX), y: absY + Number(rawY) };
+            const anchor =
+              distance(absoluteCandidate, expected) <= distance(relativeCandidate, expected)
+                ? absoluteCandidate
+                : relativeCandidate;
+            const d = distance(anchor, expected);
+            if (d > 1.5) {
+              throw new Error(
+                `[elk] event node ${eventNodeId}: ${label} port not at expected position (distance=${d.toFixed(
+                  3,
+                )}, anchor=${anchor.x.toFixed(3)},${anchor.y.toFixed(3)}, expected=${expected.x.toFixed(3)},${expected.y.toFixed(3)})`,
+              );
+            }
+            return anchor;
+          };
+
+          const expectedIn = { x: absX + nodeWidth / 2, y: absY };
+          const expectedOut = { x: absX + nodeWidth / 2, y: absY + nodeHeight };
+          portAnchorMap.set(inPortId, resolvePortAnchor(inPort.x, inPort.y, expectedIn, "inbound"));
+          portAnchorMap.set(
+            outPortId,
+            resolvePortAnchor(outPort.x, outPort.y, expectedOut, "outbound"),
+          );
         }
         continue;
       }
@@ -1109,8 +1160,6 @@ export async function layoutGraph(
 
   const geoEdges: GeometryEdge[] = routedEdgeDefs.map((routed) => {
     const points = polylineForRoutedEdge(routed);
-    const sourcePortRef = portAnchorMap.has(routed.sourceRef) ? routed.sourceRef : undefined;
-    const targetPortRef = portAnchorMap.has(routed.targetRef) ? routed.targetRef : undefined;
     const sourceEdge = routed.sourceEdge;
     const srcName = entityNameMap.get(sourceEdge.source) ?? sourceEdge.source;
     const dstName = entityNameMap.get(sourceEdge.target) ?? sourceEdge.target;
@@ -1124,8 +1173,6 @@ export async function layoutGraph(
       data: {
         style: edgeStyle(sourceEdge),
         tooltip: edgeTooltip(sourceEdge, srcName, dstName),
-        sourcePortRef,
-        targetPortRef,
         markerSize: routed.markerSize,
         backtraceId: sourceEdge.backtraceId,
         sourceFrame: sourceEdge.sourceFrame,

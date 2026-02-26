@@ -479,18 +479,23 @@
 
 .graph-node-frame-block__line:first-child > .graph-node-frame-block__gutter,
 .graph-node-frame-block__line:first-child > .graph-node-frame-block__text {
-    padding-top: 6px;
+    padding-top: 2px;
 }
 
 .graph-node-frame-block__line:last-child > .graph-node-frame-block__gutter,
 .graph-node-frame-block__line:last-child > .graph-node-frame-block__text {
-    padding-bottom: 6px;
+    padding-bottom: 2px;
 }
 
 .graph-node-frame-block__text {
     flex: 1;
     min-width: 0;
     text-indent: 0.8em;
+}
+
+.graph-node-frame-block--no-gutter .graph-node-frame-block__text {
+    text-indent: 0;
+    padding-left: var(--graph-node-padding);
 }
 
 /* ── Cut separator ── */
@@ -596,10 +601,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: light-dark(
-        rgb(var(--scope-rgb-light) / 0.85),
-        rgb(var(--scope-rgb-dark) / 0.85)
-    );
+    background: light-dark(rgb(var(--scope-rgb-light) / 0.85), rgb(var(--scope-rgb-dark) / 0.85));
     pointer-events: none;
     flex-shrink: 0;
 }

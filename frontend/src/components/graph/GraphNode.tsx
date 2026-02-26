@@ -160,25 +160,11 @@ export function FrameLine({
 
     return (
       <pre
-        className={`graph-node-frame-block arborium-hl${hasTargetLine ? " graph-node-frame-block--has-target" : ""}`}
+        className={`graph-node-frame-block arborium-hl${hasTargetLine ? " graph-node-frame-block--has-target" : ""}${useCompactContext ? " graph-node-frame-block--no-gutter" : ""}`}
       >
         {lines.map((entry) => {
           if (entry.isSeparator) {
-            return (
-              <div key={`sep-${entry.lineNum}`} className="graph-node-frame-block__sep">
-                <span className="graph-node-frame-block__gutter" />
-                <span
-                  className="graph-node-frame-block__sep-label"
-                  style={
-                    entry.separatorIndentCols != null
-                      ? { paddingLeft: `${entry.separatorIndentCols}ch` }
-                      : undefined
-                  }
-                >
-                  ⋯
-                </span>
-              </div>
-            );
+            return null;
           }
           const isTarget = entry.lineNum === preview.target_line;
           return (
@@ -186,15 +172,17 @@ export function FrameLine({
               key={entry.lineNum}
               className={`graph-node-frame-block__line${isTarget ? " graph-node-frame-block__line--target" : ""}`}
             >
-              <span
-                className="graph-node-frame-block__gutter"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.location.href = zedHref(frame.source_file, entry.lineNum);
-                }}
-              >
-                {entry.lineNum}
-              </span>
+              {!useCompactContext && (
+                <span
+                  className="graph-node-frame-block__gutter"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.location.href = zedHref(frame.source_file, entry.lineNum);
+                  }}
+                >
+                  {entry.lineNum}
+                </span>
+              )}
               {/* eslint-disable-next-line react/no-danger */}
               <span
                 className="graph-node-frame-block__text"
