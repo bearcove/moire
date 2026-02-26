@@ -97,16 +97,16 @@ export function EdgeLayer({
             }
           }
 
-          const d = polylineToPath(visPolyline, true);
+          const d = polylineToPath(visPolyline, false);
           const hitD = hitTestPath(polyline);
 
           const visibleStyle: React.CSSProperties = isSelected
-            ? { stroke, strokeWidth: 2.5, strokeLinecap: "round" }
+            ? { stroke, strokeWidth: 2.5, strokeLinecap: "square" }
             : {
                 stroke,
                 strokeWidth: edgeStyle.strokeWidth,
                 strokeDasharray: edgeStyle.strokeDasharray,
-                strokeLinecap: "round",
+                strokeLinecap: "square",
               };
 
           const edgeClass = [
