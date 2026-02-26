@@ -226,7 +226,7 @@ export function GraphNode({
   activeFrameIndex?: number;
 }) {
   const showScopeColor =
-    data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
+    data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined;
 
   const canonical = canonicalNodeKind(data.kind);
   const isFutureKind = canonical === "future" || canonical === "futures";

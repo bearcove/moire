@@ -20,12 +20,13 @@ export type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id
 
 export type SnapPhase = "idle" | "cutting" | "loading" | "ready" | "error";
 
-export type ScopeColorMode = "none" | "process" | "crate" | "task";
+export type ScopeColorMode = "none" | "process" | "crate" | "task" | "cycle";
 
 function scopeKeyForEntity(entity: EntityDef, scopeColorMode: ScopeColorMode): string | undefined {
   if (scopeColorMode === "process") return entity.processId;
   if (scopeColorMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
   if (scopeColorMode === "task") return entity.taskScopeKey ?? `${entity.processId}:~no-task`;
+  if (scopeColorMode === "cycle") return entity.sccIndex != null ? String(entity.sccIndex) : undefined;
   return undefined;
 }
 

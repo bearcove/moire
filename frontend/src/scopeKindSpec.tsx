@@ -5,6 +5,7 @@ import {
   LinkSimple,
   StackSimple,
   Terminal,
+  Warning,
 } from "@phosphor-icons/react";
 
 function iconFactory(Icon: ComponentType<any>): (size: number) => ReactNode {
@@ -41,6 +42,10 @@ const SCOPE_KIND_SPECS: Record<string, ScopeKindSpec> = {
   connection: {
     displayName: "connection",
     icon: iconFactory(LinkSimple),
+  },
+  cycle: {
+    displayName: "deadlock",
+    icon: iconFactory(Warning),
   },
   unknown: {
     displayName: "unknown",

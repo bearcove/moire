@@ -5,13 +5,16 @@
     --graph-card-tone-shadow: none;
     --graph-node-padding: 8px;
     --graph-node-row-line-height: 1.4;
+    --card-border-width-danger: 8px;
 
     border-radius: var(--radius-control);
     corner-shape: squircle;
     font-family: var(--font-ui);
     white-space: nowrap;
     background: var(--graph-card-bg);
-    outline: var(--graph-card-border-width) solid var(--graph-card-border-color);
+
+    border-left: 0 solid var(--graph-card-border-color);
+
     box-shadow: var(--graph-card-tone-shadow);
     color: var(--text-primary);
     position: relative;
@@ -22,22 +25,24 @@
     --graph-node-expanded-width: min(92vw, var(--graph-code-card-width));
 }
 
-/*.graph-card--scope {
+.graph-card--scope {
     box-shadow: inset 3px 0 0 0
         light-dark(rgb(var(--scope-rgb-light) / 0.95), rgb(var(--scope-rgb-dark) / 0.9));
-}*/
+}
 
-/*.graph-card--stat-crit {
+.graph-card--stat-crit {
     --graph-card-border-color: var(--status-danger);
     --graph-card-tone-shadow: inset 0 0 0 1px
         color-mix(in srgb, var(--status-danger) 65%, transparent);
+    border-left-width: var(--card-border-width-danger);
 }
 
 .graph-card--stat-warn {
     --graph-card-border-color: var(--status-warning);
     --graph-card-tone-shadow: inset 0 0 0 1px
         color-mix(in srgb, var(--status-warning) 60%, transparent);
-}*/
+    border-left-width: var(--card-border-width-danger);
+}
 
 .graph-card--ghost {
     opacity: 0.48;

@@ -98,7 +98,7 @@ export function edgeMarkerSize(_edge: EdgeDef): number {
 
 // ── Types ─────────────────────────────────────────────────────
 
-export type SubgraphScopeMode = "none" | "process" | "crate" | "task";
+export type SubgraphScopeMode = "none" | "process" | "crate" | "task" | "cycle";
 
 export type LayoutGraphOptions = {
   subgraphHeaderHeight?: number;
@@ -121,6 +121,7 @@ function canonicalScopeGroupLabel(
     const named = members.find((entity: EntityDef) => entity.kind === "connection") ?? members[0];
     return named.name;
   }
+  if (scopeKind === "cycle") return `Deadlock #${scopeKey}`;
   return scopeKey === "~no-crate" ? "(no crate)" : scopeKey;
 }
 
@@ -199,6 +200,7 @@ export async function layoutGraph(
     if (subgraphScopeMode === "process") return entity.processId;
     if (subgraphScopeMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
     if (subgraphScopeMode === "task") return entity.taskScopeKey ?? `${entity.processId}:~no-task`;
+    if (subgraphScopeMode === "cycle") return entity.sccIndex != null ? String(entity.sccIndex) : null;
     return null;
   };
 
@@ -295,13 +297,18 @@ export async function layoutGraph(
     }
 
     const grouped = new Map<string, EntityDef[]>();
+    const ungrouped: EntityDef[] = [];
     for (const entity of entityDefs) {
-      const key = groupKeyFor(entity) ?? "~unknown";
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(entity);
+      const key = groupKeyFor(entity);
+      if (key == null) {
+        ungrouped.push(entity);
+      } else {
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(entity);
+      }
     }
 
-    return Array.from(grouped.entries())
+    const groupNodes = Array.from(grouped.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([scopeKey, members]) => {
         const id = `scope-group:${subgraphScopeMode}:${scopeKey}`;
@@ -329,6 +336,8 @@ export async function layoutGraph(
           children: members.map(elkNodeForEntity),
         };
       });
+
+    return [...groupNodes, ...ungrouped.map(elkNodeForEntity)];
   })();
 
   const result = await elk.layout({

@@ -1,4 +1,4 @@
-export type GraphFilterMode = "process" | "crate" | "task";
+export type GraphFilterMode = "process" | "crate" | "task" | "cycle";
 
 export type GraphFilterLabelMode = "process" | "crate" | "location";
 
@@ -216,12 +216,17 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         valid = true;
       }
     } else if (keyLower === "colorby") {
-      if (value === "process" || value === "crate" || value === "task") {
+      if (value === "process" || value === "crate" || value === "task" || value === "cycle") {
         colorBy = value;
         valid = true;
       }
     } else if (keyLower === "groupby") {
-      if (value === "process" || value === "crate" || value === "task") {
+      if (
+        value === "process" ||
+        value === "crate" ||
+        value === "task" ||
+        value === "cycle"
+      ) {
         groupBy = value;
         valid = true;
       } else if (value === "none") {
@@ -554,9 +559,11 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { token: "colorBy:process", description: "Color nodes by process" },
       { token: "colorBy:crate", description: "Color nodes by crate" },
       { token: "colorBy:task", description: "Color nodes by task" },
+      { token: "colorBy:cycle", description: "Color nodes by deadlock cluster" },
       { token: "groupBy:process", description: "Group by process subgraphs" },
       { token: "groupBy:crate", description: "Group by crate subgraphs" },
       { token: "groupBy:task", description: "Group by task subgraphs" },
+      { token: "groupBy:cycle", description: "Group deadlock clusters" },
       { token: "labelBy:crate", description: "Show crate name on each card" },
       { token: "labelBy:process", description: "Show process name on each card" },
       { token: "labelBy:location", description: "Show source location on each card" },
@@ -632,9 +639,11 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "colorBy:process", label: "Color nodes by process" },
       { key: "colorBy:crate", label: "Color nodes by crate" },
       { key: "colorBy:task", label: "Color nodes by task" },
+      { key: "colorBy:cycle", label: "Color nodes by deadlock cluster" },
       { key: "groupBy:process", label: "Group by process subgraphs" },
       { key: "groupBy:crate", label: "Group by crate subgraphs" },
       { key: "groupBy:task", label: "Group by task subgraphs" },
+      { key: "groupBy:cycle", label: "Group deadlock clusters" },
       { key: "labelBy:crate", label: "Show crate name on each card" },
       { key: "labelBy:process", label: "Show process name on each card" },
       { key: "labelBy:location", label: "Show source location on each card" },
@@ -751,14 +760,24 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     return out;
   }
   if (keyLower === "colorby") {
-    for (const mode of sortedMatches(["process", "crate", "task"], valueLower, (v) => v)) {
-      uniquePush(out, `colorBy:${mode}`, `Color nodes by ${mode}`, undefined, existingTokens);
+    for (const mode of sortedMatches(
+      ["process", "crate", "task", "cycle"],
+      valueLower,
+      (v) => v,
+    )) {
+      const desc = mode === "cycle" ? "Color nodes by deadlock cluster" : `Color nodes by ${mode}`;
+      uniquePush(out, `colorBy:${mode}`, desc, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "groupby") {
-    for (const mode of sortedMatches(["process", "crate", "task"], valueLower, (v) => v)) {
-      uniquePush(out, `groupBy:${mode}`, `Group by ${mode}`, undefined, existingTokens);
+    for (const mode of sortedMatches(
+      ["process", "crate", "task", "cycle"],
+      valueLower,
+      (v) => v,
+    )) {
+      const desc = mode === "cycle" ? "Group deadlock clusters" : `Group by ${mode}`;
+      uniquePush(out, `groupBy:${mode}`, desc, undefined, existingTokens);
     }
     return out;
   }
@@ -830,9 +849,11 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
         { key: "colorBy:process", label: "Color nodes by process" },
         { key: "colorBy:crate", label: "Color nodes by crate" },
         { key: "colorBy:task", label: "Color nodes by task" },
+        { key: "colorBy:cycle", label: "Color nodes by deadlock cluster" },
         { key: "groupBy:process", label: "Group by process subgraphs" },
         { key: "groupBy:crate", label: "Group by crate subgraphs" },
         { key: "groupBy:task", label: "Group by task subgraphs" },
+        { key: "groupBy:cycle", label: "Group deadlock clusters" },
         { key: "labelBy:crate", label: "Show crate name on each card" },
         { key: "labelBy:process", label: "Show process name on each card" },
         { key: "labelBy:location", label: "Show source location on each card" },
