@@ -58,7 +58,22 @@ export function BacktraceDisplay({
     const sections = root.querySelectorAll<HTMLElement>(".graph-node-frame-section");
     const activeSection = sections[normalizedActiveFrameIndex];
     if (!activeSection) return;
-    activeSection.scrollIntoView({ block: "nearest" });
+    const scrollContainer = root.closest<HTMLElement>(".graph-node-frames-scroll");
+    const targetLine = activeSection.querySelector<HTMLElement>(
+      ".graph-node-frame-block__line--target",
+    );
+    const focusElement = targetLine ?? activeSection;
+    if (!scrollContainer) {
+      focusElement.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const focusRect = focusElement.getBoundingClientRect();
+    const targetScrollTop =
+      scrollContainer.scrollTop +
+      (focusRect.top + focusRect.height / 2 - (containerRect.top + containerRect.height / 2));
+    const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+    scrollContainer.scrollTop = Math.max(0, Math.min(maxScrollTop, targetScrollTop));
   }, [displayFrames.length, normalizedActiveFrameIndex]);
 
   if (displayFrames.length === 0) {
