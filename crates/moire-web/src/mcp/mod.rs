@@ -2043,6 +2043,48 @@ fn strongly_connected_components(
     state.components
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strongly_connected_components_finds_cycle_cluster() {
+        let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+        adjacency.insert(String::from("a"), vec![String::from("b")]);
+        adjacency.insert(String::from("b"), vec![String::from("c")]);
+        adjacency.insert(String::from("c"), vec![String::from("a")]);
+        adjacency.insert(String::from("d"), vec![String::from("e")]);
+        adjacency.insert(String::from("e"), vec![]);
+        let keys = vec![
+            String::from("a"),
+            String::from("b"),
+            String::from("c"),
+            String::from("d"),
+            String::from("e"),
+        ];
+
+        let mut components = strongly_connected_components(keys, &adjacency);
+        components.iter_mut().for_each(|c| c.sort());
+        components.sort_by_key(|c| c.first().cloned().unwrap_or_default());
+
+        assert_eq!(components.len(), 3);
+        assert_eq!(
+            components[0],
+            vec![String::from("a"), String::from("b"), String::from("c")]
+        );
+        assert_eq!(components[1], vec![String::from("d")]);
+        assert_eq!(components[2], vec![String::from("e")]);
+    }
+
+    #[test]
+    fn external_wake_source_kind_classification_is_strict() {
+        assert!(node_has_external_wake_source("mpsc_rx"));
+        assert!(node_has_external_wake_source("net_read"));
+        assert!(!node_has_external_wake_source("future"));
+        assert!(!node_has_external_wake_source("mpsc_tx"));
+    }
+}
+
 fn required_non_empty_string(
     args: &JsonMap<String, JsonValue>,
     field: &str,
