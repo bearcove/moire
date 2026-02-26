@@ -3,7 +3,6 @@ import React, {
   useCallback,
   useContext,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -48,8 +47,6 @@ export function GraphCanvas({
   className,
   onBackgroundClick,
 }: GraphCanvasProps) {
-  const instanceId = useId();
-  const dotPatternId = `graph-canvas-dots-${instanceId}`;
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
 
@@ -124,7 +121,6 @@ export function GraphCanvas({
   }, [handlers]);
 
   const transform = cameraTransform(camera, viewportSize.width, viewportSize.height);
-  const dotPatternTransform = `translate(${viewportSize.width / 2 - camera.x * camera.zoom}, ${viewportSize.height / 2 - camera.y * camera.zoom}) scale(${camera.zoom})`;
   const clientToGraph = useCallback(
     (clientX: number, clientY: number) => {
       const surface = surfaceRef.current;
@@ -179,19 +175,7 @@ export function GraphCanvas({
         onLostPointerCapture={handleLostPointerCapture}
       >
         <svg className="graph-canvas__background" aria-hidden="true">
-          <defs>
-            <pattern
-              id={dotPatternId}
-              width="16"
-              height="16"
-              patternUnits="userSpaceOnUse"
-              patternTransform={dotPatternTransform}
-            >
-              <circle cx="1" cy="1" r="0.8" className="graph-canvas__dot" />
-            </pattern>
-          </defs>
           <rect width="100%" height="100%" fill="var(--bg-base)" data-background="true" />
-          <rect width="100%" height="100%" fill={`url(#${dotPatternId})`} data-background="true" />
         </svg>
         <div className="graph-canvas__world" style={{ transform }}>
           {children}

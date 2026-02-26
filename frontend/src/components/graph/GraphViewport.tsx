@@ -634,7 +634,11 @@ export function GraphViewport({
         />
         {renderedGeometry && (
           <>
-            <GroupLayer groups={renderedGroups} groupOpacityById={renderedGroupOpacityById} />
+            <GroupLayer
+              groups={renderedGroups}
+              groupOpacityById={renderedGroupOpacityById}
+              renderHeaders={false}
+            />
             <EdgeLayer
               edges={renderedGeometry.edges}
               nodes={renderedNodes}
@@ -650,6 +654,11 @@ export function GraphViewport({
                   onSelect({ kind: "edge", id });
                 }
               }}
+            />
+            <GroupLayer
+              groups={renderedGroups}
+              groupOpacityById={renderedGroupOpacityById}
+              renderBodies={false}
             />
             <NodeLayer
               nodes={renderedNodes}

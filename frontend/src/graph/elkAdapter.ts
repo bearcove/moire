@@ -26,6 +26,10 @@ const subgraphPaddingBase = {
   right: 20,
 };
 
+// Extra vertical keep-out above grouped content so edge routing is less likely
+// to cross the visual scope header strip.
+const subgraphHeaderKeepoutTop = 18;
+
 const defaultInPortId = (entityId: string, edgeId: string) => `${entityId}:in:${edgeId}`;
 const defaultOutPortId = (entityId: string, edgeId: string) => `${entityId}:out:${edgeId}`;
 const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
@@ -117,9 +121,10 @@ export async function layoutGraph(
 
   const hasSubgraphs = subgraphScopeMode !== "none";
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
-  const subgraphContentInsetTop = measuredHeaderHeight + subgraphPaddingBase.top;
+  const subgraphContentInsetTop =
+    measuredHeaderHeight + subgraphPaddingBase.top + subgraphHeaderKeepoutTop;
   const subgraphContentInsetBottom = subgraphPaddingBase.bottom;
-  const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.top},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
+  const subgraphElkPadding = `[top=${subgraphContentInsetTop},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
 
   const edgeSourceRef = (edge: EdgeDef) =>
     edge.sourcePort ?? defaultOutPortId(edge.source, edge.id);
