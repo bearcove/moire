@@ -785,6 +785,131 @@ pub mod time {
     }
 }
 
+/// Process spawning (wasm stub — panics at runtime).
+///
+/// Provides API surface parity with the native `moire::process` module.
+/// All methods panic because wasm cannot spawn processes.
+pub mod process {
+    use std::ffi::OsStr;
+    use std::fmt;
+    use std::io;
+    use std::process::{ExitStatus, Output, Stdio};
+
+    pub struct Command {
+        _private: (),
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct CommandDiagnostics {
+        pub program: String,
+        pub args: Vec<String>,
+        pub env: Vec<String>,
+    }
+
+    pub struct Child {
+        _private: (),
+    }
+
+    impl Command {
+        pub fn new(_program: impl AsRef<OsStr>) -> Self {
+            panic!("moire::process::Command is not available on wasm")
+        }
+
+        pub fn arg(&mut self, _arg: impl AsRef<OsStr>) -> &mut Self {
+            self
+        }
+
+        pub fn args(&mut self, _args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
+            self
+        }
+
+        pub fn env(&mut self, _key: impl AsRef<OsStr>, _val: impl AsRef<OsStr>) -> &mut Self {
+            self
+        }
+
+        pub fn envs(
+            &mut self,
+            _vars: impl IntoIterator<Item = (impl AsRef<OsStr>, impl AsRef<OsStr>)>,
+        ) -> &mut Self {
+            self
+        }
+
+        pub fn env_clear(&mut self) -> &mut Self {
+            self
+        }
+
+        pub fn env_remove(&mut self, _key: impl AsRef<OsStr>) -> &mut Self {
+            self
+        }
+
+        pub fn current_dir(&mut self, _dir: impl AsRef<std::path::Path>) -> &mut Self {
+            self
+        }
+
+        pub fn stdin(&mut self, _cfg: impl Into<Stdio>) -> &mut Self {
+            self
+        }
+
+        pub fn stdout(&mut self, _cfg: impl Into<Stdio>) -> &mut Self {
+            self
+        }
+
+        pub fn stderr(&mut self, _cfg: impl Into<Stdio>) -> &mut Self {
+            self
+        }
+
+        pub fn kill_on_drop(&mut self, _kill_on_drop: bool) -> &mut Self {
+            self
+        }
+
+        pub fn spawn(&mut self) -> io::Result<Child> {
+            panic!("moire::process::Command::spawn is not available on wasm")
+        }
+
+        pub async fn status(&mut self) -> io::Result<ExitStatus> {
+            panic!("moire::process::Command::status is not available on wasm")
+        }
+
+        pub async fn output(&mut self) -> io::Result<Output> {
+            panic!("moire::process::Command::output is not available on wasm")
+        }
+    }
+
+    impl Child {
+        pub fn id(&self) -> Option<u32> {
+            None
+        }
+
+        pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+            panic!("moire::process::Child::wait is not available on wasm")
+        }
+
+        pub async fn wait_with_output(self) -> io::Result<Output> {
+            panic!("moire::process::Child::wait_with_output is not available on wasm")
+        }
+
+        pub fn start_kill(&mut self) -> io::Result<()> {
+            panic!("moire::process::Child::start_kill is not available on wasm")
+        }
+
+        pub fn kill(&mut self) -> io::Result<()> {
+            self.start_kill()
+        }
+    }
+
+    impl fmt::Debug for Command {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("Command").finish_non_exhaustive()
+        }
+    }
+
+    impl fmt::Debug for Child {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("Child").finish_non_exhaustive()
+        }
+    }
+}
+
 /// Spawn a task concurrently on the browser executor, equivalent to `moire::spawn`.
 pub fn spawn<F>(future: F)
 where
