@@ -3,6 +3,7 @@ use std::sync::Once;
 
 pub mod custom;
 pub mod fs;
+pub mod net;
 pub mod process;
 pub mod rpc;
 pub mod sync;
