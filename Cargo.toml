@@ -42,14 +42,16 @@ moire-wire = { path = "crates/moire-wire" }
 moire-sqlite-facet = { path = "crates/moire-sqlite-facet" }
 rusqlite-facet = { path = "crates/rusqlite-facet" }
 
+# facet
+facet = { version = "0.44.0" }
+facet-core = { version = "0.44.0" }
+facet-reflect = { version = "0.44.0" }
+facet-value = { version = "0.44.0" }
+facet-json = { version = "0.44.0" }
+facet-typescript = { version = "0.44.0" }
+
 # External
 ctor = "0.2"
-facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-core = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-reflect = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-value = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-typescript = { git = "https://github.com/facet-rs/facet", branch = "main" }
 figue = { git = "https://github.com/bearcove/figue", branch = "main" }
 libc = "0.2"
 parking_lot = "0.12"
@@ -65,12 +67,36 @@ rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 ureq = "2.12"
 addr2line = "0.24"
 arborium = { version = "2", features = [
-  "lang-rust", "lang-c", "lang-cpp", "lang-go", "lang-zig",
-  "lang-javascript", "lang-typescript", "lang-tsx",
-  "lang-python", "lang-ruby", "lang-java", "lang-kotlin", "lang-scala",
-  "lang-bash", "lang-json", "lang-yaml", "lang-toml", "lang-xml",
-  "lang-html", "lang-css", "lang-scss", "lang-markdown", "lang-sql",
-  "lang-swift", "lang-elixir", "lang-haskell", "lang-ocaml", "lang-lua", "lang-php", "lang-r",
+  "lang-rust",
+  "lang-c",
+  "lang-cpp",
+  "lang-go",
+  "lang-zig",
+  "lang-javascript",
+  "lang-typescript",
+  "lang-tsx",
+  "lang-python",
+  "lang-ruby",
+  "lang-java",
+  "lang-kotlin",
+  "lang-scala",
+  "lang-bash",
+  "lang-json",
+  "lang-yaml",
+  "lang-toml",
+  "lang-xml",
+  "lang-html",
+  "lang-css",
+  "lang-scss",
+  "lang-markdown",
+  "lang-sql",
+  "lang-swift",
+  "lang-elixir",
+  "lang-haskell",
+  "lang-ocaml",
+  "lang-lua",
+  "lang-php",
+  "lang-r",
 ] }
 
 [patch."https://github.com/bearcove/moire"]

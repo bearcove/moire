@@ -125,7 +125,7 @@ The `moire` crate re-exports the appropriate backend based on target:
 ### Processes
 
 > r[api.command]
-> `moire::Command::new(program)` wraps `tokio::process::Command`. Program, arguments, and environment are recorded on the `command` entity. `spawn()`, `status()`, `output()`, and `wait()` are individually instrumented.
+> `moire::process::Command::new(program)` wraps `tokio::process::Command`. Program, arguments, and environment are recorded on the `command` entity. `spawn()`, `status()`, `output()`, and `wait()` are individually instrumented.
 
 ### RPC
 
