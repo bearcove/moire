@@ -6,9 +6,8 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["roam"]
+default = []
 diagnostics = []
-roam = ["dep:roam", "dep:roam-stream"]
 
 [dependencies]
 facet.workspace = true
@@ -17,8 +16,4 @@ libc.workspace = true
 moire = { workspace = true, features = ["diagnostics"] }
 tokio.workspace = true
 ureq.workspace = true
-roam = { path = "../../../roam/rust/roam", optional = true }
-roam-stream = { path = "../../../roam/rust/roam-stream", features = [
-  "diagnostics",
-], optional = true }
 ur-taking-me-with-you.workspace = true

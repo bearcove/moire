@@ -490,18 +490,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayref"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
-
-[[package]]
-name = "arrayvec"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
-
-[[package]]
 name = "async-channel"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -631,20 +619,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
-name = "blake3"
-version = "1.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2468ef7d57b3fb7e16b576e8377cdbde2320c60e1491e961d11da40fc4f02a2d"
-dependencies = [
- "arrayref",
- "arrayvec",
- "cc",
- "cfg-if",
- "constant_time_eq",
- "cpufeatures",
-]
-
-[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -719,12 +693,6 @@ name = "const-fnv1a-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32b13ea120a812beba79e34316b3942a857c86ec1593cb34f27bb28272ce2cca"
-
-[[package]]
-name = "constant_time_eq"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "cookie"
@@ -925,22 +893,6 @@ dependencies = [
  "autocfg",
  "facet-core",
  "facet-macros",
- "facet-reflect",
-]
-
-[[package]]
-name = "facet-cargo-toml"
-version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1dfe5ee67dafa3ee39af19b47e0da41337f72e7e0e841f4400dec966b8cafa8"
-dependencies = [
- "camino",
- "facet",
- "facet-error",
- "facet-format",
- "facet-reflect",
- "facet-toml",
- "facet-value",
 ]
 
 [[package]]
@@ -1057,21 +1009,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "facet-postcard"
-version = "0.44.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec32d82e6375dc12fed002e89cc18846fe63a501cb5e4f235e84e262a4fa9d32"
-dependencies = [
- "camino",
- "facet-core",
- "facet-format",
- "facet-path",
- "facet-reflect",
- "facet-value",
- "tracing",
-]
-
-[[package]]
 name = "facet-pretty"
 version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1103,18 +1040,6 @@ checksum = "2e87fefb7fabe10278980588bb13bcfde4faeda4b3c29ae83c3c66efe0cad1a5"
 dependencies = [
  "facet-core",
  "facet-reflect",
-]
-
-[[package]]
-name = "facet-toml"
-version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06d8975ebf9b04daf86458c050d754666596deba6d10def3a694552a798dec9b"
-dependencies = [
- "facet-core",
- "facet-format",
- "facet-reflect",
- "toml_parser",
 ]
 
 [[package]]
@@ -1948,8 +1873,6 @@ dependencies = [
  "figue",
  "libc",
  "moire",
- "roam",
- "roam-stream",
  "tokio",
  "ur-taking-me-with-you",
  "ureq",
@@ -2464,99 +2387,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "roam"
-version = "7.0.0-alpha.1"
-dependencies = [
- "facet",
- "facet-postcard",
- "roam-core",
- "roam-hash",
- "roam-service-macros",
- "roam-types",
-]
-
-[[package]]
-name = "roam-core"
-version = "7.0.0-alpha.1"
-dependencies = [
- "facet",
- "facet-core",
- "facet-error",
- "facet-format",
- "facet-postcard",
- "facet-reflect",
- "getrandom 0.3.4",
- "moire",
- "roam-types",
- "smallvec 1.15.1",
- "tokio",
- "tracing",
- "wasm-bindgen-futures",
- "zerocopy",
-]
-
-[[package]]
-name = "roam-hash"
-version = "7.0.0-alpha.1"
-dependencies = [
- "blake3",
- "facet-core",
- "heck",
- "roam-types",
-]
-
-[[package]]
-name = "roam-macros-core"
-version = "7.0.0-alpha.1"
-dependencies = [
- "facet-cargo-toml",
- "heck",
- "proc-macro2",
- "quote",
- "roam-macros-parse",
-]
-
-[[package]]
-name = "roam-macros-parse"
-version = "7.0.0-alpha.1"
-dependencies = [
- "proc-macro2",
- "unsynn",
-]
-
-[[package]]
-name = "roam-service-macros"
-version = "7.0.0-alpha.1"
-dependencies = [
- "proc-macro2",
- "roam-macros-core",
-]
-
-[[package]]
-name = "roam-stream"
-version = "7.0.0-alpha.1"
-dependencies = [
- "moire",
- "roam-types",
- "tokio",
-]
-
-[[package]]
-name = "roam-types"
-version = "7.0.0-alpha.1"
-dependencies = [
- "bitflags",
- "facet",
- "facet-core",
- "facet-path",
- "facet-postcard",
- "futures-channel",
- "smallvec 1.15.1",
- "structstruck",
- "tokio",
-]
-
-[[package]]
 name = "rusqlite"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2921,17 +2751,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
-name = "structstruck"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f318209842d04696a2c139cd3d5d4d75c4a9e2af435b077aa5cbd391a79c34b3"
-dependencies = [
- "proc-macro2",
- "quote",
- "venial",
-]
-
-[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3159,15 +2978,6 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio",
-]
-
-[[package]]
-name = "toml_parser"
-version = "1.0.9+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "702d4415e08923e7e1ef96cd5727c0dfed80b4d2fa25db9647fe5eb6f7c5a4c4"
-dependencies = [
- "winnow",
 ]
 
 [[package]]
@@ -3453,16 +3263,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "venial"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61584a325b16f97b5b25fcc852eb9550843a251057a5e3e5992d2376f3df4bb2"
-dependencies = [
- "proc-macro2",
- "quote",
-]
 
 [[package]]
 name = "version_check"
@@ -3826,12 +3626,6 @@ name = "windows_x86_64_msvc"
 version = "0.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
-
-[[package]]
-name = "winnow"
-version = "0.7.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a5364e9d77fcdeeaa6062ced926ee3381faa2ee02d3eb83a5c27a8825540829"
 
 [[package]]
 name = "wit-bindgen"

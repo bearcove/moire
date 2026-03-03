@@ -9,7 +9,7 @@ pre-commit {
     // cargo-lock false
     // arborium false
     // edition-2024 false
-    external-path-deps false
+    // external-path-deps false
 }
 
 pre-push {
