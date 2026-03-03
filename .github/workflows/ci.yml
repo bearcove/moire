@@ -40,7 +40,9 @@ jobs:
         run: pnpm types:check
 
       - name: Install cargo-nextest
-        run: cargo install cargo-nextest --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - name: Cargo check
         run: cargo check --workspace --all-features
