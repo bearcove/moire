@@ -829,7 +829,7 @@ checksum = "6738d2e996274e499bc7b0d693c858b7720b9cd2543a0643a3087e6cb0a4fa16"
 dependencies = [
  "cfg-if",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -860,7 +860,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "facet-typescript-repro"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "facet",
  "facet-typescript",
@@ -1695,7 +1695,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1857,7 +1857,7 @@ dependencies = [
 
 [[package]]
 name = "moire"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "moire-macros",
  "moire-macros-noop",
@@ -1867,7 +1867,7 @@ dependencies = [
 
 [[package]]
 name = "moire-examples"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "facet",
  "figue",
@@ -1880,7 +1880,7 @@ dependencies = [
 
 [[package]]
 name = "moire-macros"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1889,11 +1889,11 @@ dependencies = [
 
 [[package]]
 name = "moire-macros-noop"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "moire-runtime"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ctor",
  "facet",
@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "moire-source-context"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arborium",
  "datatest-mini",
@@ -1918,7 +1918,7 @@ dependencies = [
 
 [[package]]
 name = "moire-sqlite-facet"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "facet-json",
  "facet-value",
@@ -1928,7 +1928,7 @@ dependencies = [
 
 [[package]]
 name = "moire-tokio"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ctor",
  "moire-runtime",
@@ -1939,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "moire-trace-capture"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "moire-trace-types",
@@ -1947,7 +1947,7 @@ dependencies = [
 
 [[package]]
 name = "moire-trace-types"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "facet",
  "rusqlite",
@@ -1955,7 +1955,7 @@ dependencies = [
 
 [[package]]
 name = "moire-types"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "facet",
  "facet-json",
@@ -1966,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "moire-wasm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-channel",
  "async-lock",
@@ -1980,7 +1980,7 @@ dependencies = [
 
 [[package]]
 name = "moire-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "addr2line",
  "arborium",
@@ -2014,7 +2014,7 @@ dependencies = [
 
 [[package]]
 name = "moire-wire"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "facet",
  "facet-json",
@@ -2034,7 +2034,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2243,7 +2243,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2402,7 +2402,7 @@ dependencies = [
 
 [[package]]
 name = "rusqlite-facet"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "facet",
  "facet-core",
@@ -2503,7 +2503,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2816,7 +2816,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3723,7 +3723,7 @@ checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "yansi"

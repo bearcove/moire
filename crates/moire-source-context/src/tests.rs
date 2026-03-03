@@ -113,7 +113,7 @@ fn dump_node_tree(content: &str, lang_name: &str, target_line: u32, target_col: 
             node.end_position().row,
         );
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 print_node(child, content, depth + 1);
             }
         }
