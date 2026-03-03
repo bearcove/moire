@@ -134,16 +134,16 @@ fn cut_source_with_neighbor_count(
             // For source_file, all named children are body children
             (
                 None,
-                (0..scope.named_child_count())
+                (0..scope.named_child_count() as u32)
                     .filter_map(|i| scope.named_child(i))
                     .collect(),
             )
         } else {
             // Find the body node (block or declaration_list)
-            let body = (0..scope.child_count())
+            let body = (0..scope.child_count() as u32)
                 .filter_map(|i| scope.child(i))
                 .find(|c| c.kind() == body_kind)?;
-            let children = (0..body.named_child_count())
+            let children = (0..body.named_child_count() as u32)
                 .filter_map(|i| body.named_child(i))
                 .collect();
             (Some(body), children)
@@ -301,7 +301,7 @@ fn collect_compact_block_elision_ranges(
         let start_row = node.start_position().row;
         let end_row = node.end_position().row;
         if end_row > start_row + MAX_PARAM_LIST_ROWS {
-            let first_param_end_row = (0..node.named_child_count())
+            let first_param_end_row = (0..node.named_child_count() as u32)
                 .filter_map(|i| node.named_child(i))
                 .next()
                 .map(|p| p.end_position().row)
@@ -314,7 +314,7 @@ fn collect_compact_block_elision_ranges(
         }
     }
 
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(child) = node.child(i) {
             collect_compact_block_elision_ranges(child, ranges);
         }
@@ -372,7 +372,7 @@ fn target_is_on_closing_brace(scope: &tree_sitter::Node, target: tree_sitter::Po
         return false;
     }
     let body_kind = body_kind_for_scope(scope.kind());
-    let body = (0..scope.child_count())
+    let body = (0..scope.child_count() as u32)
         .filter_map(|i| scope.child(i))
         .find(|c| c.kind() == body_kind);
     match body {
@@ -386,7 +386,7 @@ fn count_body_children(scope: &tree_sitter::Node) -> usize {
     if scope.kind() == "source_file" {
         return scope.named_child_count();
     }
-    let body = (0..scope.child_count())
+    let body = (0..scope.child_count() as u32)
         .filter_map(|i| scope.child(i))
         .find(|c| c.kind() == body_kind);
     match body {
@@ -481,7 +481,7 @@ pub fn extract_target_statement(
 
     // If we stopped at a block/declaration_list, find the child whose row range covers target
     let statement = if current.kind() == "block" || current.kind() == "declaration_list" {
-        (0..current.named_child_count())
+        (0..current.named_child_count() as u32)
             .filter_map(|i| current.named_child(i))
             .find(|c| {
                 let s = c.start_position().row;
@@ -515,7 +515,7 @@ pub fn extract_target_statement(
     let (text_start, text_start_row) = {
         let mut start = statement.start_byte();
         let mut row = statement.start_position().row;
-        for i in 0..statement.child_count() {
+        for i in 0..statement.child_count() as u32 {
             if let Some(child) = statement.child(i) {
                 if child.kind() == "attribute_item"
                     || child.kind() == "attribute"
@@ -626,7 +626,7 @@ fn extract_function_signature_text(
     // Function modifiers before the fn keyword (async, const, unsafe, extern).
     // Tree-sitter groups them under a "function_modifiers" node.
     let mut modifiers = String::new();
-    for i in 0..fn_node.child_count() {
+    for i in 0..fn_node.child_count() as u32 {
         let child = fn_node.child(i)?;
         match child.kind() {
             "attribute_item" | "visibility_modifier" => continue,
@@ -645,7 +645,7 @@ fn extract_function_signature_text(
     // Collect params in two forms: full (name: type) and slim (name only).
     let mut params_full: Vec<String> = Vec::new();
     let mut params_slim: Vec<String> = Vec::new();
-    for i in 0..params_node.child_count() {
+    for i in 0..params_node.child_count() as u32 {
         let child = params_node.child(i)?;
         match child.kind() {
             "parameter" => {
@@ -749,7 +749,7 @@ fn collect_statement_elision_ranges(node: tree_sitter::Node<'_>, ranges: &mut Ve
         let start_row = node.start_position().row;
         let end_row = node.end_position().row;
         if end_row > start_row + MAX_PARAM_LIST_ROWS {
-            let first_param_end_row = (0..node.named_child_count())
+            let first_param_end_row = (0..node.named_child_count() as u32)
                 .filter_map(|i| node.named_child(i))
                 .next()
                 .map(|p| p.end_position().row)
@@ -762,7 +762,7 @@ fn collect_statement_elision_ranges(node: tree_sitter::Node<'_>, ranges: &mut Ve
         }
     }
 
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(child) = node.child(i) {
             collect_statement_elision_ranges(child, ranges);
         }
