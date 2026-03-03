@@ -1,5 +1,6 @@
 [package]
 name = "moire-runtime"
+description = "Core runtime engine for moire: event journal, backtrace interning, and entity graph"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

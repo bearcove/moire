@@ -1,5 +1,6 @@
 [package]
 name = "moire-types"
+description = "Core graph types for moire: entities, events, edges, scopes, and snapshots"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

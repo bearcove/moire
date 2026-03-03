@@ -1,5 +1,6 @@
 [package]
 name = "moire-wasm"
+description = "WASM runtime surface for moire (instrumentation is no-op on wasm32)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

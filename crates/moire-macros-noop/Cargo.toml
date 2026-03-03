@@ -1,5 +1,6 @@
 [package]
 name = "moire-macros-noop"
+description = "No-op `#[moire::instrument]` proc-macro stub used when moire diagnostics are disabled"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

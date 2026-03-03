@@ -1,5 +1,6 @@
 [package]
 name = "moire-tokio"
+description = "Instrumented Tokio primitive wrappers for moire runtime diagnostics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

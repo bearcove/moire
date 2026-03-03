@@ -1,5 +1,6 @@
 [package]
 name = "moire-trace-types"
+description = "Backtrace and frame-pointer types shared across moire's trace pipeline"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

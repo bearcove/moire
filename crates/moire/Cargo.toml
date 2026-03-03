@@ -1,5 +1,6 @@
 [package]
 name = "moire"
+description = "Runtime graph instrumentation for Tokio-based Rust systems"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,11 +12,7 @@ rustdoc-args = ["--html-in-header", "arborium-header.html"]
 
 [features]
 default = []
-diagnostics = [
-  "dep:moire-macros",
-  "moire-tokio/diagnostics",
-  "moire-wasm/diagnostics",
-]
+diagnostics = ["dep:moire-macros", "moire-tokio/diagnostics", "moire-wasm/diagnostics"]
 
 [dependencies]
 moire-macros-noop.workspace = true

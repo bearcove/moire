@@ -1,5 +1,6 @@
 [package]
 name = "moire-web"
+description = "Web dashboard server for moire: REST API, MCP tools, and live entity graph viewer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

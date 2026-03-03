@@ -1,5 +1,6 @@
 [package]
 name = "moire-trace-capture"
+description = "Frame-pointer backtrace capture for moire runtime instrumentation"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

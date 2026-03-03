@@ -1,5 +1,6 @@
 [package]
 name = "moire-source-context"
+description = "Tree-sitter-based source context extraction and scope cutting for moire's dashboard"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,5 +1,6 @@
 [package]
 name = "moire-macros"
+description = "Proc-macro crate providing the `#[moire::instrument]` attribute for moire diagnostics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

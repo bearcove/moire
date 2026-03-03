@@ -1,5 +1,6 @@
 [package]
 name = "moire-wire"
+description = "Wire protocol types and frame codec for moire's runtime-to-dashboard streaming"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

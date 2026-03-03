@@ -1,5 +1,6 @@
 [package]
 name = "moire-sqlite-facet"
+description = "SQLite projection helpers for moire snapshot tables (entities, scopes, edges, events)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
