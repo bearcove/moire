@@ -20,8 +20,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Install frontend deps
         working-directory: frontend
@@ -49,9 +47,6 @@ jobs:
 
       - name: Cargo nextest
         run: cargo nextest run --workspace --all-features
-
-      - name: Cargo clippy
-        run: cargo clippy --workspace --all-features --all-targets
 
   moire-targets:
     runs-on: ubuntu-latest

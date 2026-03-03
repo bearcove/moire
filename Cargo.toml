@@ -50,12 +50,11 @@ facet-value = { version = "0.44.0" }
 facet-json = { version = "0.44.0" }
 facet-typescript = { version = "0.44.0" }
 
-# External
-ctor = "0.2"
-figue = { git = "https://github.com/bearcove/figue", branch = "main" }
+ur-taking-me-with-you = { version = "7.0.0-alpha.1", features = ["tokio"] }
+ctor = "0.2" # External
+figue = { version = "2" }
 libc = "0.2"
 parking_lot = "0.12"
-ur-taking-me-with-you = { path = "../roam/rust/ur-taking-me-with-you", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.49", features = ["full"] }
