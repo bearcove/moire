@@ -21,26 +21,26 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bearcove/moire"
 
 [workspace.dependencies]
 # Internal
-moire = { path = "crates/moire", version = "1.0.0" }
-moire-macros = { path = "crates/moire-macros", version = "1.0.0" }
-moire-macros-noop = { path = "crates/moire-macros-noop", version = "1.0.0" }
-moire-tokio = { path = "crates/moire-tokio", version = "1.0.0" }
-moire-wasm = { path = "crates/moire-wasm", version = "1.0.0" }
-moire-runtime = { path = "crates/moire-runtime", version = "1.0.0" }
-moire-types = { path = "crates/moire-types", version = "1.0.0" }
-moire-source-context = { path = "crates/moire-source-context", version = "1.0.0" }
-moire-trace-types = { path = "crates/moire-trace-types", version = "1.0.0" }
-moire-trace-capture = { path = "crates/moire-trace-capture", version = "1.0.0" }
-moire-wire = { path = "crates/moire-wire", version = "1.0.0" }
-moire-sqlite-facet = { path = "crates/moire-sqlite-facet", version = "1.0.0" }
-rusqlite-facet = { path = "crates/rusqlite-facet", version = "1.0.0" }
+moire = { path = "crates/moire", version = "1.0.1" }
+moire-macros = { path = "crates/moire-macros", version = "1.0.1" }
+moire-macros-noop = { path = "crates/moire-macros-noop", version = "1.0.1" }
+moire-tokio = { path = "crates/moire-tokio", version = "1.0.1" }
+moire-wasm = { path = "crates/moire-wasm", version = "1.0.1" }
+moire-runtime = { path = "crates/moire-runtime", version = "1.0.1" }
+moire-types = { path = "crates/moire-types", version = "1.0.1" }
+moire-source-context = { path = "crates/moire-source-context", version = "1.0.1" }
+moire-trace-types = { path = "crates/moire-trace-types", version = "1.0.1" }
+moire-trace-capture = { path = "crates/moire-trace-capture", version = "1.0.1" }
+moire-wire = { path = "crates/moire-wire", version = "1.0.1" }
+moire-sqlite-facet = { path = "crates/moire-sqlite-facet", version = "1.0.1" }
+rusqlite-facet = { path = "crates/rusqlite-facet", version = "1.0.1" }
 
 # facet
 facet = { version = "0.44.0" }
