@@ -1930,7 +1930,6 @@ dependencies = [
 name = "moire-tokio"
 version = "1.0.0"
 dependencies = [
- "ctor",
  "moire-runtime",
  "moire-types",
  "parking_lot",
