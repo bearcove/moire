@@ -1,3 +1,4 @@
+#![allow(clippy::result_large_err)]
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2, TokenTree};
 use quote::{quote, quote_spanned};
