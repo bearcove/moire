@@ -828,7 +828,7 @@ checksum = "9f5b01c17f85ee988d832c40e549a64bd89ab2c9f8d8a613bdf5122ae507e294"
 dependencies = [
  "cfg-if",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -859,7 +859,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1052,7 +1052,7 @@ dependencies = [
 
 [[package]]
 name = "facet-typescript-repro"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet",
  "facet-typescript",
@@ -1702,7 +1702,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1866,7 +1866,7 @@ dependencies = [
 
 [[package]]
 name = "moire"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "moire-macros",
  "moire-macros-noop",
@@ -1876,7 +1876,7 @@ dependencies = [
 
 [[package]]
 name = "moire-examples"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet",
  "figue",
@@ -1889,7 +1889,7 @@ dependencies = [
 
 [[package]]
 name = "moire-macros"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1898,11 +1898,11 @@ dependencies = [
 
 [[package]]
 name = "moire-macros-noop"
-version = "1.0.0"
+version = "1.0.1"
 
 [[package]]
 name = "moire-runtime"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "ctor",
  "facet",
@@ -1917,7 +1917,7 @@ dependencies = [
 
 [[package]]
 name = "moire-source-context"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "arborium",
  "datatest-mini",
@@ -1927,7 +1927,7 @@ dependencies = [
 
 [[package]]
 name = "moire-sqlite-facet"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet-json",
  "facet-value",
@@ -1937,7 +1937,7 @@ dependencies = [
 
 [[package]]
 name = "moire-tokio"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "moire-runtime",
  "moire-types",
@@ -1947,7 +1947,7 @@ dependencies = [
 
 [[package]]
 name = "moire-trace-capture"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "libc",
  "moire-trace-types",
@@ -1955,7 +1955,7 @@ dependencies = [
 
 [[package]]
 name = "moire-trace-types"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet",
  "rusqlite",
@@ -1963,7 +1963,7 @@ dependencies = [
 
 [[package]]
 name = "moire-types"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet",
  "facet-json",
@@ -1974,7 +1974,7 @@ dependencies = [
 
 [[package]]
 name = "moire-wasm"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "async-channel",
  "async-lock",
@@ -1988,7 +1988,7 @@ dependencies = [
 
 [[package]]
 name = "moire-web"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "addr2line",
  "arborium",
@@ -2022,7 +2022,7 @@ dependencies = [
 
 [[package]]
 name = "moire-wire"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet",
  "facet-json",
@@ -2042,7 +2042,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2410,7 +2410,7 @@ dependencies = [
 
 [[package]]
 name = "rusqlite-facet"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet",
  "facet-core",
@@ -2511,7 +2511,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2722,7 +2722,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2824,7 +2824,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3711,7 +3711,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xtask"
-version = "1.0.0"
+version = "1.0.1"
 
 [[package]]
 name = "yansi"
