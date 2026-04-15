@@ -43,12 +43,12 @@ moire-sqlite-facet = { path = "crates/moire-sqlite-facet", version = "1.0.0" }
 rusqlite-facet = { path = "crates/rusqlite-facet", version = "1.0.0" }
 
 # facet
-facet = { version = "0.45" }
-facet-core = { version = "0.45" }
-facet-reflect = { version = "0.44.0" }
-facet-value = { version = "0.44.0" }
-facet-json = { version = "0.44.0" }
-facet-typescript = { version = "0.44.0" }
+facet = { version = "0.46" }
+facet-core = { version = "0.46" }
+facet-reflect = { version = "0.46" }
+facet-value = { version = "0.46" }
+facet-json = { version = "0.46" }
+facet-typescript = { version = "0.46" }
 
 ur-taking-me-with-you = { version = "7.0.0-alpha.1", features = ["tokio"] }
 ctor = "0.2" # External
