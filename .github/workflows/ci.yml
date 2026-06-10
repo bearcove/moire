@@ -8,18 +8,18 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: bearcove-ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "25"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
 
       - name: Install frontend deps
         working-directory: frontend
@@ -40,9 +40,7 @@ jobs:
         run: pnpm types:check
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
+        uses: taiki-e/install-action@nextest
 
       - name: Cargo check
         run: cargo check --workspace --all-features
@@ -51,10 +49,10 @@ jobs:
         run: cargo nextest run --workspace --all-features
 
   moire-targets:
-    runs-on: ubuntu-latest
+    runs-on: bearcove-ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

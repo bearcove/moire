@@ -21,38 +21,38 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.1"
+version = "2.0.0-rc.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bearcove/moire"
 
 [workspace.dependencies]
 # Internal
-moire = { path = "crates/moire", version = "1.0.1" }
-moire-macros = { path = "crates/moire-macros", version = "1.0.1" }
-moire-macros-noop = { path = "crates/moire-macros-noop", version = "1.0.1" }
-moire-tokio = { path = "crates/moire-tokio", version = "1.0.1" }
-moire-wasm = { path = "crates/moire-wasm", version = "1.0.1" }
-moire-runtime = { path = "crates/moire-runtime", version = "1.0.1" }
-moire-types = { path = "crates/moire-types", version = "1.0.1" }
-moire-source-context = { path = "crates/moire-source-context", version = "1.0.1" }
-moire-trace-types = { path = "crates/moire-trace-types", version = "1.0.1" }
-moire-trace-capture = { path = "crates/moire-trace-capture", version = "1.0.1" }
-moire-wire = { path = "crates/moire-wire", version = "1.0.1" }
-moire-sqlite-facet = { path = "crates/moire-sqlite-facet", version = "1.0.1" }
-rusqlite-facet = { path = "crates/rusqlite-facet", version = "1.0.1" }
+moire = { path = "crates/moire", version = "2.0.0-rc.0" }
+moire-macros = { path = "crates/moire-macros", version = "2.0.0-rc.0" }
+moire-macros-noop = { path = "crates/moire-macros-noop", version = "2.0.0-rc.0" }
+moire-tokio = { path = "crates/moire-tokio", version = "2.0.0-rc.0" }
+moire-wasm = { path = "crates/moire-wasm", version = "2.0.0-rc.0" }
+moire-runtime = { path = "crates/moire-runtime", version = "2.0.0-rc.0" }
+moire-types = { path = "crates/moire-types", version = "2.0.0-rc.0" }
+moire-source-context = { path = "crates/moire-source-context", version = "2.0.0-rc.0" }
+moire-trace-types = { path = "crates/moire-trace-types", version = "2.0.0-rc.0" }
+moire-trace-capture = { path = "crates/moire-trace-capture", version = "2.0.0-rc.0" }
+moire-wire = { path = "crates/moire-wire", version = "2.0.0-rc.0" }
+moire-sqlite-facet = { path = "crates/moire-sqlite-facet", version = "2.0.0-rc.0" }
+rusqlite-facet = { path = "crates/rusqlite-facet", version = "2.0.0-rc.0" }
 
 # facet
-facet = { version = "0.46" }
-facet-core = { version = "0.46" }
-facet-reflect = { version = "0.46" }
-facet-value = { version = "0.46" }
-facet-json = { version = "0.46" }
-facet-typescript = { version = "0.46" }
+facet = { version = "0.50.0-rc.0" }
+facet-core = { version = "0.50.0-rc.0" }
+facet-reflect = { version = "0.50.0-rc.0" }
+facet-value = { version = "0.50.0-rc.0" }
+facet-json = { version = "0.50.0-rc.0" }
+facet-typescript = { version = "0.50.0-rc.0" }
 
 ur-taking-me-with-you = { version = "7.0.0-alpha.1", features = ["tokio"] }
 ctor = "0.2" # External
-figue = { version = "2" }
+figue = { version = "5.0.0-rc.0" }
 libc = "0.2"
 parking_lot = "0.12"
 tracing = "0.1"
