@@ -1,4 +1,4 @@
-pub use tokio::sync::oneshot::{error, Sender};
+pub use tokio::sync::oneshot::{Sender, error};
 
 pub use tokio::sync::oneshot::Receiver;
 

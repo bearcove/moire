@@ -1,6 +1,6 @@
 use facet::Facet;
 
-use crate::{next_scope_id, BacktraceId, PTime, ScopeId};
+use crate::{BacktraceId, PTime, ScopeId, next_scope_id};
 
 // r[impl model.scope.fields]
 /// A scope groups execution context over time (for example process/thread/task/connection).

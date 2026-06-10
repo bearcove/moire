@@ -44,14 +44,10 @@ pub fn sql_query_blocking(db: &Db, sql: &str) -> Result<SqlResponse, String> {
     let mut rows = Vec::new();
     let mut raw_rows = stmt.raw_query();
 
-    loop {
-        let Some(row) = raw_rows
-            .next()
-            .map_err(|error| format!("query row: {error}"))?
-        else {
-            break;
-        };
-
+    while let Some(row) = raw_rows
+        .next()
+        .map_err(|error| format!("query row: {error}"))?
+    {
         let mut row_values = Vec::with_capacity(column_count);
         for index in 0..column_count {
             let value_ref = row
