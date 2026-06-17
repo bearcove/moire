@@ -1,5 +1,14 @@
 # moire (mwah-ray)
 
+> [!IMPORTANT]
+> Moire is retired. The reusable SQLite integration crate, `rusqlite-facet`, has
+> moved to the Facet monorepo:
+> <https://github.com/facet-rs/facet/tree/main/rusqlite-facet>.
+>
+> Please open future `rusqlite-facet` issues and pull requests in
+> <https://github.com/facet-rs/facet>. The remaining Moire crates and tooling are
+> not being maintained.
+
 runtime graph instrumentation for tokio-based Rust systems.
 
 moiré replaces Tokio's primitives with named, instrumented wrappers. At every
