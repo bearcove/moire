@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-rc.1](https://github.com/bearcove/moire/compare/moire-web-v1.0.1...moire-web-v2.0.0-rc.1) - 2026-06-10
+
+### Other
+
+- Prepare moire 2.0.0-rc.0 ([#14](https://github.com/bearcove/moire/pull/14))
+
 ## [1.0.1](https://github.com/bearcove/moire/compare/moire-web-v1.0.0...moire-web-v1.0.1) - 2026-04-15
 
 ### Other
